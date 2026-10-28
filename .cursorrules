@@ -7,6 +7,6 @@
 
 # AI audit trail
 
-- Run repository commands through `bash harness/validate.sh -- <command> [arguments...]` to capture combined output, invocation, timestamp, and exit status in `interactions/00-initialization/response-00-init.md`.
+- Run repository commands through `INTERACTION_LOG=interactions/<spec-number>-<name>/response-<spec-number>-<name>.md bash harness/validate.sh -- <command> [arguments...]` to capture combined output, invocation, timestamp, and exit status in the current spec's interaction log.
 - Run baseline checks with `bash harness/validate.sh`.
 - Do not run commands that print credentials, personal information, or other sensitive values; command output is retained in the repository.
