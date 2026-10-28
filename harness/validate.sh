@@ -4,7 +4,12 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-LOG_FILE="$ROOT_DIR/interactions/00-initialization/response-00-init.md"
+LOG_PATH="${INTERACTION_LOG:-interactions/00-initialization/response-00-init.md}"
+if [[ "$LOG_PATH" = /* ]]; then
+  LOG_FILE="$LOG_PATH"
+else
+  LOG_FILE="$ROOT_DIR/$LOG_PATH"
+fi
 OUTPUT_FILE="$(mktemp)" || {
   printf 'ERROR: could not create temporary output file.\n' >&2
   exit 1
@@ -48,9 +53,41 @@ validate_repository() {
   check_directory "specs" || failures=$((failures + 1))
   check_directory "harness" || failures=$((failures + 1))
   check_directory "interactions" || failures=$((failures + 1))
+  check_directory "src/app" || failures=$((failures + 1))
+  check_directory "tests" || failures=$((failures + 1))
   check_file ".cursorrules" || failures=$((failures + 1))
   check_file "harness/validate.sh" || failures=$((failures + 1))
   check_file "specs/00-initialization/spec-00-init.md" || failures=$((failures + 1))
+  check_file "specs/01-tech-stack-override/01-tech-stack-override.md" || failures=$((failures + 1))
+  check_file "pyproject.toml" || failures=$((failures + 1))
+  check_file "Dockerfile" || failures=$((failures + 1))
+  check_file "docker-compose.yml" || failures=$((failures + 1))
+  check_file "alembic.ini" || failures=$((failures + 1))
+  check_file "migrations/versions/0001_initial_schema.py" || failures=$((failures + 1))
+  check_file "src/app/main.py" || failures=$((failures + 1))
+  check_file "src/app/documents.py" || failures=$((failures + 1))
+  check_file "src/app/storage.py" || failures=$((failures + 1))
+
+  if bash -n "$ROOT_DIR/harness/validate.sh"; then
+    printf 'PASS: validation harness shell syntax.\n'
+  else
+    printf 'FAIL: validation harness shell syntax.\n'
+    failures=$((failures + 1))
+  fi
+
+  if python3 -m compileall -q "$ROOT_DIR/src" "$ROOT_DIR/tests" "$ROOT_DIR/migrations"; then
+    printf 'PASS: Python source compiles.\n'
+  else
+    printf 'FAIL: Python source compilation failed.\n'
+    failures=$((failures + 1))
+  fi
+
+  if (cd "$ROOT_DIR" && PYTHONPATH="$ROOT_DIR/src" python3 -m unittest discover -s tests -v); then
+    printf 'PASS: Python unit tests passed.\n'
+  else
+    printf 'FAIL: Python unit tests failed.\n'
+    failures=$((failures + 1))
+  fi
 
   if (( failures > 0 )); then
     printf 'Validation failed with %d missing requirement(s).\n' "$failures"
@@ -86,7 +123,11 @@ STATUS=${PIPESTATUS[0]}
 
 if ! {
   printf '\n## Execution - %s\n\n' "$STARTED_AT"
-  printf -- '- Invocation: `bash harness/validate.sh'
+  printf -- '- Invocation: `'
+  if [[ -n "${INTERACTION_LOG:-}" ]]; then
+    printf 'INTERACTION_LOG=%q ' "$INTERACTION_LOG"
+  fi
+  printf 'bash harness/validate.sh'
   if (( $# > 0 )); then
     printf ' %q' "$@"
   fi
