@@ -17,6 +17,7 @@ The system bridges unstructured mediation negotiations (asset sharing, informal 
   - Manages user sessions, case metadata, negotiation logs (offer/counter-offer history), and structured asset/liability inventories.
 - **Object Storage (AWS S3 / Azure Blob Storage):**
   - Secure storage for binary document assets, including generated Word templates, PDF previews, user-edited `.docx` files, and final court form packages.
+  - Initial implementation selects AWS S3 and uses MinIO's S3-compatible API for local development; Azure Blob is not implemented.
 
 ---
 
@@ -27,7 +28,7 @@ To support the core user workflow—**"Generate PDF Preview ➔ Edit via Editabl
 1. **Template Generation (`python-docx-template` / `Jinja2`):**
    - Injects structured negotiation data (asset values, agreement clauses) into predefined Word templates to generate initial settlement drafts.
 2. **Word-to-PDF Rendering (`docx2pdf` / LibreOffice Headless):**
-   - Compiles `.docx` files into clean PDF format for web-based visual preview by users.
+   - Compiles `.docx` files into clean PDF format for web-based visual preview by users. The Docker/Linux path uses LibreOffice headless; `docx2pdf` is used on Windows/macOS where Microsoft Word is available.
 3. **PDF-to-Word Reverse Conversion (`pdf2docx`):**
    - Parses layout, tables, and text structures of PDF documents to provide editable `.docx` files when users request modifications.
 4. **Parsing & State Synchronization (`python-docx`, `PyMuPDF`, `pypdf`):**
@@ -38,6 +39,6 @@ To support the core user workflow—**"Generate PDF Preview ➔ Edit via Editabl
 ## 4. Infrastructure & Deployment
 
 - **Containerization (Docker):**
-  - Mandatory for packaging system dependencies. Document conversion tools (`docx2pdf`, `pdf2docx`) require underlying OS-level document rendering binaries (**LibreOffice**). A custom Docker container ensures cross-platform consistency.
+  - Mandatory for packaging system dependencies. A custom Docker container installs LibreOffice for consistent Linux-side rendering and conversion.
 - **Hosting Target:**
   - **AWS ECS (Fargate)** or **Azure Container Apps** to maintain persistent container execution environments, avoiding serverless function execution limits and file system constraints.
