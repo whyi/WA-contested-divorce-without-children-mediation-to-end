@@ -1,0 +1,12 @@
+# Specification-driven development
+
+- Read the applicable specification in `specs/` before making changes.
+- Treat the specification as the source of truth and keep changes within its scope.
+- Validate changes against the specification and update related documentation when behavior or requirements change.
+- Do not claim a check passed unless it was run and its result is recorded.
+
+# AI audit trail
+
+- Run repository commands through `bash harness/validate.sh -- <command> [arguments...]` to capture combined output, invocation, timestamp, and exit status in `interactions/00-initialization/response-00-init.md`.
+- Run baseline checks with `bash harness/validate.sh`.
+- Do not run commands that print credentials, personal information, or other sensitive values; command output is retained in the repository.
