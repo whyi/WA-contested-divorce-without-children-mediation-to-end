@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: mediation
+      POSTGRES_USER: mediation
+      POSTGRES_PASSWORD: mediation-dev-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediation -d mediation"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin-dev-only
+    volumes:
+      - minio-data:/data
+
+  bucket-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      MC_HOST_local: http://minioadmin:minioadmin-dev-only@minio:9000
+    command: ["mb", "--ignore-existing", "local/mediation-documents"]
+    restart: on-failure
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://mediation:mediation-dev-only@db:5432/mediation
+      S3_BUCKET: mediation-documents
+      S3_REGION: us-west-2
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin-dev-only
+      MAX_UPLOAD_BYTES: 20971520
+      MAX_PDF_PAGES: 200
+    depends_on:
+      db:
+        condition: service_healthy
+      bucket-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8000:8000"
+
+volumes:
+  postgres-data:
+  minio-data:
