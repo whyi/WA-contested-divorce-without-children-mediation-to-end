@@ -38,10 +38,14 @@ provider; local development uses Moto through the S3 API. Azure Blob Storage is
 not implemented in this first iteration.
 
 The app serves an English landing page at `http://localhost:8000/`. It presents
-the two planned preparation modes and social sign-in choices, but sign-in is
-not configured, so case workflows are unavailable. To fail closed, all
-case/document data endpoints return HTTP 503 until authentication and
-case-level authorization are implemented. Do not submit real case information.
+the two planned preparation modes and social sign-in choices. The local Docker
+Compose preview enables a demo-only account (`demo` / `demo`) to exercise
+sign-in. Demo mode is restricted to localhost and never enables case-data APIs.
+Outside that local preview, authentication and case-data APIs remain disabled
+by default; case/document APIs require explicit authentication and
+case-membership configuration. Every case is protected by an explicit
+case-membership grant, and signup or social login never grants case access.
+Do not submit real case information.
 
 Run locally with Docker Compose:
 
@@ -50,12 +54,25 @@ docker compose up --build
 ```
 
 The API documentation is at `/docs`. PostgreSQL migrations run as the API
-container starts. The compose configuration binds the API and local S3 endpoint
-to localhost and uses development-only S3 mock credentials. The current
-foundation has no authentication or authorization and is not suitable for real
-case information or public deployment. Add identity, case-level access
-control, retention, and production secret management before handling sensitive
-documents.
+container starts. The Compose demo signing key and `demo` / `demo` account are
+public development credentials, not secrets; never copy them to any shared or
+public deployment. `DEMO_MODE_ENABLED` is localhost-only and incompatible with
+case-data access. Enable `CASE_DATA_ENABLED` only after deciding how to handle
+existing records; unassigned existing cases remain inaccessible. The compose
+configuration binds the API and local S3 endpoint to localhost and uses
+development-only S3 mock credentials.
+
+Authentication requires deployment-managed values for `AUTH_ENABLED`,
+`AUTH_JWT_SECRET` (at least 32 bytes), and email delivery
+(`SMTP_HOST`, `AUTH_EMAIL_FROM`; SMTP credentials when required). Google
+sign-in requires `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. TOTP enrollment
+requires `AUTH_ENCRYPTION_KEY` (at least 32 bytes). Configure the public URL,
+issuer, audience, secure-cookie policy, and WebAuthn RP ID/origin for the
+deployment. Keep `AUTH_ENABLED=false` until the decisions in
+[Spec 03](specs/03-authentication/spec-03-authentication.md) are approved and
+the deployment has been reviewed. Do not use the development defaults or
+handle real case information before production secret management, operational
+email delivery, retention, and account-recovery policies are established.
 
 For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,
