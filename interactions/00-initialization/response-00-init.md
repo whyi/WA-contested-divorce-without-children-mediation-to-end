@@ -37,19 +37,6 @@ Baseline repository validation passed.
 Running requested command.
 ```
 
-### Git and pull request execution
-
-- Branch created: `feature/capture-prompts-ai-audit-trail`
-- Commit: `086b53c feat: capture prompts and outputs in AI audit trail`
-- Commit hook: test-pairing check passed; all 12 unittest tests passed.
-- Push result: branch pushed to `origin/feature/capture-prompts-ai-audit-trail` and set to track its remote branch.
-- Pull request: [#15](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/15), open, targeting `main`.
-- Final verification: working tree clean; local branch tracks origin.
-
-### Assistant response
-
-Created branch `feature/capture-prompts-ai-audit-trail`, committed the audit-trail changes as `086b53c`, pushed the branch, and opened PR #15 targeting `main`. The pre-commit hook passed all 12 tests.
-
 ## Execution - 2026-10-28T19:34:27Z
 
 - Invocation: `bash harness/validate.sh -- bash -c printf\ \"stdout\ capture\ check\\\\n\"\;\ printf\ \"stderr\ capture\ check\\\\n\"\ \>\&2`
@@ -201,6 +188,19 @@ PASS: Python unit tests passed.
 Baseline repository validation passed.
 Running requested command.
 ```
+
+### Git and pull request execution
+
+- Branch created: `feature/capture-prompts-ai-audit-trail`
+- Commit: `086b53c feat: capture prompts and outputs in AI audit trail`
+- Commit hook: test-pairing check passed; all 12 unittest tests passed.
+- Push result: branch pushed to `origin/feature/capture-prompts-ai-audit-trail` and set to track its remote branch.
+- Pull request: [#15](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/15), open, targeting `main`.
+- Final verification: working tree clean; local branch tracks origin.
+
+### Assistant response
+
+Created branch `feature/capture-prompts-ai-audit-trail`, committed the audit-trail changes as `086b53c`, pushed the branch, and opened PR #15 targeting `main`. The pre-commit hook passed all 12 tests.
 
 ## Prompt - 2026-10-29T03:30:26Z
 
