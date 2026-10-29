@@ -4,32 +4,40 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-LOG_PATH="${INTERACTION_LOG:-interactions/00-initialization/response-00-init.md}"
-if [[ -z "${INTERACTION_PROMPT:-}" ]]; then
-  printf 'ERROR: set INTERACTION_PROMPT to the exact user prompt being validated.\n' >&2
+INTERACTION_CAPTURE="${INTERACTION_CAPTURE:-0}"
+if [[ "$INTERACTION_CAPTURE" != "0" && "$INTERACTION_CAPTURE" != "1" ]]; then
+  printf 'ERROR: INTERACTION_CAPTURE must be 0 or 1.\n' >&2
   exit 2
 fi
-if [[ "$LOG_PATH" = /* ]]; then
-  LOG_FILE="$LOG_PATH"
-else
-  LOG_FILE="$ROOT_DIR/$LOG_PATH"
-fi
-OUTPUT_FILE="$(mktemp)" || {
-  printf 'ERROR: could not create temporary output file.\n' >&2
-  exit 1
-}
-STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-if ! mkdir -p -- "$(dirname -- "$LOG_FILE")"; then
-  printf 'ERROR: could not create the interaction log directory.\n' >&2
-  rm -f -- "$OUTPUT_FILE"
-  exit 1
-fi
+if [[ "$INTERACTION_CAPTURE" == "1" ]]; then
+  if [[ -z "${INTERACTION_PROMPT:-}" ]]; then
+    printf 'ERROR: set INTERACTION_PROMPT when INTERACTION_CAPTURE=1.\n' >&2
+    exit 2
+  fi
+  LOG_PATH="${INTERACTION_LOG:-interactions/00-initialization/response-00-init.md}"
+  if [[ "$LOG_PATH" = /* ]]; then
+    LOG_FILE="$LOG_PATH"
+  else
+    LOG_FILE="$ROOT_DIR/$LOG_PATH"
+  fi
+  OUTPUT_FILE="$(mktemp)" || {
+    printf 'ERROR: could not create temporary output file.\n' >&2
+    exit 1
+  }
+  STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-cleanup() {
-  rm -f -- "$OUTPUT_FILE"
-}
-trap cleanup EXIT
+  if ! mkdir -p -- "$(dirname -- "$LOG_FILE")"; then
+    printf 'ERROR: could not create the interaction log directory.\n' >&2
+    rm -f -- "$OUTPUT_FILE"
+    exit 1
+  fi
+
+  cleanup() {
+    rm -f -- "$OUTPUT_FILE"
+  }
+  trap cleanup EXIT
+fi
 
 check_directory() {
   local path="$1"
@@ -120,30 +128,34 @@ execute() {
   "$@"
 }
 
-{
-  execute "$@"
-} 2>&1 | tee "$OUTPUT_FILE"
-STATUS=${PIPESTATUS[0]}
+if [[ "$INTERACTION_CAPTURE" == "1" ]]; then
+  {
+    execute "$@"
+  } 2>&1 | tee "$OUTPUT_FILE"
+  STATUS=${PIPESTATUS[0]}
 
-if ! {
-  printf '\n## Prompt - %s\n\n' "$STARTED_AT"
-  printf '### Exact user prompt\n\n````text\n%s\n````\n\n' "$INTERACTION_PROMPT"
-  printf '### Execution - %s\n\n' "$STARTED_AT"
-  printf -- '- Invocation: `'
-  if [[ -n "${INTERACTION_LOG:-}" ]]; then
-    printf 'INTERACTION_LOG=%q ' "$INTERACTION_LOG"
+  if ! {
+    printf '\n## Prompt - %s\n\n' "$STARTED_AT"
+    printf '### Exact user prompt\n\n````text\n%s\n````\n\n' "$INTERACTION_PROMPT"
+    printf '### Execution - %s\n\n' "$STARTED_AT"
+    printf -- '- Invocation: `INTERACTION_CAPTURE=1 '
+    if [[ -n "${INTERACTION_LOG:-}" ]]; then
+      printf 'INTERACTION_LOG=%q ' "$INTERACTION_LOG"
+    fi
+    printf 'bash harness/validate.sh'
+    if (( $# > 0 )); then
+      printf ' %q' "$@"
+    fi
+    printf '`\n- Exit status: `%s`\n\n' "$STATUS"
+    printf '### Output\n\n```text\n'
+    cat -- "$OUTPUT_FILE"
+    printf '```\n'
+  } >> "$LOG_FILE"; then
+    printf 'ERROR: could not append execution results to %s\n' "$LOG_FILE" >&2
+    exit 1
   fi
-  printf 'bash harness/validate.sh'
-  if (( $# > 0 )); then
-    printf ' %q' "$@"
-  fi
-  printf '`\n- Exit status: `%s`\n\n' "$STATUS"
-  printf '### Output\n\n```text\n'
-  cat -- "$OUTPUT_FILE"
-  printf '```\n'
-} >> "$LOG_FILE"; then
-  printf 'ERROR: could not append execution results to %s\n' "$LOG_FILE" >&2
-  exit 1
+
+  exit "$STATUS"
 fi
 
-exit "$STATUS"
+execute "$@"

@@ -3,21 +3,30 @@ AI-driven SDD wizard guiding Washington State contested no-children divorce case
 
 ## Repository workflow
 
-Read the applicable specification in `specs/` before making changes. Run checks
-through the audit harness, supplying the exact user prompt and the current
-spec's interaction log:
+Read the applicable specification in `specs/` before making changes. Use the
+audit harness normally for validation:
 
 ```sh
-INTERACTION_PROMPT='Implement the requested feature with TDD' \
+bash harness/validate.sh
+```
+
+Only when the user's prompt explicitly asks to implement a specification
+(for example, “read the latest spec and implement it” or “implement the spec”),
+opt in to capturing that implementation request and its results:
+
+```sh
+INTERACTION_CAPTURE=1 \
+INTERACTION_PROMPT='Implement the latest specification' \
 INTERACTION_LOG=interactions/<spec-number>-<name>/response-<spec-number>-<name>.md \
 bash harness/validate.sh -- <command> [arguments...]
 ```
 
-The harness records the prompt first, then each invocation's timestamp,
-combined output, and exit status beneath it. Run commands for the same prompt
-in one harness invocation where practical. Record non-shell tool outputs and
-the assistant's final response under that same prompt entry. `INTERACTION_LOG`
-defaults to `interactions/00-initialization/response-00-init.md`.
+In capture mode, the harness records the exact prompt, invocation timestamp,
+combined command output, and exit status. Add relevant non-shell tool outputs
+and the assistant's final response to that same entry. Ordinary questions,
+planning, clarifications, and unrelated work should not be logged. Without
+`INTERACTION_CAPTURE=1`, the harness validates normally and writes no
+interaction log.
 
 ## Application foundation
 
