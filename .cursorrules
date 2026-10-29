@@ -5,6 +5,14 @@
 - Validate changes against the specification and update related documentation when behavior or requirements change.
 - Do not claim a check passed unless it was run and its result is recorded.
 
+# Mandatory TDD
+
+- For every specification implementation, write or update tests for its acceptance criteria before changing production code.
+- Run the focused tests first and confirm the new tests fail for the expected reason (red phase).
+- Implement only after the red phase; rerun the focused tests to confirm they pass (green phase), then run the repository validation suite.
+- Keep each changed production Python module paired with automated tests. Never bypass a failing test or pre-commit check to make a commit.
+- In the completion summary, state which red-phase and green/full-suite commands were run and their outcomes. Do not claim a red phase unless it was actually observed.
+
 # AI audit trail
 
 - Run repository commands through `INTERACTION_LOG=interactions/<spec-number>-<name>/response-<spec-number>-<name>.md bash harness/validate.sh -- <command> [arguments...]` to capture combined output, invocation, timestamp, and exit status in the current spec's interaction log.
