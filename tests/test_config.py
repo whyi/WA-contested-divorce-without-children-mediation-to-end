@@ -19,5 +19,65 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.bedrock_model_id, "us.amazon.nova-lite-v1:0")
         self.assertEqual(settings.bedrock_region, "us-west-2")
 
+    def test_authentication_is_disabled_without_explicit_secrets(self) -> None:
+        settings = Settings(
+            auth_enabled=False,
+            case_data_enabled=False,
+            demo_mode_enabled=False,
+            auth_jwt_secret=None,
+        )
+
+        self.assertIsNone(settings.auth_jwt_secret)
+        self.assertFalse(settings.auth_enabled)
+        self.assertFalse(settings.case_data_enabled)
+        self.assertIsNone(settings.auth_encryption_key)
+        self.assertIsNone(settings.google_client_id)
+        self.assertIsNone(settings.smtp_host)
+
+    def test_authentication_configuration_rejects_mismatched_provider_secrets(self) -> None:
+        with self.assertRaisesRegex(ValueError, "configured together"):
+            Settings(google_client_id="client-id")
+
+    def test_authentication_configuration_rejects_invalid_session_lifetimes(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cannot exceed"):
+            Settings(auth_idle_session_days=31)
+
+    def test_samesite_none_requires_secure_cookies(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be enabled"):
+            Settings(auth_cookie_samesite="none", auth_cookie_secure=False)
+
+    def test_auth_cannot_be_enabled_without_a_strong_secret(self) -> None:
+        with self.assertRaisesRegex(ValueError, "at least 32 bytes"):
+            Settings(auth_enabled=True, auth_jwt_secret=None, demo_mode_enabled=False)
+
+    def test_non_local_auth_origins_require_https(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must use HTTPS"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="a-secure-test-signing-secret-that-is-long-enough",
+                auth_public_base_url="http://app.example.test",
+            )
+
+    def test_case_data_cannot_be_enabled_without_authentication(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires AUTH_ENABLED"):
+            Settings(
+                auth_enabled=False,
+                case_data_enabled=True,
+                demo_mode_enabled=False,
+            )
+
+    def test_demo_mode_is_local_only_and_cannot_enable_case_data(self) -> None:
+        auth_options = {
+            "auth_enabled": True,
+            "auth_jwt_secret": "local-demo-signing-key-that-is-long-enough",
+            "demo_mode_enabled": True,
+        }
+        self.assertTrue(Settings(**auth_options).demo_mode_enabled)
+
+        with self.assertRaisesRegex(ValueError, "restricted to localhost"):
+            Settings(**auth_options, auth_public_base_url="https://app.example.test")
+        with self.assertRaisesRegex(ValueError, "cannot enable case-data"):
+            Settings(**auth_options, case_data_enabled=True)
+
 if __name__ == "__main__":
     unittest.main()

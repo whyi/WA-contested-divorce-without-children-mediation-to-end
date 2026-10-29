@@ -1,21 +1,27 @@
 import json
 import logging
+import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Literal
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 
 from botocore.exceptions import BotoCoreError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
+from app.auth import verify_token
+from app.auth_routes import router as auth_router
 from app.config import get_settings
 from app.database import SessionLocal, get_db
+from app.demo import ensure_demo_user
 from app.documents import (
     DOCX_MEDIA_TYPE,
     PDF_MEDIA_TYPE,
@@ -24,7 +30,14 @@ from app.documents import (
     extract_document,
     render_template,
 )
-from app.models import Case, NegotiationEvent
+from app.models import (
+    AuthSession,
+    Case,
+    CaseMembership,
+    Document,
+    NegotiationEvent,
+    User,
+)
 from app.services import (
     Artifact,
     get_case_or_none,
@@ -38,18 +51,29 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 storage = ObjectStorage(settings)
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    if settings.demo_mode_enabled:
+        with SessionLocal() as db:
+            ensure_demo_user(db)
+            db.commit()
+    yield
+
+
 app = FastAPI(
     title="Washington Mediation Document Workflow",
     version="0.1.0",
     description="Local-development foundation for case and document workflows.",
+    lifespan=lifespan,
 )
+app.include_router(auth_router)
 
-DbSession = Annotated[Session, Depends(get_db)]
+DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
 LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"
 
 
 @app.middleware("http")
-async def disable_case_data_until_authentication(
+async def authenticate_and_authorize_case_data(
     request: Request,
     call_next: RequestResponseEndpoint,
 ) -> Response:
@@ -61,10 +85,92 @@ async def disable_case_data_until_authentication(
         or path.startswith("/documents/")
     )
     if is_case_data_path:
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Authentication is not configured. Case data APIs are unavailable."},
-        )
+        if (
+            not settings.auth_enabled
+            or not settings.case_data_enabled
+            or not settings.auth_jwt_secret
+            or len(settings.auth_jwt_secret.encode()) < 32
+        ):
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Authentication is not configured. Case data APIs are unavailable."},
+            )
+        token = request.cookies.get("auth_access")
+        authorization = request.headers.get("authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        if not token:
+            return JSONResponse(status_code=401, content={"detail": "Authentication required."})
+        if request.cookies.get("auth_access") and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            csrf_cookie = request.cookies.get("auth_csrf")
+            csrf_header = request.headers.get("x-csrf-token")
+            if (
+                not csrf_cookie
+                or not csrf_header
+                or not secrets.compare_digest(csrf_cookie, csrf_header)
+            ):
+                return JSONResponse(status_code=403, content={"detail": "CSRF validation failed."})
+        try:
+            claims = verify_token(token, settings, "access")
+            user_id = UUID(claims["sub"])
+            session_id = UUID(claims["sid"])
+        except (ValueError, KeyError):
+            return JSONResponse(status_code=401, content={"detail": "Authentication required."})
+        try:
+            with SessionLocal() as db:
+                session = db.get(AuthSession, session_id)
+                user = db.get(User, user_id)
+                now = datetime.now(UTC)
+                if (
+                    session is None
+                    or user is None
+                    or session.user_id != user.id
+                    or session.revoked_at is not None
+                    or session.idle_expires_at <= now
+                    or session.absolute_expires_at <= now
+                    or user.status != "active"
+                ):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Authentication required."},
+                    )
+                session.last_used_at = now
+                session.idle_expires_at = min(
+                    now + timedelta(days=settings.auth_idle_session_days),
+                    session.absolute_expires_at,
+                )
+                request.state.user_id = user.id
+                if path.startswith("/cases/"):
+                    case_id = UUID(path.split("/")[2])
+                elif path.startswith("/documents/"):
+                    document_id = UUID(path.split("/")[2])
+                    document = db.get(Document, document_id)
+                    if document is None:
+                        return JSONResponse(status_code=404, content={"detail": "Document not found."})
+                    case_id = document.case_id
+                else:
+                    case_id = None
+                if case_id is not None:
+                    membership = db.scalar(
+                        select(CaseMembership).where(
+                            CaseMembership.case_id == case_id,
+                            CaseMembership.user_id == user_id,
+                            CaseMembership.revoked_at.is_(None),
+                        )
+                    )
+                    if membership is None:
+                        return JSONResponse(status_code=404, content={"detail": "Case not found."})
+                    if request.method != "GET" and membership.role == "viewer":
+                        return JSONResponse(status_code=403, content={"detail": "Case is read-only."})
+                db.commit()
+        except ValueError:
+            return JSONResponse(status_code=404, content={"detail": "Case not found."})
+        except SQLAlchemyError:
+            logger.exception("Case authentication or authorization lookup failed.")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Authentication services are unavailable."},
+            )
     return await call_next(request)
 
 
@@ -190,13 +296,15 @@ def readiness() -> dict[str, str]:
 
 
 @app.post("/cases", response_model=CaseRead, status_code=201)
-def create_case(payload: CaseCreate, db: DbSession) -> Case:
+def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
     case = Case(
         status=payload.status,
         metadata_json=payload.metadata,
         asset_liability_inventory=payload.asset_liability_inventory,
     )
     db.add(case)
+    db.flush()
+    db.add(CaseMembership(case_id=case.id, user_id=request.state.user_id, role="owner"))
     db.commit()
     db.refresh(case)
     return case
