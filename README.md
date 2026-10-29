@@ -16,7 +16,7 @@ The initial application foundation follows
 [Spec 01](specs/01-tech-stack-override/01-tech-stack-override.md): Python 3.11+,
 FastAPI, PostgreSQL, S3-compatible object storage, and a Docker image with
 LibreOffice for DOCX-to-PDF rendering. AWS S3 is the selected object-storage
-provider; local development uses MinIO through the S3 API. Azure Blob Storage is
+provider; local development uses Moto through the S3 API. Azure Blob Storage is
 not implemented in this first iteration.
 
 Run locally with Docker Compose:
@@ -27,8 +27,8 @@ docker compose up --build
 
 The API is available at `http://localhost:8000`; OpenAPI documentation is at
 `/docs`. PostgreSQL migrations run as the API container starts. The compose
-configuration binds the API to localhost and uses development-only MinIO
-credentials. This foundation has no authentication or authorization and is not
+configuration binds the API and local S3 endpoint to localhost and uses
+development-only S3 mock credentials. This foundation has no authentication or authorization and is not
 suitable for real case information or public deployment. Add identity, access
 control, retention, and production secret management before handling sensitive
 documents.
