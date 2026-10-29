@@ -4,11 +4,20 @@ AI-driven SDD wizard guiding Washington State contested no-children divorce case
 ## Repository workflow
 
 Read the applicable specification in `specs/` before making changes. Run checks
-with `bash harness/validate.sh`. To run another command and capture its output,
-invocation, timestamp, and exit status, use
-`INTERACTION_LOG=interactions/<spec-number>-<name>/response-<spec-number>-<name>.md bash harness/validate.sh -- <command> [arguments...]`.
-The harness appends each execution to the selected log; without `INTERACTION_LOG`,
-it uses `interactions/00-initialization/response-00-init.md`.
+through the audit harness, supplying the exact user prompt and the current
+spec's interaction log:
+
+```sh
+INTERACTION_PROMPT='Implement the requested feature with TDD' \
+INTERACTION_LOG=interactions/<spec-number>-<name>/response-<spec-number>-<name>.md \
+bash harness/validate.sh -- <command> [arguments...]
+```
+
+The harness records the prompt first, then each invocation's timestamp,
+combined output, and exit status beneath it. Run commands for the same prompt
+in one harness invocation where practical. Record non-shell tool outputs and
+the assistant's final response under that same prompt entry. `INTERACTION_LOG`
+defaults to `interactions/00-initialization/response-00-init.md`.
 
 ## Application foundation
 
