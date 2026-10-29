@@ -1007,6 +1007,9 @@ specification files were changed.
 The hook also required the API behavior tests to use `tests/test_main.py` for
 `app/main.py`; the tests were moved there and the 21-test suite passed again.
 
+The final commit includes the paired `tests/test_main.py`; the superseded
+temporary workflow-test path was removed in a follow-up cleanup.
+
 ## Prompt - 2026-10-29T04:32:07Z
 
 ### Exact user prompt
