@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     s3_endpoint_url: str | None = None
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
+    bedrock_model_id: str | None = None
+    bedrock_region: str | None = None
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
     max_pdf_pages: int = Field(default=200, gt=0)
     conversion_timeout_seconds: int = Field(default=90, gt=0)
