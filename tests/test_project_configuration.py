@@ -24,6 +24,11 @@ class ProjectConfigurationTests(unittest.TestCase):
             "python-docx",
             "pymupdf",
             "pypdf",
+            "pwdlib",
+            "pyotp",
+            "pyjwt",
+            "webauthn",
+            "email-validator",
         ):
             self.assertTrue(
                 any(dependency.lower().startswith(package.lower()) for dependency in dependencies),
@@ -38,6 +43,14 @@ class ProjectConfigurationTests(unittest.TestCase):
         compose = (ROOT / "docker-compose.yml").read_text()
         self.assertIn("image: postgres:", compose)
         self.assertIn("image: motoserver/moto:", compose)
+
+    def test_compose_demo_login_is_explicit_and_case_data_remains_disabled(self) -> None:
+        compose = (ROOT / "docker-compose.yml").read_text()
+
+        self.assertIn('DEMO_MODE_ENABLED: "true"', compose)
+        self.assertIn('AUTH_ENABLED: "true"', compose)
+        self.assertNotIn('CASE_DATA_ENABLED: "true"', compose)
+        self.assertIn("local-demo-only-signing-secret-not-for-production", compose)
 
     def test_package_includes_the_landing_page_asset(self) -> None:
         with (ROOT / "pyproject.toml").open("rb") as project_file:
