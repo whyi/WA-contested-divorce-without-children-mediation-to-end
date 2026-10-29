@@ -5,6 +5,10 @@ set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 LOG_PATH="${INTERACTION_LOG:-interactions/00-initialization/response-00-init.md}"
+if [[ -z "${INTERACTION_PROMPT:-}" ]]; then
+  printf 'ERROR: set INTERACTION_PROMPT to the exact user prompt being validated.\n' >&2
+  exit 2
+fi
 if [[ "$LOG_PATH" = /* ]]; then
   LOG_FILE="$LOG_PATH"
 else
@@ -122,7 +126,9 @@ execute() {
 STATUS=${PIPESTATUS[0]}
 
 if ! {
-  printf '\n## Execution - %s\n\n' "$STARTED_AT"
+  printf '\n## Prompt - %s\n\n' "$STARTED_AT"
+  printf '### Exact user prompt\n\n````text\n%s\n````\n\n' "$INTERACTION_PROMPT"
+  printf '### Execution - %s\n\n' "$STARTED_AT"
   printf -- '- Invocation: `'
   if [[ -n "${INTERACTION_LOG:-}" ]]; then
     printf 'INTERACTION_LOG=%q ' "$INTERACTION_LOG"
