@@ -37,17 +37,23 @@ LibreOffice for DOCX-to-PDF rendering. AWS S3 is the selected object-storage
 provider; local development uses Moto through the S3 API. Azure Blob Storage is
 not implemented in this first iteration.
 
+The app serves an English landing page at `http://localhost:8000/`. It presents
+the two planned preparation modes and social sign-in choices, but sign-in is
+not configured, so case workflows are unavailable. To fail closed, all
+case/document data endpoints return HTTP 503 until authentication and
+case-level authorization are implemented. Do not submit real case information.
+
 Run locally with Docker Compose:
 
 ```sh
 docker compose up --build
 ```
 
-The API is available at `http://localhost:8000`; OpenAPI documentation is at
-`/docs`. PostgreSQL migrations run as the API container starts. The compose
-configuration binds the API and local S3 endpoint to localhost and uses
-development-only S3 mock credentials. This foundation has no authentication or authorization and is not
-suitable for real case information or public deployment. Add identity, access
+The API documentation is at `/docs`. PostgreSQL migrations run as the API
+container starts. The compose configuration binds the API and local S3 endpoint
+to localhost and uses development-only S3 mock credentials. The current
+foundation has no authentication or authorization and is not suitable for real
+case information or public deployment. Add identity, case-level access
 control, retention, and production secret management before handling sensitive
 documents.
 
@@ -55,8 +61,11 @@ For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,
 the configured S3 endpoint, and LibreOffice are available.
 
-Document uploads are size- and format-checked. DOCX templates are rendered in a
-Jinja sandbox; uploaded edits are parsed into a review-pending extraction record.
-Extracted wording is not automatically interpreted as legal terms or applied to
-case data because the spec does not define a field-mapping or approval workflow.
-This keeps document processing auditable without guessing at legal meaning.
+The codebase includes a Bedrock Converse extraction helper configured with
+`BEDROCK_MODEL_ID` (and optionally `BEDROCK_REGION`). It validates each
+proposed field against an exact quote from its named source document. The
+helper is not exposed through an API while authentication is deferred.
+Offer recommendations, cloud-drive imports, and outbound email are not
+enabled. Existing document-processing code remains available in the codebase,
+but its case/document endpoints fail closed until authentication and
+authorization are implemented.

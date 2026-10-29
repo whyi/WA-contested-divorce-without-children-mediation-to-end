@@ -1,5 +1,6 @@
 import json
 import logging
+from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -9,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse
 
 from app.config import get_settings
 from app.database import SessionLocal, get_db
@@ -41,6 +45,27 @@ app = FastAPI(
 )
 
 DbSession = Annotated[Session, Depends(get_db)]
+LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"
+
+
+@app.middleware("http")
+async def disable_case_data_until_authentication(
+    request: Request,
+    call_next: RequestResponseEndpoint,
+) -> Response:
+    path = request.url.path
+    is_case_data_path = (
+        path == "/cases"
+        or path.startswith("/cases/")
+        or path == "/documents"
+        or path.startswith("/documents/")
+    )
+    if is_case_data_path:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Authentication is not configured. Case data APIs are unavailable."},
+        )
+    return await call_next(request)
 
 
 class CaseCreate(BaseModel):
@@ -142,6 +167,11 @@ def _extract(content: bytes, extension: str):
 @app.get("/healthz")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home() -> HTMLResponse:
+    return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
 
 
 @app.get("/readyz")
