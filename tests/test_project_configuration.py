@@ -34,7 +34,7 @@ class ProjectConfigurationTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text()
         self.assertIn("libreoffice-writer", dockerfile)
 
-    def test_compose_provides_postgres_and_local_s3(self) -> None:
+    def test_compose_provides_postgres_and_moto_s3(self) -> None:
         compose = (ROOT / "docker-compose.yml").read_text()
         self.assertIn("image: postgres:", compose)
-        self.assertIn("image: minio/minio:", compose)
+        self.assertIn("image: motoserver/moto:", compose)
