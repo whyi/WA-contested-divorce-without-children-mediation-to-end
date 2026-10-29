@@ -42,3 +42,25 @@ To support the core user workflow—**"Generate PDF Preview ➔ Edit via Editabl
   - Mandatory for packaging system dependencies. A custom Docker container installs LibreOffice for consistent Linux-side rendering and conversion.
 - **Hosting Target:**
   - **AWS ECS (Fargate)** or **Azure Container Apps** to maintain persistent container execution environments, avoiding serverless function execution limits and file system constraints.
+
+## 5. Specification Implementation & TDD
+
+Implementations of repository specifications MUST use test-driven development:
+
+1. Read the applicable specification and identify its observable acceptance criteria.
+2. Add or update the automated tests for those criteria before changing production code.
+3. Run the focused tests and confirm that the new tests fail for the expected reason.
+4. Implement the smallest production change that makes those tests pass.
+5. Run the focused tests and the repository validation suite; fix regressions before committing.
+
+Every changed production Python module must have corresponding automated test
+coverage. The repository's pre-commit hook checks staged Python changes for a
+test-file pairing and runs the test suite. A commit must not proceed if either
+check fails.
+
+The hook is a final guard, not proof of test-first ordering: it verifies the
+presence of a paired test and passing tests at commit time, but cannot establish
+when the test was authored. Contributors and coding agents are responsible for
+following and reporting the red-green sequence. A hook installed under
+`.git/hooks` is local to one clone; shared enforcement requires distributing a
+tracked hook and/or running equivalent pairing and test checks in CI.
