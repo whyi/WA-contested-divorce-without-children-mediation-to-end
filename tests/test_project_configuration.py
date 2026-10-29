@@ -38,3 +38,12 @@ class ProjectConfigurationTests(unittest.TestCase):
         compose = (ROOT / "docker-compose.yml").read_text()
         self.assertIn("image: postgres:", compose)
         self.assertIn("image: motoserver/moto:", compose)
+
+    def test_package_includes_the_landing_page_asset(self) -> None:
+        with (ROOT / "pyproject.toml").open("rb") as project_file:
+            project = tomllib.load(project_file)
+
+        self.assertEqual(
+            project["tool"]["setuptools"]["package-data"]["app"],
+            ["static/*.html"],
+        )
