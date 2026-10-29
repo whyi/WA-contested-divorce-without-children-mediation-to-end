@@ -15,9 +15,8 @@
 
 # AI audit trail
 
-- Create one interaction-log entry for each user prompt. Copy the exact user prompt into `INTERACTION_PROMPT` and use the matching spec's `INTERACTION_LOG`.
-- Run repository checks and commands through `INTERACTION_PROMPT='<exact user prompt>' INTERACTION_LOG=interactions/<spec-number>-<name>/response-<spec-number>-<name>.md bash harness/validate.sh -- <command> [arguments...]`. The harness records the prompt first, then appends that run's invocation, UTC timestamp, combined stdout/stderr, and exit status below it.
-- Run all commands caused by one prompt in one harness invocation when practical, so their outputs stay together under that prompt. After tools finish, append the assistant's final response under the same prompt entry.
-- Record outputs returned by non-shell tools under that same prompt entry as well; preserve full output where practical, and include failures rather than silently omitting them.
-- Run baseline checks through the same harness with the exact prompt, for example `INTERACTION_PROMPT='Run baseline validation' bash harness/validate.sh`.
+- Capture an interaction log only when the user's prompt explicitly asks to implement a specification, such as “read the latest spec and implement it” or “implement the spec.” Do not create prompt-and-output logs for questions, planning, clarifications, reviews, or unrelated edits.
+- For a qualifying spec-implementation prompt, run relevant checks through `INTERACTION_CAPTURE=1 INTERACTION_PROMPT='<exact user prompt>' INTERACTION_LOG=interactions/<spec-number>-<name>/response-<spec-number>-<name>.md bash harness/validate.sh -- <command> [arguments...]`. The harness records the exact prompt and each invocation's UTC timestamp, combined stdout/stderr, and exit status.
+- Keep commands and tool outputs caused by that implementation request together in its log where practical. After tools finish, append the assistant's final response to that same entry, including failures and non-shell tool results where relevant.
+- For all other work, run `bash harness/validate.sh` normally without `INTERACTION_CAPTURE=1`; the harness validates without writing an interaction log.
 - Do not run commands that print credentials, personal information, or other sensitive values; command output is retained in the repository.
