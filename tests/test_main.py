@@ -72,6 +72,12 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('"/api/auth/oidc/google/start"', page)
         self.assertIn("Case workspaces remain unavailable in this preview.", page)
         self.assertIn("Illustrative interface — not an active case", page)
+        self.assertIn('id="account-dashboard"', page)
+        self.assertIn('id="dashboard-loading" role="status"', page)
+        self.assertIn("I already have case materials, so I'll upload them", page)
+        self.assertIn("Guide me through the wizard step by step", page)
+        self.assertIn('id="dashboard-retry"', page)
+        self.assertIn('"/api/v1/dashboard/status"', page)
 
     def test_case_data_endpoints_fail_closed_until_authentication_is_configured(
         self,
@@ -90,6 +96,19 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertEqual([status for status, _ in requests], [503, 503, 503])
         for _, body in requests:
             self.assertIn(b"Authentication is not configured", body)
+
+    def test_onboarding_paths_serve_the_authenticated_preview_page(self) -> None:
+        responses = (
+            asyncio.run(request_app("/onboarding/upload")),
+            asyncio.run(request_app("/onboarding/wizard")),
+        )
+
+        self.assertEqual([status for status, _ in responses], [200, 200])
+        for _, body in responses:
+            page = body.decode()
+            self.assertIn('id="account-dashboard"', page)
+            self.assertIn('"/api/v1/dashboard/status"', page)
+            self.assertIn("This preview does not accept or save case details or documents.", page)
 
 if __name__ == "__main__":
     unittest.main()
