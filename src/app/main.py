@@ -18,7 +18,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.auth import verify_token
-from app.auth_routes import router as auth_router
+from app.auth_routes import require_current_user, router as auth_router
 from app.config import get_settings
 from app.database import SessionLocal, get_db
 from app.demo import ensure_demo_user
@@ -231,6 +231,22 @@ class ConversionResponse(BaseModel):
     extraction: ExtractionRead
 
 
+class DashboardCaseStatus(BaseModel):
+    id: UUID
+    status: str
+
+
+class DashboardData(BaseModel):
+    has_cases: bool
+    case_count: int
+    cases: list[DashboardCaseStatus]
+
+
+class DashboardStatus(BaseModel):
+    status: Literal["success"] = "success"
+    data: DashboardData
+
+
 def _document_response(document) -> DocumentRead:
     return DocumentRead(
         id=document.id,
@@ -278,6 +294,44 @@ def health() -> dict[str, str]:
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home() -> HTMLResponse:
     return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
+
+
+@app.get("/onboarding/upload", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
+def onboarding_page() -> HTMLResponse:
+    return home()
+
+
+@app.get("/api/v1/dashboard/status", response_model=DashboardStatus)
+def dashboard_status(
+    user: Annotated[User, Depends(require_current_user)],
+    db: DbSession,
+) -> DashboardStatus:
+    try:
+        rows = db.execute(
+            select(Case.id, Case.status)
+            .join(CaseMembership, CaseMembership.case_id == Case.id)
+            .where(
+                CaseMembership.user_id == user.id,
+                CaseMembership.revoked_at.is_(None),
+            )
+            .order_by(Case.created_at.desc(), Case.id)
+        ).all()
+    except SQLAlchemyError as error:
+        logger.exception("Dashboard case-status lookup failed.")
+        raise HTTPException(
+            status_code=503,
+            detail="Dashboard status is unavailable. Please try again.",
+        ) from error
+
+    cases = [DashboardCaseStatus(id=case_id, status=case_status) for case_id, case_status in rows]
+    return DashboardStatus(
+        data=DashboardData(
+            has_cases=bool(cases),
+            case_count=len(cases),
+            cases=cases,
+        )
+    )
 
 
 @app.get("/readyz")
