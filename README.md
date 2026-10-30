@@ -38,9 +38,14 @@ provider; local development uses Moto through the S3 API. Azure Blob Storage is
 not implemented in this first iteration.
 
 The app serves an English landing page at `http://localhost:8000/`. It presents
-the two planned preparation modes and social sign-in choices. The local Docker
-Compose preview enables a demo-only account (`demo` / `demo`) to exercise
-sign-in. Demo mode is restricted to localhost and never enables case-data APIs.
+the two planned preparation modes and social sign-in choices. After sign-in,
+the account dashboard shows the authenticated user's authorized case
+memberships. An account with no authorized cases sees two starting actions:
+upload existing case materials or use the step-by-step wizard. These routes
+currently lead to preview-only screens; they do not create a case, accept
+uploads, or save case information. The local Docker Compose preview enables a
+demo-only account (`demo` / `demo`) to exercise sign-in and the empty dashboard.
+Demo mode is restricted to localhost and never enables case-data APIs.
 Outside that local preview, authentication and case-data APIs remain disabled
 by default; case/document APIs require explicit authentication and
 case-membership configuration. Every case is protected by an explicit
