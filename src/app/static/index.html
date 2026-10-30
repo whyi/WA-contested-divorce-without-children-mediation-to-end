@@ -353,6 +353,58 @@
       .footer-row { display: flex; justify-content: space-between; gap: 25px; }
       .footer-brand { color: #394a3e; font-weight: 750; }
       .disclaimer { max-width: 750px; margin: 9px 0 0; }
+      .dashboard-section { padding: 48px 0 82px; }
+      .dashboard-panel {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: clamp(26px, 5vw, 56px);
+        border: 1px solid #e1e8e1;
+        border-radius: 16px;
+        background: var(--paper);
+        box-shadow: 0 18px 48px rgba(34, 55, 43, .06);
+      }
+      .dashboard-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
+      .dashboard-header h1 { margin-bottom: 10px; font-size: clamp(34px, 5vw, 48px); }
+      .dashboard-header p:last-child { max-width: 620px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+      .dashboard-state { color: var(--muted); font-size: 14px; line-height: 1.6; }
+      .dashboard-state[hidden] { display: none; }
+      .dashboard-error { padding: 18px; border: 1px solid #e5c7c1; border-radius: 10px; background: #fff8f6; }
+      .dashboard-error p { margin-bottom: 12px; color: #8d3026; }
+      .dashboard-retry { min-height: 42px; padding: 0 14px; border: 1px solid #d5ded6; border-radius: 7px; color: var(--green-dark); background: #fff; cursor: pointer; font-weight: 700; }
+      .onboarding-heading { max-width: 680px; margin-bottom: 24px; }
+      .onboarding-heading h2, .existing-cases h2, .preparation-view h2 { margin-bottom: 10px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 4vw, 38px); font-weight: 500; letter-spacing: -.035em; }
+      .onboarding-heading p:not(.eyebrow), .existing-cases > p, .preparation-view > p { color: var(--muted); font-size: 14px; line-height: 1.7; }
+      .onboarding-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .onboarding-action {
+        display: flex;
+        min-height: 190px;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 24px;
+        border: 1px solid #cbd9ce;
+        border-radius: 12px;
+        color: var(--ink);
+        background: #f7faf7;
+        text-decoration: none;
+        font-size: 18px;
+        font-weight: 750;
+        line-height: 1.4;
+        transition: border-color .18s ease, transform .18s ease, background .18s ease;
+      }
+      .onboarding-action:hover { transform: translateY(-2px); border-color: var(--green); background: #edf4ee; }
+      .onboarding-action:focus-visible, .dashboard-retry:focus-visible, .back-to-account:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 3px; }
+      .onboarding-action span { color: var(--green); font-size: 13px; font-weight: 700; }
+      .existing-cases { margin-top: 12px; }
+      .case-list { display: grid; gap: 10px; padding: 0; list-style: none; }
+      .case-list li { padding: 16px; border: 1px solid var(--line); border-radius: 8px; color: #34443a; background: #fbfcfb; font-size: 14px; }
+      .case-list strong { color: var(--green-dark); }
+      .preparation-view { padding-top: 12px; }
+      .preparation-note { padding: 16px; border-radius: 8px; color: #574827; background: #fbf5e8; }
+      .back-to-account { display: inline-flex; min-height: 44px; align-items: center; margin-top: 8px; color: var(--green-dark); font-weight: 750; }
+      .authenticated-view .nav { display: none; }
+      .authenticated-view main > section:not(#account-dashboard) { display: none; }
 
       @media (max-width: 850px) {
         .hero { grid-template-columns: 1fr; gap: 32px; padding: 62px 0 68px; }
@@ -366,6 +418,7 @@
         .section { padding: 72px 0; }
         .steps-section { padding-top: 0; }
         .steps-grid { grid-template-columns: 1fr 1fr; row-gap: 28px; }
+        .dashboard-section { padding-top: 32px; }
       }
       @media (max-width: 600px) {
         .shell { padding-right: 20px; padding-left: 20px; }
@@ -377,6 +430,10 @@
         .hero { padding: 52px 0 58px; }
         .account-section { padding-bottom: 62px; }
         .account-panel { gap: 22px; padding: 25px 20px; }
+        .dashboard-panel { padding: 25px 20px; }
+        .dashboard-header { flex-direction: column; gap: 12px; }
+        .onboarding-actions { grid-template-columns: 1fr; }
+        .onboarding-action { min-height: 150px; padding: 20px; font-size: 16px; }
         h1 { font-size: clamp(44px, 13vw, 61px); }
         .hero-copy { font-size: 15px; }
         .hero-actions { align-items: stretch; }
@@ -558,6 +615,52 @@
           </div>
         </section>
 
+        <section class="dashboard-section" id="account-dashboard" aria-labelledby="dashboard-title" hidden>
+          <div class="dashboard-panel">
+            <header class="dashboard-header">
+              <div>
+                <p class="eyebrow">Your account</p>
+                <h1 id="dashboard-title">Your case workspace</h1>
+                <p id="dashboard-intro">Your account is signed in. Case access is limited to workspaces explicitly authorized for you.</p>
+              </div>
+            </header>
+            <p class="dashboard-state" id="dashboard-loading" role="status">Loading your account status…</p>
+            <div class="dashboard-state dashboard-error" id="dashboard-error" role="alert" hidden>
+              <p id="dashboard-error-message">Your account status could not be loaded.</p>
+              <button class="dashboard-retry" id="dashboard-retry" type="button">Try again</button>
+            </div>
+            <section id="empty-account-state" aria-labelledby="empty-account-title" hidden>
+              <div class="onboarding-heading">
+                <p class="eyebrow">A place to begin</p>
+                <h2 id="empty-account-title">How would you like to get started?</h2>
+                <p>Choose the path that fits what you have today. Both options lead into your case-information workflow.</p>
+              </div>
+              <div class="onboarding-actions">
+                <a class="onboarding-action" href="/onboarding/upload">
+                  I already have case materials, so I'll upload them
+                  <span>Start with documents <span aria-hidden="true">→</span></span>
+                </a>
+                <a class="onboarding-action" href="/onboarding/wizard">
+                  Guide me through the wizard step by step
+                  <span>Start with guided entry <span aria-hidden="true">→</span></span>
+                </a>
+              </div>
+            </section>
+            <section class="existing-cases" id="existing-cases" aria-labelledby="existing-cases-title" hidden>
+              <h2 id="existing-cases-title">Your cases</h2>
+              <p id="existing-case-count"></p>
+              <ul class="case-list" id="case-list"></ul>
+            </section>
+            <section class="preparation-view" id="preparation-view" aria-labelledby="preparation-title" hidden>
+              <p class="eyebrow" id="preparation-eyebrow">Your next step</p>
+              <h2 id="preparation-title"></h2>
+              <p id="preparation-description"></p>
+              <p class="preparation-note">This preview does not accept or save case details or documents. No case has been created. Do not enter real case information.</p>
+              <a class="back-to-account" href="/#account">Back to your account</a>
+            </section>
+          </div>
+        </section>
+
         <section class="section" id="paths" aria-labelledby="paths-title">
           <div class="section-heading">
             <p class="eyebrow">Two ways to begin</p>
@@ -624,6 +727,20 @@
         const status = document.getElementById("account-status");
         const googleButton = document.getElementById("google-signin");
         const googleStatus = document.getElementById("google-status");
+        const accountSection = document.getElementById("account");
+        const dashboard = document.getElementById("account-dashboard");
+        const dashboardLoading = document.getElementById("dashboard-loading");
+        const dashboardError = document.getElementById("dashboard-error");
+        const dashboardErrorMessage = document.getElementById("dashboard-error-message");
+        const emptyAccountState = document.getElementById("empty-account-state");
+        const existingCases = document.getElementById("existing-cases");
+        const existingCaseCount = document.getElementById("existing-case-count");
+        const caseList = document.getElementById("case-list");
+        const preparationView = document.getElementById("preparation-view");
+        const preparationMode = {
+          "/onboarding/upload": "upload",
+          "/onboarding/wizard": "wizard",
+        }[window.location.pathname];
 
         function selectForm(selected, clearStatus = true) {
           const signupSelected = selected === "signup";
@@ -639,6 +756,127 @@
             status.removeAttribute("data-kind");
           }
         }
+
+        function showPublicPage() {
+          dashboard.hidden = true;
+          document.body.classList.remove("authenticated-view");
+        }
+
+        function showDashboardShell() {
+          dashboard.hidden = false;
+          document.body.classList.add("authenticated-view");
+        }
+
+        function showSignIn(message = "") {
+          if (preparationMode) {
+            window.location.replace("/#account");
+            return;
+          }
+          showPublicPage();
+          selectForm("login", false);
+          if (message) {
+            status.textContent = message;
+            status.dataset.kind = "error";
+          }
+          accountSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        function showDashboardError(message) {
+          dashboardLoading.hidden = true;
+          emptyAccountState.hidden = true;
+          existingCases.hidden = true;
+          preparationView.hidden = true;
+          dashboardErrorMessage.textContent = message;
+          dashboardError.hidden = false;
+        }
+
+        function renderCases(cases) {
+          caseList.replaceChildren();
+          for (const item of cases) {
+            const row = document.createElement("li");
+            const label = document.createElement("strong");
+            label.textContent = `Case ${item.id.slice(0, 8)}`;
+            row.append(label, document.createTextNode(` — ${item.status}`));
+            caseList.append(row);
+          }
+        }
+
+        function showPreparation(mode) {
+          const isUpload = mode === "upload";
+          document.getElementById("preparation-title").textContent = isUpload
+            ? "Start with your case materials"
+            : "Start with guided entry";
+          document.getElementById("preparation-description").textContent = isUpload
+            ? "The document upload and review workflow is not available in this preview yet."
+            : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
+          preparationView.hidden = false;
+        }
+
+        async function loadDashboardStatus({ isStartup = false } = {}) {
+          if (!isStartup || preparationMode) showDashboardShell();
+          dashboardLoading.hidden = false;
+          dashboardError.hidden = true;
+          emptyAccountState.hidden = true;
+          existingCases.hidden = true;
+          preparationView.hidden = true;
+          try {
+            const response = await fetch("/api/v1/dashboard/status", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (response.status === 401) {
+              if (!isStartup) showSignIn("Your session has expired. Please sign in again.");
+              else if (preparationMode) window.location.replace("/#account");
+              else showPublicPage();
+              return;
+            }
+            if (!response.ok) {
+              const detail = result.detail || "Your account status is unavailable. Please try again.";
+              if (isStartup && response.status === 503 && detail === "Authentication is not configured.") {
+                showPublicPage();
+                return;
+              }
+              if (preparationMode && response.status === 503 && detail === "Authentication is not configured.") {
+                window.location.replace("/#account");
+                return;
+              }
+              throw new Error(detail);
+            }
+            const account = result.data;
+            if (
+              !account ||
+              !Number.isInteger(account.case_count) ||
+              !Array.isArray(account.cases) ||
+              account.has_cases !== (account.case_count > 0) ||
+              account.cases.length !== account.case_count
+            ) {
+              throw new Error("Your account status could not be verified. Please try again.");
+            }
+            showDashboardShell();
+            dashboardLoading.hidden = true;
+            if (preparationMode) {
+              showPreparation(preparationMode);
+            } else if (account.case_count === 0) {
+              emptyAccountState.hidden = false;
+            } else {
+              existingCaseCount.textContent = `You have ${account.case_count} ${account.case_count === 1 ? "case" : "cases"} available to you.`;
+              renderCases(account.cases);
+              existingCases.hidden = false;
+            }
+          } catch (error) {
+            showDashboardShell();
+            showDashboardError(
+              error instanceof Error
+                ? error.message
+                : "Your account status could not be loaded. Please try again.",
+            );
+          }
+        }
+
+        document.getElementById("dashboard-retry").addEventListener("click", () => {
+          loadDashboardStatus();
+        });
 
         signupTab.addEventListener("click", () => selectForm("signup"));
         loginTab.addEventListener("click", () => selectForm("login"));
@@ -686,9 +924,17 @@
             if (!response.ok) {
               throw new Error(result.detail || "This account action is not available right now.");
             }
-            status.textContent = endpoint.endsWith("/login")
-              ? "You are signed in. Case workspaces remain unavailable in this preview."
-              : (result.message || successMessage);
+            if (endpoint.endsWith("/login")) {
+              if (result.mfa_required) {
+                status.textContent = "Additional sign-in verification is required before your account can open.";
+                status.dataset.kind = "error";
+                return;
+              }
+              form.reset();
+              await loadDashboardStatus();
+              return;
+            }
+            status.textContent = result.message || successMessage;
             status.dataset.kind = "success";
             if (endpoint.endsWith("/signup")) {
               document.getElementById("verify-email").value = fields.email;
@@ -748,6 +994,8 @@
             resendButton.disabled = false;
           }
         });
+
+        loadDashboardStatus({ isStartup: true });
       })();
     </script>
   </body>
