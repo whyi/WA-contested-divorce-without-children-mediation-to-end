@@ -42,6 +42,7 @@ from app.models import (
     User,
 )
 from app.materials import router as materials_router
+from app.review import router as review_router
 from app.services import (
     Artifact,
     get_case_or_none,
@@ -73,6 +74,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(materials_router)
 app.include_router(analysis_router)
+app.include_router(review_router)
 
 DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
 LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"
@@ -597,6 +599,42 @@ def download_document(document_id: UUID, db: DbSession) -> Response:
         content=content,
         media_type=document.media_type,
         headers={"Content-Disposition": f'attachment; filename="{document.id}.{document.extension}"'},
+    )
+
+
+@app.get("/documents/{document_id}/preview")
+def preview_document(document_id: UUID, db: DbSession) -> Response:
+    try:
+        document = db.get(Document, document_id)
+    except SQLAlchemyError as error:
+        logger.exception("Document metadata lookup failed for preview.")
+        raise HTTPException(
+            status_code=503,
+            detail="Document preview is unavailable. Please try again.",
+        ) from error
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if document.extension != "pdf":
+        raise HTTPException(
+            status_code=415,
+            detail="Inline preview is available for PDF documents; use the extracted-text view for DOCX.",
+        )
+    try:
+        content = storage.get(document.object_key)
+    except BotoCoreError as error:
+        logger.error("Document preview from object storage failed (%s).", type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Document preview is unavailable. Please try again.",
+        ) from error
+    return Response(
+        content=content,
+        media_type=document.media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{document.id}.pdf"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

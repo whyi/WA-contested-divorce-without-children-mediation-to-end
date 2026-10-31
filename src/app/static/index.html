@@ -453,6 +453,22 @@
       .analysis-status[data-kind="error"] { color: #8d3026; }
       .analysis-status[data-kind="success"] { color: var(--green-dark); }
       .analysis-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      .proposal-review { margin-top: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+      .review-proposals, .profile-facts-list, .adoption-summary { display: grid; gap: 12px; padding: 0; list-style: none; }
+      .review-proposal, .profile-fact { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfb; }
+      .review-proposal h4, .profile-fact h4 { margin: 0 0 7px; color: var(--ink); }
+      .review-proposal p, .profile-fact p { margin: 6px 0; line-height: 1.5; overflow-wrap: anywhere; }
+      .review-evidence { margin: 10px 0; padding: 10px 12px; border-left: 3px solid #9ab5a2; background: #f3f7f3; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .review-actions button, .review-edit-value { font: inherit; }
+      .review-edit-value { display: block; width: 100%; min-height: 72px; margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; }
+      .source-text-panel { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+      .source-text-panel pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .source-text-panel mark { background: #fff0a8; }
+      .review-muted { color: var(--muted); font-size: 13px; }
+      .adoption-confirmation { margin: 14px 0; }
+      .adoption-confirmation label, .supersede-fact-option { display: flex; gap: 8px; align-items: flex-start; }
+      .review-actions button:disabled, #adopt-selected-proposals:disabled { opacity: .6; cursor: not-allowed; }
       .analysis-consent { display: flex; gap: 9px; align-items: flex-start; margin: 14px 0; }
       .analysis-consent input { margin-top: 4px; }
       .analysis-unavailable { color: var(--muted); }
@@ -760,6 +776,30 @@
                   <ul class="analysis-documents" id="analysis-status-list" aria-label="Analysis progress"></ul>
                   <p class="analysis-status" id="analysis-status" role="status" aria-live="polite"></p>
                 </section>
+                <section class="proposal-review" id="proposal-review" aria-labelledby="proposal-review-title" hidden>
+                  <h3 id="proposal-review-title">Review AI suggestions</h3>
+                  <p>Each item is an AI suggestion, not legal advice or a verified fact. Review its source and decide what, if anything, belongs in your case profile.</p>
+                  <p id="review-status" role="status" aria-live="polite"></p>
+                  <ul class="review-proposals" id="review-proposals" aria-label="AI suggestions to review"></ul>
+                  <section class="source-text-panel" id="source-text-panel" aria-labelledby="source-text-title" tabindex="-1" hidden>
+                    <h4 id="source-text-title">Source text</h4>
+                    <p id="source-text-location" class="review-muted"></p>
+                    <pre id="source-text-content"></pre>
+                  </section>
+                  <section aria-labelledby="adoption-title">
+                    <h4 id="adoption-title">Confirm selected suggestions</h4>
+                    <p>Only the selected, accepted or edited suggestions listed here will be appended to the case profile. Existing facts are not overwritten.</p>
+                    <ul class="adoption-summary" id="adoption-summary" aria-label="Selected suggestions for adoption"></ul>
+                    <ul class="profile-facts-list" id="profile-facts-list" aria-label="Append-only case profile facts"></ul>
+                    <div class="adoption-confirmation">
+                      <label for="adoption-confirm">
+                        <input id="adoption-confirm" type="checkbox">
+                        <span>I confirm that only the selected suggestions should be added to this case profile.</span>
+                      </label>
+                    </div>
+                    <button class="materials-import" id="adopt-selected-proposals" type="button" disabled>Adopt selected suggestions</button>
+                  </section>
+                </section>
               </div>
               <a class="back-to-account" href="/#account">Back to your account</a>
             </section>
@@ -867,6 +907,16 @@
         const analysisRevokeButton = document.getElementById("analysis-revoke");
         const analysisStatusList = document.getElementById("analysis-status-list");
         const analysisStatus = document.getElementById("analysis-status");
+        const proposalReviewPanel = document.getElementById("proposal-review");
+        const proposalReviewStatus = document.getElementById("review-status");
+        const proposalReviewList = document.getElementById("review-proposals");
+        const sourceTextPanel = document.getElementById("source-text-panel");
+        const sourceTextLocation = document.getElementById("source-text-location");
+        const sourceTextContent = document.getElementById("source-text-content");
+        const profileFactsList = document.getElementById("profile-facts-list");
+        const adoptionSummary = document.getElementById("adoption-summary");
+        const adoptionConfirm = document.getElementById("adoption-confirm");
+        const adoptSelectedButton = document.getElementById("adopt-selected-proposals");
         const materialsItems = [];
         let materialsMaxBytes = 0;
         let materialsImportEnabled = false;
@@ -881,6 +931,12 @@
         let analysisRequestData = null;
         let analysisRequestBusy = false;
         let analysisPollTimer = null;
+        let analysisContextVersion = 0;
+        let reviewProposalsData = [];
+        let profileFactsData = null;
+        let reviewBusy = false;
+        let pendingAdoption = null;
+        const reviewIdempotencyKeys = new Map();
         const preparationMode = {
           "/onboarding/upload": "upload",
           "/onboarding/wizard": "wizard",
@@ -1234,20 +1290,25 @@
 
         async function refreshAnalysisStatus() {
           if (!analysisCaseId || !analysisRequestData?.request_id) return;
+          const contextVersion = analysisContextVersion;
+          const caseId = analysisCaseId;
+          const requestId = analysisRequestData.request_id;
           window.clearTimeout(analysisPollTimer);
           try {
             const response = await fetch(
-              `/cases/${analysisCaseId}/analysis-requests/${analysisRequestData.request_id}`,
+              `/cases/${caseId}/analysis-requests/${requestId}`,
               {
                 credentials: "same-origin",
                 headers: { Accept: "application/json" },
               },
             );
             if (response.status === 401) {
+              if (contextVersion !== analysisContextVersion) return;
               showSignIn("Your session has expired. Please sign in again.");
               return;
             }
             const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return;
             if (!response.ok) throw new Error(result.detail || "Analysis status is unavailable.");
             analysisRequestData.status = result.status;
             analysisRequestData.jobs = result.jobs;
@@ -1264,8 +1325,10 @@
                   : `Analysis finished with ${result.status.replaceAll("_", " ")} results. Review each file status.`,
                 result.status === "completed" ? "success" : "",
               );
+              await loadProposalReview();
             }
           } catch (error) {
+            if (contextVersion !== analysisContextVersion) return;
             setAnalysisStatus(
               error instanceof Error ? error.message : "Analysis status is unavailable.",
               "error",
@@ -1274,7 +1337,27 @@
         }
 
         async function loadAnalysisOptions(caseId) {
+          if (analysisCaseId !== caseId) {
+            analysisContextVersion += 1;
+            window.clearTimeout(analysisPollTimer);
+            analysisDisclosureData = null;
+            analysisDocumentsData = [];
+            analysisRequestData = null;
+            reviewProposalsData = [];
+            profileFactsData = null;
+            reviewBusy = false;
+            pendingAdoption = null;
+            reviewIdempotencyKeys.clear();
+            adoptionConfirm.checked = false;
+            proposalReviewPanel.hidden = true;
+            sourceTextPanel.hidden = true;
+            setReviewStatus("");
+            proposalReviewList.replaceChildren();
+            profileFactsList.replaceChildren();
+            adoptionSummary.replaceChildren();
+          }
           analysisCaseId = caseId;
+          const contextVersion = analysisContextVersion;
           analysisControls.hidden = false;
           analysisExplanation.textContent = "Checking analysis availability. Stored files are not sent or analyzed while you wait.";
           setAnalysisStatus("Checking analysis availability…");
@@ -1284,10 +1367,12 @@
               headers: { Accept: "application/json" },
             });
             if (response.status === 401) {
+              if (contextVersion !== analysisContextVersion) return;
               showSignIn("Your session has expired. Please sign in again.");
               return;
             }
             const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return;
             if (!response.ok) throw new Error(result.detail || "Analysis options are unavailable.");
             analysisDisclosureData = result.disclosure;
             analysisDocumentsData = result.documents;
@@ -1330,7 +1415,9 @@
                 setAnalysisStatus("A request may not have reached the server. Review the notice and consent again to safely retry.");
               }
             }
+            await loadProfileFacts();
           } catch (error) {
+            if (contextVersion !== analysisContextVersion) return;
             analysisExplanation.textContent =
               "Documents remain stored and have not been analyzed.";
             analysisConsentLabel.hidden = true;
@@ -1467,6 +1554,678 @@
               error instanceof Error ? error.message : "Consent could not be revoked.",
               "error",
             );
+          }
+        }
+
+        function setReviewStatus(message, kind = "") {
+          proposalReviewStatus.textContent = message;
+          if (kind) proposalReviewStatus.dataset.kind = kind;
+          else proposalReviewStatus.removeAttribute("data-kind");
+        }
+
+        function reviewHeaders() {
+          return {
+            ...csrfHeaders(),
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          };
+        }
+
+        function renderAdoptionSummary() {
+          adoptionSummary.replaceChildren();
+          const selectedIds = new Set(
+            Array.from(proposalReviewList.querySelectorAll('input[name="adopt-proposal"]:checked'))
+              .map((input) => input.value),
+          );
+          const selected = reviewProposalsData.filter((proposal) =>
+            selectedIds.has(proposal.proposal_id),
+          );
+          for (const proposal of selected) {
+            const row = document.createElement("li");
+            const value = document.createElement("p");
+            value.textContent = `AI suggestion · ${proposal.field_key}: ${proposal.reviewed_value}`;
+            row.append(value);
+            const source = document.createElement("p");
+            source.textContent =
+              proposal.source_page_number === null
+                ? `Source document ${proposal.document_id}; physical page/location unavailable.`
+                : `Source document ${proposal.document_id}, page ${proposal.source_page_number}.`;
+            row.append(source);
+            const quote = document.createElement("blockquote");
+            quote.className = "review-evidence";
+            quote.textContent = `“${proposal.source_quote}”`;
+            row.append(quote);
+            adoptionSummary.append(row);
+          }
+          const supersededIds = new Set(
+            Array.from(profileFactsList.querySelectorAll("[data-supersede-fact-id]:checked"))
+              .map((input) => input.dataset.supersedeFactId),
+          );
+          for (const fact of profileFactsData?.facts || []) {
+            if (!supersededIds.has(fact.id)) continue;
+            const row = document.createElement("li");
+            const value = document.createElement("p");
+            value.textContent = `Explicitly supersede existing fact · ${fact.field_key}: ${fact.value}`;
+            row.append(value);
+            const quote = document.createElement("blockquote");
+            quote.className = "review-evidence";
+            quote.textContent = `“${fact.source_quote}”`;
+            row.append(quote);
+            adoptionSummary.append(row);
+          }
+          if (selected.length === 0) {
+            const row = document.createElement("li");
+            row.textContent = "No suggestions selected.";
+            adoptionSummary.append(row);
+          }
+          const selectedKeys = new Set(selected.map((proposal) => proposal.field_key));
+          for (const checkbox of profileFactsList.querySelectorAll("[data-supersede-fact-id]")) {
+            const hidden =
+              !selectedKeys.has(checkbox.dataset.fieldKey) ||
+              checkbox.dataset.disposition !== "active";
+            checkbox.closest("label").hidden = hidden;
+            if (hidden) checkbox.checked = false;
+          }
+          adoptSelectedButton.disabled =
+            selected.length === 0 || !adoptionConfirm.checked || reviewBusy;
+        }
+
+        function renderReviewProposals() {
+          proposalReviewPanel.hidden =
+            !analysisRequestData?.request_id && !(profileFactsData?.facts?.length);
+          proposalReviewList.replaceChildren();
+          if (reviewProposalsData.length === 0) {
+            const empty = document.createElement("li");
+            empty.className = "review-muted";
+            empty.textContent = analysisRequestData?.request_id
+              ? "No verifiable suggestions are available for this analysis."
+              : "No analysis request is selected. Previously adopted case-profile facts are shown below.";
+            proposalReviewList.append(empty);
+            renderAdoptionSummary();
+            return;
+          }
+
+          for (const proposal of reviewProposalsData) {
+            const row = document.createElement("li");
+            row.className = "review-proposal";
+            row.dataset.proposalId = proposal.proposal_id;
+
+            const heading = document.createElement("h4");
+            heading.textContent = proposal.field_key.replaceAll("_", " ");
+            row.append(heading);
+
+            const warning = document.createElement("p");
+            warning.className = "review-muted";
+            warning.textContent = "AI suggestion — not legal advice or a verified fact.";
+            row.append(warning);
+
+            const value = document.createElement("p");
+            value.textContent = `Suggested value: ${proposal.proposed_value}`;
+            row.append(value);
+
+            const quote = document.createElement("blockquote");
+            quote.className = "review-evidence";
+            quote.textContent = `“${proposal.source_quote}”`;
+            row.append(quote);
+
+            const citation = document.createElement("p");
+            citation.textContent =
+              proposal.source_page_number === null
+                ? "Physical page/location unavailable for this DOCX source."
+                : `Source page ${proposal.source_page_number}.`;
+            row.append(citation);
+
+            const confidence = document.createElement("p");
+            confidence.className = "review-muted";
+            confidence.textContent =
+              `Confidence: ${proposal.confidence}. ` +
+              (proposal.uncertainty || "No additional uncertainty noted.");
+            row.append(confidence);
+
+            const sourceActions = document.createElement("div");
+            sourceActions.className = "review-actions";
+            if (proposal.evidence_status === "available") {
+              if (proposal.source_file_url) {
+                const sourceLink = document.createElement("a");
+                sourceLink.href = proposal.source_file_url;
+                sourceLink.target = "_blank";
+                sourceLink.rel = "noopener noreferrer";
+                sourceLink.textContent = "Open source document at cited page";
+                sourceActions.append(sourceLink);
+              }
+              const textButton = document.createElement("button");
+              textButton.type = "button";
+              textButton.textContent = "View extracted source text";
+              textButton.addEventListener("click", () => showSourceText(proposal));
+              sourceActions.append(textButton);
+            } else {
+              const unavailable = document.createElement("p");
+              unavailable.setAttribute("role", "status");
+              unavailable.textContent =
+                "The source is unavailable or changed. This suggestion cannot be approved or adopted.";
+              row.append(unavailable);
+            }
+            row.append(sourceActions);
+
+            const decision = document.createElement("p");
+            decision.className = "review-muted";
+            decision.textContent = proposal.review_decision
+              ? `Latest case decision: ${proposal.review_decision}` +
+                (proposal.reviewed_value ? ` — ${proposal.reviewed_value}` : "")
+              : "Not reviewed.";
+            row.append(decision);
+            if (proposal.review_history.length > 0) {
+              const history = document.createElement("p");
+              history.className = "review-muted";
+              history.textContent =
+                `Decision history: ${proposal.review_history.map((item) => item.decision).join(", ")}.`;
+              row.append(history);
+            }
+
+            const editLabel = document.createElement("label");
+            const editValue = document.createElement("textarea");
+            editValue.className = "review-edit-value";
+            editValue.maxLength = 10_000;
+            editValue.value =
+              proposal.review_decision === "edited"
+                ? proposal.reviewed_value
+                : proposal.proposed_value;
+            editValue.setAttribute("aria-label", `Edit suggested value for ${proposal.field_key}`);
+            editLabel.textContent = "Edit the suggested value";
+            editLabel.append(editValue);
+            row.append(editLabel);
+
+            const actions = document.createElement("div");
+            actions.className = "review-actions";
+            let editButton = null;
+            for (const [action, label] of [
+              ["accepted", "Accept suggestion"],
+              ["edited", "Save edited value"],
+              ["rejected", "Reject suggestion"],
+            ]) {
+              const button = document.createElement("button");
+              button.type = "button";
+              button.textContent = label;
+              button.disabled =
+                proposal.evidence_status !== "available" ||
+                reviewBusy ||
+                (action === "edited" && !editValue.value.trim());
+              if (action === "edited") editButton = button;
+              button.addEventListener("click", () =>
+                saveProposalDecision(
+                  proposal,
+                  action,
+                  action === "edited" ? editValue.value : undefined,
+                ),
+              );
+              actions.append(button);
+            }
+            editValue.addEventListener("input", () => {
+              if (editButton) {
+                editButton.disabled =
+                  proposal.evidence_status !== "available" ||
+                  reviewBusy ||
+                  !editValue.value.trim();
+              }
+            });
+            row.append(actions);
+
+            const includeLabel = document.createElement("label");
+            const include = document.createElement("input");
+            include.type = "checkbox";
+            include.name = "adopt-proposal";
+            include.value = proposal.proposal_id;
+            include.disabled =
+              proposal.evidence_status !== "available" ||
+              !["accepted", "edited"].includes(proposal.review_decision);
+            include.addEventListener("change", renderAdoptionSummary);
+            includeLabel.append(
+              include,
+              document.createTextNode("Include this reviewed suggestion in the final adoption."),
+            );
+            row.append(includeLabel);
+            proposalReviewList.append(row);
+          }
+          renderAdoptionSummary();
+        }
+
+        async function showSourceText(proposal) {
+          const contextVersion = analysisContextVersion;
+          try {
+            setReviewStatus("Loading source text…");
+            const response = await fetch(proposal.source_text_url, {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return;
+            if (!response.ok) throw new Error(result.detail || "Source text is unavailable.");
+            sourceTextContent.replaceChildren();
+            let quoteHighlighted = false;
+            for (const [index, page] of result.pages.entries()) {
+              if (index > 0) sourceTextContent.append(document.createTextNode("\n\n"));
+              const quoteIndex = !quoteHighlighted &&
+                (proposal.source_page_number === null ||
+                  page.page_number === proposal.source_page_number)
+                ? page.text.indexOf(proposal.source_quote)
+                : -1;
+              if (quoteIndex < 0) {
+                sourceTextContent.append(document.createTextNode(page.text));
+                continue;
+              }
+              quoteHighlighted = true;
+              sourceTextContent.append(document.createTextNode(page.text.slice(0, quoteIndex)));
+              const mark = document.createElement("mark");
+              mark.textContent = proposal.source_quote;
+              sourceTextContent.append(mark);
+              sourceTextContent.append(
+                document.createTextNode(page.text.slice(quoteIndex + proposal.source_quote.length)),
+              );
+            }
+            sourceTextLocation.textContent =
+              result.extension === "docx"
+                ? "DOCX source text; physical page location is unavailable."
+                : proposal.source_page_number === null
+                  ? "Source page location is unavailable."
+                  : `PDF source page ${proposal.source_page_number}.`;
+            sourceTextPanel.hidden = false;
+            sourceTextPanel.focus();
+            setReviewStatus(
+              quoteHighlighted
+                ? "Source text loaded. The exact supporting quote is highlighted."
+                : "Source text loaded, but the original supporting quote is not present.",
+              quoteHighlighted ? "success" : "error",
+            );
+          } catch (error) {
+            if (contextVersion !== analysisContextVersion) return;
+            setReviewStatus(
+              error instanceof Error ? error.message : "Source text is unavailable.",
+              "error",
+            );
+          }
+        }
+
+        async function loadProfileFacts() {
+          if (!analysisCaseId) return false;
+          const caseId = analysisCaseId;
+          const contextVersion = analysisContextVersion;
+          try {
+            const response = await fetch(`/cases/${caseId}/profile-facts`, {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (response.status === 401) {
+              if (contextVersion !== analysisContextVersion) return false;
+              showSignIn("Your session has expired. Please sign in again.");
+              return false;
+            }
+            const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return false;
+            if (!response.ok) throw new Error(result.detail || "Case profile facts are unavailable.");
+            profileFactsData = result;
+            proposalReviewPanel.hidden =
+              !analysisRequestData?.request_id && result.facts.length === 0;
+            renderProfileFacts();
+            renderAdoptionSummary();
+            if (!analysisRequestData?.request_id) renderReviewProposals();
+            return true;
+          } catch (error) {
+            if (contextVersion !== analysisContextVersion) return false;
+            setReviewStatus(
+              error instanceof Error ? error.message : "Case profile facts are unavailable.",
+              "error",
+            );
+            return false;
+          }
+        }
+
+        function renderProfileFacts() {
+          profileFactsList.replaceChildren();
+          const facts = profileFactsData?.facts || [];
+          if (facts.length === 0) {
+            const empty = document.createElement("li");
+            empty.className = "review-muted";
+            empty.textContent = "No AI suggestions have been adopted into this case profile.";
+            profileFactsList.append(empty);
+            return;
+          }
+
+          const currentFacts = facts.filter((fact) =>
+            ["active", "reinstated"].includes(fact.disposition),
+          );
+          const fieldValues = new Map();
+          for (const fact of currentFacts) {
+            if (!fieldValues.has(fact.field_key)) fieldValues.set(fact.field_key, new Set());
+            fieldValues.get(fact.field_key).add(fact.value);
+          }
+          for (const fact of facts) {
+            const row = document.createElement("li");
+            row.className = "profile-fact";
+            const heading = document.createElement("h4");
+            heading.textContent = fact.field_key.replaceAll("_", " ");
+            row.append(heading);
+            const value = document.createElement("p");
+            value.textContent = `Case profile value: ${fact.value}`;
+            row.append(value);
+            if (fact.conflict || (fieldValues.get(fact.field_key)?.size || 0) > 1) {
+              const conflict = document.createElement("p");
+              conflict.setAttribute("role", "status");
+              conflict.textContent =
+                "Conflicting values exist for this field. Both sources are preserved; no value was silently replaced.";
+              row.append(conflict);
+            }
+            const quote = document.createElement("blockquote");
+            quote.className = "review-evidence";
+            quote.textContent = `“${fact.source_quote}”`;
+            row.append(quote);
+            const citation = document.createElement("p");
+            citation.textContent = fact.source_page_number === null
+              ? "Physical page/location unavailable."
+              : `Source page ${fact.source_page_number}.`;
+            row.append(citation);
+            const provenance = document.createElement("p");
+            provenance.className = "review-muted";
+            provenance.textContent =
+              `Adopted by a case member · model ${fact.model_id} · notice ${fact.notice_version} · ${fact.review_decision}.`;
+            row.append(provenance);
+            if (!fact.source_available) {
+              const unavailable = document.createElement("p");
+              unavailable.textContent =
+                "The source document is no longer available; its identity and evidence snapshot are retained.";
+              row.append(unavailable);
+            } else {
+              if (fact.source_page_number !== null) {
+                const sourceLink = document.createElement("a");
+                sourceLink.href =
+                  `/documents/${fact.source_document_id}/preview#page=${fact.source_page_number}`;
+                sourceLink.target = "_blank";
+                sourceLink.rel = "noopener noreferrer";
+                sourceLink.textContent = "Open source at cited page";
+                row.append(sourceLink);
+              }
+              const sourceButton = document.createElement("button");
+              sourceButton.type = "button";
+              sourceButton.textContent = "View extracted source text";
+              sourceButton.addEventListener("click", () =>
+                showSourceText({
+                  source_text_url:
+                    `/cases/${analysisCaseId}/documents/${fact.source_document_id}/source-text`,
+                  source_quote: fact.source_quote,
+                  source_page_number: fact.source_page_number,
+                }),
+              );
+              row.append(sourceButton);
+            }
+            const history = document.createElement("p");
+            history.className = "review-muted";
+            history.textContent = fact.history.length
+              ? `Profile history: ${fact.history.map((event) => event.action).join(", ")}.`
+              : "Profile history: adopted.";
+            row.append(history);
+            if (fact.disposition === "active") {
+              const withdraw = document.createElement("button");
+              withdraw.type = "button";
+              withdraw.className = "dashboard-retry";
+              withdraw.textContent = "Withdraw this adopted fact";
+              withdraw.addEventListener("click", () => withdrawProfileFact(fact));
+              row.append(withdraw);
+              const supersedeLabel = document.createElement("label");
+              supersedeLabel.className = "supersede-fact-option";
+              const supersede = document.createElement("input");
+              supersede.type = "checkbox";
+              supersede.dataset.supersedeFactId = fact.id;
+              supersede.dataset.fieldKey = fact.field_key;
+              supersede.dataset.disposition = fact.disposition;
+              supersede.addEventListener("change", renderAdoptionSummary);
+              supersedeLabel.append(
+                supersede,
+                document.createTextNode("Supersede this fact if adopting a new value for the same field."),
+              );
+              row.append(supersedeLabel);
+            }
+            profileFactsList.append(row);
+          }
+        }
+
+        async function loadProposalReview() {
+          if (!analysisCaseId || !analysisRequestData?.request_id) {
+            reviewProposalsData = [];
+            renderReviewProposals();
+            renderProfileFacts();
+            return;
+          }
+          const contextVersion = analysisContextVersion;
+          const caseId = analysisCaseId;
+          const requestId = analysisRequestData.request_id;
+          proposalReviewPanel.hidden = false;
+          setReviewStatus("Loading suggestions and review history…");
+          try {
+            const response = await fetch(
+              `/cases/${caseId}/analysis-requests/${requestId}/review`,
+              {
+                credentials: "same-origin",
+                headers: { Accept: "application/json" },
+              },
+            );
+            if (response.status === 401) {
+              if (contextVersion !== analysisContextVersion) return;
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return;
+            if (!response.ok) throw new Error(result.detail || "Suggestions are unavailable.");
+            reviewProposalsData = result.proposals;
+            renderReviewProposals();
+            if (!(await loadProfileFacts())) return;
+            if (contextVersion !== analysisContextVersion) return;
+            setReviewStatus(
+              reviewProposalsData.length
+                ? "Review each suggestion and its source. Nothing changes in the profile until you confirm adoption."
+                : "No verifiable suggestions were produced for this analysis.",
+            );
+          } catch (error) {
+            if (contextVersion !== analysisContextVersion) return;
+            proposalReviewPanel.hidden = false;
+            setReviewStatus(
+              error instanceof Error ? error.message : "Suggestions are unavailable.",
+              "error",
+            );
+          }
+        }
+
+        async function saveProposalDecision(proposal, decision, editedValue) {
+          if (!analysisCaseId || !analysisRequestData?.request_id || reviewBusy) return;
+          const contextVersion = analysisContextVersion;
+          const caseId = analysisCaseId;
+          const requestId = analysisRequestData.request_id;
+          const fingerprint = `${proposal.proposal_id}:${decision}:${editedValue || ""}`;
+          if (!reviewIdempotencyKeys.has(fingerprint)) {
+            reviewIdempotencyKeys.set(fingerprint, crypto.randomUUID());
+          }
+          reviewBusy = true;
+          renderReviewProposals();
+          try {
+            const response = await fetch(
+              `/cases/${caseId}/analysis-requests/${requestId}/proposals/${proposal.proposal_id}/review`,
+              {
+                method: "POST",
+                credentials: "same-origin",
+                headers: reviewHeaders(),
+                body: JSON.stringify({
+                  idempotency_key: reviewIdempotencyKeys.get(fingerprint),
+                  decision,
+                  ...(decision === "edited" ? { edited_value: editedValue } : {}),
+                }),
+              },
+            );
+            if (response.status === 401) {
+              if (contextVersion !== analysisContextVersion) return;
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return;
+            if (!response.ok) throw new Error(result.detail || "Review decision could not be saved.");
+            reviewIdempotencyKeys.delete(fingerprint);
+            reviewProposalsData = [];
+            await loadProposalReview();
+            setReviewStatus("Decision saved. The suggestion has not changed the case profile.", "success");
+          } catch (error) {
+            if (contextVersion !== analysisContextVersion) return;
+            setReviewStatus(
+              error instanceof Error ? error.message : "Review decision could not be saved.",
+              "error",
+            );
+          } finally {
+            if (contextVersion === analysisContextVersion) {
+              reviewBusy = false;
+              renderReviewProposals();
+              renderAdoptionSummary();
+            }
+          }
+        }
+
+        async function adoptSelectedProposals() {
+          const selectedIds = Array.from(
+            proposalReviewList.querySelectorAll('input[name="adopt-proposal"]:checked'),
+          ).map((input) => input.value);
+          if (
+            !analysisCaseId ||
+            selectedIds.length === 0 ||
+            !adoptionConfirm.checked ||
+            reviewBusy
+          ) return;
+          const contextVersion = analysisContextVersion;
+          const caseId = analysisCaseId;
+          const supersedeFactIds = Array.from(
+            profileFactsList.querySelectorAll("[data-supersede-fact-id]:checked"),
+          ).map((input) => input.dataset.supersedeFactId);
+          const expectedRevision = profileFactsData?.profile_revision ?? 0;
+          const fingerprint = JSON.stringify({
+            case_id: caseId,
+            expected_profile_revision: expectedRevision,
+            proposal_ids: [...selectedIds].sort(),
+            supersede_fact_ids: [...supersedeFactIds].sort(),
+          });
+          if (pendingAdoption?.fingerprint !== fingerprint) {
+            pendingAdoption = {
+              fingerprint,
+              idempotency_key: crypto.randomUUID(),
+            };
+          }
+          reviewBusy = true;
+          renderAdoptionSummary();
+          try {
+            const response = await fetch(`/cases/${caseId}/profile-facts/adoptions`, {
+              method: "POST",
+              credentials: "same-origin",
+              headers: reviewHeaders(),
+              body: JSON.stringify({
+                idempotency_key: pendingAdoption.idempotency_key,
+                expected_profile_revision: expectedRevision,
+                proposal_ids: selectedIds,
+                supersede_fact_ids: supersedeFactIds,
+                confirm: true,
+              }),
+            });
+            if (response.status === 401) {
+              if (contextVersion !== analysisContextVersion) return;
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return;
+            if (!response.ok) {
+              pendingAdoption = null;
+              if (response.status === 409) await loadProfileFacts();
+              throw new Error(result.detail || "Selected suggestions could not be adopted.");
+            }
+            pendingAdoption = null;
+            adoptionConfirm.checked = false;
+            const factsLoaded = await loadProfileFacts();
+            if (contextVersion !== analysisContextVersion) return;
+            await loadProposalReview();
+            if (contextVersion !== analysisContextVersion) return;
+            setReviewStatus(
+              factsLoaded
+                ? `${result.facts.length} selected suggestion(s) were added as append-only case-profile facts.`
+                : "Adoption succeeded, but the updated case profile could not be refreshed.",
+              factsLoaded ? "success" : "error",
+            );
+          } catch (error) {
+            if (contextVersion !== analysisContextVersion) return;
+            setReviewStatus(
+              error instanceof Error ? error.message : "Selected suggestions could not be adopted.",
+              "error",
+            );
+          } finally {
+            if (contextVersion === analysisContextVersion) {
+              reviewBusy = false;
+              renderReviewProposals();
+              renderAdoptionSummary();
+            }
+          }
+        }
+
+        async function withdrawProfileFact(fact) {
+          if (
+            !analysisCaseId ||
+            !window.confirm("Withdraw this adopted fact from the current profile view? Its audit history will be retained.")
+          ) return;
+          const contextVersion = analysisContextVersion;
+          const caseId = analysisCaseId;
+          reviewBusy = true;
+          try {
+            const response = await fetch(
+              `/cases/${caseId}/profile-facts/${fact.id}/withdraw`,
+              {
+                method: "POST",
+                credentials: "same-origin",
+                headers: reviewHeaders(),
+                body: JSON.stringify({
+                  idempotency_key: crypto.randomUUID(),
+                  expected_profile_revision: profileFactsData?.profile_revision ?? 0,
+                  action: "withdrawn",
+                  confirm: true,
+                }),
+              },
+            );
+            if (response.status === 401) {
+              if (contextVersion !== analysisContextVersion) return;
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (contextVersion !== analysisContextVersion) return;
+            if (!response.ok) {
+              if (response.status === 409) await loadProfileFacts();
+              throw new Error(result.detail || "The profile fact could not be withdrawn.");
+            }
+            const factsLoaded = await loadProfileFacts();
+            if (contextVersion !== analysisContextVersion) return;
+            setReviewStatus(
+              factsLoaded
+                ? "The fact was withdrawn from the current profile view; its history remains."
+                : "The fact was withdrawn, but the updated case profile could not be refreshed.",
+              factsLoaded ? "success" : "error",
+            );
+          } catch (error) {
+            if (contextVersion !== analysisContextVersion) return;
+            setReviewStatus(
+              error instanceof Error ? error.message : "The profile fact could not be withdrawn.",
+              "error",
+            );
+          } finally {
+            if (contextVersion === analysisContextVersion) {
+              reviewBusy = false;
+              renderProfileFacts();
+              renderAdoptionSummary();
+            }
           }
         }
 
@@ -1704,6 +2463,8 @@
         analysisConsent.addEventListener("change", updateAnalysisActions);
         analysisStartButton.addEventListener("click", startAnalysis);
         analysisRevokeButton.addEventListener("click", revokeAnalysisConsent);
+        adoptionConfirm.addEventListener("change", renderAdoptionSummary);
+        adoptSelectedButton.addEventListener("click", adoptSelectedProposals);
         materialsStatusRetry.addEventListener("click", async () => {
           await restoreMaterialsBatch();
           renderMaterials();
