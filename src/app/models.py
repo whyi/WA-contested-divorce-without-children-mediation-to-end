@@ -33,6 +33,7 @@ class Case(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     asset_liability_inventory: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    profile_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -279,6 +280,153 @@ class DocumentAnalysisProposal(Base):
     source_page_number: Mapped[int | None] = mapped_column(Integer)
     confidence: Mapped[str] = mapped_column(String(10), nullable=False)
     uncertainty: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ProposalReviewEvent(Base):
+    __tablename__ = "analysis_proposal_review_events"
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('accepted', 'edited', 'rejected')",
+            name="ck_analysis_proposal_review_events_decision",
+        ),
+        CheckConstraint(
+            "(decision = 'edited' AND edited_value IS NOT NULL AND length(trim(edited_value)) > 0) "
+            "OR (decision != 'edited' AND edited_value IS NULL)",
+            name="ck_analysis_proposal_review_events_edited_value",
+        ),
+        UniqueConstraint(
+            "case_id",
+            "user_id_snapshot",
+            "idempotency_key",
+            name="uq_analysis_proposal_review_event_idempotency",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    proposal_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("document_analysis_proposals.id", ondelete="SET NULL"), index=True
+    )
+    proposal_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    idempotency_key: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    edited_value: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CaseProfileAdoption(Base):
+    __tablename__ = "case_profile_adoptions"
+    __table_args__ = (
+        CheckConstraint(
+            "profile_revision_after = profile_revision_before + 1",
+            name="ck_case_profile_adoptions_revision",
+        ),
+        UniqueConstraint(
+            "case_id",
+            "user_id_snapshot",
+            "idempotency_key",
+            name="uq_case_profile_adoption_idempotency",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    idempotency_key: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    profile_revision_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_revision_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    facts: Mapped[list["CaseProfileFact"]] = relationship(
+        back_populates="adoption", cascade="all, delete-orphan"
+    )
+
+
+class CaseProfileFact(Base):
+    __tablename__ = "case_profile_facts"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "proposal_id_snapshot",
+            name="uq_case_profile_fact_case_proposal",
+        ),
+        CheckConstraint(
+            "source_page_number IS NULL OR source_page_number >= 1",
+            name="ck_case_profile_facts_source_page_number",
+        ),
+        CheckConstraint(
+            "review_decision IN ('accepted', 'edited')",
+            name="ck_case_profile_facts_review_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    adoption_id: Mapped[UUID] = mapped_column(
+        ForeignKey("case_profile_adoptions.id", ondelete="CASCADE"), index=True
+    )
+    proposal_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    field_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    original_value: Mapped[str] = mapped_column(Text, nullable=False)
+    source_document_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_quote: Mapped[str] = mapped_column(Text, nullable=False)
+    source_page_number: Mapped[int | None] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    notice_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    review_decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    adopted_by_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    adopted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    adoption: Mapped[CaseProfileAdoption] = relationship(back_populates="facts")
+
+
+class CaseProfileFactEvent(Base):
+    __tablename__ = "case_profile_fact_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('withdrawn', 'superseded', 'reinstated')",
+            name="ck_case_profile_fact_events_action",
+        ),
+        UniqueConstraint(
+            "case_id",
+            "user_id_snapshot",
+            "idempotency_key",
+            name="uq_case_profile_fact_event_idempotency",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    fact_id: Mapped[UUID] = mapped_column(
+        ForeignKey("case_profile_facts.id", ondelete="CASCADE"), index=True
+    )
+    replacement_fact_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("case_profile_facts.id", ondelete="SET NULL")
+    )
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    idempotency_key: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

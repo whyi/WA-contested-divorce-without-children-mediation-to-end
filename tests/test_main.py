@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
 from app.database import get_db
-from app.main import app, delete_document
+from app.main import app, delete_document, preview_document
 from app.models import AuthSession, CaseMembership, Document, User
 
 
@@ -100,6 +100,14 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="analysis-consent"', page)
         self.assertIn('id="analysis-provider"', page)
         self.assertIn('id="analysis-status"', page)
+        self.assertIn('id="proposal-review"', page)
+        self.assertIn('id="review-status" role="status" aria-live="polite"', page)
+        self.assertIn('id="review-proposals"', page)
+        self.assertIn('id="profile-facts-list"', page)
+        self.assertIn('id="adopt-selected-proposals"', page)
+        self.assertIn('adoptionConfirm.addEventListener("change", renderAdoptionSummary)', page)
+        self.assertIn('adoptSelectedButton.addEventListener("click", adoptSelectedProposals)', page)
+        self.assertIn("Previously adopted case-profile facts are shown below.", page)
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 
@@ -133,11 +141,34 @@ class MainWorkflowTests(unittest.TestCase):
                     + b'"],"notice_version":"notice-1","consent":true}',
                 )
             ),
+            asyncio.run(request_app(f"/documents/{uuid4()}/preview")),
+            asyncio.run(
+                request_app(
+                    f"/cases/{case_id}/documents/{uuid4()}/source-text",
+                )
+            ),
+            asyncio.run(
+                request_app(
+                    f"/cases/{case_id}/profile-facts",
+                )
+            ),
+            asyncio.run(
+                request_app(
+                    f"/cases/{case_id}/analysis-requests/{uuid4()}/review",
+                )
+            ),
+            asyncio.run(
+                request_app(
+                    f"/cases/{case_id}/profile-facts/adoptions",
+                    "POST",
+                    b"{}",
+                )
+            ),
         )
 
         self.assertEqual(
             [status for status, _ in requests],
-            [503, 503, 503, 503, 503, 503, 503],
+            [503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503],
         )
         for _, body in requests:
             self.assertIn(b"Authentication is not configured", body)
@@ -155,6 +186,27 @@ class MainWorkflowTests(unittest.TestCase):
         object_storage.delete.assert_called_once_with("case/document.pdf")
         db.delete.assert_called_once_with(document)
         db.commit.assert_called_once()
+
+    def test_pdf_preview_is_inline_and_not_cacheable(self) -> None:
+        document_id = uuid4()
+        document = SimpleNamespace(
+            id=document_id,
+            object_key="case/document.pdf",
+            extension="pdf",
+            media_type="application/pdf",
+        )
+        db = Mock()
+        db.get.return_value = document
+
+        with patch("app.main.storage") as object_storage:
+            object_storage.get.return_value = b"%PDF-1.7"
+            response = preview_document(document_id, db)
+
+        self.assertEqual(response.body, b"%PDF-1.7")
+        self.assertEqual(response.media_type, "application/pdf")
+        self.assertIn("inline", response.headers["content-disposition"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        object_storage.get.assert_called_once_with("case/document.pdf")
 
     def test_document_deletion_reports_incomplete_metadata_cleanup(self) -> None:
         document = SimpleNamespace(object_key="case/document.pdf")
