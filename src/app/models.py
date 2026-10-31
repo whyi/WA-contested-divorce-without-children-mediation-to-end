@@ -72,6 +72,32 @@ class Document(Base):
     )
 
 
+class MaterialImportBatch(Base):
+    __tablename__ = "material_import_batches"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MaterialImportItem(Base):
+    __tablename__ = "material_import_items"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "item_id", name="uq_material_import_item_batch_item"),
+        UniqueConstraint("document_id", name="uq_material_import_item_document"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    batch_id: Mapped[UUID] = mapped_column(
+        ForeignKey("material_import_batches.id", ondelete="CASCADE"), index=True
+    )
+    item_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+
+
 class DocumentExtraction(Base):
     __tablename__ = "document_extractions"
 
