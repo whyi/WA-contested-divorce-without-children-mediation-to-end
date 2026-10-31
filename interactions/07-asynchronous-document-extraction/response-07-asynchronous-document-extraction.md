@@ -204,3 +204,9 @@ Running requested command.
 - `docker compose run --rm --no-deps extraction-worker python -c 'import app.extraction_worker; print("worker module import ok")'`: exit status `0`; output: `worker module import ok`. The dependency emitted its existing `fitz` deprecation warning.
 - Migration SQL was generated offline for inspection; it was not applied to the running database.
 - The Compose API container was not restarted as part of this verification.
+
+### Commit verification
+
+- The first commit-hook attempt identified that the migration test filename did not match the repository's test-pairing rule. After aligning its filename, the hook identified the need for an exact `tests/test_validation.py` pair. That focused test was added; the hook was not bypassed.
+- Final commit hook: pairing check passed; `python -m unittest discover -s tests -v` ran 107 tests and returned `OK`; commit succeeded.
+- Implementation commit: `cd13446` (`Implement asynchronous document extraction`).
