@@ -112,9 +112,14 @@ class MainWorkflowTests(unittest.TestCase):
                 )
             ),
             asyncio.run(request_app(f"/documents/{uuid4()}", "DELETE")),
+            asyncio.run(
+                request_app(
+                    f"/cases/{case_id}/documents/{uuid4()}/extraction-status",
+                )
+            ),
         )
 
-        self.assertEqual([status for status, _ in requests], [503, 503, 503, 503])
+        self.assertEqual([status for status, _ in requests], [503, 503, 503, 503, 503])
         for _, body in requests:
             self.assertIn(b"Authentication is not configured", body)
 
@@ -183,6 +188,7 @@ class MainWorkflowTests(unittest.TestCase):
             object_key="case/document.pdf",
             media_type="application/pdf",
             extension="pdf",
+            sha256="f" * 64,
         )
         settings = Settings(
             auth_enabled=True,
@@ -196,8 +202,10 @@ class MainWorkflowTests(unittest.TestCase):
             ("DELETE", "owner", 204),
             ("DELETE", "viewer", 403),
             ("GET", "viewer", 200),
+            ("STATUS", "viewer", 200),
             ("DELETE", None, 404),
             ("GET", None, 404),
+            ("STATUS", None, 404),
         ):
             with self.subTest(method=method, role=role):
                 db = Mock()
@@ -211,7 +219,10 @@ class MainWorkflowTests(unittest.TestCase):
                     if role is not None
                     else None
                 )
-                db.scalar.return_value = membership
+                if method == "STATUS":
+                    db.scalar.side_effect = [membership, None, None]
+                else:
+                    db.scalar.return_value = membership
                 app.dependency_overrides[get_db] = lambda: db
                 session_context = MagicMock()
                 session_context.__enter__.return_value = db
@@ -226,15 +237,15 @@ class MainWorkflowTests(unittest.TestCase):
                     patch("app.main.storage") as object_storage,
                 ):
                     object_storage.get.return_value = b"private"
-                    path = (
-                        f"/documents/{document_id}/download"
-                        if method == "GET"
-                        else f"/documents/{document_id}"
-                    )
+                    path = {
+                        "GET": f"/documents/{document_id}/download",
+                        "STATUS": f"/cases/{case_id}/documents/{document_id}/extraction-status",
+                    }.get(method, f"/documents/{document_id}")
+                    request_method = "GET" if method == "STATUS" else method
                     status, _ = asyncio.run(
                         request_app(
                             path,
-                            method,
+                            request_method,
                             headers=[
                                 (b"cookie", b"auth_access=test; auth_csrf=csrf"),
                                 (b"x-csrf-token", b"csrf"),

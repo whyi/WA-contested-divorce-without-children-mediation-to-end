@@ -43,6 +43,8 @@ class ProjectConfigurationTests(unittest.TestCase):
         compose = (ROOT / "docker-compose.yml").read_text()
         self.assertIn("image: postgres:", compose)
         self.assertIn("image: motoserver/moto:", compose)
+        self.assertIn("extraction-worker:", compose)
+        self.assertIn('"app.extraction_worker"', compose)
 
     def test_compose_demo_login_is_explicit_and_case_data_remains_disabled(self) -> None:
         compose = (ROOT / "docker-compose.yml").read_text()
