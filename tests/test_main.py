@@ -76,6 +76,12 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dashboard-loading" role="status"', page)
         self.assertIn("I already have case materials, so I'll upload them", page)
         self.assertIn("Guide me through the wizard step by step", page)
+        self.assertIn('id="materials-workflow"', page)
+        self.assertIn('id="materials-file-input"', page)
+        self.assertIn('id="google-drive-picker"', page)
+        self.assertIn('id="dropbox-picker"', page)
+        self.assertIn('id="materials-import"', page)
+        self.assertIn('"/api/v1/materials/config"', page)
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 

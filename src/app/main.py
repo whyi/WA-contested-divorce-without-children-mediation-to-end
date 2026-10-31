@@ -38,6 +38,7 @@ from app.models import (
     NegotiationEvent,
     User,
 )
+from app.materials import router as materials_router
 from app.services import (
     Artifact,
     get_case_or_none,
@@ -67,6 +68,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(materials_router)
 
 DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
 LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"

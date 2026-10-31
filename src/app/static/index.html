@@ -403,6 +403,45 @@
       .preparation-view { padding-top: 12px; }
       .preparation-note { padding: 16px; border-radius: 8px; color: #574827; background: #fbf5e8; }
       .back-to-account { display: inline-flex; min-height: 44px; align-items: center; margin-top: 8px; color: var(--green-dark); font-weight: 750; }
+      .materials-workflow { margin-top: 26px; }
+      .materials-limits, .provider-note { color: var(--muted); font-size: 13px; line-height: 1.6; }
+      .materials-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }
+      .materials-source, .materials-drop {
+        display: flex;
+        min-height: 108px;
+        flex-direction: column;
+        justify-content: center;
+        gap: 7px;
+        padding: 18px;
+        border: 1px solid #cbd9ce;
+        border-radius: 10px;
+        color: var(--ink);
+        background: #fbfcfb;
+        text-align: left;
+      }
+      .materials-source { cursor: pointer; font: inherit; font-weight: 750; }
+      .materials-source span, .materials-drop span { color: var(--muted); font-size: 12px; font-weight: 400; }
+      .materials-source:hover:not(:disabled), .materials-drop:hover { border-color: var(--green); background: #f2f7f2; }
+      .materials-source:disabled { color: #68756c; cursor: not-allowed; opacity: .8; }
+      .materials-source:focus-visible, .materials-drop:focus-within, .materials-remove:focus-visible, .materials-import:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 3px; }
+      .materials-drop { min-height: 120px; align-items: center; border-style: dashed; text-align: center; cursor: pointer; }
+      .materials-drop strong { color: var(--green-dark); }
+      .materials-review-title { margin: 28px 0 10px; font-size: 17px; }
+      .materials-list { display: grid; gap: 9px; padding: 0; list-style: none; }
+      .materials-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 8px; }
+      .materials-item-main { min-width: 0; }
+      .materials-item-name { overflow-wrap: anywhere; color: var(--ink); font-size: 13px; font-weight: 700; }
+      .materials-item-status { margin-top: 4px; color: var(--muted); font-size: 12px; }
+      .materials-item-status[data-kind="error"] { color: #8d3026; }
+      .materials-item-status[data-kind="success"] { color: var(--green-dark); }
+      .materials-remove { flex: 0 0 auto; min-height: 38px; padding: 0 11px; border: 1px solid #d5ded6; border-radius: 7px; color: var(--green-dark); background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+      .materials-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 20px; }
+      .materials-import { min-height: 46px; padding: 0 17px; border: 0; border-radius: 7px; color: #fff; background: var(--green-dark); cursor: pointer; font: inherit; font-weight: 750; }
+      .materials-import:disabled { background: #85938a; cursor: not-allowed; }
+      .materials-status { min-height: 24px; color: var(--muted); font-size: 13px; }
+      .materials-status[data-kind="error"] { color: #8d3026; }
+      .materials-status[data-kind="success"] { color: var(--green-dark); }
+      .materials-status-retry { margin-top: 6px; }
       .authenticated-view .nav { display: none; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
 
@@ -433,6 +472,9 @@
         .dashboard-panel { padding: 25px 20px; }
         .dashboard-header { flex-direction: column; gap: 12px; }
         .onboarding-actions { grid-template-columns: 1fr; }
+        .materials-sources { grid-template-columns: 1fr; }
+        .materials-source { min-height: 78px; }
+        .materials-item { align-items: flex-start; }
         .onboarding-action { min-height: 150px; padding: 20px; font-size: 16px; }
         h1 { font-size: clamp(44px, 13vw, 61px); }
         .hero-copy { font-size: 15px; }
@@ -655,7 +697,34 @@
               <p class="eyebrow" id="preparation-eyebrow">Your next step</p>
               <h2 id="preparation-title"></h2>
               <p id="preparation-description"></p>
-              <p class="preparation-note">This preview does not accept or save case details or documents. No case has been created. Do not enter real case information.</p>
+              <p class="preparation-note" id="preparation-note">This preview does not accept or save case details or documents. No case has been created. Do not enter real case information.</p>
+              <div class="materials-workflow" id="materials-workflow" hidden>
+                <p class="materials-limits" id="materials-limits">Checking supported file types and the current upload limit…</p>
+                <div class="materials-sources" aria-label="Choose where to add case materials">
+                  <label class="materials-drop" for="materials-file-input">
+                    <strong>Choose files from your device</strong>
+                    <span>Or drag and drop PDF or DOCX files here</span>
+                  </label>
+                  <button class="materials-source" id="google-drive-picker" type="button" disabled>
+                    Choose from Google Drive
+                    <span>Not configured for this application</span>
+                  </button>
+                  <button class="materials-source" id="dropbox-picker" type="button" disabled>
+                    Choose from Dropbox
+                    <span>Not configured for this application</span>
+                  </button>
+                </div>
+                <input id="materials-file-input" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden>
+                <p class="provider-note" id="provider-note">Cloud-provider access is unavailable until provider applications, permissions, and secure token handling are configured. No cloud account is connected or scanned.</p>
+                <h3 class="materials-review-title">Review selected files</h3>
+                <ul class="materials-list" id="materials-list" aria-label="Selected case materials"></ul>
+                <div class="materials-actions">
+                  <button class="materials-import" id="materials-import" type="button" disabled>Import selected files</button>
+                  <p class="materials-status" id="materials-status" role="status" aria-live="polite"></p>
+                </div>
+                <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
+                <p class="preparation-note" id="materials-disabled-note">Imports are disabled in this preview. Files stay in your browser and are not uploaded or saved. Do not use real case information.</p>
+              </div>
               <a class="back-to-account" href="/#account">Back to your account</a>
             </section>
           </div>
@@ -737,6 +806,24 @@
         const existingCaseCount = document.getElementById("existing-case-count");
         const caseList = document.getElementById("case-list");
         const preparationView = document.getElementById("preparation-view");
+        const preparationNote = document.getElementById("preparation-note");
+        const materialsWorkflow = document.getElementById("materials-workflow");
+        const materialsLimits = document.getElementById("materials-limits");
+        const materialsDisabledNote = document.getElementById("materials-disabled-note");
+        const materialsInput = document.getElementById("materials-file-input");
+        const materialsList = document.getElementById("materials-list");
+        const materialsImportButton = document.getElementById("materials-import");
+        const materialsStatus = document.getElementById("materials-status");
+        const materialsStatusRetry = document.getElementById("materials-status-retry");
+        const materialsDrop = document.querySelector(".materials-drop");
+        const materialsItems = [];
+        let materialsMaxBytes = 0;
+        let materialsImportEnabled = false;
+        let materialsReady = false;
+        let materialsBatchId = null;
+        let materialsBatchVerified = true;
+        let materialsImporting = false;
+        let materialsSelecting = false;
         const preparationMode = {
           "/onboarding/upload": "upload",
           "/onboarding/wizard": "wizard",
@@ -807,9 +894,311 @@
             ? "Start with your case materials"
             : "Start with guided entry";
           document.getElementById("preparation-description").textContent = isUpload
-            ? "The document upload and review workflow is not available in this preview yet."
+            ? "Choose files from your device, review your selection, and confirm before anything is imported."
             : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
+          materialsWorkflow.hidden = !isUpload;
+          preparationNote.hidden = isUpload;
           preparationView.hidden = false;
+          if (isUpload) loadMaterialsConfig();
+        }
+
+        function formatFileSize(size) {
+          if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KiB`;
+          return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+        }
+
+        function updateMaterialsControls() {
+          const pending = materialsItems.filter((item) => !item.validationError && !item.imported);
+          materialsImportButton.disabled =
+            !materialsReady || !materialsImportEnabled || !materialsBatchVerified ||
+            materialsImporting || materialsSelecting || pending.length === 0;
+          materialsImportButton.textContent = materialsImporting
+            ? "Importing selected files…"
+            : `Import selected files${pending.length ? ` (${pending.length})` : ""}`;
+          materialsInput.disabled = !materialsReady || materialsImporting || materialsSelecting;
+          materialsDrop.setAttribute(
+            "aria-disabled",
+            String(!materialsReady || materialsImporting || materialsSelecting),
+          );
+        }
+
+        function renderMaterials() {
+          materialsList.replaceChildren();
+          for (const item of materialsItems) {
+            const row = document.createElement("li");
+            row.className = "materials-item";
+            const main = document.createElement("div");
+            main.className = "materials-item-main";
+            const name = document.createElement("div");
+            name.className = "materials-item-name";
+            name.textContent = item.file.name;
+            const detail = document.createElement("div");
+            detail.className = "materials-item-status";
+            detail.textContent = item.validationError || item.error
+              ? item.validationError || item.error
+              : item.imported
+                ? `Imported · ${formatFileSize(item.file.size)}`
+                : item.status || `${item.file.name.toLowerCase().split(".").pop().toUpperCase()} · ${formatFileSize(item.file.size)}`;
+            if (item.validationError || item.error) detail.dataset.kind = "error";
+            if (item.imported) detail.dataset.kind = "success";
+            detail.setAttribute("role", "status");
+            main.append(name, detail);
+            row.append(main);
+            if (!item.imported && !materialsImporting) {
+              const remove = document.createElement("button");
+              remove.className = "materials-remove";
+              remove.type = "button";
+              remove.textContent = "Remove";
+              remove.setAttribute("aria-label", `Remove ${item.file.name}`);
+              remove.addEventListener("click", () => {
+                const index = materialsItems.indexOf(item);
+                if (index >= 0) materialsItems.splice(index, 1);
+                renderMaterials();
+              });
+              row.append(remove);
+            }
+            materialsList.append(row);
+          }
+          updateMaterialsControls();
+        }
+
+        async function loadMaterialsConfig() {
+          materialsReady = false;
+          updateMaterialsControls();
+          try {
+            const response = await fetch("/api/v1/materials/config", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Upload settings are unavailable.");
+            const config = result;
+            if (
+              !Number.isInteger(config.max_upload_bytes) ||
+              config.max_upload_bytes <= 0 ||
+              !Array.isArray(config.supported_extensions) ||
+              typeof config.import_enabled !== "boolean"
+            ) {
+              throw new Error("Upload settings could not be verified.");
+            }
+            materialsMaxBytes = config.max_upload_bytes;
+            materialsImportEnabled = config.import_enabled;
+            materialsLimits.textContent =
+              `Supported formats: ${config.supported_extensions.map((extension) => extension.toUpperCase()).join(", ")}. Maximum size: ${formatFileSize(materialsMaxBytes)} per file.`;
+            materialsDisabledNote.hidden = materialsImportEnabled;
+            materialsReady = true;
+            await restoreMaterialsBatch();
+            renderMaterials();
+          } catch (error) {
+            materialsLimits.textContent = error instanceof Error
+              ? error.message
+              : "Upload settings could not be loaded.";
+            materialsDisabledNote.hidden = false;
+            materialsDisabledNote.textContent =
+              "Upload settings are unavailable. Files will not be sent or saved.";
+            materialsReady = false;
+            renderMaterials();
+          }
+        }
+
+        async function addMaterials(files) {
+          if (!materialsReady || materialsImporting || materialsSelecting) return;
+          materialsSelecting = true;
+          updateMaterialsControls();
+          let duplicates = 0;
+          try {
+            for (const file of files) {
+              const extension = file.name.toLowerCase().split(".").pop();
+              let error = "";
+              if (!["pdf", "docx"].includes(extension)) {
+                error = "Unsupported format. Choose a PDF or DOCX file.";
+              } else if (file.size === 0) {
+                error = "This file is empty.";
+              } else if (file.size > materialsMaxBytes) {
+                error = `This file exceeds the ${formatFileSize(materialsMaxBytes)} per-file limit.`;
+              }
+              let fingerprint = "";
+              if (!error) {
+                try {
+                  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+                  fingerprint = Array.from(new Uint8Array(digest), (byte) =>
+                    byte.toString(16).padStart(2, "0")
+                  ).join("");
+                } catch {
+                  error = "This file could not be checked locally. Remove it and try again.";
+                }
+              }
+              if (fingerprint && materialsItems.some((item) => item.fingerprint === fingerprint)) {
+                duplicates += 1;
+                continue;
+              }
+              materialsItems.push({
+                id: crypto.randomUUID(),
+                file,
+                fingerprint,
+                validationError: error,
+                error: "",
+                imported: false,
+                status: "",
+              });
+            }
+            if (duplicates) {
+              materialsStatus.textContent = `${duplicates} duplicate file(s) were skipped.`;
+              materialsStatus.dataset.kind = "";
+            }
+          } finally {
+            materialsSelecting = false;
+            renderMaterials();
+          }
+        }
+
+        function csrfHeaders() {
+          const csrf = document.cookie
+            .split("; ")
+            .find((cookie) => cookie.startsWith("auth_csrf="))
+            ?.slice("auth_csrf=".length);
+          return csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {};
+        }
+
+        async function reconcileImport(item) {
+          if (!materialsBatchId) return false;
+          const response = await fetch(`/api/v1/materials/imports/${materialsBatchId}`, {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          });
+          if (!response.ok) return false;
+          const result = await response.json();
+          const imported = result.items.find((entry) => entry.item_id === item.id);
+          if (!imported) return false;
+          item.imported = true;
+          item.status = "Imported";
+          item.error = "";
+          return true;
+        }
+
+        async function restoreMaterialsBatch() {
+          const savedBatchId = sessionStorage.getItem("materials-import-batch");
+          if (!savedBatchId) return;
+          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(savedBatchId)) {
+            sessionStorage.removeItem("materials-import-batch");
+            return;
+          }
+          materialsBatchId = savedBatchId;
+          materialsBatchVerified = false;
+          materialsStatusRetry.hidden = true;
+          try {
+            const response = await fetch(`/api/v1/materials/imports/${savedBatchId}`, {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            if (response.status === 404) {
+              sessionStorage.removeItem("materials-import-batch");
+              materialsBatchId = null;
+              materialsBatchVerified = true;
+              return;
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Import status is unavailable.");
+            for (const imported of result.items) {
+              if (materialsItems.some((item) => item.id === imported.item_id)) continue;
+              const filename = `Imported ${imported.document.extension.toUpperCase()} file`;
+              materialsItems.push({
+                id: imported.item_id,
+                file: { name: filename, size: imported.document.size_bytes, lastModified: 0 },
+                fingerprint: "",
+                validationError: "",
+                error: "",
+                imported: true,
+                status: "Imported",
+              });
+            }
+            materialsBatchVerified = true;
+            materialsStatus.textContent = `${result.items.length} previously imported file(s) recovered.`;
+            materialsStatus.dataset.kind = "success";
+          } catch (error) {
+            materialsStatus.textContent = error instanceof Error
+              ? error.message
+              : "Import status is unavailable. Retry the status check before uploading.";
+            materialsStatus.dataset.kind = "error";
+            materialsStatusRetry.hidden = false;
+          }
+        }
+
+        async function importMaterials() {
+          if (!materialsImportEnabled || materialsImporting) return;
+          const pending = materialsItems.filter((item) => !item.validationError && !item.imported);
+          if (pending.length === 0) return;
+          if (!materialsBatchId) {
+            materialsBatchId = crypto.randomUUID();
+            try {
+              sessionStorage.setItem("materials-import-batch", materialsBatchId);
+            } catch {
+              materialsBatchId = null;
+              materialsStatus.textContent = "Secure retry tracking is unavailable. Check your browser settings before importing.";
+              materialsStatus.dataset.kind = "error";
+              return;
+            }
+          }
+          materialsImporting = true;
+          materialsStatus.textContent = `Importing ${pending.length} ${pending.length === 1 ? "file" : "files"}…`;
+          materialsStatus.dataset.kind = "";
+          renderMaterials();
+          let failures = 0;
+          try {
+            for (const item of pending) {
+              item.status = "Uploading…";
+              item.error = "";
+              renderMaterials();
+              try {
+                const body = new FormData();
+                body.append("upload", item.file, item.file.name);
+                const response = await fetch(
+                  `/api/v1/materials/imports/${materialsBatchId}/files/${item.id}`,
+                  {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: csrfHeaders(),
+                    body,
+                  },
+                );
+                const result = await response.json();
+                if (response.status === 401) {
+                  showSignIn("Your session has expired. Please sign in again.");
+                  return;
+                }
+                if (!response.ok) throw new Error(result.detail || "This file could not be imported.");
+                item.imported = true;
+                item.status = "Imported";
+                item.error = "";
+              } catch (error) {
+                try {
+                  if (await reconcileImport(item)) continue;
+                } catch {
+                  // Keep the original error visible; a later retry will reconcile again.
+                }
+                item.status = error instanceof Error ? error.message : "Import failed. Please retry.";
+                item.error = item.status;
+                failures += 1;
+              }
+              renderMaterials();
+            }
+            const importedCount = materialsItems.filter((item) => item.imported).length;
+            materialsStatus.textContent = failures
+              ? `${importedCount} file(s) imported. ${failures} failed; remove or retry the failed files.`
+              : `${importedCount} file(s) stored in a draft case. The documents have not been legally reviewed.`;
+            materialsStatus.dataset.kind = failures ? "error" : "success";
+          } finally {
+            materialsImporting = false;
+            renderMaterials();
+          }
         }
 
         async function loadDashboardStatus({ isStartup = false } = {}) {
@@ -876,6 +1265,22 @@
 
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
+        });
+        materialsInput.addEventListener("change", () => {
+          void addMaterials(Array.from(materialsInput.files || []));
+          materialsInput.value = "";
+        });
+        materialsDrop.addEventListener("dragover", (event) => {
+          event.preventDefault();
+        });
+        materialsDrop.addEventListener("drop", (event) => {
+          event.preventDefault();
+          void addMaterials(Array.from(event.dataTransfer?.files || []));
+        });
+        materialsImportButton.addEventListener("click", importMaterials);
+        materialsStatusRetry.addEventListener("click", async () => {
+          await restoreMaterialsBatch();
+          renderMaterials();
         });
 
         signupTab.addEventListener("click", () => selectForm("signup"));

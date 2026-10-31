@@ -8,6 +8,8 @@ from app.models import (
     AuthToken,
     CaseMembership,
     ExternalIdentity,
+    MaterialImportBatch,
+    MaterialImportItem,
     PasskeyCredential,
     RecoveryCode,
     RefreshToken,
@@ -31,6 +33,8 @@ class AuthenticationModelTests(unittest.TestCase):
             "auth_rate_limits",
             "auth_audit_events",
             "case_memberships",
+            "material_import_batches",
+            "material_import_items",
         }
         actual = {
             model.__tablename__
@@ -47,6 +51,8 @@ class AuthenticationModelTests(unittest.TestCase):
                 AuthAuditEvent,
                 AuthRateLimit,
                 CaseMembership,
+                MaterialImportBatch,
+                MaterialImportItem,
             )
         }
 
