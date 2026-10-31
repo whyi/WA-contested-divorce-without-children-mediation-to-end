@@ -354,3 +354,10 @@ Running requested command.
 - Added authenticated document deletion. The existing case-membership middleware rejects missing memberships and viewer deletion; database cascade constraints remove extraction and import-item metadata. Storage and database failures return retryable service errors.
 - Added explicit storage/retention guidance, Compose and environment defaults, and tests for KMS configuration, reads/deletes, authorization, retries, and cleanup logging without object keys.
 - Focused config, storage, main-route, and material-import tests passed. The captured full harness passed all 83 tests, Python compilation, and the requested compile check. `git diff --check` also passed on the host; the first captured attempt to run that Git command inside the Python container exited 127 because Git is not installed there, so validation was rerun with the available compile command.
+
+### Pull request follow-up
+
+- Implementation commit: `01a4164` (`Implement secure case-material storage`); specification commit: `1d6e96c`.
+- Pushed `feature/encrypted-case-material-storage` and created [PR #34](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/34), ending with `Resolves #30`.
+- Attempted approval with `gh pr review 34 --approve`; GitHub rejected it because the authenticated author cannot approve their own pull request.
+- PR #34 is open with `mergeStateStatus: CLEAN`, an empty `reviewDecision`, and no review requests. Approval is not currently required, so work continued to issue #31 without claiming the PR was merged.
