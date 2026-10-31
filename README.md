@@ -41,16 +41,20 @@ The app serves an English landing page at `http://localhost:8000/`. It presents
 the two planned preparation modes and social sign-in choices. After sign-in,
 the account dashboard shows the authenticated user's authorized case
 memberships. An account with no authorized cases sees two starting actions:
-upload existing case materials or use the step-by-step wizard. These routes
-currently lead to preview-only screens; they do not create a case, accept
-uploads, or save case information. The local Docker Compose preview enables a
-demo-only account (`demo` / `demo`) to exercise sign-in and the empty dashboard.
-Demo mode is restricted to localhost and never enables case-data APIs.
-Outside that local preview, authentication and case-data APIs remain disabled
-by default; case/document APIs require explicit authentication and
-case-membership configuration. Every case is protected by an explicit
-case-membership grant, and signup or social login never grants case access.
-Do not submit real case information.
+upload existing case materials or use the step-by-step wizard. The materials
+page supports local multi-file selection, drag-and-drop, file review/removal,
+and explicit import confirmation. Device uploads and their idempotent import
+API remain disabled in the local preview because `CASE_DATA_ENABLED` is false.
+Google Drive and Dropbox pickers are not configured and remain unavailable;
+provider registration, minimum scopes, token lifecycle, and deployment settings
+must be established before enabling them. The wizard remains a preview-only
+screen. The local Docker Compose preview enables a demo-only account (`demo` /
+`demo`) to exercise sign-in and the empty dashboard. Demo mode is restricted to
+localhost and never enables case-data APIs. Outside that local preview,
+authentication and case-data APIs remain disabled by default; case/document
+APIs require explicit authentication and case-membership configuration. Every
+case is protected by an explicit case-membership grant, and signup or social
+login never grants case access. Do not submit real case information.
 
 Run locally with Docker Compose:
 
@@ -88,6 +92,6 @@ The codebase includes a Bedrock Converse extraction helper configured with
 proposed field against an exact quote from its named source document. The
 helper is not exposed through an API while authentication is deferred.
 Offer recommendations, cloud-drive imports, and outbound email are not
-enabled. Existing document-processing code remains available in the codebase,
-but its case/document endpoints fail closed until authentication and
-authorization are implemented.
+enabled. Existing document-processing code remains available in the codebase;
+case/document and materials-import endpoints fail closed unless authentication
+and case-membership authorization are explicitly enabled.
