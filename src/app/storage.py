@@ -1,4 +1,5 @@
 from functools import cached_property
+from urllib.parse import urlparse
 
 import boto3
 from botocore.config import Config
@@ -34,8 +35,19 @@ class ObjectStorage:
             "Body": content,
             "ContentType": media_type,
         }
-        if not self.settings.s3_endpoint_url:
-            options["ServerSideEncryption"] = "AES256"
+        local_endpoint = False
+        if self.settings.s3_endpoint_url:
+            endpoint = urlparse(self.settings.s3_endpoint_url)
+            local_endpoint = (
+                endpoint.scheme == "http"
+                and endpoint.hostname is not None
+                and endpoint.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
+            )
+        if not local_endpoint:
+            if not (self.settings.s3_kms_key_id or "").strip():
+                raise RuntimeError("S3_KMS_KEY_ID is required for encrypted object storage.")
+            options["ServerSideEncryption"] = "aws:kms"
+            options["SSEKMSKeyId"] = self.settings.s3_kms_key_id
         self.client.put_object(
             **options,
         )

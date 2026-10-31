@@ -55,10 +55,15 @@ class ImportBatchStatus(BaseModel):
 
 def _require_import_enabled() -> None:
     config = get_settings()
-    if not config.auth_enabled or not config.case_data_enabled or config.demo_mode_enabled:
+    if (
+        not config.auth_enabled
+        or not config.case_data_enabled
+        or not config.case_materials_enabled
+        or config.demo_mode_enabled
+    ):
         raise HTTPException(
             status_code=503,
-            detail="Case-material imports are unavailable until case-data access is enabled.",
+            detail="Case-material imports are unavailable until secure material storage is enabled.",
         )
 
 
@@ -103,8 +108,11 @@ def _delete_uploaded_object(key: str | None) -> None:
         return
     try:
         storage.delete(key)
-    except BotoCoreError:
-        logger.exception("Could not clean up an object after a failed material import: %s", key)
+    except BotoCoreError as error:
+        logger.error(
+            "Could not clean up an object after a failed material import (%s).",
+            type(error).__name__,
+        )
 
 
 @router.get("/config", response_model=MaterialsConfig)
@@ -114,7 +122,10 @@ def materials_config(_: User = Depends(require_current_user)) -> MaterialsConfig
         max_upload_bytes=config.max_upload_bytes,
         supported_extensions=["pdf", "docx"],
         import_enabled=(
-            config.auth_enabled and config.case_data_enabled and not config.demo_mode_enabled
+            config.auth_enabled
+            and config.case_data_enabled
+            and config.case_materials_enabled
+            and not config.demo_mode_enabled
         ),
         providers=ProviderAvailability(google_drive=False, dropbox=False),
     )
@@ -214,10 +225,10 @@ async def import_material_file(
         upload_attempted = True
         storage.put(object_key, content, media_type)
         db.commit()
-    except BotoCoreError as error:
+    except (BotoCoreError, RuntimeError) as error:
         db.rollback()
         _delete_uploaded_object(object_key if upload_attempted else None)
-        logger.exception("Material object storage failed.")
+        logger.error("Material object storage failed (%s).", type(error).__name__)
         raise HTTPException(
             status_code=503,
             detail="This file could not be stored. Please retry it.",
@@ -248,7 +259,7 @@ async def import_material_file(
                     status_code=409,
                     detail="Another file in this import is being saved. Please retry.",
                 ) from error
-        logger.exception("Material import database transaction failed.")
+        logger.error("Material import database transaction failed (%s).", type(error).__name__)
         raise HTTPException(
             status_code=503,
             detail="This file could not be recorded. Please retry it.",
