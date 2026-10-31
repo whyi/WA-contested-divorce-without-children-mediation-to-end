@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     s3_secret_access_key: str | None = None
     bedrock_model_id: str | None = None
     bedrock_region: str | None = None
+    ai_analysis_enabled: bool = False
+    ai_analysis_notice_version: str | None = None
+    ai_analysis_data_handling_notice: str | None = None
     auth_enabled: bool = False
     case_data_enabled: bool = False
     case_materials_enabled: bool = False

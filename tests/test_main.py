@@ -96,6 +96,10 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dropbox-picker"', page)
         self.assertIn('id="materials-import"', page)
         self.assertIn('"/api/v1/materials/config"', page)
+        self.assertIn('id="analysis-controls"', page)
+        self.assertIn('id="analysis-consent"', page)
+        self.assertIn('id="analysis-provider"', page)
+        self.assertIn('id="analysis-status"', page)
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 
@@ -117,9 +121,24 @@ class MainWorkflowTests(unittest.TestCase):
                     f"/cases/{case_id}/documents/{uuid4()}/extraction-status",
                 )
             ),
+            asyncio.run(request_app(f"/cases/{case_id}/analysis/options")),
+            asyncio.run(
+                request_app(
+                    f"/cases/{case_id}/analysis-requests",
+                    "POST",
+                    b'{"idempotency_key":"'
+                    + str(uuid4()).encode()
+                    + b'","document_ids":["'
+                    + str(uuid4()).encode()
+                    + b'"],"notice_version":"notice-1","consent":true}',
+                )
+            ),
         )
 
-        self.assertEqual([status for status, _ in requests], [503, 503, 503, 503, 503])
+        self.assertEqual(
+            [status for status, _ in requests],
+            [503, 503, 503, 503, 503, 503, 503],
+        )
         for _, body in requests:
             self.assertIn(b"Authentication is not configured", body)
 

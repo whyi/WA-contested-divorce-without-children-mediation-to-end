@@ -17,6 +17,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
+from app.analysis import router as analysis_router
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.config import get_settings
@@ -71,6 +72,7 @@ app = FastAPI(
 )
 app.include_router(auth_router)
 app.include_router(materials_router)
+app.include_router(analysis_router)
 
 DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
 LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"

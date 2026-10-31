@@ -62,7 +62,17 @@ for the later consent-authorized analysis flow; no job is enqueued until that
 flow records the user's affirmative consent. PDF page text and source
 provenance are retained for downstream review. OCR is not configured, so pages
 without selectable text are marked as needing attention rather than reported
-as analyzed. The worker does not call an AI provider.
+as analyzed. The extraction worker does not call an AI provider.
+
+AI analysis is a separate, asynchronous workflow. It remains disabled unless
+`AI_ANALYSIS_ENABLED`, `BEDROCK_MODEL_ID`, `BEDROCK_REGION`,
+`AI_ANALYSIS_NOTICE_VERSION`, and `AI_ANALYSIS_DATA_HANDLING_NOTICE` are
+configured. Before a request can be queued, the user sees the provider/model,
+purpose, selected document data sent, and deployment-supplied handling notice
+and must explicitly consent. Analysis reads only completed extracted text;
+verified proposals and exact source quotations remain separate from case
+data. The `analysis-worker` service does not call Bedrock while idle or when
+analysis is disabled. Local Compose keeps the feature disabled in demo mode.
 
 Run locally with Docker Compose:
 
@@ -109,10 +119,12 @@ For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,
 the configured S3 endpoint, and LibreOffice are available.
 
-The codebase includes a Bedrock Converse extraction helper configured with
-`BEDROCK_MODEL_ID` (and optionally `BEDROCK_REGION`). It validates each
-proposed field against an exact quote from its named source document. The
-helper is not exposed through an API while authentication is deferred.
+The codebase uses the Bedrock Converse API for consent-authorized analysis.
+Every proposal must match an exact quotation from its source and, for PDFs,
+the cited page. Documents are treated as untrusted data; model output is
+persisted as a suggestion and is never applied to the case profile. Provider
+credentials remain server-side, and document text, prompts, and quotations
+must not be written to logs.
 Offer recommendations, cloud-drive imports, and outbound email are not
 enabled. Existing document-processing code remains available in the codebase;
 case/document and materials-import endpoints fail closed unless authentication

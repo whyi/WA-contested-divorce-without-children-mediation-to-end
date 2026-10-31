@@ -45,6 +45,8 @@ class ProjectConfigurationTests(unittest.TestCase):
         self.assertIn("image: motoserver/moto:", compose)
         self.assertIn("extraction-worker:", compose)
         self.assertIn('"app.extraction_worker"', compose)
+        self.assertIn("analysis-worker:", compose)
+        self.assertIn('"app.analysis_worker"', compose)
 
     def test_compose_demo_login_is_explicit_and_case_data_remains_disabled(self) -> None:
         compose = (ROOT / "docker-compose.yml").read_text()
@@ -53,6 +55,7 @@ class ProjectConfigurationTests(unittest.TestCase):
         self.assertIn('AUTH_ENABLED: "true"', compose)
         self.assertNotIn('CASE_DATA_ENABLED: "true"', compose)
         self.assertIn('CASE_MATERIALS_ENABLED: "false"', compose)
+        self.assertIn('AI_ANALYSIS_ENABLED: "false"', compose)
         self.assertIn("local-demo-only-signing-secret-not-for-production", compose)
 
     def test_package_includes_the_landing_page_asset(self) -> None:
