@@ -442,6 +442,20 @@
       .materials-status[data-kind="error"] { color: #8d3026; }
       .materials-status[data-kind="success"] { color: var(--green-dark); }
       .materials-status-retry { margin-top: 6px; }
+      .analysis-controls { margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 9px; background: #fbfcfb; }
+      .analysis-notice { display: grid; gap: 8px; margin: 14px 0; }
+      .analysis-notice div { display: grid; gap: 3px; }
+      .analysis-notice dt { color: var(--green-dark); font-size: 12px; font-weight: 750; }
+      .analysis-notice dd { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+      .analysis-documents { display: grid; gap: 8px; padding: 0; list-style: none; }
+      .analysis-documents label { display: flex; gap: 9px; align-items: flex-start; }
+      .analysis-status { min-height: 24px; color: var(--muted); font-size: 13px; }
+      .analysis-status[data-kind="error"] { color: #8d3026; }
+      .analysis-status[data-kind="success"] { color: var(--green-dark); }
+      .analysis-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      .analysis-consent { display: flex; gap: 9px; align-items: flex-start; margin: 14px 0; }
+      .analysis-consent input { margin-top: 4px; }
+      .analysis-unavailable { color: var(--muted); }
       .authenticated-view .nav { display: none; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
 
@@ -724,6 +738,28 @@
                 </div>
                 <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
                 <p class="preparation-note" id="materials-disabled-note">Imports are disabled in this preview. Files stay in your browser and are not uploaded or saved. Do not use real case information.</p>
+                <section class="analysis-controls" id="analysis-controls" aria-labelledby="analysis-title" hidden>
+                  <h3 id="analysis-title">Your files are stored, not analyzed</h3>
+                  <p id="analysis-explanation">Choose which eligible documents to analyze. No analysis starts until you review the notice and explicitly consent.</p>
+                  <ul class="analysis-documents" id="analysis-documents" aria-label="Documents available for analysis"></ul>
+                  <dl class="analysis-notice" id="analysis-notice" hidden>
+                    <div><dt>Provider and model</dt><dd id="analysis-provider"></dd></div>
+                    <div><dt>Notice version</dt><dd id="analysis-version"></dd></div>
+                    <div><dt>Purpose</dt><dd id="analysis-purpose"></dd></div>
+                    <div><dt>Data sent</dt><dd id="analysis-data-sent"></dd></div>
+                    <div><dt>Data handling and retention</dt><dd id="analysis-data-handling"></dd></div>
+                  </dl>
+                  <label class="analysis-consent" id="analysis-consent-label" for="analysis-consent">
+                    <input id="analysis-consent" type="checkbox">
+                    <span>I have reviewed this notice and consent to sending the selected document text to the configured provider for analysis.</span>
+                  </label>
+                  <div class="analysis-actions">
+                    <button class="materials-import" id="analysis-start" type="button" disabled>Analyze selected files</button>
+                    <button class="dashboard-retry" id="analysis-revoke" type="button" hidden>Cancel remaining analysis</button>
+                  </div>
+                  <ul class="analysis-documents" id="analysis-status-list" aria-label="Analysis progress"></ul>
+                  <p class="analysis-status" id="analysis-status" role="status" aria-live="polite"></p>
+                </section>
               </div>
               <a class="back-to-account" href="/#account">Back to your account</a>
             </section>
@@ -816,6 +852,21 @@
         const materialsStatus = document.getElementById("materials-status");
         const materialsStatusRetry = document.getElementById("materials-status-retry");
         const materialsDrop = document.querySelector(".materials-drop");
+        const analysisControls = document.getElementById("analysis-controls");
+        const analysisExplanation = document.getElementById("analysis-explanation");
+        const analysisDocumentList = document.getElementById("analysis-documents");
+        const analysisNotice = document.getElementById("analysis-notice");
+        const analysisProvider = document.getElementById("analysis-provider");
+        const analysisVersion = document.getElementById("analysis-version");
+        const analysisPurpose = document.getElementById("analysis-purpose");
+        const analysisDataSent = document.getElementById("analysis-data-sent");
+        const analysisDataHandling = document.getElementById("analysis-data-handling");
+        const analysisConsent = document.getElementById("analysis-consent");
+        const analysisConsentLabel = document.getElementById("analysis-consent-label");
+        const analysisStartButton = document.getElementById("analysis-start");
+        const analysisRevokeButton = document.getElementById("analysis-revoke");
+        const analysisStatusList = document.getElementById("analysis-status-list");
+        const analysisStatus = document.getElementById("analysis-status");
         const materialsItems = [];
         let materialsMaxBytes = 0;
         let materialsImportEnabled = false;
@@ -824,6 +875,12 @@
         let materialsBatchVerified = true;
         let materialsImporting = false;
         let materialsSelecting = false;
+        let analysisCaseId = null;
+        let analysisDisclosureData = null;
+        let analysisDocumentsData = [];
+        let analysisRequestData = null;
+        let analysisRequestBusy = false;
+        let analysisPollTimer = null;
         const preparationMode = {
           "/onboarding/upload": "upload",
           "/onboarding/wizard": "wizard",
@@ -1064,6 +1121,355 @@
           return csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {};
         }
 
+        function setAnalysisStatus(message, kind = "") {
+          analysisStatus.textContent = message;
+          analysisStatus.dataset.kind = kind;
+        }
+
+        function selectedAnalysisDocumentIds() {
+          return Array.from(
+            analysisDocumentList.querySelectorAll('input[name="analysis-document"]:checked'),
+            (input) => input.value,
+          );
+        }
+
+        function updateAnalysisActions() {
+          const selected = selectedAnalysisDocumentIds();
+          const requestActive = ["queued", "processing"].includes(
+            analysisRequestData?.status,
+          );
+          analysisStartButton.disabled =
+            !analysisDisclosureData?.available ||
+            !analysisConsent.checked ||
+            selected.length === 0 ||
+            analysisRequestBusy ||
+            requestActive;
+          analysisStartButton.textContent = analysisRequestData?.status === "starting"
+            ? "Retry analysis request"
+            : "Analyze selected files";
+        }
+
+        function renderAnalysisDocuments() {
+          analysisDocumentList.replaceChildren();
+          for (const analysisDocument of analysisDocumentsData) {
+            const row = document.createElement("li");
+            const label = document.createElement("label");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.name = "analysis-document";
+            checkbox.value = analysisDocument.document_id;
+            checkbox.disabled = !analysisDocument.eligible ||
+              analysisRequestBusy ||
+              ["queued", "processing"].includes(analysisRequestData?.status);
+            checkbox.checked = Boolean(
+              analysisRequestData?.document_ids?.includes(analysisDocument.document_id),
+            );
+            const imported = materialsItems.find(
+              (item) => item.documentId === analysisDocument.document_id,
+            );
+            const name = imported?.file.name ||
+              `Imported ${analysisDocument.extension.toUpperCase()} file ${analysisDocument.document_id.slice(0, 8)}`;
+            const details = analysisDocument.eligible
+              ? `Ready for analysis · ${analysisDocument.page_count ?? "unknown"} source pages`
+              : `Not ready · ${analysisDocument.extraction_status.replaceAll("_", " ")}`;
+            const text = document.createElement("span");
+            text.textContent = `${name} — ${details}`;
+            label.append(checkbox, text);
+            row.append(label);
+            analysisDocumentList.append(row);
+          }
+          if (analysisDocumentsData.length === 0) {
+            const row = document.createElement("li");
+            row.textContent = "No stored documents are available for this case yet.";
+            analysisDocumentList.append(row);
+          }
+          updateAnalysisActions();
+        }
+
+        function persistAnalysisRequest() {
+          try {
+            sessionStorage.setItem("case-analysis-request", JSON.stringify(analysisRequestData));
+            return true;
+          } catch {
+            return false;
+          }
+        }
+
+        function renderAnalysisStatus() {
+          analysisStatusList.replaceChildren();
+          const jobs = analysisRequestData?.jobs || [];
+          for (const job of jobs) {
+            const row = document.createElement("li");
+            const details = document.createElement("span");
+            const source = analysisDocumentsData.find(
+              (document) => document.document_id === job.document_id,
+            );
+            const file = materialsItems.find((item) => item.documentId === job.document_id);
+            details.textContent =
+              `${file?.file.name || `Document ${job.document_id.slice(0, 8)}`} — ${job.status.replaceAll("_", " ")}` +
+              (job.error_code ? ` (${job.error_code.replaceAll("_", " ")})` : "");
+            row.append(details);
+            if (
+              job.status === "failed" &&
+              analysisRequestData?.consent_id &&
+              analysisRequestData.status !== "cancelled"
+            ) {
+              const retry = document.createElement("button");
+              retry.className = "dashboard-retry";
+              retry.type = "button";
+              retry.textContent = "Retry this file";
+              retry.addEventListener("click", () => retryAnalysisDocument(job.document_id));
+              row.append(" ", retry);
+            }
+            if (!source && !file) row.dataset.documentId = job.document_id;
+            analysisStatusList.append(row);
+          }
+          const active = ["queued", "processing"].includes(analysisRequestData?.status);
+          analysisRevokeButton.hidden =
+            !active ||
+            !analysisRequestData?.consent_id ||
+            analysisRequestData.consent_revoked === true;
+          updateAnalysisActions();
+        }
+
+        async function refreshAnalysisStatus() {
+          if (!analysisCaseId || !analysisRequestData?.request_id) return;
+          window.clearTimeout(analysisPollTimer);
+          try {
+            const response = await fetch(
+              `/cases/${analysisCaseId}/analysis-requests/${analysisRequestData.request_id}`,
+              {
+                credentials: "same-origin",
+                headers: { Accept: "application/json" },
+              },
+            );
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Analysis status is unavailable.");
+            analysisRequestData.status = result.status;
+            analysisRequestData.jobs = result.jobs;
+            persistAnalysisRequest();
+            renderAnalysisStatus();
+            if (["queued", "processing"].includes(result.status)) {
+              analysisPollTimer = window.setTimeout(refreshAnalysisStatus, 2500);
+            } else {
+              analysisConsent.checked = false;
+              renderAnalysisDocuments();
+              setAnalysisStatus(
+                result.status === "completed"
+                  ? "Analysis is complete. The results are suggestions and have not changed your case."
+                  : `Analysis finished with ${result.status.replaceAll("_", " ")} results. Review each file status.`,
+                result.status === "completed" ? "success" : "",
+              );
+            }
+          } catch (error) {
+            setAnalysisStatus(
+              error instanceof Error ? error.message : "Analysis status is unavailable.",
+              "error",
+            );
+          }
+        }
+
+        async function loadAnalysisOptions(caseId) {
+          analysisCaseId = caseId;
+          analysisControls.hidden = false;
+          analysisExplanation.textContent = "Checking analysis availability. Stored files are not sent or analyzed while you wait.";
+          setAnalysisStatus("Checking analysis availability…");
+          try {
+            const response = await fetch(`/cases/${caseId}/analysis/options`, {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Analysis options are unavailable.");
+            analysisDisclosureData = result.disclosure;
+            analysisDocumentsData = result.documents;
+            const disclosure = result.disclosure;
+            if (!disclosure.available) {
+              analysisExplanation.textContent =
+                "Documents are stored but have not been analyzed. AI analysis is not enabled for this deployment.";
+              analysisNotice.hidden = true;
+              analysisConsentLabel.hidden = true;
+              analysisStartButton.hidden = true;
+              analysisRevokeButton.hidden = true;
+              setAnalysisStatus("No document text has been sent to an AI provider.");
+            } else {
+              analysisProvider.textContent = `${disclosure.provider} · ${disclosure.model_id} · ${disclosure.region}`;
+              analysisVersion.textContent = disclosure.notice_version;
+              analysisPurpose.textContent = disclosure.purpose;
+              analysisDataSent.textContent = disclosure.data_sent;
+              analysisDataHandling.textContent = disclosure.data_handling_notice;
+              analysisNotice.hidden = false;
+              analysisConsentLabel.hidden = false;
+              analysisStartButton.hidden = false;
+              analysisExplanation.textContent =
+                "Documents are stored but have not been analyzed. Select only the files you want analyzed, read the full notice, and explicitly consent.";
+              setAnalysisStatus("No document text has been sent. Select eligible files to continue.");
+            }
+            renderAnalysisDocuments();
+            let saved = null;
+            try {
+              saved = JSON.parse(sessionStorage.getItem("case-analysis-request") || "null");
+            } catch {
+              sessionStorage.removeItem("case-analysis-request");
+            }
+            if (saved?.case_id === caseId) {
+              analysisRequestData = saved;
+              renderAnalysisDocuments();
+              if (saved.request_id) {
+                await refreshAnalysisStatus();
+              } else {
+                analysisConsent.checked = false;
+                setAnalysisStatus("A request may not have reached the server. Review the notice and consent again to safely retry.");
+              }
+            }
+          } catch (error) {
+            analysisExplanation.textContent =
+              "Documents remain stored and have not been analyzed.";
+            analysisConsentLabel.hidden = true;
+            analysisStartButton.hidden = true;
+            setAnalysisStatus(
+              error instanceof Error ? error.message : "Analysis options are unavailable.",
+              "error",
+            );
+          }
+        }
+
+        async function startAnalysis() {
+          if (
+            !analysisDisclosureData?.available ||
+            !analysisConsent.checked ||
+            analysisRequestBusy
+          ) return;
+          const selected = selectedAnalysisDocumentIds();
+          if (selected.length === 0) return;
+          const isRetryingStart =
+            analysisRequestData?.status === "starting" &&
+            JSON.stringify([...selected].sort()) ===
+              JSON.stringify([...(analysisRequestData.document_ids || [])].sort());
+          if (!isRetryingStart) {
+            analysisRequestData = {
+              case_id: analysisCaseId,
+              idempotency_key: crypto.randomUUID(),
+              document_ids: selected,
+              notice_version: analysisDisclosureData.notice_version,
+              status: "starting",
+            };
+          }
+          if (!persistAnalysisRequest()) {
+            setAnalysisStatus("Secure request tracking is unavailable. Check your browser settings before consenting.", "error");
+            return;
+          }
+          analysisRequestBusy = true;
+          setAnalysisStatus("Submitting your consented request…");
+          renderAnalysisDocuments();
+          updateAnalysisActions();
+          try {
+            const response = await fetch(`/cases/${analysisCaseId}/analysis-requests`, {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { ...csrfHeaders(), "Content-Type": "application/json" },
+              body: JSON.stringify({
+                idempotency_key: analysisRequestData.idempotency_key,
+                document_ids: analysisRequestData.document_ids,
+                notice_version: analysisRequestData.notice_version,
+                consent: true,
+              }),
+            });
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Analysis could not be started.");
+            analysisRequestData.request_id = result.request_id;
+            analysisRequestData.consent_id = result.consent_id;
+            analysisRequestData.status = result.status;
+            analysisRequestData.jobs = result.jobs;
+            analysisRequestData.consent_revoked = false;
+            persistAnalysisRequest();
+            analysisConsent.checked = false;
+            renderAnalysisDocuments();
+            renderAnalysisStatus();
+            setAnalysisStatus("Analysis is queued. Your documents are not changed by this process.");
+            if (["queued", "processing"].includes(result.status)) {
+              analysisPollTimer = window.setTimeout(refreshAnalysisStatus, 1500);
+            }
+          } catch (error) {
+            analysisRequestData.status = "starting";
+            persistAnalysisRequest();
+            setAnalysisStatus(
+              error instanceof Error ? error.message : "Analysis could not be started. Please retry.",
+              "error",
+            );
+          } finally {
+            analysisRequestBusy = false;
+            renderAnalysisDocuments();
+            updateAnalysisActions();
+          }
+        }
+
+        async function retryAnalysisDocument(documentId) {
+          if (!analysisCaseId || !analysisRequestData?.request_id) return;
+          try {
+            const response = await fetch(
+              `/cases/${analysisCaseId}/analysis-requests/${analysisRequestData.request_id}/documents/${documentId}/retry`,
+              {
+                method: "POST",
+                credentials: "same-origin",
+                headers: csrfHeaders(),
+              },
+            );
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "This file could not be retried.");
+            setAnalysisStatus("Retry queued for this file.");
+            await refreshAnalysisStatus();
+          } catch (error) {
+            setAnalysisStatus(
+              error instanceof Error ? error.message : "This file could not be retried.",
+              "error",
+            );
+          }
+        }
+
+        async function revokeAnalysisConsent() {
+          if (
+            !analysisCaseId ||
+            !analysisRequestData?.consent_id ||
+            !window.confirm("Cancel analysis that has not started? Text already sent to the provider cannot be recalled.")
+          ) return;
+          try {
+            const response = await fetch(
+              `/cases/${analysisCaseId}/analysis-consents/${analysisRequestData.consent_id}/revoke`,
+              {
+                method: "POST",
+                credentials: "same-origin",
+                headers: csrfHeaders(),
+              },
+            );
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Consent could not be revoked.");
+            analysisRequestData.status = result.status;
+            analysisRequestData.consent_revoked = true;
+            persistAnalysisRequest();
+            renderAnalysisStatus();
+            await refreshAnalysisStatus();
+            setAnalysisStatus("Consent revoked. Queued work will not be sent to the provider.");
+          } catch (error) {
+            setAnalysisStatus(
+              error instanceof Error ? error.message : "Consent could not be revoked.",
+              "error",
+            );
+          }
+        }
+
         async function reconcileImport(item) {
           if (!materialsBatchId) return false;
           const response = await fetch(`/api/v1/materials/imports/${materialsBatchId}`, {
@@ -1074,6 +1480,9 @@
           const result = await response.json();
           const imported = result.items.find((entry) => entry.item_id === item.id);
           if (!imported) return false;
+          item.documentId = imported.document.id;
+          item.caseId = imported.case_id;
+          analysisCaseId = imported.case_id;
           item.imported = true;
           item.status = "Imported";
           item.error = "";
@@ -1108,11 +1517,19 @@
             const result = await response.json();
             if (!response.ok) throw new Error(result.detail || "Import status is unavailable.");
             for (const imported of result.items) {
-              if (materialsItems.some((item) => item.id === imported.item_id)) continue;
+              analysisCaseId = imported.case_id;
+              const existingItem = materialsItems.find((item) => item.id === imported.item_id);
+              if (existingItem) {
+                existingItem.documentId = imported.document.id;
+                existingItem.caseId = imported.case_id;
+                continue;
+              }
               const filename = `Imported ${imported.document.extension.toUpperCase()} file`;
               materialsItems.push({
                 id: imported.item_id,
                 file: { name: filename, size: imported.document.size_bytes, lastModified: 0 },
+                documentId: imported.document.id,
+                caseId: imported.case_id,
                 fingerprint: "",
                 validationError: "",
                 error: "",
@@ -1123,6 +1540,7 @@
             materialsBatchVerified = true;
             materialsStatus.textContent = `${result.items.length} previously imported file(s) recovered.`;
             materialsStatus.dataset.kind = "success";
+            if (analysisCaseId) await loadAnalysisOptions(analysisCaseId);
           } catch (error) {
             materialsStatus.textContent = error instanceof Error
               ? error.message
@@ -1175,6 +1593,9 @@
                   return;
                 }
                 if (!response.ok) throw new Error(result.detail || "This file could not be imported.");
+                item.documentId = result.document.id;
+                item.caseId = result.case_id;
+                analysisCaseId = result.case_id;
                 item.imported = true;
                 item.status = "Imported";
                 item.error = "";
@@ -1193,8 +1614,9 @@
             const importedCount = materialsItems.filter((item) => item.imported).length;
             materialsStatus.textContent = failures
               ? `${importedCount} file(s) imported. ${failures} failed; remove or retry the failed files.`
-              : `${importedCount} file(s) stored in a draft case. The documents have not been legally reviewed.`;
+              : `${importedCount} file(s) stored in a draft case. They have not been analyzed or legally reviewed.`;
             materialsStatus.dataset.kind = failures ? "error" : "success";
+            if (importedCount && analysisCaseId) await loadAnalysisOptions(analysisCaseId);
           } finally {
             materialsImporting = false;
             renderMaterials();
@@ -1278,6 +1700,10 @@
           void addMaterials(Array.from(event.dataTransfer?.files || []));
         });
         materialsImportButton.addEventListener("click", importMaterials);
+        analysisDocumentList.addEventListener("change", updateAnalysisActions);
+        analysisConsent.addEventListener("change", updateAnalysisActions);
+        analysisStartButton.addEventListener("click", startAnalysis);
+        analysisRevokeButton.addEventListener("click", revokeAnalysisConsent);
         materialsStatusRetry.addEventListener("click", async () => {
           await restoreMaterialsBatch();
           renderMaterials();
