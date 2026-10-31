@@ -12,7 +12,7 @@ from app.config import Settings
 from app.database import get_db
 from app.main import app
 from app.materials import _delete_uploaded_object
-from app.models import Case, CaseMembership, MaterialImportBatch
+from app.models import Case, CaseMembership, DocumentExtractionJob, MaterialImportBatch
 
 
 class MaterialsImportTests(unittest.TestCase):
@@ -130,6 +130,7 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertIsInstance(added[2], MaterialImportBatch)
         self.assertEqual(added[2].user_id, user_id)
         self.assertEqual(added[2].id, batch_id)
+        self.assertFalse(any(isinstance(record, DocumentExtractionJob) for record in added))
 
     def test_retry_returns_existing_document_without_uploading_again(self) -> None:
         user_id = uuid4()

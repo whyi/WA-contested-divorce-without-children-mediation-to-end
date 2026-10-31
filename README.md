@@ -56,6 +56,14 @@ APIs require explicit authentication and case-membership configuration. Every
 case is protected by an explicit case-membership grant, and signup or social
 login never grants case access. Do not submit real case information.
 
+Stored materials are not extracted on upload or status polling. A separate
+PostgreSQL-backed extraction worker and per-document status API are available
+for the later consent-authorized analysis flow; no job is enqueued until that
+flow records the user's affirmative consent. PDF page text and source
+provenance are retained for downstream review. OCR is not configured, so pages
+without selectable text are marked as needing attention rather than reported
+as analyzed. The worker does not call an AI provider.
+
 Run locally with Docker Compose:
 
 ```sh
