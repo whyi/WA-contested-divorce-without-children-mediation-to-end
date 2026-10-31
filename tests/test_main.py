@@ -1,14 +1,25 @@
 import asyncio
 import unittest
+from types import SimpleNamespace
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from unittest.mock import MagicMock, Mock, patch
 
-from app.main import app
+from botocore.exceptions import BotoCoreError
+from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.config import Settings
+from app.database import get_db
+from app.main import app, delete_document
+from app.models import AuthSession, CaseMembership, Document, User
 
 
 async def request_app(
     path: str,
     method: str = "GET",
     body: bytes = b"",
+    headers: list[tuple[bytes, bytes]] | None = None,
 ) -> tuple[int, bytes]:
     sent_request = False
     messages: list[dict] = []
@@ -34,7 +45,7 @@ async def request_app(
         "raw_path": path.encode(),
         "query_string": b"",
         "root_path": "",
-        "headers": [],
+        "headers": headers or [],
         "server": ("testserver", 80),
         "client": ("testclient", 12345),
     }
@@ -51,6 +62,9 @@ async def request_app(
 
 
 class MainWorkflowTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        app.dependency_overrides.clear()
+
     def test_root_displays_mode_choices_and_authentication_gate(self) -> None:
         status, body = asyncio.run(request_app("/"))
 
@@ -97,11 +111,146 @@ class MainWorkflowTests(unittest.TestCase):
                     f"/documents/{uuid4()}/download",
                 )
             ),
+            asyncio.run(request_app(f"/documents/{uuid4()}", "DELETE")),
         )
 
-        self.assertEqual([status for status, _ in requests], [503, 503, 503])
+        self.assertEqual([status for status, _ in requests], [503, 503, 503, 503])
         for _, body in requests:
             self.assertIn(b"Authentication is not configured", body)
+
+    def test_document_deletion_removes_the_object_and_metadata(self) -> None:
+        document_id = uuid4()
+        document = SimpleNamespace(object_key="case/document.pdf")
+        db = Mock()
+        db.get.return_value = document
+
+        with patch("app.main.storage") as object_storage:
+            response = delete_document(document_id, db)
+
+        self.assertEqual(response.status_code, 204)
+        object_storage.delete.assert_called_once_with("case/document.pdf")
+        db.delete.assert_called_once_with(document)
+        db.commit.assert_called_once()
+
+    def test_document_deletion_reports_incomplete_metadata_cleanup(self) -> None:
+        document = SimpleNamespace(object_key="case/document.pdf")
+        db = Mock()
+        db.get.return_value = document
+        db.commit.side_effect = SQLAlchemyError("database unavailable")
+
+        with (
+            patch("app.main.storage") as object_storage,
+            self.assertRaises(HTTPException) as raised,
+        ):
+            delete_document(uuid4(), db)
+
+        self.assertEqual(raised.exception.status_code, 503)
+        object_storage.delete.assert_called_once_with("case/document.pdf")
+        db.rollback.assert_called_once()
+
+    def test_document_deletion_keeps_metadata_when_object_removal_fails(self) -> None:
+        document = SimpleNamespace(object_key="case/document.pdf")
+        db = Mock()
+        db.get.return_value = document
+
+        with (
+            patch("app.main.storage") as object_storage,
+            self.assertRaises(HTTPException) as raised,
+        ):
+            object_storage.delete.side_effect = BotoCoreError()
+            delete_document(uuid4(), db)
+
+        self.assertEqual(raised.exception.status_code, 503)
+        db.delete.assert_not_called()
+        db.commit.assert_not_called()
+
+    def test_document_deletion_requires_case_membership_and_non_viewer_role(self) -> None:
+        user_id = uuid4()
+        session_id = uuid4()
+        document_id = uuid4()
+        case_id = uuid4()
+        now = datetime.now(UTC)
+        auth_session = SimpleNamespace(
+            user_id=user_id,
+            revoked_at=None,
+            idle_expires_at=now + timedelta(days=1),
+            absolute_expires_at=now + timedelta(days=2),
+        )
+        user = SimpleNamespace(id=user_id, status="active")
+        document = SimpleNamespace(
+            id=document_id,
+            case_id=case_id,
+            object_key="case/document.pdf",
+            media_type="application/pdf",
+            extension="pdf",
+        )
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            case_data_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
+            demo_mode_enabled=False,
+        )
+
+        for method, role, expected_status in (
+            ("DELETE", "owner", 204),
+            ("DELETE", "viewer", 403),
+            ("GET", "viewer", 200),
+            ("DELETE", None, 404),
+            ("GET", None, 404),
+        ):
+            with self.subTest(method=method, role=role):
+                db = Mock()
+                db.get.side_effect = lambda model, key: {
+                    AuthSession: auth_session,
+                    User: user,
+                    Document: document,
+                }.get(model)
+                membership = (
+                    SimpleNamespace(role=role)
+                    if role is not None
+                    else None
+                )
+                db.scalar.return_value = membership
+                app.dependency_overrides[get_db] = lambda: db
+                session_context = MagicMock()
+                session_context.__enter__.return_value = db
+                session_factory = Mock(return_value=session_context)
+                with (
+                    patch("app.main.settings", settings),
+                    patch("app.main.SessionLocal", session_factory),
+                    patch(
+                        "app.main.verify_token",
+                        return_value={"sub": str(user_id), "sid": str(session_id)},
+                    ),
+                    patch("app.main.storage") as object_storage,
+                ):
+                    object_storage.get.return_value = b"private"
+                    path = (
+                        f"/documents/{document_id}/download"
+                        if method == "GET"
+                        else f"/documents/{document_id}"
+                    )
+                    status, _ = asyncio.run(
+                        request_app(
+                            path,
+                            method,
+                            headers=[
+                                (b"cookie", b"auth_access=test; auth_csrf=csrf"),
+                                (b"x-csrf-token", b"csrf"),
+                            ],
+                        )
+                    )
+
+                self.assertEqual(status, expected_status)
+                if method == "DELETE" and role == "owner":
+                    object_storage.delete.assert_called_once_with("case/document.pdf")
+                elif method == "GET" and role == "viewer":
+                    object_storage.get.assert_called_once_with("case/document.pdf")
+                else:
+                    object_storage.delete.assert_not_called()
+                    object_storage.get.assert_not_called()
+                app.dependency_overrides.clear()
 
     def test_onboarding_paths_serve_the_authenticated_preview_page(self) -> None:
         responses = (

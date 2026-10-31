@@ -4,12 +4,14 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from botocore.exceptions import BotoCoreError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth_routes import require_current_user
 from app.config import Settings
 from app.database import get_db
 from app.main import app
+from app.materials import _delete_uploaded_object
 from app.models import Case, CaseMembership, MaterialImportBatch
 
 
@@ -31,6 +33,8 @@ class MaterialsImportTests(unittest.TestCase):
         settings = Settings(
             auth_enabled=True,
             auth_jwt_secret="materials-test-signing-secret-long-enough",
+            case_data_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
             max_upload_bytes=12345,
             demo_mode_enabled=False,
         )
@@ -64,13 +68,15 @@ class MaterialsImportTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 503)
-        self.assertIn("case-data access is enabled", response.json()["detail"])
+        self.assertIn("secure material storage is enabled", response.json()["detail"])
 
     def test_import_validates_file_before_creating_a_case(self) -> None:
         settings = Settings(
             auth_enabled=True,
             auth_jwt_secret="materials-test-signing-secret-long-enough",
             case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
             demo_mode_enabled=False,
         )
         db = Mock()
@@ -91,6 +97,8 @@ class MaterialsImportTests(unittest.TestCase):
             auth_enabled=True,
             auth_jwt_secret="materials-test-signing-secret-long-enough",
             case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
             demo_mode_enabled=False,
         )
         db = Mock()
@@ -144,6 +152,8 @@ class MaterialsImportTests(unittest.TestCase):
             auth_enabled=True,
             auth_jwt_secret="materials-test-signing-secret-long-enough",
             case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
             demo_mode_enabled=False,
         )
         client, _ = self._client(user_id=user_id, db=db)
@@ -166,6 +176,8 @@ class MaterialsImportTests(unittest.TestCase):
             auth_enabled=True,
             auth_jwt_secret="materials-test-signing-secret-long-enough",
             case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
             demo_mode_enabled=False,
         )
         db = Mock()
@@ -185,6 +197,17 @@ class MaterialsImportTests(unittest.TestCase):
         db.rollback.assert_called_once()
         object_storage.put.assert_called_once()
         object_storage.delete.assert_called_once()
+
+    def test_cleanup_failure_logs_no_object_key(self) -> None:
+        object_key = "private-case/private-document.pdf"
+        with (
+            patch("app.materials.storage") as object_storage,
+            self.assertLogs("app.materials", level="ERROR") as captured,
+        ):
+            object_storage.delete.side_effect = BotoCoreError()
+            _delete_uploaded_object(object_key)
+
+        self.assertNotIn(object_key, "\n".join(captured.output))
 
 
 if __name__ == "__main__":
