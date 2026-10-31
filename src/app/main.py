@@ -35,6 +35,8 @@ from app.models import (
     Case,
     CaseMembership,
     Document,
+    DocumentExtraction,
+    DocumentExtractionJob,
     NegotiationEvent,
     User,
 )
@@ -223,6 +225,21 @@ class ExtractionRead(BaseModel):
     review_status: str
 
 
+class DocumentExtractionStatus(BaseModel):
+    document_id: UUID
+    job_id: UUID | None
+    status: Literal[
+        "stored",
+        "queued",
+        "processing",
+        "needs_attention",
+        "failed",
+        "completed",
+    ]
+    error_code: str | None
+    page_count: int | None
+
+
 class RenderResponse(BaseModel):
     docx: DocumentRead
     pdf: DocumentRead
@@ -369,6 +386,62 @@ def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
 @app.get("/cases/{case_id}", response_model=CaseRead)
 def read_case(case_id: UUID, db: DbSession) -> Case:
     return _require_case(db, case_id)
+
+
+@app.get(
+    "/cases/{case_id}/documents/{document_id}/extraction-status",
+    response_model=DocumentExtractionStatus,
+)
+def document_extraction_status(
+    case_id: UUID,
+    document_id: UUID,
+    db: DbSession,
+) -> DocumentExtractionStatus:
+    try:
+        document = get_document_or_none(db, document_id)
+        if document is None or document.case_id != case_id:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        job = db.scalar(
+            select(DocumentExtractionJob)
+            .where(
+                DocumentExtractionJob.document_id == document.id,
+                DocumentExtractionJob.source_sha256 == document.sha256,
+            )
+            .order_by(DocumentExtractionJob.updated_at.desc(), DocumentExtractionJob.id)
+            .limit(1)
+        )
+        extraction = db.scalar(
+            select(DocumentExtraction)
+            .where(DocumentExtraction.document_id == document.id)
+            .order_by(DocumentExtraction.created_at.desc(), DocumentExtraction.id)
+            .limit(1)
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        logger.exception("Document extraction status lookup failed.")
+        raise HTTPException(
+            status_code=503,
+            detail="Document processing status is unavailable. Please try again.",
+        ) from error
+
+    if job is not None:
+        if job.status == "completed" and extraction is None:
+            logger.error("Completed extraction job has no persisted extraction result.")
+            raise HTTPException(
+                status_code=503,
+                detail="Document processing status is unavailable. Please try again.",
+            )
+        status = job.status
+    else:
+        status = "completed" if extraction is not None else "stored"
+    return DocumentExtractionStatus(
+        document_id=document.id,
+        job_id=job.id if job is not None else None,
+        status=status,
+        error_code=job.error_code if job is not None else None,
+        page_count=extraction.page_count if extraction is not None else None,
+    )
 
 
 @app.post(

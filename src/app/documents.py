@@ -26,9 +26,24 @@ PDF_MEDIA_TYPE = "application/pdf"
 
 
 @dataclass(frozen=True)
+class ExtractedPage:
+    page_number: int | None
+    text: str
+
+
+@dataclass(frozen=True)
 class ExtractedDocument:
     text: str
     page_count: int
+    pages: tuple[ExtractedPage, ...] = ()
+    needs_attention: bool = False
+    error_code: str | None = None
+
+
+class DocumentExtractionError(ValueError):
+    def __init__(self, error_code: str, message: str) -> None:
+        super().__init__(message)
+        self.error_code = error_code
 
 
 def render_template(template_bytes: bytes, context: dict) -> bytes:
@@ -127,22 +142,71 @@ def extract_document(
     if document_type == "docx":
         try:
             document = WordDocument(io.BytesIO(content))
-        except (BadZipFile, PackageNotFoundError, XMLSyntaxError) as error:
-            raise ValueError("The uploaded DOCX file is not readable.") from error
-        text_parts = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
-        for table in document.tables:
-            for row in table.rows:
-                text_parts.append(" | ".join(cell.text for cell in row.cells))
-        return ExtractedDocument("\n".join(text_parts), 1)
+            text_parts = [
+                paragraph.text
+                for paragraph in document.paragraphs
+                if paragraph.text.strip()
+            ]
+            for table in document.tables:
+                for row in table.rows:
+                    text_parts.append(" | ".join(cell.text for cell in row.cells))
+        except (
+            AttributeError,
+            BadZipFile,
+            KeyError,
+            PackageNotFoundError,
+            ValueError,
+            XMLSyntaxError,
+        ) as error:
+            raise DocumentExtractionError(
+                "unreadable_file",
+                "The uploaded DOCX file is not readable.",
+            ) from error
+        text = "\n".join(text_parts)
+        return ExtractedDocument(
+            text=text,
+            page_count=1,
+            pages=(ExtractedPage(page_number=None, text=text),),
+            needs_attention=not bool(text.strip()),
+            error_code="no_text_found" if not text.strip() else None,
+        )
 
     if document_type == "pdf":
-        page_count = _pdf_page_count(content, settings.max_pdf_pages)
         try:
             reader = PdfReader(io.BytesIO(content), strict=True)
-            text = "\n".join(page.extract_text() or "" for page in reader.pages)
-        except PdfReadError as error:
-            raise ValueError("The uploaded PDF could not be parsed.") from error
-        return ExtractedDocument(text, page_count)
+            if reader.is_encrypted:
+                return ExtractedDocument(
+                    text="",
+                    page_count=0,
+                    needs_attention=True,
+                    error_code="password_protected",
+                )
+            page_count = _pdf_page_count(content, settings.max_pdf_pages)
+            if len(reader.pages) != page_count:
+                raise DocumentExtractionError(
+                    "unreadable_file",
+                    "The uploaded PDF could not be parsed.",
+                )
+            pages = tuple(
+                ExtractedPage(page_number=index + 1, text=page.extract_text() or "")
+                for index, page in enumerate(reader.pages)
+            )
+        except DocumentExtractionError:
+            raise
+        except (PdfReadError, ValueError, KeyError) as error:
+            raise DocumentExtractionError(
+                "unreadable_file",
+                "The uploaded PDF could not be parsed.",
+            ) from error
+        text = "\n".join(page.text for page in pages)
+        needs_attention = any(not page.text.strip() for page in pages)
+        return ExtractedDocument(
+            text=text,
+            page_count=page_count,
+            pages=pages,
+            needs_attention=needs_attention,
+            error_code="ocr_required" if needs_attention else None,
+        )
 
     raise ValueError(f"Unsupported document type: {document_type}")
 
@@ -152,9 +216,15 @@ def _pdf_page_count(content: bytes, max_pages: int) -> int:
         with fitz.open(stream=content, filetype="pdf") as document:
             page_count = document.page_count
     except fitz.FileDataError as error:
-        raise ValueError("The uploaded file is not a readable PDF.") from error
+        raise DocumentExtractionError(
+            "unreadable_file",
+            "The uploaded file is not a readable PDF.",
+        ) from error
     if page_count == 0:
-        raise ValueError("The PDF contains no pages.")
+        raise DocumentExtractionError("unreadable_file", "The PDF contains no pages.")
     if page_count > max_pages:
-        raise ValueError(f"The PDF exceeds the {max_pages}-page limit.")
+        raise DocumentExtractionError(
+            "page_limit_exceeded",
+            f"The PDF exceeds the {max_pages}-page limit.",
+        )
     return page_count
