@@ -50,6 +50,7 @@ class ProjectConfigurationTests(unittest.TestCase):
         self.assertIn('DEMO_MODE_ENABLED: "true"', compose)
         self.assertIn('AUTH_ENABLED: "true"', compose)
         self.assertNotIn('CASE_DATA_ENABLED: "true"', compose)
+        self.assertIn('CASE_MATERIALS_ENABLED: "false"', compose)
         self.assertIn("local-demo-only-signing-secret-not-for-production", compose)
 
     def test_package_includes_the_landing_page_asset(self) -> None:

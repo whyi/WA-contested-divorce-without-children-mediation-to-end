@@ -79,5 +79,48 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot enable case-data"):
             Settings(**auth_options, case_data_enabled=True)
 
+    def test_remote_http_s3_endpoint_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must use HTTPS"):
+            Settings(s3_endpoint_url="http://objects.example.test")
+
+    def test_s3_endpoint_cannot_embed_credentials(self) -> None:
+        with self.assertRaisesRegex(ValueError, "without embedded credentials"):
+            Settings(s3_endpoint_url="https://user:password@objects.example.test")
+
+    def test_case_materials_require_auth_and_case_data(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires AUTH_ENABLED and CASE_DATA_ENABLED"):
+            Settings(case_materials_enabled=True)
+
+    def test_production_case_materials_require_a_kms_key(self) -> None:
+        with self.assertRaisesRegex(ValueError, "S3_KMS_KEY_ID"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                case_data_enabled=True,
+                case_materials_enabled=True,
+                demo_mode_enabled=False,
+            )
+
+    def test_local_loopback_storage_can_be_explicitly_enabled_without_kms(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            demo_mode_enabled=False,
+            s3_endpoint_url="http://localhost:5000",
+        )
+
+        self.assertTrue(settings.case_materials_enabled)
+
+    def test_production_case_data_requires_kms_even_before_materials_toggle(self) -> None:
+        with self.assertRaisesRegex(ValueError, "before production case-data access"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                case_data_enabled=True,
+                demo_mode_enabled=False,
+            )
+
 if __name__ == "__main__":
     unittest.main()
