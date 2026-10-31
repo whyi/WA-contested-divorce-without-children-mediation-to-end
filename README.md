@@ -74,6 +74,13 @@ verified proposals and exact source quotations remain separate from case
 data. The `analysis-worker` service does not call Bedrock while idle or when
 analysis is disabled. Local Compose keeps the feature disabled in demo mode.
 
+Authorized case members can review each verified proposal against its source,
+record an accept/edit/reject decision, and explicitly adopt only a selected
+subset. Adopted values are stored as append-only case-profile facts with
+source, consent, model, and decision provenance; conflicting values remain
+visible together. Review and adoption do not overwrite the existing case JSON
+profile or trigger another AI request.
+
 Run locally with Docker Compose:
 
 ```sh
