@@ -210,3 +210,9 @@ Running requested command.
 - The first commit-hook attempt identified that the migration test filename did not match the repository's test-pairing rule. After aligning its filename, the hook identified the need for an exact `tests/test_validation.py` pair. That focused test was added; the hook was not bypassed.
 - Final commit hook: pairing check passed; `python -m unittest discover -s tests -v` ran 107 tests and returned `OK`; commit succeeded.
 - Implementation commit: `cd13446` (`Implement asynchronous document extraction`).
+
+### Pull request follow-up
+
+- Created [PR #35](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/35), based on `feature/encrypted-case-material-storage`; the body ends with `Resolves #31`.
+- `gh pr review 35 --approve` was attempted and GitHub rejected self-approval.
+- PR status is `CLEAN`, with no review requests and an empty review decision. The PR remains open and unmerged; no approval is required before continuing.
