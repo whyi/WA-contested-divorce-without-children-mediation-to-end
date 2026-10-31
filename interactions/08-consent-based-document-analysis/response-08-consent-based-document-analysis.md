@@ -628,3 +628,9 @@ Baseline repository validation passed.
 
 - The TDD pairing hook passed. The commit hook ran the full unittest suite: 126 tests, `OK`.
 - Implementation commit: `60e37948c852359899bd34ba53548952e374b44c` (`Implement consent-based document analysis`).
+
+### Pull request follow-up
+
+- Created [PR #36](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/36) against `feature/async-document-extraction`; its body ends with `Resolves #32`.
+- GitHub rejected `gh pr review 36 --approve` because the author cannot approve their own pull request.
+- PR #36 is open and `CLEAN`, with no review requests and an empty review decision. Parent PR #35 has the same review state, so work on dependent issue #33 continued without waiting for approval.
