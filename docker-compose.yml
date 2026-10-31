@@ -59,6 +59,8 @@ services:
       AUTH_PUBLIC_BASE_URL: http://localhost:8000
       AUTH_COOKIE_SECURE: "true"
       DEMO_MODE_ENABLED: "true"
+      CASE_DATA_ENABLED: "false"
+      CASE_MATERIALS_ENABLED: "false"
     depends_on:
       db:
         condition: service_healthy

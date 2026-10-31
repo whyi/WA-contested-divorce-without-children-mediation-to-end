@@ -83,6 +83,20 @@ the deployment has been reviewed. Do not use the development defaults or
 handle real case information before production secret management, operational
 email delivery, retention, and account-recovery policies are established.
 
+Case-material storage is separately gated by `CASE_MATERIALS_ENABLED` and
+requires authenticated case-data access. Production case-data access requires
+`S3_KMS_KEY_ID` for a customer-managed AWS KMS key; uploads explicitly request
+SSE-KMS, and there is no unencrypted production fallback. Loopback-only local
+S3 development does not use KMS. Production buckets must block public access,
+and the application role must be limited to the configured bucket and KMS key.
+Before enabling real uploads, document the
+retention period, backup/versioning behavior, legal-hold process, and deletion
+policy. Source files remain while retained in a case; an authorized case
+member can delete a file, and linked extracted or derived data must also be
+removed or made inaccessible. The current deletion endpoint removes the source
+object and document metadata; do not enable real materials until the policy
+and cleanup of all derived data are operationally covered.
+
 For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,
 the configured S3 endpoint, and LibreOffice are available.

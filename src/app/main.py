@@ -500,12 +500,59 @@ def extract_case_document(
 
 @app.get("/documents/{document_id}/download")
 def download_document(document_id: UUID, db: DbSession) -> Response:
-    document = get_document_or_none(db, document_id)
+    try:
+        document = get_document_or_none(db, document_id)
+    except SQLAlchemyError as error:
+        logger.exception("Document metadata lookup failed.")
+        raise HTTPException(
+            status_code=503,
+            detail="Document retrieval is unavailable. Please try again.",
+        ) from error
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
-    content = storage.get(document.object_key)
+    try:
+        content = storage.get(document.object_key)
+    except BotoCoreError as error:
+        logger.error("Document retrieval from object storage failed (%s).", type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Document retrieval is unavailable. Please try again.",
+        ) from error
     return Response(
         content=content,
         media_type=document.media_type,
         headers={"Content-Disposition": f'attachment; filename="{document.id}.{document.extension}"'},
     )
+
+
+@app.delete("/documents/{document_id}", status_code=204)
+def delete_document(document_id: UUID, db: DbSession) -> Response:
+    try:
+        document = get_document_or_none(db, document_id)
+    except SQLAlchemyError as error:
+        logger.exception("Document metadata lookup failed before deletion.")
+        raise HTTPException(
+            status_code=503,
+            detail="Document deletion is unavailable. Please try again.",
+        ) from error
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    try:
+        storage.delete(document.object_key)
+    except BotoCoreError as error:
+        logger.error("Document deletion from object storage failed (%s).", type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Document deletion is unavailable. Please try again.",
+        ) from error
+    try:
+        db.delete(document)
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Document metadata deletion failed after object removal.")
+        raise HTTPException(
+            status_code=503,
+            detail="Document deletion is incomplete. Please retry to finish cleanup.",
+        ) from error
+    return Response(status_code=204)

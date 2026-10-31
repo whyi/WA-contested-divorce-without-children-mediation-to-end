@@ -12,12 +12,14 @@ class Settings(BaseSettings):
     s3_bucket: str = "mediation-documents"
     s3_region: str = "us-west-2"
     s3_endpoint_url: str | None = None
+    s3_kms_key_id: str | None = None
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
     bedrock_model_id: str | None = None
     bedrock_region: str | None = None
     auth_enabled: bool = False
     case_data_enabled: bool = False
+    case_materials_enabled: bool = False
     demo_mode_enabled: bool = False
     auth_jwt_secret: str | None = None
     auth_issuer: str = "http://localhost:8000"
@@ -52,6 +54,19 @@ class Settings(BaseSettings):
     def validate_s3_credentials(self) -> "Settings":
         if bool(self.s3_access_key_id) != bool(self.s3_secret_access_key):
             raise ValueError("S3 access key and secret key must be configured together.")
+        if self.s3_endpoint_url:
+            parsed = urlparse(self.s3_endpoint_url)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("S3_ENDPOINT_URL must be an HTTP(S) URL without embedded credentials.")
+            is_local = parsed.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
+            is_compose_mock = self.demo_mode_enabled and parsed.hostname.lower() == "s3mock"
+            if parsed.scheme != "https" and not (is_local or is_compose_mock):
+                raise ValueError("S3_ENDPOINT_URL must use HTTPS outside loopback development.")
         return self
 
     @model_validator(mode="after")
@@ -84,6 +99,26 @@ class Settings(BaseSettings):
                     raise ValueError(f"{name} must use HTTPS outside localhost.")
         if self.case_data_enabled and not self.auth_enabled:
             raise ValueError("CASE_DATA_ENABLED requires AUTH_ENABLED.")
+        if (
+            self.case_data_enabled
+            and not self.demo_mode_enabled
+            and not self._uses_local_s3_endpoint()
+            and not (self.s3_kms_key_id or "").strip()
+        ):
+            raise ValueError(
+                "S3_KMS_KEY_ID must be configured before production case-data access is enabled."
+            )
+        if self.case_materials_enabled:
+            if not self.auth_enabled or not self.case_data_enabled:
+                raise ValueError(
+                    "CASE_MATERIALS_ENABLED requires AUTH_ENABLED and CASE_DATA_ENABLED."
+                )
+            if self.demo_mode_enabled:
+                raise ValueError("Case-material storage cannot be enabled in demo mode.")
+            if not self._uses_local_s3_endpoint() and not (self.s3_kms_key_id or "").strip():
+                raise ValueError(
+                    "S3_KMS_KEY_ID must be configured before case-material storage is enabled."
+                )
         if self.demo_mode_enabled:
             if not self.auth_enabled:
                 raise ValueError("DEMO_MODE_ENABLED requires AUTH_ENABLED.")
@@ -96,6 +131,19 @@ class Settings(BaseSettings):
             if self.case_data_enabled:
                 raise ValueError("Demo mode cannot enable case-data APIs.")
         return self
+
+    def _uses_local_s3_endpoint(self) -> bool:
+        if not self.s3_endpoint_url:
+            return False
+        endpoint = urlparse(self.s3_endpoint_url)
+        return (
+            endpoint.scheme == "http"
+            and endpoint.hostname is not None
+            and (
+                endpoint.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
+                or (self.demo_mode_enabled and endpoint.hostname.lower() == "s3mock")
+            )
+        )
 
 
 @lru_cache
