@@ -62,6 +62,11 @@ services:
       DEMO_MODE_ENABLED: "true"
       CASE_DATA_ENABLED: "false"
       CASE_MATERIALS_ENABLED: "false"
+      AI_ANALYSIS_ENABLED: "false"
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}
+      BEDROCK_REGION: ${BEDROCK_REGION:-}
+      AI_ANALYSIS_NOTICE_VERSION: ${AI_ANALYSIS_NOTICE_VERSION:-}
+      AI_ANALYSIS_DATA_HANDLING_NOTICE: ${AI_ANALYSIS_DATA_HANDLING_NOTICE:-}
     depends_on:
       db:
         condition: service_healthy
@@ -98,6 +103,31 @@ services:
       DEMO_MODE_ENABLED: "true"
       CASE_DATA_ENABLED: "false"
       CASE_MATERIALS_ENABLED: "false"
+      AI_ANALYSIS_ENABLED: "false"
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}
+      BEDROCK_REGION: ${BEDROCK_REGION:-}
+      AI_ANALYSIS_NOTICE_VERSION: ${AI_ANALYSIS_NOTICE_VERSION:-}
+      AI_ANALYSIS_DATA_HANDLING_NOTICE: ${AI_ANALYSIS_DATA_HANDLING_NOTICE:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  analysis-worker:
+    build: .
+    command: ["python", "-m", "app.analysis_worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://mediation:mediation-dev-only@db:5432/mediation
+      AUTH_ENABLED: "true"
+      AUTH_JWT_SECRET: local-demo-only-signing-secret-not-for-production-123
+      DEMO_MODE_ENABLED: "true"
+      CASE_DATA_ENABLED: "false"
+      CASE_MATERIALS_ENABLED: "false"
+      AI_ANALYSIS_ENABLED: "false"
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}
+      BEDROCK_REGION: ${BEDROCK_REGION:-}
+      AI_ANALYSIS_NOTICE_VERSION: ${AI_ANALYSIS_NOTICE_VERSION:-}
+      AI_ANALYSIS_DATA_HANDLING_NOTICE: ${AI_ANALYSIS_DATA_HANDLING_NOTICE:-}
     depends_on:
       api:
         condition: service_healthy

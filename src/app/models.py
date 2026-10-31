@@ -147,6 +147,143 @@ class DocumentExtractionJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class DocumentAnalysisConsent(Base):
+    __tablename__ = "document_analysis_consents"
+    __table_args__ = (
+        UniqueConstraint(
+            "request_id",
+            name="uq_document_analysis_consent_request",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    notice_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    region: Mapped[str] = mapped_column(String(100), nullable=False)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    data_sent: Mapped[str] = mapped_column(Text, nullable=False)
+    data_handling_notice: Mapped[str] = mapped_column(Text, nullable=False)
+    consented_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentAnalysisRequest(Base):
+    __tablename__ = "document_analysis_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'processing', 'completed', 'partial', 'failed', 'cancelled')",
+            name="ck_document_analysis_requests_status",
+        ),
+        UniqueConstraint(
+            "consent_id",
+            name="uq_document_analysis_requests_consent",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    consent_id: Mapped[UUID] = mapped_column(
+        ForeignKey("document_analysis_consents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class DocumentAnalysisJob(Base):
+    __tablename__ = "document_analysis_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'processing', 'completed', 'partial', 'failed', 'cancelled')",
+            name="ck_document_analysis_jobs_status",
+        ),
+        UniqueConstraint(
+            "request_id",
+            "document_id",
+            name="uq_document_analysis_job_request_document",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("document_analysis_requests.id", ondelete="CASCADE"), index=True
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_token: Mapped[UUID | None] = mapped_column(Uuid)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentAnalysisProposal(Base):
+    __tablename__ = "document_analysis_proposals"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence IN ('high', 'medium', 'low')",
+            name="ck_document_analysis_proposals_confidence",
+        ),
+        CheckConstraint(
+            "source_page_number IS NULL OR source_page_number >= 1",
+            name="ck_document_analysis_proposals_source_page_number",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("document_analysis_jobs.id", ondelete="CASCADE"), index=True
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    field_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    source_quote: Mapped[str] = mapped_column(Text, nullable=False)
+    source_page_number: Mapped[int | None] = mapped_column(Integer)
+    confidence: Mapped[str] = mapped_column(String(10), nullable=False)
+    uncertainty: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
