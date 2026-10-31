@@ -25,6 +25,12 @@ class UploadValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(UploadValidationError, "exceeds"):
             validate_upload("draft.pdf", b"%PDF-1.7" + b"x" * 10, "pdf", 8)
 
+    def test_oversized_file_has_a_safe_status_code(self) -> None:
+        with self.assertRaises(UploadValidationError) as raised:
+            validate_upload("draft.pdf", b"%PDF-1.7" + b"x" * 10, "pdf", 8)
+
+        self.assertEqual(raised.exception.error_code, "file_too_large")
+
     def test_rejects_mismatched_extension(self) -> None:
         with self.assertRaisesRegex(UploadValidationError, "valid .pdf"):
             validate_upload("draft.pdf", make_docx_container(), "pdf", 1024)
