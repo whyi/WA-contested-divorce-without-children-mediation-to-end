@@ -60,6 +60,8 @@ class ProjectConfigurationTests(unittest.TestCase):
         self.assertIn('AI_ANALYSIS_ENABLED: "${AI_ANALYSIS_ENABLED:-false}"', compose)
         self.assertIn('AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}', compose)
         self.assertIn('BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}', compose)
+        analysis_worker = compose.split("  analysis-worker:", 1)[1]
+        self.assertIn('S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}', analysis_worker)
         self.assertIn("local-demo-only-signing-secret-not-for-production", compose)
 
     def test_package_includes_the_landing_page_asset(self) -> None:
