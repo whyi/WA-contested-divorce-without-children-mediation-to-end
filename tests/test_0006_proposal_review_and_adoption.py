@@ -22,6 +22,9 @@ MIGRATION_SPEC.loader.exec_module(migration)
 
 
 class ProposalReviewMigrationTests(unittest.TestCase):
+    def test_revision_fits_alembic_version_column(self) -> None:
+        self.assertLessEqual(len(migration.revision), 32)
+
     def test_upgrade_adds_profile_revision_and_review_adoption_tables(self) -> None:
         operations = Mock()
         with patch.object(migration, "op", operations):
