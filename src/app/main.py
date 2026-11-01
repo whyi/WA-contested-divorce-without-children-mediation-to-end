@@ -319,6 +319,7 @@ def home() -> HTMLResponse:
     return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
 
 
+@app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/upload", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
 def onboarding_page() -> HTMLResponse:
