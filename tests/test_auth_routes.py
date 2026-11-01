@@ -110,7 +110,7 @@ class AuthenticationRouteTests(unittest.TestCase):
             response = TestClient(app).get("/api/auth/providers")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"google": False})
+        self.assertEqual(response.json(), {"google": False, "demo": False})
 
     def test_google_provider_is_reported_available_when_fully_configured(self) -> None:
         settings = Settings(
@@ -123,7 +123,19 @@ class AuthenticationRouteTests(unittest.TestCase):
             response = TestClient(app).get("/api/auth/providers")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"google": True})
+        self.assertEqual(response.json(), {"google": True, "demo": False})
+
+    def test_demo_provider_is_reported_available_only_in_demo_mode(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="local-demo-signing-key-that-is-long-enough",
+            demo_mode_enabled=True,
+        )
+        with patch("app.auth_routes.get_settings", return_value=settings):
+            response = TestClient(app).get("/api/auth/providers")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"google": False, "demo": True})
 
     def test_demo_login_accepts_demo_credentials_only_when_demo_mode_is_enabled(self) -> None:
         settings = Settings(

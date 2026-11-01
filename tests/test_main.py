@@ -78,6 +78,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("username <strong>demo</strong> · password <strong>demo</strong>", page)
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
+        self.assertIn('id="demo-button"', page)
+        self.assertIn('demoButton.addEventListener("click"', page)
         self.assertIn('"/api/auth/signup"', page)
         self.assertIn('"/api/auth/login"', page)
         self.assertIn('"/api/auth/verify-email"', page)

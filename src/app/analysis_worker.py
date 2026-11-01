@@ -288,6 +288,10 @@ def _page_texts(pages_json: object) -> dict[int | None, str]:
     return pages
 
 
+if __name__ == "__main__":
+    main()
+
+
 def _complete_without_provider(
     db: Session,
     job: DocumentAnalysisJob,
