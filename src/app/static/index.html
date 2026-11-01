@@ -404,6 +404,10 @@
       .case-list strong { color: var(--green-dark); }
       .preparation-view { padding-top: 12px; }
       .preparation-note { padding: 16px; border-radius: 8px; color: #574827; background: #fbf5e8; }
+      .analysis-preview-notice { margin: 22px 0; padding: 18px; border: 1px solid #d5e1d6; border-radius: 9px; background: #f5f9f5; }
+      .analysis-preview-notice h3 { margin-bottom: 10px; color: var(--green-dark); font-size: 16px; }
+      .analysis-preview-notice p { margin: 8px 0 0; color: #4f5f55; font-size: 13px; line-height: 1.6; }
+      .analysis-preview-notice .analysis-preview-caveat { color: #574827; }
       .back-to-account { display: inline-flex; min-height: 44px; align-items: center; margin-top: 8px; color: var(--green-dark); font-weight: 750; }
       .materials-workflow { margin-top: 26px; }
       .materials-limits, .provider-note { color: var(--muted); font-size: 13px; line-height: 1.6; }
@@ -757,6 +761,11 @@
                 </div>
                 <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
                 <p class="preparation-note" id="materials-disabled-note">Imports are disabled in this preview. Files stay in your browser and are not uploaded or saved. Do not use real case information.</p>
+                <aside class="analysis-preview-notice" id="analysis-preview-notice" aria-labelledby="analysis-preview-notice-title">
+                  <h3 id="analysis-preview-notice-title">AI document analysis data notice</h3>
+                  <p>If you request analysis, extracted text, page locations, and document IDs from the documents you select will be sent to AWS Bedrock in us-east-2. The AI will suggest candidate facts with source citations. AI results may be inaccurate or incomplete; you must review them. They are not legal advice or established facts. Account information, case-profile data, and negotiation history are not included in this analysis request. Revoking consent cancels pending analysis, but cannot recall information already sent to AWS. Do not select documents you do not want sent to AWS.</p>
+                  <p class="analysis-preview-caveat"><strong>Preview only—not consent:</strong> This preview does not upload documents or send content to AWS. The notice describes the planned analysis flow; analysis remains unavailable until configured and you explicitly consent.</p>
+                </aside>
                 <section class="analysis-controls" id="analysis-controls" aria-labelledby="analysis-title" hidden>
                   <h3 id="analysis-title">Your files are stored, not analyzed</h3>
                   <p id="analysis-explanation">Choose which eligible documents to analyze. No analysis starts until you review the notice and explicitly consent.</p>
