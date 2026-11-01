@@ -1,0 +1,38 @@
+# Spec 10: Mock Asset-Analysis Dashboard
+
+- **Status:** Draft
+- **Related issue:** [#45 — Add a mock asset-analysis dashboard with timeline and settlement scenarios](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/45)
+- **Objective:** Give users a tangible preview of the asset-comparison and settlement-scenario experience after importing case materials, before connecting an AI analysis provider.
+- **Scope:** A local-only sample results view, a six-year spreadsheet-style asset and liability comparison, a relationship timeline chart, and three illustrative negotiation scenarios. This specification does not define AI analysis, legal advice, asset valuation, or saving selected scenarios.
+
+## 1. Entry and Data Boundaries
+
+- **FR-10-01 — Post-import entry:** Once at least one case document has been successfully imported, show an **Analyze** action that opens the mock asset-analysis view.
+- **FR-10-02 — No provider calls:** Opening or interacting with the mock view must not call an AI provider, create an analysis request, or require AI consent. The current AI analysis APIs remain outside this mock flow.
+- **FR-10-03 — Fictional sample values:** All displayed dates, asset amounts, liabilities, totals, and scenario values are fixed illustrative data. They are not extracted from, inferred from, or associated with uploaded documents or case-profile facts.
+- **FR-10-04 — No persistence:** Changing a year tab or selecting a scenario is an in-page preview interaction only. Do not write sample values or scenario selections to the API, database, or browser storage.
+- **FR-10-05 — Honest labeling:** Prominently state that the page uses fictional sample figures, does not analyze uploaded documents, and is not legal advice or a recommended property division.
+- **FR-10-06 — Return path:** Provide an accessible action to return to the imported-files view without losing the current page state.
+
+## 2. Asset Comparison and Timeline
+
+- **FR-10-07 — Annual tabs:** Provide six keyboard-accessible year tabs representing a fictional six-year relationship timeline. Selecting a tab updates the comparison table without changing the chart.
+- **FR-10-08 — Spreadsheet comparison:** For the selected year, show asset and liability categories in rows and side-by-side columns for **You**, **Other party**, and **Combined** amounts. Include a net-assets total and clearly format amounts as U.S. dollars.
+- **FR-10-09 — Timeline chart:** Show one chart with time on the horizontal axis and money on the vertical axis. Plot the fictional asset trend across all six years independently of the selected table tab, with a legend and accessible text description.
+- **FR-10-10 — Responsive layout:** Keep the comparison usable on narrow screens with a labeled horizontal table-scrolling region; keep tabs and chart labels operable/readable without relying on color alone.
+
+## 3. Illustrative Settlement Scenarios
+
+- **FR-10-11 — Three scenarios:** Show three distinct sample scenarios: **Best-case proposal**, **Balanced proposal**, and **Fallback position**. Each includes its illustrative division and a brief explanation of its role in a negotiation conversation.
+- **FR-10-12 — Interactive selection:** A user can select one scenario at a time. Announce the selected scenario accessibly; selection does not submit an offer, modify a case, or persist.
+- **FR-10-13 — No legal conclusion:** Do not imply that any scenario is fair, legally correct, optimal, court-approved, or suitable for a specific user. Clearly state that figures are hypothetical and should be reviewed with qualified counsel or a mediator.
+
+## 4. Acceptance Criteria
+
+1. A successful import reveals an **Analyze** action, and activating it opens the sample results view without requiring an AI provider or consent.
+2. The table contains six annual tabs, a selected-year asset/liability comparison for both parties and the combined amount, and a net-assets total.
+3. One timeline chart shows amounts over all six years and is not filtered by the selected table tab.
+4. Three scenario cards can be selected independently of the year tabs and are labeled as fictional, non-binding examples.
+5. Browser network activity from opening the mock view contains no analysis-request, provider, or persistence call.
+6. No sample amount, scenario choice, or inferred claim is sent to or saved by the backend.
+7. Keyboard and screen-reader users can operate year tabs, scenario selection, and return navigation; the layout remains usable on mobile.

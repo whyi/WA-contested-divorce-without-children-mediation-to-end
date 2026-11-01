@@ -98,15 +98,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dropbox-picker"', page)
         self.assertIn('id="materials-import"', page)
         self.assertIn('"/api/v1/materials/config"', page)
-        self.assertIn('id="analysis-preview-notice"', page)
-        self.assertIn("AWS Bedrock in us-east-2", page)
-        self.assertIn("Disclosure only—not consent", page)
-        self.assertIn("Importing a file stores it in your case workspace", page)
-        self.assertIn("Only after you select documents and explicitly consent", page)
-        self.assertIn('id="analysis-controls"', page)
-        self.assertIn('id="analysis-consent"', page)
-        self.assertIn('id="analysis-provider"', page)
-        self.assertIn('id="analysis-status"', page)
+        self.assertIn('id="analysis-preview-start" type="button">Analyze</button>', page)
+        self.assertIn('id="analysis-controls" aria-labelledby="analysis-title" hidden', page)
         self.assertIn('id="proposal-review"', page)
         self.assertIn('id="review-status" role="status" aria-live="polite"', page)
         self.assertIn('id="review-proposals"', page)
@@ -117,6 +110,36 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Previously adopted case-profile facts are shown below.", page)
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
+
+    def test_asset_analysis_preview_is_fictional_and_local_only(self) -> None:
+        status, body = asyncio.run(request_app("/"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="analysis-preview-launch"', page)
+        self.assertIn('id="asset-analysis-view"', page)
+        self.assertIn("analysisPreviewLaunch.hidden = importedCount === 0;", page)
+        self.assertIn(
+            'analysisPreviewStartButton.addEventListener("click", openAssetAnalysis)',
+            page,
+        )
+        self.assertEqual(page.count("loadAnalysisOptions("), 1)
+        self.assertIn("<strong>Fictional example only.</strong>", page)
+        self.assertIn("not based on your uploaded documents or case facts", page)
+        self.assertIn('id="asset-table-rows"', page)
+        self.assertIn('id="asset-table-total"', page)
+        self.assertIn('id="asset-timeline-chart"', page)
+        self.assertEqual(page.count('<button class="asset-year-tab"'), 6)
+        self.assertIn("Best-case proposal", page)
+        self.assertIn("Balanced proposal", page)
+        self.assertIn("Fallback position", page)
+        self.assertIn('id="scenario-status" role="status" aria-live="polite"', page)
+        open_view = page.split("function openAssetAnalysis()", 1)[1].split(
+            "function closeAssetAnalysis()", 1
+        )[0]
+        self.assertNotIn("fetch(", open_view)
+        self.assertNotIn("sessionStorage", open_view)
+        self.assertNotIn("/analysis-requests", open_view)
 
     def test_case_data_endpoints_fail_closed_until_authentication_is_configured(
         self,
