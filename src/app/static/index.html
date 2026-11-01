@@ -66,6 +66,8 @@
         border: 1px solid #cfdbd0;
         border-radius: 8px;
         color: var(--green-dark) !important;
+        background: transparent;
+        cursor: pointer;
         font-weight: 650;
       }
       .account-section { padding: 0 0 82px; }
@@ -542,6 +544,7 @@
           <span class="brand-name">Casework</span>
         </a>
         <nav class="nav" aria-label="Main navigation">
+          <button class="nav-cta" id="demo-button" type="button" hidden>Demo</button>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <a class="nav-cta" href="#account">Sign up / Sign in <span class="arrow" aria-hidden="true">→</span></a>
@@ -872,6 +875,7 @@
         const status = document.getElementById("account-status");
         const googleButton = document.getElementById("google-signin");
         const googleStatus = document.getElementById("google-status");
+        const demoButton = document.getElementById("demo-button");
         const accountSection = document.getElementById("account");
         const dashboard = document.getElementById("account-dashboard");
         const dashboardLoading = document.getElementById("dashboard-loading");
@@ -936,6 +940,7 @@
         let profileFactsData = null;
         let reviewBusy = false;
         let pendingAdoption = null;
+        let demoEntryRequested = false;
         const reviewIdempotencyKeys = new Map();
         const preparationMode = {
           "/onboarding/upload": "upload",
@@ -2478,6 +2483,14 @@
           window.location.assign("/api/auth/oidc/google/start");
         });
 
+        demoButton.addEventListener("click", () => {
+          demoEntryRequested = true;
+          selectForm("login", false);
+          document.getElementById("login-email").value = "demo";
+          document.getElementById("login-password").value = "demo";
+          loginForm.requestSubmit();
+        });
+
         fetch("/api/auth/providers", { credentials: "same-origin" })
           .then(async (response) => {
             if (!response.ok) throw new Error("Could not check social sign-in availability.");
@@ -2485,6 +2498,7 @@
           })
           .then((providers) => {
             googleButton.disabled = !providers.google;
+            demoButton.hidden = !providers.demo;
             googleStatus.textContent = providers.google
               ? "New here? Google will create your account. Returning users can sign in with the same button."
               : "Google sign-up and sign-in are unavailable until authentication and Google OIDC are configured.";
@@ -2524,6 +2538,7 @@
               }
               form.reset();
               await loadDashboardStatus();
+              if (demoEntryRequested) window.location.assign("/onboarding/upload");
               return;
             }
             status.textContent = result.message || successMessage;
