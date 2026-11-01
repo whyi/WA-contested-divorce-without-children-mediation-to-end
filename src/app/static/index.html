@@ -484,10 +484,14 @@
       .asset-analysis-panel { margin-top: 20px; padding: clamp(16px, 3vw, 24px); border: 1px solid var(--line); border-radius: 11px; background: var(--paper); box-shadow: 0 8px 24px rgba(34, 55, 43, .035); }
       .asset-analysis-panel h3 { margin-bottom: 7px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; letter-spacing: -.025em; }
       .asset-analysis-panel > p { color: var(--muted); font-size: 13px; line-height: 1.55; }
-      .asset-year-tabs { display: flex; gap: 7px; overflow-x: auto; margin: 17px 0 12px; padding: 3px 2px 8px; }
-      .asset-year-tab { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border: 1px solid #d6e0d7; border-radius: 7px; color: #4b5c51; background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
-      .asset-year-tab[aria-selected="true"] { border-color: var(--green-dark); color: #fff; background: var(--green-dark); }
-      .asset-year-tab:focus-visible, .scenario-choice:focus-visible, .asset-analysis-back:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 3px; }
+      .asset-year-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; margin: 18px 0 14px; }
+      .asset-year-step { min-height: 40px; padding: 0 13px; border: 1px solid #d6e0d7; border-radius: 7px; color: #405349; background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+      .asset-year-step:disabled { color: #89938c; background: #f5f7f5; cursor: not-allowed; }
+      .asset-year-selector { display: grid; gap: 5px; min-width: 0; }
+      .asset-year-selected { color: var(--green-dark); font-size: 14px; font-weight: 800; text-align: center; }
+      .asset-year-range { width: 100%; min-height: 28px; margin: 0; accent-color: var(--green); cursor: pointer; }
+      .asset-year-range:focus-visible, .asset-year-step:focus-visible, .scenario-choice:focus-visible, .asset-analysis-back:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 3px; }
+      .asset-year-range-ends { display: flex; justify-content: space-between; gap: 8px; color: #748078; font-size: 10px; }
       .asset-table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
       .asset-comparison-table { width: 100%; min-width: 630px; border-collapse: collapse; font-size: 13px; text-align: right; }
       .asset-comparison-table caption { padding: 12px 14px; color: #536258; background: #f6f8f6; font-size: 12px; text-align: left; }
@@ -504,6 +508,9 @@
       .asset-chart .chart-axis { stroke: #aab6ab; stroke-width: 1; }
       .asset-chart .chart-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
       .asset-chart .chart-point { stroke: #fff; stroke-width: 2; }
+      .asset-chart .chart-cursor-line { stroke: #344a3d; stroke-width: 1.5; stroke-dasharray: 4 4; }
+      .asset-chart .chart-cursor-halo { fill: #fff; stroke: #344a3d; stroke-width: 2; }
+      .asset-chart .chart-cursor-label { fill: #344a3d; font-size: 10px; font-weight: 750; }
       .asset-chart-legend { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 12px 0 0; padding: 0; list-style: none; color: #506056; font-size: 12px; }
       .asset-chart-legend li { display: inline-flex; align-items: center; gap: 8px; }
       .asset-chart-legend span { width: 17px; height: 3px; border-radius: 3px; background: var(--legend-color); }
@@ -871,16 +878,17 @@
 
                 <section class="asset-analysis-panel" aria-labelledby="asset-table-title">
                   <h3 id="asset-table-title">Asset and liability comparison</h3>
-                  <p>Choose a relationship year to see that year's sample balance sheet.</p>
-                  <div class="asset-year-tabs" id="asset-year-tabs" role="tablist" aria-label="Sample relationship year">
-                    <button class="asset-year-tab" id="asset-year-tab-0" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="0">Year 1</button>
-                    <button class="asset-year-tab" id="asset-year-tab-1" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="1">Year 2</button>
-                    <button class="asset-year-tab" id="asset-year-tab-2" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="2">Year 3</button>
-                    <button class="asset-year-tab" id="asset-year-tab-3" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="3">Year 4</button>
-                    <button class="asset-year-tab" id="asset-year-tab-4" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="4">Year 5</button>
-                    <button class="asset-year-tab" id="asset-year-tab-5" type="button" role="tab" aria-selected="true" aria-controls="asset-year-panel" tabindex="0" data-year-index="5">Year 6</button>
+                  <p>Move through the timeline to see the sample balance sheet for any year.</p>
+                  <div class="asset-year-controls" role="group" aria-label="Choose a relationship year">
+                    <button class="asset-year-step" id="asset-year-previous" type="button" aria-label="Previous year">← Previous</button>
+                    <label class="asset-year-selector" for="asset-year-range">
+                      <output class="asset-year-selected" id="asset-selected-year" for="asset-year-range">Year 6 · 2025</output>
+                      <input class="asset-year-range" id="asset-year-range" type="range" min="0" max="5" step="1" value="5" aria-valuetext="Year 6, 2025">
+                      <span class="asset-year-range-ends" aria-hidden="true"><span id="asset-year-first">Year 1 · 2020</span><span id="asset-year-last">Year 6 · 2025</span></span>
+                    </label>
+                    <button class="asset-year-step" id="asset-year-next" type="button" aria-label="Next year">Next →</button>
                   </div>
-                  <div class="asset-table-scroll" id="asset-year-panel" role="tabpanel" aria-labelledby="asset-year-tab-5" tabindex="0">
+                  <div class="asset-table-scroll" id="asset-year-panel" role="region" aria-label="Selected-year asset comparison" tabindex="0">
                     <table class="asset-comparison-table">
                       <caption id="asset-year-caption">Fictional sample snapshot — Year 6</caption>
                       <thead>
@@ -895,7 +903,7 @@
 
                 <section class="asset-analysis-panel" aria-labelledby="asset-chart-heading">
                   <h3 id="asset-chart-heading">Illustrative asset trend</h3>
-                  <p>This timeline always shows all six sample years; it does not change when you select a table tab.</p>
+                  <p>This timeline always shows every sample year. The marker follows your selection without hiding the rest of the trend.</p>
                   <figure>
                     <div class="asset-chart-scroll">
                       <svg class="asset-chart" id="asset-timeline-chart" viewBox="0 0 720 300" role="img" aria-labelledby="asset-chart-title asset-chart-desc">
@@ -904,6 +912,7 @@
                         <g id="asset-chart-grid"></g>
                         <g id="asset-chart-labels"></g>
                         <g id="asset-chart-lines"></g>
+                        <g id="asset-chart-cursor" aria-hidden="true"></g>
                       </svg>
                     </div>
                     <ul class="asset-chart-legend" aria-label="Chart series">
@@ -1039,7 +1048,12 @@
         const assetAnalysisView = document.getElementById("asset-analysis-view");
         const assetAnalysisTitle = document.getElementById("asset-analysis-title");
         const assetAnalysisBackButton = document.getElementById("asset-analysis-back");
-        const assetYearTabs = Array.from(document.querySelectorAll(".asset-year-tab"));
+        const assetYearRange = document.getElementById("asset-year-range");
+        const assetYearSelected = document.getElementById("asset-selected-year");
+        const assetYearFirst = document.getElementById("asset-year-first");
+        const assetYearLast = document.getElementById("asset-year-last");
+        const assetYearPrevious = document.getElementById("asset-year-previous");
+        const assetYearNext = document.getElementById("asset-year-next");
         const assetYearPanel = document.getElementById("asset-year-panel");
         const assetYearCaption = document.getElementById("asset-year-caption");
         const assetTableRows = document.getElementById("asset-table-rows");
@@ -1048,6 +1062,8 @@
         const assetChartGrid = document.getElementById("asset-chart-grid");
         const assetChartLabels = document.getElementById("asset-chart-labels");
         const assetChartLines = document.getElementById("asset-chart-lines");
+        const assetChartCursor = document.getElementById("asset-chart-cursor");
+        const assetChartDescription = document.getElementById("asset-chart-desc");
         const scenarioOptions = document.getElementById("scenario-options");
         const scenarioStatus = document.getElementById("scenario-status");
         const analysisControls = document.getElementById("analysis-controls");
@@ -1084,6 +1100,7 @@
         let materialsImporting = false;
         let materialsSelecting = false;
         let analysisCaseId = null;
+        let selectedAssetYearIndex = 0;
         const sampleAssetYears = [
           {
             year: 2020,
@@ -1404,14 +1421,21 @@
         function renderAssetSnapshot(index) {
           const sample = sampleAssetYears[index];
           if (!sample) return;
-          assetYearTabs.forEach((tab, tabIndex) => {
-            const selected = tabIndex === index;
-            tab.textContent = `Year ${tabIndex + 1} · ${sampleAssetYears[tabIndex].year}`;
-            tab.setAttribute("aria-selected", String(selected));
-            tab.tabIndex = selected ? 0 : -1;
-          });
-          assetYearPanel.setAttribute("aria-labelledby", assetYearTabs[index].id);
+          selectedAssetYearIndex = index;
+          const firstYear = sampleAssetYears[0];
+          const lastYear = sampleAssetYears[sampleAssetYears.length - 1];
+          assetYearRange.min = "0";
+          assetYearRange.max = String(sampleAssetYears.length - 1);
+          assetYearRange.value = String(index);
+          assetYearRange.setAttribute("aria-valuetext", `Year ${index + 1}, ${sample.year}`);
+          assetYearSelected.textContent = `Year ${index + 1} · ${sample.year}`;
+          assetYearFirst.textContent = `Year 1 · ${firstYear.year}`;
+          assetYearLast.textContent = `Year ${sampleAssetYears.length} · ${lastYear.year}`;
+          assetYearPrevious.disabled = index === 0;
+          assetYearNext.disabled = index === sampleAssetYears.length - 1;
           assetYearCaption.textContent = `Fictional sample snapshot — Year ${index + 1} (${sample.year})`;
+          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${firstYear.year} through ${lastYear.year}. All amounts are illustrative U.S. dollars. Year ${index + 1} (${sample.year}) is highlighted.`;
+          renderAssetTimelineCursor(index);
           assetTableRows.replaceChildren();
           const totals = [0, 0];
           for (const [label, category] of sampleAssetCategories) {
@@ -1441,7 +1465,7 @@
             totalRow.append(cell);
           }
           assetTableTotal.replaceChildren(totalRow);
-          assetYearStatus.textContent = `Showing fictional figures for ${sample.year}. The timeline chart continues to show all six years.`;
+          assetYearStatus.textContent = `Showing fictional figures for ${sample.year}. The timeline shows all ${sampleAssetYears.length} years, with ${sample.year} highlighted.`;
         }
 
         function createChartElement(parent, name, attributes, text = "") {
@@ -1545,6 +1569,39 @@
               }
             });
           }
+          renderAssetTimelineCursor(selectedAssetYearIndex);
+        }
+
+        function renderAssetTimelineCursor(index) {
+          if (!assetChartCursor || !sampleAssetYears[index]) return;
+          const left = 76;
+          const right = 700;
+          const top = 36;
+          const bottom = 244;
+          const maxValue = 700000;
+          const sample = sampleAssetYears[index];
+          const x = left + (right - left) * index / (sampleAssetYears.length - 1);
+          const combinedAssets = sampleAssetCategories.reduce(
+            (sum, [, category]) => sum + sample[category][0] + sample[category][1],
+            0,
+          );
+          const y = bottom - (bottom - top) * combinedAssets / maxValue;
+          assetChartCursor.replaceChildren();
+          createChartElement(assetChartCursor, "line", {
+            x1: x, y1: top, x2: x, y2: bottom, class: "chart-cursor-line",
+          });
+          createChartElement(assetChartCursor, "circle", {
+            cx: x, cy: y, r: 8, class: "chart-cursor-halo",
+          });
+          createChartElement(assetChartCursor, "circle", {
+            cx: x, cy: y, r: 3.5, fill: "#344a3d",
+          });
+          createChartElement(assetChartCursor, "text", {
+            x: x < 630 ? x + 9 : x - 9,
+            y: top + 13,
+            "text-anchor": x < 630 ? "start" : "end",
+            class: "chart-cursor-label",
+          }, `Year ${index + 1} · ${sample.year}`);
         }
 
         function updateAnalysisPreviewLaunch() {
@@ -2841,22 +2898,14 @@
         });
         analysisPreviewStartButton.addEventListener("click", openAssetAnalysis);
         assetAnalysisBackButton.addEventListener("click", closeAssetAnalysis);
-        assetYearTabs.forEach((tab) => {
-          tab.addEventListener("click", () => {
-            renderAssetSnapshot(Number(tab.dataset.yearIndex));
-          });
-          tab.addEventListener("keydown", (event) => {
-            const currentIndex = Number(tab.dataset.yearIndex);
-            let nextIndex = currentIndex;
-            if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % assetYearTabs.length;
-            else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + assetYearTabs.length) % assetYearTabs.length;
-            else if (event.key === "Home") nextIndex = 0;
-            else if (event.key === "End") nextIndex = assetYearTabs.length - 1;
-            else return;
-            event.preventDefault();
-            renderAssetSnapshot(nextIndex);
-            assetYearTabs[nextIndex].focus();
-          });
+        assetYearRange.addEventListener("input", () => {
+          renderAssetSnapshot(Number(assetYearRange.value));
+        });
+        assetYearPrevious.addEventListener("click", () => {
+          renderAssetSnapshot(selectedAssetYearIndex - 1);
+        });
+        assetYearNext.addEventListener("click", () => {
+          renderAssetSnapshot(selectedAssetYearIndex + 1);
         });
         scenarioOptions.addEventListener("click", (event) => {
           const choice = event.target instanceof Element
