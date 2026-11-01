@@ -1,4 +1,7 @@
 import unittest
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from uuid import uuid4
 from unittest.mock import Mock, patch
 
 from fastapi import HTTPException, Response
@@ -6,6 +9,7 @@ from fastapi.testclient import TestClient
 import pyotp
 from starlette.requests import Request
 
+from app.database import get_db
 from app.auth_routes import (
     LoginRequest,
     _decrypt_totp,
@@ -124,6 +128,90 @@ class AuthenticationRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"google": True, "demo": False})
+
+    def test_google_callback_redirects_without_returning_auth_tokens(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="a-secure-test-signing-secret-that-is-long-enough",
+            google_client_id="google-client-id",
+            google_client_secret="google-client-secret",
+        )
+        challenge = SimpleNamespace(
+            purpose="google_oidc",
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            context={"verifier": "test-verifier", "nonce": "test-nonce"},
+            consumed_at=None,
+            user_id=None,
+        )
+        user = Mock(id=uuid4(), status="active", mfa_enabled=False)
+        db = Mock()
+        identity = SimpleNamespace(user_id=user.id)
+        db.scalar.side_effect = [challenge, identity]
+        db.get.return_value = user
+        token_response = Mock()
+        token_response.json.return_value = {"id_token": "google-id-token"}
+        certs_response = Mock()
+        certs_response.json.return_value = {"keys": []}
+        session = Mock(id=uuid4())
+        original_db_override = app.dependency_overrides.get(get_db)
+        app.dependency_overrides[get_db] = lambda: db
+
+        try:
+            with (
+                patch("app.auth_routes.get_settings", return_value=settings),
+                patch("app.auth_routes._rate_limit"),
+                patch("app.auth_routes.httpx.post", return_value=token_response),
+                patch("app.auth_routes.httpx.get", return_value=certs_response),
+                patch(
+                    "app.auth_routes.jwt.PyJWKSet.from_dict",
+                    return_value=Mock(
+                        keys=[Mock(key_id="google-key", key=object())]
+                    ),
+                ),
+                patch(
+                    "app.auth_routes.jwt.get_unverified_header",
+                    return_value={"kid": "google-key"},
+                ),
+                patch(
+                    "app.auth_routes.jwt.decode",
+                    return_value={
+                        "nonce": "test-nonce",
+                        "email_verified": True,
+                        "email": "user@example.com",
+                        "sub": "google-subject",
+                    },
+                ),
+                patch(
+                    "app.auth_routes._create_session",
+                    return_value=(
+                        session,
+                        "access-token-secret",
+                        "refresh-token-secret",
+                        "csrf-token",
+                    ),
+                ),
+                patch("app.auth_routes._audit"),
+            ):
+                response = TestClient(app).get(
+                    "/api/auth/oidc/google/callback",
+                    params={"state": "test-state", "code": "authorization-code"},
+                    follow_redirects=False,
+                )
+        finally:
+            if original_db_override is None:
+                app.dependency_overrides.pop(get_db, None)
+            else:
+                app.dependency_overrides[get_db] = original_db_override
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/")
+        self.assertEqual(response.content, b"")
+        self.assertNotIn("access-token-secret", response.text)
+        self.assertNotIn("refresh-token-secret", response.text)
+        self.assertIn("auth_access=", response.headers["set-cookie"])
+        self.assertIn("auth_refresh=", response.headers["set-cookie"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(response.headers["referrer-policy"], "no-referrer")
 
     def test_demo_provider_is_reported_available_only_in_demo_mode(self) -> None:
         settings = Settings(
