@@ -26,7 +26,7 @@
 
       * { box-sizing: border-box; }
       html { scroll-behavior: smooth; }
-      body { margin: 0; min-width: 320px; background: #f7f8f6; }
+      body { margin: 0; background: #f7f8f6; }
       a { color: inherit; }
       button { font: inherit; }
 
@@ -404,10 +404,6 @@
       .case-list strong { color: var(--green-dark); }
       .preparation-view { padding-top: 12px; }
       .preparation-note { padding: 16px; border-radius: 8px; color: #574827; background: #fbf5e8; }
-      .analysis-preview-notice { margin: 22px 0; padding: 18px; border: 1px solid #d5e1d6; border-radius: 9px; background: #f5f9f5; }
-      .analysis-preview-notice h3 { margin-bottom: 10px; color: var(--green-dark); font-size: 16px; }
-      .analysis-preview-notice p { margin: 8px 0 0; color: #4f5f55; font-size: 13px; line-height: 1.6; }
-      .analysis-preview-notice .analysis-preview-caveat { color: #574827; }
       .back-to-account { display: inline-flex; min-height: 44px; align-items: center; margin-top: 8px; color: var(--green-dark); font-weight: 750; }
       .materials-workflow { margin-top: 26px; }
       .materials-limits, .provider-note { color: var(--muted); font-size: 13px; line-height: 1.6; }
@@ -478,6 +474,53 @@
       .analysis-consent { display: flex; gap: 9px; align-items: flex-start; margin: 14px 0; }
       .analysis-consent input { margin-top: 4px; }
       .analysis-unavailable { color: var(--muted); }
+      .analysis-preview-launch { margin-top: 22px; padding: 18px; border: 1px solid #cbd9ce; border-radius: 9px; background: #f5f8f4; }
+      .analysis-preview-launch p { margin-bottom: 12px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+      .asset-analysis { margin-top: 24px; }
+      .asset-analysis-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; }
+      .asset-analysis-header h2 { margin-bottom: 8px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(26px, 4vw, 36px); font-weight: 500; letter-spacing: -.035em; }
+      .asset-analysis-intro { max-width: 720px; color: var(--muted); line-height: 1.6; }
+      .sample-analysis-notice { margin: 16px 0 24px; padding: 14px 16px; border-left: 4px solid #a87a31; border-radius: 5px; color: #59451f; background: #fbf5e8; font-size: 13px; line-height: 1.6; }
+      .asset-analysis-panel { margin-top: 20px; padding: clamp(16px, 3vw, 24px); border: 1px solid var(--line); border-radius: 11px; background: var(--paper); box-shadow: 0 8px 24px rgba(34, 55, 43, .035); }
+      .asset-analysis-panel h3 { margin-bottom: 7px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; letter-spacing: -.025em; }
+      .asset-analysis-panel > p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+      .asset-year-tabs { display: flex; gap: 7px; overflow-x: auto; margin: 17px 0 12px; padding: 3px 2px 8px; }
+      .asset-year-tab { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border: 1px solid #d6e0d7; border-radius: 7px; color: #4b5c51; background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+      .asset-year-tab[aria-selected="true"] { border-color: var(--green-dark); color: #fff; background: var(--green-dark); }
+      .asset-year-tab:focus-visible, .scenario-choice:focus-visible, .asset-analysis-back:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 3px; }
+      .asset-table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+      .asset-comparison-table { width: 100%; min-width: 630px; border-collapse: collapse; font-size: 13px; text-align: right; }
+      .asset-comparison-table caption { padding: 12px 14px; color: #536258; background: #f6f8f6; font-size: 12px; text-align: left; }
+      .asset-comparison-table th, .asset-comparison-table td { padding: 12px 14px; border-bottom: 1px solid #e8ede8; }
+      .asset-comparison-table thead th { color: #43544a; background: #f6f8f6; font-size: 11px; font-weight: 750; }
+      .asset-comparison-table thead th:first-child, .asset-comparison-table tbody th, .asset-comparison-table tfoot th { text-align: left; }
+      .asset-comparison-table tbody th { color: #34443a; font-weight: 650; }
+      .asset-comparison-table tfoot th, .asset-comparison-table tfoot td { border-top: 2px solid #cbd8cc; border-bottom: 0; color: var(--green-dark); font-weight: 800; }
+      .asset-year-status { min-height: 20px; margin: 9px 0 0 !important; color: #748078 !important; font-size: 11px !important; }
+      .asset-chart { display: block; width: 100%; min-width: 520px; height: auto; }
+      .asset-chart-scroll { overflow-x: auto; }
+      .asset-chart text { fill: #637168; font-family: inherit; font-size: 11px; }
+      .asset-chart .chart-grid { stroke: #e7ece7; stroke-width: 1; }
+      .asset-chart .chart-axis { stroke: #aab6ab; stroke-width: 1; }
+      .asset-chart .chart-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .asset-chart .chart-point { stroke: #fff; stroke-width: 2; }
+      .asset-chart-legend { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 12px 0 0; padding: 0; list-style: none; color: #506056; font-size: 12px; }
+      .asset-chart-legend li { display: inline-flex; align-items: center; gap: 8px; }
+      .asset-chart-legend span { width: 17px; height: 3px; border-radius: 3px; background: var(--legend-color); }
+      .asset-chart-legend li:nth-child(2) span { background: repeating-linear-gradient(to right, var(--legend-color) 0 5px, transparent 5px 8px); }
+      .asset-chart-legend li:nth-child(3) span { background: repeating-linear-gradient(to right, var(--legend-color) 0 2px, transparent 2px 5px); }
+      .scenario-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+      .scenario-choice { display: flex; min-height: 190px; flex-direction: column; align-items: flex-start; padding: 17px; border: 1px solid #dce5dc; border-radius: 9px; color: var(--ink); background: #fff; cursor: pointer; text-align: left; transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+      .scenario-choice:hover { transform: translateY(-2px); border-color: #9eb4a2; }
+      .scenario-choice[aria-pressed="true"] { border-color: var(--green); box-shadow: 0 0 0 2px rgba(47, 102, 82, .13); background: #f7faf7; }
+      .scenario-label { margin-bottom: 10px; color: var(--green-dark); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+      .scenario-choice strong { margin-bottom: 8px; font-size: 15px; }
+      .scenario-split { margin-bottom: 9px; color: #32473a; font-size: 13px; font-weight: 750; }
+      .scenario-choice > span:last-child { color: var(--muted); font-size: 12px; line-height: 1.5; }
+      .scenario-status { min-height: 22px; margin: 12px 0 0 !important; color: var(--green-dark) !important; font-size: 12px !important; }
+      .scenario-disclaimer { margin: 12px 0 0; color: #68756c; font-size: 11px; line-height: 1.6; }
+      .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border: 1px solid #d5ded6; border-radius: 7px; color: var(--green-dark); background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
+      [hidden].asset-analysis, [hidden].analysis-preview-launch { display: none; }
       .authenticated-view .nav { display: none; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
 
@@ -511,6 +554,8 @@
         .materials-sources { grid-template-columns: 1fr; }
         .materials-source { min-height: 78px; }
         .materials-item { align-items: flex-start; }
+        .scenario-grid { grid-template-columns: 1fr; }
+        .scenario-choice { min-height: 0; }
         .onboarding-action { min-height: 150px; padding: 20px; font-size: 16px; }
         h1 { font-size: clamp(44px, 13vw, 61px); }
         .hero-copy { font-size: 15px; }
@@ -761,11 +806,11 @@
                 </div>
                 <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
                 <p class="preparation-note" id="materials-disabled-note">Imports are disabled in this preview. Files stay in your browser and are not uploaded or saved. Do not use real case information.</p>
-                <aside class="analysis-preview-notice" id="analysis-preview-notice" aria-labelledby="analysis-preview-notice-title">
-                  <h3 id="analysis-preview-notice-title">AI document analysis data notice</h3>
-                  <p>If you request analysis, extracted text, page locations, and document IDs from the documents you select will be sent to AWS Bedrock in us-east-2. The AI will suggest candidate facts with source citations. AI results may be inaccurate or incomplete; you must review them. They are not legal advice or established facts. Account information, case-profile data, and negotiation history are not included in this analysis request. Revoking consent cancels pending analysis, but cannot recall information already sent to AWS. Do not select documents you do not want sent to AWS.</p>
-                  <p class="analysis-preview-caveat"><strong>Disclosure only—not consent:</strong> Importing a file stores it in your case workspace but does not start AI analysis. Only after you select documents and explicitly consent will their extracted text and page details be sent to the configured AWS Bedrock model. If analysis is not enabled, no content is sent.</p>
-                </aside>
+                <section class="analysis-preview-launch" id="analysis-preview-launch" aria-labelledby="analysis-preview-launch-title" hidden>
+                  <h3 id="analysis-preview-launch-title">Your imported files are ready</h3>
+                  <p>This sample preview uses fictional numbers only. It does not analyze your files, send them to an AI provider, or save sample results.</p>
+                  <button class="materials-import" id="analysis-preview-start" type="button">Analyze</button>
+                </section>
                 <section class="analysis-controls" id="analysis-controls" aria-labelledby="analysis-title" hidden>
                   <h3 id="analysis-title">Your files are stored, not analyzed</h3>
                   <p id="analysis-explanation">Choose which eligible documents to analyze. No analysis starts until you review the notice and explicitly consent.</p>
@@ -813,6 +858,90 @@
                   </section>
                 </section>
               </div>
+              <section class="asset-analysis" id="asset-analysis-view" aria-labelledby="asset-analysis-title" hidden>
+                <button class="asset-analysis-back" id="asset-analysis-back" type="button">← Back to uploaded files</button>
+                <header class="asset-analysis-header">
+                  <div>
+                    <p class="eyebrow">Sample asset overview</p>
+                    <h2 id="asset-analysis-title" tabindex="-1">A snapshot across the relationship</h2>
+                    <p class="asset-analysis-intro">Compare an illustrative household balance sheet year by year, see how the sample totals change over time, and explore possible discussion scenarios.</p>
+                  </div>
+                </header>
+                <p class="sample-analysis-notice" role="note"><strong>Fictional example only.</strong> These figures are made up and are not based on your uploaded documents or case facts. Nothing is sent to an AI provider or saved when you view this page. This is not legal advice or a recommendation about how property should be divided.</p>
+
+                <section class="asset-analysis-panel" aria-labelledby="asset-table-title">
+                  <h3 id="asset-table-title">Asset and liability comparison</h3>
+                  <p>Choose a relationship year to see that year's sample balance sheet.</p>
+                  <div class="asset-year-tabs" id="asset-year-tabs" role="tablist" aria-label="Sample relationship year">
+                    <button class="asset-year-tab" id="asset-year-tab-0" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="0">Year 1</button>
+                    <button class="asset-year-tab" id="asset-year-tab-1" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="1">Year 2</button>
+                    <button class="asset-year-tab" id="asset-year-tab-2" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="2">Year 3</button>
+                    <button class="asset-year-tab" id="asset-year-tab-3" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="3">Year 4</button>
+                    <button class="asset-year-tab" id="asset-year-tab-4" type="button" role="tab" aria-selected="false" aria-controls="asset-year-panel" tabindex="-1" data-year-index="4">Year 5</button>
+                    <button class="asset-year-tab" id="asset-year-tab-5" type="button" role="tab" aria-selected="true" aria-controls="asset-year-panel" tabindex="0" data-year-index="5">Year 6</button>
+                  </div>
+                  <div class="asset-table-scroll" id="asset-year-panel" role="tabpanel" aria-labelledby="asset-year-tab-5" tabindex="0">
+                    <table class="asset-comparison-table">
+                      <caption id="asset-year-caption">Fictional sample snapshot — Year 6</caption>
+                      <thead>
+                        <tr><th scope="col">Asset or liability</th><th scope="col">You</th><th scope="col">Other party</th><th scope="col">Combined</th></tr>
+                      </thead>
+                      <tbody id="asset-table-rows"></tbody>
+                      <tfoot id="asset-table-total"></tfoot>
+                    </table>
+                  </div>
+                  <p class="asset-year-status" id="asset-year-status" role="status" aria-live="polite"></p>
+                </section>
+
+                <section class="asset-analysis-panel" aria-labelledby="asset-chart-heading">
+                  <h3 id="asset-chart-heading">Illustrative asset trend</h3>
+                  <p>This timeline always shows all six sample years; it does not change when you select a table tab.</p>
+                  <figure>
+                    <div class="asset-chart-scroll">
+                      <svg class="asset-chart" id="asset-timeline-chart" viewBox="0 0 720 300" role="img" aria-labelledby="asset-chart-title asset-chart-desc">
+                        <title id="asset-chart-title">Fictional asset values over six relationship years</title>
+                        <desc id="asset-chart-desc">A line chart compares sample net assets for you, the other party, and both parties combined from 2020 through 2025. All amounts are illustrative U.S. dollars.</desc>
+                        <g id="asset-chart-grid"></g>
+                        <g id="asset-chart-labels"></g>
+                        <g id="asset-chart-lines"></g>
+                      </svg>
+                    </div>
+                    <ul class="asset-chart-legend" aria-label="Chart series">
+                      <li><span style="--legend-color:#2f6652"></span>You</li>
+                      <li><span style="--legend-color:#9c6a2c"></span>Other party</li>
+                      <li><span style="--legend-color:#58749c"></span>Combined net assets</li>
+                    </ul>
+                    <figcaption class="scenario-disclaimer">Sample relationship timeline: 2020–2025. The chart and table are fictional examples.</figcaption>
+                  </figure>
+                </section>
+
+                <section class="asset-analysis-panel" aria-labelledby="scenario-heading">
+                  <h3 id="scenario-heading">Possible discussion scenarios</h3>
+                  <p>Explore three hypothetical ways a conversation might be framed. Selecting one only changes this preview.</p>
+                  <div class="scenario-grid" id="scenario-options">
+                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="best">
+                      <span class="scenario-label">Best-case proposal</span>
+                      <strong>Opening position</strong>
+                      <span class="scenario-split">$346,500 you · $283,500 other party</span>
+                      <span>Illustrates asking for 55% of the fictional $630,000 net assets.</span>
+                    </button>
+                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="balanced">
+                      <span class="scenario-label">Balanced proposal</span>
+                      <strong>Shared starting point</strong>
+                      <span class="scenario-split">$315,000 each</span>
+                      <span>Illustrates an equal split of the fictional net assets for discussion.</span>
+                    </button>
+                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="fallback">
+                      <span class="scenario-label">Fallback position</span>
+                      <strong>Alternative to consider</strong>
+                      <span class="scenario-split">$283,500 you · $346,500 other party</span>
+                      <span>Illustrates a 45% share for you as one possible fallback discussion point.</span>
+                    </button>
+                  </div>
+                  <p class="scenario-status" id="scenario-status" role="status" aria-live="polite">No scenario selected. Choose one to preview it; your choice will not be sent or saved.</p>
+                  <p class="scenario-disclaimer">These are not legal conclusions, predictions, or personalized recommendations. Actual property characterization, valuation, and division depend on facts and applicable law; discuss decisions with a qualified attorney or mediator.</p>
+                </section>
+              </section>
               <a class="back-to-account" href="/#account">Back to your account</a>
             </section>
           </div>
@@ -905,6 +1034,22 @@
         const materialsStatus = document.getElementById("materials-status");
         const materialsStatusRetry = document.getElementById("materials-status-retry");
         const materialsDrop = document.querySelector(".materials-drop");
+        const analysisPreviewLaunch = document.getElementById("analysis-preview-launch");
+        const analysisPreviewStartButton = document.getElementById("analysis-preview-start");
+        const assetAnalysisView = document.getElementById("asset-analysis-view");
+        const assetAnalysisTitle = document.getElementById("asset-analysis-title");
+        const assetAnalysisBackButton = document.getElementById("asset-analysis-back");
+        const assetYearTabs = Array.from(document.querySelectorAll(".asset-year-tab"));
+        const assetYearPanel = document.getElementById("asset-year-panel");
+        const assetYearCaption = document.getElementById("asset-year-caption");
+        const assetTableRows = document.getElementById("asset-table-rows");
+        const assetTableTotal = document.getElementById("asset-table-total");
+        const assetYearStatus = document.getElementById("asset-year-status");
+        const assetChartGrid = document.getElementById("asset-chart-grid");
+        const assetChartLabels = document.getElementById("asset-chart-labels");
+        const assetChartLines = document.getElementById("asset-chart-lines");
+        const scenarioOptions = document.getElementById("scenario-options");
+        const scenarioStatus = document.getElementById("scenario-status");
         const analysisControls = document.getElementById("analysis-controls");
         const analysisExplanation = document.getElementById("analysis-explanation");
         const analysisDocumentList = document.getElementById("analysis-documents");
@@ -939,6 +1084,63 @@
         let materialsImporting = false;
         let materialsSelecting = false;
         let analysisCaseId = null;
+        const sampleAssetYears = [
+          {
+            year: 2020,
+            home: [0, 0],
+            retirement: [40000, 30000],
+            savings: [15000, 12000],
+            vehicles: [8000, 10000],
+            debt: [-8000, -10000],
+          },
+          {
+            year: 2021,
+            home: [20000, 20000],
+            retirement: [50000, 35000],
+            savings: [20000, 15000],
+            vehicles: [10000, 11000],
+            debt: [-10000, -11000],
+          },
+          {
+            year: 2022,
+            home: [50000, 50000],
+            retirement: [60000, 45000],
+            savings: [25000, 20000],
+            vehicles: [11000, 13000],
+            debt: [-12000, -14000],
+          },
+          {
+            year: 2023,
+            home: [85000, 85000],
+            retirement: [80000, 58000],
+            savings: [32000, 25000],
+            vehicles: [12000, 14000],
+            debt: [-17000, -15000],
+          },
+          {
+            year: 2024,
+            home: [125000, 125000],
+            retirement: [100000, 75000],
+            savings: [36000, 30000],
+            vehicles: [12000, 16000],
+            debt: [-20000, -18000],
+          },
+          {
+            year: 2025,
+            home: [175000, 175000],
+            retirement: [125000, 95000],
+            savings: [40000, 35000],
+            vehicles: [12000, 18000],
+            debt: [-25000, -20000],
+          },
+        ];
+        const sampleAssetCategories = [
+          ["Home equity", "home"],
+          ["Retirement accounts", "retirement"],
+          ["Cash and savings", "savings"],
+          ["Vehicles", "vehicles"],
+          ["Debt", "debt"],
+        ];
         let analysisDisclosureData = null;
         let analysisDocumentsData = [];
         let analysisRequestData = null;
@@ -1189,6 +1391,179 @@
             .find((cookie) => cookie.startsWith("auth_csrf="))
             ?.slice("auth_csrf=".length);
           return csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {};
+        }
+
+        function formatSampleCurrency(value) {
+          return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 0,
+          }).format(value);
+        }
+
+        function renderAssetSnapshot(index) {
+          const sample = sampleAssetYears[index];
+          if (!sample) return;
+          assetYearTabs.forEach((tab, tabIndex) => {
+            const selected = tabIndex === index;
+            tab.textContent = `Year ${tabIndex + 1} · ${sampleAssetYears[tabIndex].year}`;
+            tab.setAttribute("aria-selected", String(selected));
+            tab.tabIndex = selected ? 0 : -1;
+          });
+          assetYearPanel.setAttribute("aria-labelledby", assetYearTabs[index].id);
+          assetYearCaption.textContent = `Fictional sample snapshot — Year ${index + 1} (${sample.year})`;
+          assetTableRows.replaceChildren();
+          const totals = [0, 0];
+          for (const [label, category] of sampleAssetCategories) {
+            const values = sample[category];
+            totals[0] += values[0];
+            totals[1] += values[1];
+            const row = document.createElement("tr");
+            const heading = document.createElement("th");
+            heading.scope = "row";
+            heading.textContent = label;
+            row.append(heading);
+            for (const value of [...values, values[0] + values[1]]) {
+              const cell = document.createElement("td");
+              cell.textContent = formatSampleCurrency(value);
+              row.append(cell);
+            }
+            assetTableRows.append(row);
+          }
+          const totalRow = document.createElement("tr");
+          const totalHeading = document.createElement("th");
+          totalHeading.scope = "row";
+          totalHeading.textContent = "Net assets";
+          totalRow.append(totalHeading);
+          for (const value of [...totals, totals[0] + totals[1]]) {
+            const cell = document.createElement("td");
+            cell.textContent = formatSampleCurrency(value);
+            totalRow.append(cell);
+          }
+          assetTableTotal.replaceChildren(totalRow);
+          assetYearStatus.textContent = `Showing fictional figures for ${sample.year}. The timeline chart continues to show all six years.`;
+        }
+
+        function createChartElement(parent, name, attributes, text = "") {
+          const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+          for (const [attribute, value] of Object.entries(attributes)) {
+            element.setAttribute(attribute, String(value));
+          }
+          if (text) element.textContent = text;
+          parent.append(element);
+          return element;
+        }
+
+        function renderAssetTimeline() {
+          const left = 76;
+          const right = 700;
+          const top = 36;
+          const bottom = 244;
+          const maxValue = 700000;
+          const xFor = (index) => left + (right - left) * index / (sampleAssetYears.length - 1);
+          const yFor = (value) => bottom - (bottom - top) * value / maxValue;
+          assetChartGrid.replaceChildren();
+          assetChartLabels.replaceChildren();
+          assetChartLines.replaceChildren();
+
+          for (const value of [0, 200000, 400000, 600000]) {
+            const y = yFor(value);
+            createChartElement(assetChartGrid, "line", {
+              x1: left, y1: y, x2: right, y2: y, class: "chart-grid",
+            });
+            createChartElement(assetChartLabels, "text", {
+              x: left - 9, y: y + 4, "text-anchor": "end",
+            }, value === 0 ? "$0" : `$${value / 1000}k`);
+          }
+          createChartElement(assetChartGrid, "line", {
+            x1: left, y1: top, x2: left, y2: bottom, class: "chart-axis",
+          });
+          createChartElement(assetChartGrid, "line", {
+            x1: left, y1: bottom, x2: right, y2: bottom, class: "chart-axis",
+          });
+          sampleAssetYears.forEach((sample, index) => {
+            createChartElement(assetChartLabels, "text", {
+              x: xFor(index), y: bottom + 24, "text-anchor": "middle",
+            }, String(sample.year));
+          });
+          createChartElement(assetChartLabels, "text", {
+            x: (left + right) / 2, y: 291, "text-anchor": "middle",
+          }, "Time");
+          createChartElement(assetChartLabels, "text", {
+            x: 17, y: (top + bottom) / 2, "text-anchor": "middle",
+            transform: `rotate(-90 17 ${(top + bottom) / 2})`,
+          }, "Money (USD)");
+
+          const series = [
+            {
+              color: "#2f6652",
+              dash: "",
+              marker: "circle",
+              values: sampleAssetYears.map((year) =>
+                sampleAssetCategories.reduce((sum, [, key]) => sum + year[key][0], 0),
+              ),
+            },
+            {
+              color: "#9c6a2c",
+              dash: "7 5",
+              marker: "square",
+              values: sampleAssetYears.map((year) =>
+                sampleAssetCategories.reduce((sum, [, key]) => sum + year[key][1], 0),
+              ),
+            },
+          ];
+          series.push({
+            color: "#58749c",
+            dash: "2 5",
+            marker: "triangle",
+            values: sampleAssetYears.map((_, index) => series[0].values[index] + series[1].values[index]),
+          });
+          for (const item of series) {
+            const path = item.values.map((value, index) =>
+              `${index === 0 ? "M" : "L"} ${xFor(index)} ${yFor(value)}`,
+            ).join(" ");
+            const pathAttributes = { d: path, class: "chart-line", stroke: item.color };
+            if (item.dash) pathAttributes["stroke-dasharray"] = item.dash;
+            createChartElement(assetChartLines, "path", pathAttributes);
+            item.values.forEach((value, index) => {
+              const x = xFor(index);
+              const y = yFor(value);
+              if (item.marker === "circle") {
+                createChartElement(assetChartLines, "circle", {
+                  cx: x, cy: y, r: 4, fill: item.color, class: "chart-point",
+                });
+              } else if (item.marker === "square") {
+                createChartElement(assetChartLines, "rect", {
+                  x: x - 3.5, y: y - 3.5, width: 7, height: 7,
+                  fill: item.color, class: "chart-point",
+                });
+              } else {
+                createChartElement(assetChartLines, "polygon", {
+                  points: `${x},${y - 4.5} ${x + 4},${y + 3.5} ${x - 4},${y + 3.5}`,
+                  fill: item.color, class: "chart-point",
+                });
+              }
+            });
+          }
+        }
+
+        function updateAnalysisPreviewLaunch() {
+          const importedCount = materialsItems.filter((item) => item.imported).length;
+          analysisPreviewLaunch.hidden = importedCount === 0;
+        }
+
+        function openAssetAnalysis() {
+          if (!materialsItems.some((item) => item.imported)) return;
+          materialsWorkflow.hidden = true;
+          assetAnalysisView.hidden = false;
+          assetAnalysisTitle.focus();
+          assetAnalysisView.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        function closeAssetAnalysis() {
+          assetAnalysisView.hidden = true;
+          materialsWorkflow.hidden = false;
+          analysisPreviewStartButton.focus();
         }
 
         function setAnalysisStatus(message, kind = "") {
@@ -2313,7 +2688,7 @@
             materialsBatchVerified = true;
             materialsStatus.textContent = `${result.items.length} previously imported file(s) recovered.`;
             materialsStatus.dataset.kind = "success";
-            if (analysisCaseId) await loadAnalysisOptions(analysisCaseId);
+            updateAnalysisPreviewLaunch();
           } catch (error) {
             materialsStatus.textContent = error instanceof Error
               ? error.message
@@ -2389,7 +2764,7 @@
               ? `${importedCount} file(s) imported. ${failures} failed; remove or retry the failed files.`
               : `${importedCount} file(s) stored in a draft case. They have not been analyzed or legally reviewed.`;
             materialsStatus.dataset.kind = failures ? "error" : "success";
-            if (importedCount && analysisCaseId) await loadAnalysisOptions(analysisCaseId);
+            if (importedCount) updateAnalysisPreviewLaunch();
           } finally {
             materialsImporting = false;
             renderMaterials();
@@ -2458,8 +2833,41 @@
           }
         }
 
+        renderAssetSnapshot(sampleAssetYears.length - 1);
+        renderAssetTimeline();
+
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
+        });
+        analysisPreviewStartButton.addEventListener("click", openAssetAnalysis);
+        assetAnalysisBackButton.addEventListener("click", closeAssetAnalysis);
+        assetYearTabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            renderAssetSnapshot(Number(tab.dataset.yearIndex));
+          });
+          tab.addEventListener("keydown", (event) => {
+            const currentIndex = Number(tab.dataset.yearIndex);
+            let nextIndex = currentIndex;
+            if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % assetYearTabs.length;
+            else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + assetYearTabs.length) % assetYearTabs.length;
+            else if (event.key === "Home") nextIndex = 0;
+            else if (event.key === "End") nextIndex = assetYearTabs.length - 1;
+            else return;
+            event.preventDefault();
+            renderAssetSnapshot(nextIndex);
+            assetYearTabs[nextIndex].focus();
+          });
+        });
+        scenarioOptions.addEventListener("click", (event) => {
+          const choice = event.target instanceof Element
+            ? event.target.closest(".scenario-choice")
+            : null;
+          if (!choice) return;
+          for (const button of scenarioOptions.querySelectorAll(".scenario-choice")) {
+            button.setAttribute("aria-pressed", String(button === choice));
+          }
+          const selectedLabel = choice.querySelector(".scenario-label")?.textContent || "Scenario";
+          scenarioStatus.textContent = `${selectedLabel} selected for this preview only. Nothing was sent or saved.`;
         });
         materialsInput.addEventListener("change", () => {
           void addMaterials(Array.from(materialsInput.files || []));
