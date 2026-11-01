@@ -7,7 +7,8 @@
 
 ## 1. Entry and Data Boundaries
 
-- **FR-10-01 — Post-import entry:** Once at least one case document has been successfully imported, show an **Analyze** action that opens the mock asset-analysis view.
+- **FR-10-01 — Direct demo entry:** Provide a visible **Demo** link on the landing page and authenticated case dashboard. It opens the mock asset-analysis view directly without requiring sign-in, MFA, case lookup, or document import. After a successful import in the authenticated materials workflow, an **Analyze** action also opens this view.
+- **FR-10-01a — Demo isolation:** The direct demo route uses only fixed fictional sample data. It does not create a demo login session or access the signed-in user's cases, documents, or profile.
 - **FR-10-02 — No provider calls:** Opening or interacting with the mock view must not call an AI provider, create an analysis request, or require AI consent. The current AI analysis APIs remain outside this mock flow.
 - **FR-10-03 — Fictional sample values:** All displayed dates, asset amounts, liabilities, totals, and scenario values are fixed illustrative data. They are not extracted from, inferred from, or associated with uploaded documents or case-profile facts.
 - **FR-10-04 — No persistence:** Changing a year tab or selecting a scenario is an in-page preview interaction only. Do not write sample values or scenario selections to the API, database, or browser storage.
@@ -29,10 +30,11 @@
 
 ## 4. Acceptance Criteria
 
-1. A successful import reveals an **Analyze** action, and activating it opens the sample results view without requiring an AI provider or consent.
-2. The table contains six annual tabs, a selected-year asset/liability comparison for both parties and the combined amount, and a net-assets total.
-3. One timeline chart shows amounts over all six years and is not filtered by the selected table tab.
-4. Three scenario cards can be selected independently of the year tabs and are labeled as fictional, non-binding examples.
-5. Browser network activity from opening the mock view contains no analysis-request, provider, or persistence call.
-6. No sample amount, scenario choice, or inferred claim is sent to or saved by the backend.
-7. Keyboard and screen-reader users can operate year tabs, scenario selection, and return navigation; the layout remains usable on mobile.
+1. The landing page and signed-in case dashboard provide a **Demo** action that opens the sample results view without sign-in, MFA, case lookup, document import, an AI provider, or consent.
+2. A successful import reveals an **Analyze** action, and activating it opens the sample results view without requiring an AI provider or consent.
+3. The table contains six annual tabs, a selected-year asset/liability comparison for both parties and the combined amount, and a net-assets total.
+4. One timeline chart shows amounts over all six years and is not filtered by the selected table tab.
+5. Three scenario cards can be selected independently of the year tabs and are labeled as fictional, non-binding examples.
+6. Browser network activity from opening the mock view contains no authentication, case lookup, analysis-request, provider, or persistence call.
+7. No sample amount, scenario choice, or inferred claim is sent to or saved by the backend.
+8. Keyboard and screen-reader users can operate year tabs, scenario selection, and return navigation; the layout remains usable on mobile.
