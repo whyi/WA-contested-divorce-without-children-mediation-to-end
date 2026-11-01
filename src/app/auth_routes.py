@@ -1023,7 +1023,7 @@ def google_oidc_link_start(
     )
 
 
-@router.get("/oidc/google/callback")
+@router.get("/oidc/google/callback", response_model=None)
 def google_oidc_callback(
     request: Request,
     response: Response,
@@ -1031,7 +1031,7 @@ def google_oidc_callback(
     state: str,
     code: str | None = None,
     error: str | None = None,
-) -> dict:
+) -> Response | dict[str, str | bool]:
     settings = get_settings()
     _require_secret_config()
     if error or not code or not settings.google_client_id or not settings.google_client_secret:
@@ -1114,7 +1114,11 @@ def google_oidc_callback(
         challenge.consumed_at = now
         _audit(db, "provider_linked", "success", linked_user.id, {"provider": "google"})
         db.commit()
-        return {"message": "Google identity linked."}
+        response.status_code = 303
+        response.headers["Location"] = "/"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
     if identity is not None:
         user = db.get(User, identity.user_id)
     else:
@@ -1160,15 +1164,14 @@ def google_oidc_callback(
             "challenge": mfa_challenge,
         }
     _audit(db, "login", "success", user.id, {"provider": "google"})
-    session, access, refresh, csrf = _create_session(db, user)
+    _, access, refresh, csrf = _create_session(db, user)
     db.commit()
     _set_auth_cookies(response, access, refresh, csrf)
-    return {
-        "access_token": access,
-        "token_type": "Bearer",
-        "expires_in": settings.auth_access_token_minutes * 60,
-        "session_id": str(session.id),
-    }
+    response.status_code = 303
+    response.headers["Location"] = "/"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @router.post("/passkeys/register/options")
