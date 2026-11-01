@@ -75,11 +75,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="signup-form"', page)
         self.assertIn('id="login-form"', page)
         self.assertIn('name="email" type="text" autocomplete="username"', page)
-        self.assertIn("username <strong>demo</strong> · password <strong>demo</strong>", page)
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
-        self.assertIn('id="demo-button"', page)
-        self.assertIn('demoButton.addEventListener("click"', page)
+        self.assertIn('id="demo-entry" href="/demo"', page)
+        self.assertIn('.authenticated-view .nav a:not(.demo-entry)', page)
+        self.assertIn('const demoMode = window.location.pathname === "/demo";', page)
         self.assertIn('"/api/auth/signup"', page)
         self.assertIn('"/api/auth/login"', page)
         self.assertIn('"/api/auth/verify-email"', page)
@@ -373,14 +373,25 @@ class MainWorkflowTests(unittest.TestCase):
         responses = (
             asyncio.run(request_app("/onboarding/upload")),
             asyncio.run(request_app("/onboarding/wizard")),
+            asyncio.run(request_app("/demo")),
         )
 
-        self.assertEqual([status for status, _ in responses], [200, 200])
-        for _, body in responses:
+        self.assertEqual([status for status, _ in responses], [200, 200, 200])
+        for _, body in responses[:2]:
             page = body.decode()
             self.assertIn('id="account-dashboard"', page)
             self.assertIn('"/api/v1/dashboard/status"', page)
             self.assertIn("This preview does not accept or save case details or documents.", page)
+        demo_page = responses[2][1].decode()
+        self.assertIn('const demoMode = window.location.pathname === "/demo";', demo_page)
+        self.assertIn("Explore fictional sample figures without signing in or opening a case.", demo_page)
+        self.assertIn('showPreparation("demo");', demo_page)
+        demo_bootstrap = demo_page.rsplit('if (demoMode) {', 1)[1].split(
+            "} else {", 1
+        )[0]
+        self.assertNotIn("fetch(", demo_bootstrap)
+        self.assertNotIn("loadDashboardStatus(", demo_bootstrap)
+
 
 if __name__ == "__main__":
     unittest.main()
