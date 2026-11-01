@@ -521,7 +521,7 @@
       .scenario-disclaimer { margin: 12px 0 0; color: #68756c; font-size: 11px; line-height: 1.6; }
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border: 1px solid #d5ded6; border-radius: 7px; color: var(--green-dark); background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis, [hidden].analysis-preview-launch { display: none; }
-      .authenticated-view .nav { display: none; }
+      .authenticated-view .nav a:not(.demo-entry) { display: none; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
 
       @media (max-width: 850px) {
@@ -593,7 +593,7 @@
           <span class="brand-name">Casework</span>
         </a>
         <nav class="nav" aria-label="Main navigation">
-          <button class="nav-cta" id="demo-button" type="button" hidden>Demo</button>
+          <a class="nav-cta demo-entry" id="demo-entry" href="/demo">Demo</a>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <a class="nav-cta" href="#account">Sign up / Sign in <span class="arrow" aria-hidden="true">→</span></a>
@@ -706,7 +706,7 @@
                   <input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required>
                 </label>
                 <button class="button button-primary" type="submit">Sign in <span class="arrow" aria-hidden="true">→</span></button>
-                <p class="account-footnote">Local demo access: username <strong>demo</strong> · password <strong>demo</strong>. Demo access is for this local preview only; case data remains disabled.</p>
+                <p class="account-footnote">Want to look around without signing in? Use <a href="/demo">Demo</a>. It uses fictional sample figures and does not access or change your case.</p>
               </form>
               <form class="account-form" id="verify-form" aria-labelledby="verify-tab" hidden>
                 <label for="verify-email">Email address
@@ -1013,7 +1013,6 @@
         const status = document.getElementById("account-status");
         const googleButton = document.getElementById("google-signin");
         const googleStatus = document.getElementById("google-status");
-        const demoButton = document.getElementById("demo-button");
         const accountSection = document.getElementById("account");
         const dashboard = document.getElementById("account-dashboard");
         const dashboardLoading = document.getElementById("dashboard-loading");
@@ -1151,8 +1150,8 @@
         let profileFactsData = null;
         let reviewBusy = false;
         let pendingAdoption = null;
-        let demoEntryRequested = false;
         const reviewIdempotencyKeys = new Map();
+        const demoMode = window.location.pathname === "/demo";
         const preparationMode = {
           "/onboarding/upload": "upload",
           "/onboarding/wizard": "wizard",
@@ -1219,16 +1218,28 @@
 
         function showPreparation(mode) {
           const isUpload = mode === "upload";
+          const isDemo = mode === "demo";
           document.getElementById("preparation-title").textContent = isUpload
             ? "Start with your case materials"
-            : "Start with guided entry";
+            : isDemo
+              ? "Demo preview"
+              : "Start with guided entry";
           document.getElementById("preparation-description").textContent = isUpload
             ? "Choose files from your device, review your selection, and confirm before anything is imported."
-            : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
+            : isDemo
+              ? "Explore a sample asset comparison and possible discussion scenarios. No sign-in or case data is needed."
+              : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
           materialsWorkflow.hidden = !isUpload;
-          preparationNote.hidden = isUpload;
+          preparationNote.hidden = isUpload || isDemo;
           preparationView.hidden = false;
           if (isUpload) loadMaterialsConfig();
+          if (isDemo) {
+            document.getElementById("dashboard-title").textContent = "Casework demo";
+            document.getElementById("dashboard-intro").textContent =
+              "Explore fictional sample figures without signing in or opening a case.";
+            assetAnalysisBackButton.textContent = "← Back to Casework";
+            assetAnalysisView.hidden = false;
+          }
         }
 
         function formatFileSize(size) {
@@ -1561,6 +1572,10 @@
         }
 
         function closeAssetAnalysis() {
+          if (demoMode) {
+            window.location.assign("/");
+            return;
+          }
           assetAnalysisView.hidden = true;
           materialsWorkflow.hidden = false;
           analysisPreviewStartButton.focus();
@@ -2900,30 +2915,23 @@
           window.location.assign("/api/auth/oidc/google/start");
         });
 
-        demoButton.addEventListener("click", () => {
-          demoEntryRequested = true;
-          selectForm("login", false);
-          document.getElementById("login-email").value = "demo";
-          document.getElementById("login-password").value = "demo";
-          loginForm.requestSubmit();
-        });
-
-        fetch("/api/auth/providers", { credentials: "same-origin" })
-          .then(async (response) => {
-            if (!response.ok) throw new Error("Could not check social sign-in availability.");
-            return response.json();
-          })
-          .then((providers) => {
-            googleButton.disabled = !providers.google;
-            demoButton.hidden = !providers.demo;
-            googleStatus.textContent = providers.google
-              ? "New here? Google will create your account. Returning users can sign in with the same button."
-              : "Google sign-up and sign-in are unavailable until authentication and Google OIDC are configured.";
-          })
-          .catch(() => {
-            googleButton.disabled = true;
-            googleStatus.textContent = "Social sign-in availability could not be checked. Please use email when available.";
-          });
+        if (!demoMode) {
+          fetch("/api/auth/providers", { credentials: "same-origin" })
+            .then(async (response) => {
+              if (!response.ok) throw new Error("Could not check social sign-in availability.");
+              return response.json();
+            })
+            .then((providers) => {
+              googleButton.disabled = !providers.google;
+              googleStatus.textContent = providers.google
+                ? "New here? Google will create your account. Returning users can sign in with the same button."
+                : "Google sign-up and sign-in are unavailable until authentication and Google OIDC are configured.";
+            })
+            .catch(() => {
+              googleButton.disabled = true;
+              googleStatus.textContent = "Social sign-in availability could not be checked. Please use email when available.";
+            });
+        }
 
         async function submitForm(form, endpoint, successMessage) {
           const submitButton = form.querySelector('button[type="submit"]');
@@ -2955,7 +2963,6 @@
               }
               form.reset();
               await loadDashboardStatus();
-              if (demoEntryRequested) window.location.assign("/onboarding/upload");
               return;
             }
             status.textContent = result.message || successMessage;
@@ -3019,7 +3026,13 @@
           }
         });
 
-        loadDashboardStatus({ isStartup: true });
+        if (demoMode) {
+          showDashboardShell();
+          dashboardLoading.hidden = true;
+          showPreparation("demo");
+        } else {
+          loadDashboardStatus({ isStartup: true });
+        }
       })();
     </script>
   </body>
