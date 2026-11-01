@@ -487,7 +487,13 @@ def available_authentication_providers() -> dict[str, bool]:
             and len(settings.auth_jwt_secret.encode()) >= 32
             and settings.google_client_id
             and settings.google_client_secret
-        )
+        ),
+        "demo": bool(
+            settings.auth_enabled
+            and settings.auth_jwt_secret
+            and len(settings.auth_jwt_secret.encode()) >= 32
+            and settings.demo_mode_enabled
+        ),
     }
 
 

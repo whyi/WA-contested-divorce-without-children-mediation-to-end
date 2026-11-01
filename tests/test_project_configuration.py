@@ -47,15 +47,19 @@ class ProjectConfigurationTests(unittest.TestCase):
         self.assertIn('"app.extraction_worker"', compose)
         self.assertIn("analysis-worker:", compose)
         self.assertIn('"app.analysis_worker"', compose)
+        analysis_worker = (ROOT / "src" / "app" / "analysis_worker.py").read_text()
+        self.assertIn('if __name__ == "__main__":\n    main()', analysis_worker)
 
     def test_compose_demo_login_is_explicit_and_case_data_remains_disabled(self) -> None:
         compose = (ROOT / "docker-compose.yml").read_text()
 
-        self.assertIn('DEMO_MODE_ENABLED: "true"', compose)
-        self.assertIn('AUTH_ENABLED: "true"', compose)
-        self.assertNotIn('CASE_DATA_ENABLED: "true"', compose)
-        self.assertIn('CASE_MATERIALS_ENABLED: "false"', compose)
-        self.assertIn('AI_ANALYSIS_ENABLED: "false"', compose)
+        self.assertIn('DEMO_MODE_ENABLED: "${DEMO_MODE_ENABLED:-true}"', compose)
+        self.assertIn('AUTH_ENABLED: "${AUTH_ENABLED:-true}"', compose)
+        self.assertIn('CASE_DATA_ENABLED: "${CASE_DATA_ENABLED:-false}"', compose)
+        self.assertIn('CASE_MATERIALS_ENABLED: "${CASE_MATERIALS_ENABLED:-false}"', compose)
+        self.assertIn('AI_ANALYSIS_ENABLED: "${AI_ANALYSIS_ENABLED:-false}"', compose)
+        self.assertIn('AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}', compose)
+        self.assertIn('BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}', compose)
         self.assertIn("local-demo-only-signing-secret-not-for-production", compose)
 
     def test_package_includes_the_landing_page_asset(self) -> None:
