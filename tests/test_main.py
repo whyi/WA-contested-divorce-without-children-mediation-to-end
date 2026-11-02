@@ -143,7 +143,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="asset-year-next"', page)
         self.assertNotIn("asset-year-tab", page)
         self.assertIn('assetYearRange.addEventListener("input"', page)
-        self.assertIn("renderAssetTimelineCursor(index)", page)
+        self.assertIn("renderAssetTimelineCursor(index, values)", page)
         self.assertIn("Best-case proposal", page)
         self.assertIn("Balanced proposal", page)
         self.assertIn("Fallback position", page)
