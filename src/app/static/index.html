@@ -359,6 +359,49 @@
       .demo-wizard-dialog-content { padding: 25px; }
       .demo-wizard-dialog h2 { margin-bottom: 10px; font-family: Georgia, "Times New Roman", serif; font-size: 25px; font-weight: 500; }
       .demo-wizard-dialog p { color: #536258; font-size: 14px; line-height: 1.65; }
+      .wizard-save-status { min-height: 22px; margin: 0 0 14px !important; color: var(--green-dark) !important; font-size: 12px !important; }
+      .wizard-save-status[data-kind="error"] { color: #9c3228 !important; }
+      .wizard-progress { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; padding: 0; list-style: none; }
+      .wizard-progress a { display: inline-flex; min-height: 34px; align-items: center; padding: 0 10px; border: 1px solid #d6e0d7; border-radius: 18px; color: #405349; background: #fff; font-size: 11px; font-weight: 700; text-decoration: none; }
+      .wizard-section { margin-top: 20px; padding: clamp(17px, 3vw, 24px); border: 1px solid var(--line); border-radius: 10px; background: #fff; scroll-margin-top: 18px; }
+      .wizard-section h2 { margin-bottom: 7px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; }
+      .wizard-section > p { color: var(--muted); font-size: 12px; line-height: 1.55; }
+      .wizard-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+      .wizard-field { display: grid; min-width: 0; gap: 6px; color: #3d4c42; font-size: 12px; font-weight: 700; }
+      .wizard-field input, .wizard-field select, .wizard-field textarea { width: 100%; min-height: 42px; padding: 9px 10px; border: 1px solid #d5ded6; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; font-size: 13px; }
+      .wizard-field textarea { min-height: 86px; resize: vertical; }
+      .wizard-field input:focus, .wizard-field select:focus, .wizard-field textarea:focus { outline: 3px solid rgba(47, 102, 82, .17); border-color: var(--green); }
+      .wizard-date-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+      .wizard-checkbox { display: inline-flex; min-height: 42px; align-items: center; gap: 7px; color: #536258; font-size: 11px; font-weight: 600; }
+      .wizard-checkbox input { width: 16px; height: 16px; accent-color: var(--green); }
+      .wizard-collection { display: grid; gap: 12px; }
+      .wizard-entry { min-width: 0; padding: 15px; border: 1px solid #dfe7df; border-radius: 8px; background: #fbfcfb; }
+      .wizard-entry-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+      .wizard-entry-head h3 { margin: 0; color: #33463b; font-size: 14px; }
+      .wizard-add, .wizard-remove, .wizard-clear { min-height: 38px; padding: 0 11px; border: 1px solid #cbd8cc; border-radius: 6px; color: var(--green-dark); background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+      .wizard-remove { border-color: #e4d3d0; color: #8d3026; }
+      .wizard-attachments { display: grid; gap: 6px; margin-top: 14px; }
+      .wizard-attachments label { color: #3d4c42; font-size: 12px; font-weight: 700; }
+      .wizard-attachments input { width: 100%; font: inherit; font-size: 12px; }
+      .wizard-attachment-list { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+      .wizard-attachment-list li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; color: #536258; font-size: 11px; }
+      .wizard-attachment-list span { min-width: 0; overflow-wrap: anywhere; }
+      .wizard-attachment-list button { min-height: 32px; flex: 0 0 auto; padding: 0 8px; border: 1px solid #d5ded6; border-radius: 5px; color: #6f3029; background: #fff; cursor: pointer; font: inherit; }
+      .wizard-review-list { display: grid; gap: 8px; margin: 0; padding-left: 20px; color: #536258; font-size: 12px; line-height: 1.5; }
+      .wizard-storage-note { margin: 10px 0 0; color: #6f7a72; font-size: 11px; line-height: 1.5; }
+      .wizard-gated[hidden] { display: none; }
+      .wizard-bottom-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+      .wizard-clear-dialog-content { padding: 25px; }
+      .wizard-clear-dialog-content h2 { margin-bottom: 10px; font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 500; }
+      .wizard-clear-dialog-content p { color: #536258; font-size: 13px; line-height: 1.6; }
+      .wizard-clear-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+      .wizard-amount-note { grid-column: 1 / -1; margin: -4px 0 0; color: #6f7a72; font-size: 11px; }
+      @media (max-width: 600px) {
+        .wizard-form-grid { grid-template-columns: 1fr; }
+        .wizard-date-row { grid-template-columns: 1fr; }
+        .wizard-progress { gap: 5px; }
+        .wizard-progress a { min-height: 32px; padding: 0 8px; font-size: 10px; }
+      }
       body[data-demo-page] .topbar .nav a:not(.demo-entry) { display: none; }
       body[data-demo-page] .demo-quick-section,
       .authenticated-view .demo-quick-section { display: none; }
@@ -728,32 +771,105 @@
         <section class="demo-flow-page" id="wizard-demo" aria-labelledby="wizard-demo-title" hidden>
           <p class="eyebrow">Guided intake preview</p>
           <h1 id="wizard-demo-title">Wizard demo</h1>
-          <p class="demo-flow-intro">Preview a few mediation intake questions on one page. Your answers stay in this page only and are not submitted or saved.</p>
+          <p class="demo-flow-intro">Build a mediation-preparation draft at your pace. Your answers and optional evidence are saved only in this browser and are never uploaded, analyzed, or used to change the fictional Existing demo.</p>
           <div class="demo-flow-panel">
+            <p class="wizard-save-status" id="wizard-save-status" role="status" aria-live="polite">Opening local draft storage…</p>
             <fieldset class="demo-choice-fields" id="wizard-filed-question">
               <legend>Has your divorce case been filed?</legend>
-              <label class="demo-radio-option"><input type="radio" name="wizard-filed" value="yes"> Yes</label>
-              <label class="demo-radio-option"><input type="radio" name="wizard-filed" value="no"> No</label>
+              <label class="demo-radio-option"><input type="radio" name="wizard-filed" value="yes" data-wizard-base="filed"> Yes</label>
+              <label class="demo-radio-option"><input type="radio" name="wizard-filed" value="no" data-wizard-base="filed"> No</label>
             </fieldset>
             <fieldset class="demo-choice-fields" id="wizard-role-question" disabled>
               <legend>Are you the Petitioner or Respondent?</legend>
-              <label class="demo-radio-option"><input type="radio" name="wizard-role" value="petitioner"> Petitioner</label>
-              <label class="demo-radio-option"><input type="radio" name="wizard-role" value="respondent"> Respondent</label>
+              <label class="demo-radio-option"><input type="radio" name="wizard-role" value="petitioner" data-wizard-base="role"> Petitioner</label>
+              <label class="demo-radio-option"><input type="radio" name="wizard-role" value="respondent" data-wizard-base="role"> Respondent</label>
             </fieldset>
-            <div class="demo-flow-actions">
-              <button class="button button-primary" id="wizard-finish" type="button" disabled>Finish demo</button>
-              <a class="button button-secondary" href="/">Back to home</a>
+            <div class="wizard-gated" id="wizard-gated-content" hidden>
+              <nav aria-label="Wizard sections">
+                <ol class="wizard-progress">
+                  <li><a href="#wizard-dates">Dates</a></li>
+                  <li><a href="#wizard-finances">Finances</a></li>
+                  <li><a href="#wizard-issues">Issues</a></li>
+                  <li><a href="#wizard-agreements">Agreements</a></li>
+                  <li><a href="#wizard-review">Review</a></li>
+                </ol>
+              </nav>
+              <section class="wizard-section" id="wizard-dates" aria-labelledby="wizard-dates-title">
+                <h2 id="wizard-dates-title">Relationship and case dates</h2>
+                <p>Enter dates you know. Leave a date blank or mark it unknown to come back later.</p>
+                <div class="wizard-form-grid">
+                  <div class="wizard-date-row">
+                    <label class="wizard-field" for="wizard-date-cohabitation">Cohabitation / CIR start
+                      <input id="wizard-date-cohabitation" type="date" data-wizard-date="cohabitation">
+                    </label>
+                    <label class="wizard-checkbox"><input type="checkbox" data-wizard-unknown="cohabitation"> I don't know yet</label>
+                  </div>
+                  <div class="wizard-date-row">
+                    <label class="wizard-field" for="wizard-date-marriage">Marriage
+                      <input id="wizard-date-marriage" type="date" data-wizard-date="marriage">
+                    </label>
+                    <label class="wizard-checkbox"><input type="checkbox" data-wizard-unknown="marriage"> I don't know yet</label>
+                  </div>
+                  <div class="wizard-date-row">
+                    <label class="wizard-field" for="wizard-date-separation">Separation
+                      <input id="wizard-date-separation" type="date" data-wizard-date="separation">
+                    </label>
+                    <label class="wizard-checkbox"><input type="checkbox" data-wizard-unknown="separation"> I don't know yet</label>
+                  </div>
+                  <div class="wizard-date-row">
+                    <label class="wizard-field" for="wizard-date-petition">Petition filing
+                      <input id="wizard-date-petition" type="date" data-wizard-date="petition">
+                    </label>
+                    <label class="wizard-checkbox"><input type="checkbox" data-wizard-unknown="petition"> I don't know yet</label>
+                  </div>
+                </div>
+              </section>
+              <section class="wizard-section" id="wizard-finances" aria-labelledby="wizard-finances-title">
+                <h2 id="wizard-finances-title">Assets and debts</h2>
+                <p>List each item separately, including multiple homes, vehicles, accounts, and debts. These are your descriptions only; the demo does not determine legal ownership or classification.</p>
+                <div class="wizard-collection" id="wizard-finance-list"></div>
+                <button class="wizard-add" type="button" data-wizard-add="finance">Add an asset or debt</button>
+              </section>
+              <section class="wizard-section" id="wizard-issues" aria-labelledby="wizard-issues-title">
+                <h2 id="wizard-issues-title">Issues and goals</h2>
+                <p>Add topics you want to discuss and what outcome you hope for. You can attach optional supporting material such as emails.</p>
+                <div class="wizard-collection" id="wizard-issue-list"></div>
+                <button class="wizard-add" type="button" data-wizard-add="issue">Add an issue or goal</button>
+              </section>
+              <section class="wizard-section" id="wizard-agreements" aria-labelledby="wizard-agreements-title">
+                <h2 id="wizard-agreements-title">Known agreements</h2>
+                <p>Note any agreements or items already resolved. Attach optional written confirmation if you have it.</p>
+                <div class="wizard-collection" id="wizard-agreement-list"></div>
+                <button class="wizard-add" type="button" data-wizard-add="agreement">Add an agreement</button>
+              </section>
+              <section class="wizard-section" id="wizard-review" aria-labelledby="wizard-review-title">
+                <h2 id="wizard-review-title">Review your draft</h2>
+                <p>This review reflects only what you entered. All sections above remain editable.</p>
+                <ul class="wizard-review-list" id="wizard-review-list"></ul>
+              </section>
+              <p class="wizard-storage-note">Your draft and attached files are stored in this browser only. Clearing browser/site data may remove them. Attachments are not uploaded or analyzed.</p>
+              <div class="wizard-bottom-actions">
+                <button class="button button-primary" id="wizard-finish" type="button" disabled>Save and view Existing demo</button>
+                <button class="wizard-clear" id="wizard-clear" type="button">Clear saved draft</button>
+                <a class="button button-secondary" href="/">Back to home</a>
+              </div>
             </div>
-            <p class="demo-wizard-status" id="wizard-completion" role="status" tabindex="-1" hidden>
-              Demo complete. Your answers were not submitted or saved.
-              <a href="/demo">Existing demo</a>
-            </p>
           </div>
           <dialog class="demo-wizard-dialog" id="wizard-filed-dialog" aria-labelledby="wizard-dialog-title" aria-describedby="wizard-dialog-description">
             <div class="demo-wizard-dialog-content">
               <h2 id="wizard-dialog-title">This demo assumes a filed case</h2>
               <p id="wizard-dialog-description">This preview is for the mediation stage and assumes the divorce case has been filed. A case that has not been filed cannot continue through this demo. This is workflow guidance only, not a legal conclusion.</p>
               <button class="button button-primary" id="wizard-dialog-acknowledge" type="button">Understood</button>
+            </div>
+          </dialog>
+          <dialog class="demo-wizard-dialog" id="wizard-clear-dialog" aria-labelledby="wizard-clear-title" aria-describedby="wizard-clear-description">
+            <div class="wizard-clear-dialog-content">
+              <h2 id="wizard-clear-title">Clear this browser's draft?</h2>
+              <p id="wizard-clear-description">This removes the saved wizard answers and attached evidence from this browser. This cannot be undone.</p>
+              <div class="wizard-clear-actions">
+                <button class="wizard-remove" id="wizard-clear-confirm" type="button">Clear draft and files</button>
+                <button class="wizard-add" id="wizard-clear-cancel" type="button">Keep draft</button>
+              </div>
             </div>
           </dialog>
         </section>
@@ -1367,9 +1483,28 @@
         const wizardRoleQuestion = document.getElementById("wizard-role-question");
         const wizardFiledDialog = document.getElementById("wizard-filed-dialog");
         const wizardDialogAcknowledge = document.getElementById("wizard-dialog-acknowledge");
+        const wizardGatedContent = document.getElementById("wizard-gated-content");
         const wizardFinish = document.getElementById("wizard-finish");
-        const wizardCompletion = document.getElementById("wizard-completion");
+        const wizardSaveStatus = document.getElementById("wizard-save-status");
+        const wizardFinanceList = document.getElementById("wizard-finance-list");
+        const wizardIssueList = document.getElementById("wizard-issue-list");
+        const wizardAgreementList = document.getElementById("wizard-agreement-list");
+        const wizardReviewList = document.getElementById("wizard-review-list");
+        const wizardClearButton = document.getElementById("wizard-clear");
+        const wizardClearDialog = document.getElementById("wizard-clear-dialog");
+        const wizardClearConfirm = document.getElementById("wizard-clear-confirm");
+        const wizardClearCancel = document.getElementById("wizard-clear-cancel");
         const wizardNoChoice = wizardFiledQuestion.querySelector('input[value="no"]');
+        const wizardDatabaseName = "casework-wizard-intake";
+        const wizardDatabaseVersion = 1;
+        const wizardDraftKey = "active";
+        const wizardDateKeys = ["cohabitation", "marriage", "separation", "petition"];
+        let wizardDatabase = null;
+        let wizardSaveTimer = null;
+        let wizardSaveQueue = Promise.resolve();
+        let wizardClearingDraft = false;
+        let wizardDraftRevision = 0;
+        let wizardDraft = createEmptyWizardDraft();
         let demoSelectedFiles = [];
         const preparationMode = {
           "/onboarding/upload": "upload",
@@ -1473,15 +1608,608 @@
           renderDemoFileSelection();
         }
 
-        function updateWizardGate(showBlockedDialog = false) {
-          const filedAnswer = wizardFiledQuestion.querySelector('input[name="wizard-filed"]:checked')?.value;
-          const roleSelected = Boolean(wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked'));
-          const canContinue = filedAnswer === "yes";
-          wizardRoleQuestion.disabled = !canContinue;
-          wizardFinish.disabled = !canContinue || !roleSelected;
-          wizardCompletion.hidden = true;
+        function createEmptyWizardDraft() {
+          return {
+            schemaVersion: 1,
+            filed: "",
+            role: "",
+            dates: Object.fromEntries(
+              ["cohabitation", "marriage", "separation", "petition"].map(
+                (key) => [key, { date: "", unknown: false }],
+              ),
+            ),
+            finances: [],
+            issues: [],
+            agreements: [],
+          };
+        }
+
+        function createWizardId() {
+          return crypto.randomUUID();
+        }
+
+        function normalizeWizardDraft(value) {
+          const empty = createEmptyWizardDraft();
+          if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
+          const normalized = {
+            ...empty,
+            ...value,
+            dates: { ...empty.dates },
+            finances: Array.isArray(value.finances) ? value.finances : [],
+            issues: Array.isArray(value.issues) ? value.issues : [],
+            agreements: Array.isArray(value.agreements) ? value.agreements : [],
+          };
+          for (const key of wizardDateKeys) {
+            const date = value.dates?.[key];
+            normalized.dates[key] = {
+              date: typeof date?.date === "string" ? date.date : "",
+              unknown: date?.unknown === true,
+            };
+          }
+          for (const collection of ["finances", "issues", "agreements"]) {
+            normalized[collection] = normalized[collection]
+              .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+              .map((item) => ({
+                ...item,
+                id: typeof item.id === "string" ? item.id : createWizardId(),
+                attachments: Array.isArray(item.attachments) ? item.attachments : [],
+              }));
+          }
+          normalized.filed = normalized.filed === "yes" || normalized.filed === "no"
+            ? normalized.filed
+            : "";
+          normalized.role = normalized.role === "petitioner" || normalized.role === "respondent"
+            ? normalized.role
+            : "";
+          return normalized;
+        }
+
+        function setWizardSaveStatus(message, kind = "") {
+          wizardSaveStatus.textContent = message;
+          if (kind) wizardSaveStatus.dataset.kind = kind;
+          else wizardSaveStatus.removeAttribute("data-kind");
+        }
+
+        function openWizardDatabase() {
+          return new Promise((resolve, reject) => {
+            if (!("indexedDB" in window)) {
+              reject(new Error("This browser does not support local draft storage."));
+              return;
+            }
+            const request = indexedDB.open(wizardDatabaseName, wizardDatabaseVersion);
+            request.onupgradeneeded = () => {
+              const database = request.result;
+              if (!database.objectStoreNames.contains("drafts")) {
+                database.createObjectStore("drafts", { keyPath: "key" });
+              }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(
+              request.error || new Error("Could not open browser-local draft storage."),
+            );
+            request.onblocked = () => reject(
+              new Error("Local draft storage is blocked by another open Casework tab."),
+            );
+          });
+        }
+
+        function loadWizardDraft() {
+          return new Promise((resolve, reject) => {
+            const transaction = wizardDatabase.transaction("drafts", "readonly");
+            const request = transaction.objectStore("drafts").get(wizardDraftKey);
+            request.onsuccess = () => resolve(request.result?.draft || null);
+            request.onerror = () => reject(
+              request.error || new Error("Could not read the saved local draft."),
+            );
+            transaction.onabort = () => reject(
+              transaction.error || new Error("Could not read the saved local draft."),
+            );
+          });
+        }
+
+        function saveWizardDraft() {
+          if (!wizardDatabase) {
+            setWizardSaveStatus(
+              "Not saved: browser-local storage is unavailable. Your changes will be lost if you leave this page.",
+              "error",
+            );
+            return Promise.resolve(false);
+          }
+          setWizardSaveStatus("Saving this draft in your browser…");
+          const revision = wizardDraftRevision;
+          const save = wizardSaveQueue.then(() => new Promise((resolve) => {
+            let transaction;
+            try {
+              transaction = wizardDatabase.transaction("drafts", "readwrite");
+              transaction.objectStore("drafts").put({
+                key: wizardDraftKey,
+                draft: wizardDraft,
+                updatedAt: new Date().toISOString(),
+              });
+            } catch (error) {
+              setWizardSaveStatus(
+                `Not saved: ${error instanceof Error ? error.message : "browser storage failed"}. Your latest changes are only on this page.`,
+                "error",
+              );
+              resolve(false);
+              return;
+            }
+            transaction.oncomplete = () => {
+              if (revision === wizardDraftRevision) {
+                setWizardSaveStatus(`Saved in this browser at ${new Date().toLocaleTimeString()}.`);
+              }
+              resolve(true);
+            };
+            transaction.onerror = transaction.onabort = () => {
+              const reason = transaction.error?.name === "QuotaExceededError"
+                ? "browser storage is full; remove some attachments and try again"
+                : transaction.error?.message || "browser storage failed";
+              setWizardSaveStatus(
+                `Not saved: ${reason}. Your latest changes are only on this page.`,
+                "error",
+              );
+              resolve(false);
+            };
+          }));
+          wizardSaveQueue = save.then(() => undefined, () => undefined);
+          return save;
+        }
+
+        function scheduleWizardSave(immediate = false) {
+          window.clearTimeout(wizardSaveTimer);
+          wizardDraftRevision += 1;
+          setWizardSaveStatus("Unsaved changes — saving in this browser…");
+          if (immediate) {
+            void saveWizardDraft();
+            return;
+          }
+          wizardSaveTimer = window.setTimeout(() => {
+            void saveWizardDraft();
+          }, 350);
+        }
+
+        function flushWizardDraftOnExit() {
+          if (!demoWizardMode || !wizardDatabase || wizardClearingDraft) return;
+          window.clearTimeout(wizardSaveTimer);
+          try {
+            const transaction = wizardDatabase.transaction("drafts", "readwrite");
+            transaction.objectStore("drafts").put({
+              key: wizardDraftKey,
+              draft: wizardDraft,
+              updatedAt: new Date().toISOString(),
+            });
+          } catch {
+            setWizardSaveStatus(
+              "The latest changes could not be saved before leaving this page.",
+              "error",
+            );
+          }
+        }
+
+        function escapeWizardHtml(value) {
+          return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          })[character]);
+        }
+
+        function wizardAttachmentMarkup(entry, collection) {
+          const attachments = entry.attachments.map((file) => `
+            <li>
+              <span>${escapeWizardHtml(file.name)} (${Math.ceil(file.size / 1024)} KiB)</span>
+              <button type="button" data-wizard-remove-file="${escapeWizardHtml(file.id)}" data-wizard-collection="${collection}" data-wizard-id="${escapeWizardHtml(entry.id)}" aria-label="Remove ${escapeWizardHtml(file.name)}">Remove</button>
+            </li>`).join("");
+          const inputId = `wizard-files-${entry.id}`;
+          return `
+            <div class="wizard-attachments">
+              <label for="${inputId}">Optional supporting files — stay in this browser only</label>
+              <input id="${inputId}" type="file" multiple data-wizard-files="${collection}" data-wizard-id="${escapeWizardHtml(entry.id)}" aria-describedby="${inputId}-help">
+              <span id="${inputId}-help" class="wizard-storage-note">Evidence is not uploaded or analyzed.</span>
+              <ul class="wizard-attachment-list" aria-label="Attached supporting files">${attachments}</ul>
+            </div>`;
+        }
+
+        function renderWizardCollections() {
+          wizardFinanceList.innerHTML = wizardDraft.finances.map((entry, index) => `
+            <article class="wizard-entry" data-wizard-entry="${entry.id}">
+              <div class="wizard-entry-head">
+                <h3>${entry.kind === "debt" ? "Debt" : "Asset"} ${index + 1}</h3>
+                <button class="wizard-remove" type="button" data-wizard-remove-entry="finances" data-wizard-id="${escapeWizardHtml(entry.id)}">Remove entry</button>
+              </div>
+              <div class="wizard-form-grid">
+                <label class="wizard-field">Type
+                  <select data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="kind">
+                    <option value="asset" ${entry.kind !== "debt" ? "selected" : ""}>Asset</option>
+                    <option value="debt" ${entry.kind === "debt" ? "selected" : ""}>Debt</option>
+                  </select>
+                </label>
+                <label class="wizard-field">Category
+                  <input type="text" maxlength="120" placeholder="Home, vehicle, bank account…" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="category" value="${escapeWizardHtml(entry.category)}">
+                </label>
+                <label class="wizard-field">Description
+                  <textarea maxlength="1000" placeholder="A short description (do not enter account numbers)" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="description">${escapeWizardHtml(entry.description)}</textarea>
+                </label>
+                <label class="wizard-field">Acquisition date, if known
+                  <input type="date" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="acquiredDate" value="${escapeWizardHtml(entry.acquiredDate)}">
+                </label>
+                <label class="wizard-field">${entry.kind === "debt" ? "Estimated balance (USD)" : "Estimated value (USD)"}
+                  <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="Optional estimate" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="amount" value="${escapeWizardHtml(entry.amount)}">
+                </label>
+                <label class="wizard-field">Names on title or account
+                  <input type="text" maxlength="240" placeholder="Names as shown on the record" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="owners" value="${escapeWizardHtml(entry.owners)}">
+                </label>
+                <label class="wizard-field">How is it held?
+                  <select data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="holding">
+                    <option value="" ${!entry.holding ? "selected" : ""}>Select if known</option>
+                    <option value="individual" ${entry.holding === "individual" ? "selected" : ""}>Individual / one name</option>
+                    <option value="joint" ${entry.holding === "joint" ? "selected" : ""}>Joint / multiple names</option>
+                    <option value="unclear" ${entry.holding === "unclear" ? "selected" : ""}>Not sure</option>
+                  </select>
+                </label>
+                <p class="wizard-amount-note">This is information you provide, not a legal ownership or property-classification decision.</p>
+              </div>
+              ${wizardAttachmentMarkup(entry, "finances")}
+            </article>`).join("");
+          wizardIssueList.innerHTML = wizardDraft.issues.map((entry, index) => `
+            <article class="wizard-entry" data-wizard-entry="${entry.id}">
+              <div class="wizard-entry-head">
+                <h3>Issue or goal ${index + 1}</h3>
+                <button class="wizard-remove" type="button" data-wizard-remove-entry="issues" data-wizard-id="${escapeWizardHtml(entry.id)}">Remove entry</button>
+              </div>
+              <div class="wizard-form-grid">
+                <label class="wizard-field">Topic
+                  <input type="text" maxlength="240" placeholder="What would you like to discuss?" data-wizard-collection="issues" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="topic" value="${escapeWizardHtml(entry.topic)}">
+                </label>
+                <label class="wizard-field">Desired outcome
+                  <textarea maxlength="2000" placeholder="What would a helpful outcome look like to you?" data-wizard-collection="issues" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="outcome">${escapeWizardHtml(entry.outcome)}</textarea>
+                </label>
+              </div>
+              ${wizardAttachmentMarkup(entry, "issues")}
+            </article>`).join("");
+          wizardAgreementList.innerHTML = wizardDraft.agreements.map((entry, index) => `
+            <article class="wizard-entry" data-wizard-entry="${entry.id}">
+              <div class="wizard-entry-head">
+                <h3>Agreement ${index + 1}</h3>
+                <button class="wizard-remove" type="button" data-wizard-remove-entry="agreements" data-wizard-id="${escapeWizardHtml(entry.id)}">Remove entry</button>
+              </div>
+              <div class="wizard-form-grid">
+                <label class="wizard-field">What has been agreed?
+                  <textarea maxlength="2000" placeholder="Summarize the understanding" data-wizard-collection="agreements" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="summary">${escapeWizardHtml(entry.summary)}</textarea>
+                </label>
+                <label class="wizard-field">Agreement date, if known
+                  <input type="date" data-wizard-collection="agreements" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="date" value="${escapeWizardHtml(entry.date)}">
+                </label>
+              </div>
+              ${wizardAttachmentMarkup(entry, "agreements")}
+            </article>`).join("");
+          refreshWizardReview();
+        }
+
+        function refreshWizardReview() {
+          const dateLabels = {
+            cohabitation: "Cohabitation / CIR start",
+            marriage: "Marriage",
+            separation: "Separation",
+            petition: "Petition filing",
+          };
+          const lines = [
+            `Case filed: ${wizardDraft.filed === "yes" ? "Yes" : wizardDraft.filed === "no" ? "No" : "Not answered"}`,
+            `Party role: ${wizardDraft.role ? wizardDraft.role[0].toLocaleUpperCase() + wizardDraft.role.slice(1) : "Not selected"}`,
+            ...wizardDateKeys.map((key) => {
+              const date = wizardDraft.dates[key];
+              return `${dateLabels[key]}: ${date.unknown ? "Unknown" : date.date || "Not entered"}`;
+            }),
+          ];
+          for (const [index, entry] of wizardDraft.finances.entries()) {
+            const parts = [
+              entry.kind === "debt" ? "Debt" : "Asset",
+              entry.category,
+              entry.description,
+              entry.acquiredDate && `acquired ${entry.acquiredDate}`,
+              entry.amount && `${entry.kind === "debt" ? "balance" : "value"} $${entry.amount}`,
+              entry.owners && `names: ${entry.owners}`,
+              entry.holding && `holding: ${entry.holding}`,
+              entry.attachments.length
+                ? `evidence: ${entry.attachments.map((file) => file.name).join(", ")}`
+                : "",
+            ].filter(Boolean);
+            lines.push(`Financial item ${index + 1}: ${parts.join(" · ")}`);
+          }
+          for (const [index, entry] of wizardDraft.issues.entries()) {
+            const parts = [
+              entry.topic && `topic: ${entry.topic}`,
+              entry.outcome && `desired outcome: ${entry.outcome}`,
+              entry.attachments.length
+                ? `evidence: ${entry.attachments.map((file) => file.name).join(", ")}`
+                : "",
+            ].filter(Boolean);
+            lines.push(`Issue or goal ${index + 1}: ${parts.join(" · ") || "No details entered"}`);
+          }
+          for (const [index, entry] of wizardDraft.agreements.entries()) {
+            const parts = [
+              entry.summary,
+              entry.date && `date: ${entry.date}`,
+              entry.attachments.length
+                ? `evidence: ${entry.attachments.map((file) => file.name).join(", ")}`
+                : "",
+            ].filter(Boolean);
+            lines.push(`Agreement ${index + 1}: ${parts.join(" · ") || "No details entered"}`);
+          }
+          if (!wizardDraft.finances.length) lines.push("Assets and debts: None added");
+          if (!wizardDraft.issues.length) lines.push("Issues and goals: None added");
+          if (!wizardDraft.agreements.length) lines.push("Known agreements: None added");
+          wizardReviewList.replaceChildren(...lines.map((line) => {
+            const item = document.createElement("li");
+            item.textContent = line;
+            return item;
+          }));
+        }
+
+        function renderWizardDraft() {
+          for (const input of wizardFiledQuestion.querySelectorAll('input[name="wizard-filed"]')) {
+            input.checked = input.value === wizardDraft.filed;
+          }
+          for (const input of wizardRoleQuestion.querySelectorAll('input[name="wizard-role"]')) {
+            input.checked = input.value === wizardDraft.role;
+          }
+          for (const key of wizardDateKeys) {
+            const date = wizardDraft.dates[key];
+            const dateInput = wizardDemoPage.querySelector(`[data-wizard-date="${key}"]`);
+            const unknownInput = wizardDemoPage.querySelector(`[data-wizard-unknown="${key}"]`);
+            dateInput.value = date.date;
+            unknownInput.checked = date.unknown;
+            dateInput.disabled = date.unknown;
+          }
+          wizardRoleQuestion.disabled = wizardDraft.filed !== "yes";
+          wizardGatedContent.hidden = wizardDraft.filed !== "yes";
+          wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          renderWizardCollections();
+        }
+
+        async function initializeWizardDraft() {
+          setWizardSaveStatus("Loading a draft saved in this browser…");
+          try {
+            wizardDatabase = await openWizardDatabase();
+            const saved = await loadWizardDraft();
+            if (saved) {
+              wizardDraft = normalizeWizardDraft(saved);
+              renderWizardDraft();
+              setWizardSaveStatus("Restored the draft and attached files saved in this browser.");
+            } else {
+              renderWizardDraft();
+              setWizardSaveStatus("No saved draft yet. Changes will be saved in this browser as you go.");
+            }
+          } catch (error) {
+            wizardDatabase = null;
+            renderWizardDraft();
+            setWizardSaveStatus(
+              `Local draft storage is unavailable: ${error instanceof Error ? error.message : "unknown storage error"}. Changes will not survive leaving this page.`,
+              "error",
+            );
+          }
+        }
+
+        function updateWizardGate(showBlockedDialog = false, saveImmediately = false) {
+          const filedAnswer = wizardFiledQuestion.querySelector('input[name="wizard-filed"]:checked')?.value || "";
+          wizardDraft.filed = filedAnswer;
+          if (filedAnswer === "yes") {
+            wizardDraft.role = wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked')?.value || "";
+          }
+          wizardRoleQuestion.disabled = filedAnswer !== "yes";
+          wizardGatedContent.hidden = filedAnswer !== "yes";
+          wizardFinish.disabled = filedAnswer !== "yes" || !wizardDraft.role;
+          refreshWizardReview();
           if (filedAnswer === "no" && showBlockedDialog && !wizardFiledDialog.open) {
             wizardFiledDialog.showModal();
+          }
+          scheduleWizardSave(saveImmediately);
+        }
+
+        function findWizardEntry(collection, id) {
+          if (!["finances", "issues", "agreements"].includes(collection)) return null;
+          return wizardDraft[collection].find((entry) => entry.id === id) || null;
+        }
+
+        function handleWizardInput(event, saveImmediately = false) {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement
+            || target instanceof HTMLTextAreaElement
+            || target instanceof HTMLSelectElement)) return;
+          const collection = target.dataset.wizardCollection;
+          const id = target.dataset.wizardId;
+          const field = target.dataset.wizardField;
+          if (collection && id && field) {
+            const entry = findWizardEntry(collection, id);
+            if (entry) {
+              entry[field] = target.value;
+              refreshWizardReview();
+              scheduleWizardSave(saveImmediately);
+            }
+            return;
+          }
+          const dateKey = target.dataset.wizardDate;
+          if (dateKey && wizardDraft.dates[dateKey]) {
+            wizardDraft.dates[dateKey].date = target.value;
+            wizardDraft.dates[dateKey].unknown = false;
+            const unknownInput = wizardDemoPage.querySelector(`[data-wizard-unknown="${dateKey}"]`);
+            unknownInput.checked = false;
+            refreshWizardReview();
+            scheduleWizardSave(saveImmediately);
+          }
+        }
+
+        function handleWizardChange(event) {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement
+            || target instanceof HTMLTextAreaElement
+            || target instanceof HTMLSelectElement)) return;
+          if (target.dataset.wizardBase === "filed") {
+            updateWizardGate(true, true);
+            return;
+          }
+          if (target.dataset.wizardBase === "role") {
+            wizardDraft.role = target.value;
+            wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+            refreshWizardReview();
+            scheduleWizardSave(true);
+            return;
+          }
+          if (target.dataset.wizardCollection === "finances"
+            && target.dataset.wizardField === "kind") {
+            const entry = findWizardEntry("finances", target.dataset.wizardId);
+            if (entry) {
+              entry.kind = target.value;
+              renderWizardCollections();
+              scheduleWizardSave(true);
+            }
+            return;
+          }
+          const unknownKey = target.dataset.wizardUnknown;
+          if (unknownKey && wizardDraft.dates[unknownKey]) {
+            wizardDraft.dates[unknownKey].unknown = target.checked;
+            if (target.checked) {
+              wizardDraft.dates[unknownKey].date = "";
+              wizardDemoPage.querySelector(`[data-wizard-date="${unknownKey}"]`).value = "";
+            }
+            wizardDemoPage.querySelector(`[data-wizard-date="${unknownKey}"]`).disabled = target.checked;
+            refreshWizardReview();
+            scheduleWizardSave(true);
+            return;
+          }
+          const fileCollection = target.dataset.wizardFiles;
+          const entryId = target.dataset.wizardId;
+          if (fileCollection && entryId) {
+            const entry = findWizardEntry(fileCollection, entryId);
+            if (!entry) return;
+            const selectedFiles = Array.from(target.files || []);
+            entry.attachments.push(...selectedFiles.map((file) => ({
+              id: createWizardId(),
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              lastModified: file.lastModified,
+              blob: file.slice(0, file.size, file.type),
+            })));
+            target.value = "";
+            renderWizardCollections();
+            scheduleWizardSave(true);
+            return;
+          }
+          handleWizardInput(event, true);
+        }
+
+        function addWizardEntry(collection) {
+          const defaults = {
+            finances: {
+              id: createWizardId(),
+              kind: "asset",
+              category: "",
+              description: "",
+              acquiredDate: "",
+              amount: "",
+              owners: "",
+              holding: "",
+              attachments: [],
+            },
+            issues: {
+              id: createWizardId(),
+              topic: "",
+              outcome: "",
+              attachments: [],
+            },
+            agreements: {
+              id: createWizardId(),
+              summary: "",
+              date: "",
+              attachments: [],
+            },
+          };
+          if (!defaults[collection]) return;
+          wizardDraft[collection].push(defaults[collection]);
+          renderWizardCollections();
+          const entry = wizardDemoPage.querySelector(`[data-wizard-entry="${defaults[collection].id}"]`);
+          entry?.querySelector("input, textarea, select")?.focus();
+          scheduleWizardSave(true);
+        }
+
+        function handleWizardCollectionClick(event) {
+          const target = event.target instanceof Element ? event.target : null;
+          const addButton = target?.closest("[data-wizard-add]");
+          if (addButton) {
+            addWizardEntry({
+              finance: "finances",
+              issue: "issues",
+              agreement: "agreements",
+            }[addButton.dataset.wizardAdd]);
+            return;
+          }
+          const removeFileButton = target?.closest("[data-wizard-remove-file]");
+          if (removeFileButton) {
+            const entry = findWizardEntry(
+              removeFileButton.dataset.wizardCollection,
+              removeFileButton.dataset.wizardId,
+            );
+            if (!entry) return;
+            entry.attachments = entry.attachments.filter(
+              (file) => file.id !== removeFileButton.dataset.wizardRemoveFile,
+            );
+            renderWizardCollections();
+            scheduleWizardSave(true);
+            return;
+          }
+          const removeEntryButton = target?.closest("[data-wizard-remove-entry]");
+          if (removeEntryButton) {
+            const collection = removeEntryButton.dataset.wizardRemoveEntry;
+            const entryId = removeEntryButton.dataset.wizardId;
+            if (!["finances", "issues", "agreements"].includes(collection)) return;
+            wizardDraft[collection] = wizardDraft[collection].filter(
+              (entry) => entry.id !== entryId,
+            );
+            renderWizardCollections();
+            wizardDemoPage.querySelector(`[data-wizard-add="${{
+              finances: "finance",
+              issues: "issue",
+              agreements: "agreement",
+            }[collection]}"]`)?.focus();
+            scheduleWizardSave(true);
+          }
+        }
+
+        function deleteWizardDraft() {
+          return new Promise((resolve, reject) => {
+            const transaction = wizardDatabase.transaction("drafts", "readwrite");
+            transaction.objectStore("drafts").delete(wizardDraftKey);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = transaction.onabort = () => reject(
+              transaction.error || new Error("Could not clear the local draft."),
+            );
+          });
+        }
+
+        async function clearWizardDraft() {
+          wizardClearingDraft = true;
+          window.clearTimeout(wizardSaveTimer);
+          await wizardSaveQueue;
+          try {
+            if (!wizardDatabase) {
+              throw new Error("Browser-local storage is unavailable; the saved draft could not be verified or cleared.");
+            }
+            await deleteWizardDraft();
+            wizardDraft = createEmptyWizardDraft();
+            renderWizardDraft();
+            setWizardSaveStatus("The saved answers and attached evidence were cleared from this browser.");
+            wizardClearDialog.close();
+            wizardClearingDraft = false;
+            wizardFiledQuestion.querySelector('input[value="yes"]').focus();
+          } catch (error) {
+            wizardClearingDraft = false;
+            setWizardSaveStatus(
+              `Draft was not cleared: ${error instanceof Error ? error.message : "browser storage failed"}.`,
+              "error",
+            );
           }
         }
 
@@ -3779,20 +4507,31 @@
         demoFilesNext.addEventListener("click", () => {
           if (demoSelectedFiles.length) window.location.assign("/demo");
         });
-        wizardFiledQuestion.addEventListener("change", () => updateWizardGate(true));
-        wizardRoleQuestion.addEventListener("change", () => updateWizardGate());
+        wizardFiledQuestion.addEventListener("change", () => updateWizardGate(true, true));
+        window.addEventListener("pagehide", flushWizardDraftOnExit);
+        wizardRoleQuestion.addEventListener("change", () => {
+          wizardDraft.role = wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked')?.value || "";
+          wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          refreshWizardReview();
+          scheduleWizardSave(true);
+        });
+        wizardGatedContent.addEventListener("input", handleWizardInput);
+        wizardGatedContent.addEventListener("change", handleWizardChange);
+        wizardGatedContent.addEventListener("click", handleWizardCollectionClick);
         wizardFiledDialog.addEventListener("cancel", (event) => event.preventDefault());
         wizardDialogAcknowledge.addEventListener("click", () => {
           wizardFiledDialog.close();
           wizardNoChoice.focus();
         });
-        wizardFinish.addEventListener("click", () => {
-          const filedAnswer = wizardFiledQuestion.querySelector('input[name="wizard-filed"]:checked')?.value;
-          const roleSelected = wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked');
-          if (filedAnswer !== "yes" || !roleSelected) return;
-          wizardCompletion.hidden = false;
-          wizardCompletion.focus();
+        wizardFinish.addEventListener("click", async () => {
+          if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
+          window.clearTimeout(wizardSaveTimer);
+          const saved = await saveWizardDraft();
+          if (saved) window.location.assign("/demo");
         });
+        wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
+        wizardClearCancel.addEventListener("click", () => wizardClearDialog.close());
+        wizardClearConfirm.addEventListener("click", () => void clearWizardDraft());
 
         signupTab.addEventListener("click", () => selectForm("signup"));
         loginTab.addEventListener("click", () => selectForm("login"));
@@ -3924,7 +4663,7 @@
         } else if (demoWizardMode) {
           document.body.dataset.demoPage = "wizard";
           wizardDemoPage.hidden = false;
-          updateWizardGate();
+          void initializeWizardDraft();
         } else {
           loadDashboardStatus({ isStartup: true });
         }
