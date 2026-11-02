@@ -143,7 +143,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="asset-year-next"', page)
         self.assertNotIn("asset-year-tab", page)
         self.assertIn('assetYearRange.addEventListener("input"', page)
-        self.assertIn("renderAssetTimelineCursor(index)", page)
+        self.assertIn("renderAssetTimelineCursor(index, values)", page)
         self.assertIn("Best-case proposal", page)
         self.assertIn("Balanced proposal", page)
         self.assertIn("Fallback position", page)
@@ -174,9 +174,13 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Number.isSafeInteger(value)", edit_logic)
         self.assertIn('input.dataset.assetEditCategory !== "debt" && value < 0', edit_logic)
         self.assertIn('input.setAttribute("aria-invalid", "true")', edit_logic)
-        self.assertIn("sample[category] = assetEditDraft[category].map(Number)", edit_logic)
+        self.assertIn("sampleAssetYears[stop.yearIndex][category] = values[category]", edit_logic)
+        self.assertIn("interpolatedAssetOverrides.set(stop.date, values)", edit_logic)
         self.assertIn("renderAssetTimeline();", edit_logic)
-        self.assertIn("Unsaved edits canceled because you changed the selected year.", edit_logic)
+        self.assertIn(
+            "Unsaved edits canceled because you changed the selected timeline point.",
+            edit_logic,
+        )
         self.assertNotIn("localStorage", edit_logic)
         self.assertNotIn("sessionStorage", edit_logic)
         self.assertNotIn("indexedDB", edit_logic)
@@ -211,7 +215,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("document-analyzed milestone date(s) added for review", page)
         self.assertIn('confirm.dataset.action = "confirm-delete"', page)
         self.assertIn("isValidMilestoneDate(date)", page)
-        self.assertIn("This date is outside the displayed asset timeline", page)
+        self.assertIn("This date is outside the annual sample range", page)
         self.assertIn("selectAssetMilestone(marker.dataset.milestoneId)", page)
         milestone_logic = page.split(
             "function milestoneActiveDate(milestone)", 1
@@ -219,6 +223,28 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("fetch(", milestone_logic)
         self.assertNotIn("localStorage", milestone_logic)
         self.assertNotIn("sessionStorage", milestone_logic)
+
+    def test_asset_timeline_includes_chronological_milestone_stops(self) -> None:
+        status, body = asyncio.run(request_app("/"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        timeline_logic = page.split("function buildAssetTimelineStops", 1)[1].split(
+            "function assetSnapshotAtDate", 1
+        )[0]
+        self.assertIn("assetYearStops.replaceChildren()", timeline_logic)
+        self.assertIn("left.date.localeCompare(right.date)", timeline_logic)
+        self.assertIn("assetYearStops.append(option)", timeline_logic)
+        self.assertIn("selectedAssetYearIndex = assetTimelineStops.reduce", timeline_logic)
+        self.assertIn("distance < nearestDistance ? index : nearestIndex", timeline_logic)
+        self.assertIn("const fraction = (timestamp - startTimestamp)", page)
+        self.assertIn("Math.round(value + (nextSample[category][partyIndex] - value) * fraction)", page)
+        self.assertIn("if (timestamp < endTimestamp)", page)
+        self.assertIn('values: assetSnapshotAtDate(stop.date).values', page)
+        self.assertIn('xForDate(Date.parse(`${stop.date}T00:00:00Z`))', page)
+        self.assertIn("const chartStart = Math.min(sampleStart, ...milestoneTimestamps)", page)
+        self.assertIn("const chartEnd = Math.max(sampleEnd, ...milestoneTimestamps)", page)
+        self.assertIn("buildAssetTimelineStops();\n        renderAssetMilestoneControls();", page)
 
     def test_case_data_endpoints_fail_closed_until_authentication_is_configured(
         self,
