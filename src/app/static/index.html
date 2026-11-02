@@ -532,7 +532,7 @@
       .asset-milestone-chart-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; margin: 16px 0 8px; }
       .asset-milestone-select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #cbd8cc; border-radius: 6px; color: #24352b; background: #fff; font: inherit; }
       .asset-milestone-status { min-height: 20px; margin: 8px 0 !important; color: #536258 !important; font-size: 12px !important; }
-      .asset-milestone-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid #e8ede8; color: #536258; font-size: 12px; }
+      .asset-milestone-list#asset-milestone-index li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid #e8ede8; color: #536258; font-size: 12px; }
       .asset-milestone-list button { padding: 4px 8px; border: 1px solid #cbd8cc; border-radius: 5px; color: #344a3d; background: #fff; cursor: pointer; font: inherit; font-weight: 700; }
       .asset-milestone-marker { cursor: pointer; }
       .asset-milestone-marker .marker-stem { stroke: #66776c; stroke-width: 1; stroke-dasharray: 3 3; }
@@ -908,10 +908,13 @@
                   </div>
                 </header>
                 <p class="sample-analysis-notice" role="note"><strong>Fictional example only.</strong> These figures are made up and are not based on your uploaded documents or case facts. Nothing is sent to an AI provider or saved when you view this page. This is not legal advice or a recommendation about how property should be divided.</p>
-                <details class="asset-milestone-manager" id="custom-milestone-manager">
-                  <summary>Manage custom relationship dates</summary>
+                <details class="asset-milestone-manager" id="milestone-manager">
+                  <summary>Manage milestone dates</summary>
                   <div class="asset-milestone-manager-content">
-                    <p>Add any case-specific dates you want to see on the timeline. These demo-only entries are not saved or sent anywhere.</p>
+                    <p>Standard dates identified during document analysis appear here for review. In this demo, sample dates are fictional; no documents are analyzed. You can override any date or add your own custom milestones. Changes are not saved or sent anywhere.</p>
+                    <ul class="asset-milestone-list" id="standard-milestone-list" aria-label="Standard relationship milestone dates"></ul>
+                    <h4>Custom dates</h4>
+                    <p>Add any case-specific dates you want to see on the timeline.</p>
                     <form id="custom-milestone-form" class="asset-milestone-form" novalidate>
                       <label class="asset-milestone-field" for="custom-milestone-label">Custom date label
                         <input id="custom-milestone-label" name="label" type="text" maxlength="80" autocomplete="off" placeholder="e.g., Moved to a new home" aria-describedby="custom-milestone-error">
@@ -962,25 +965,8 @@
                         <option value="">No milestone selected</option>
                       </select>
                     </label>
-                    <label class="asset-milestone-field" for="standard-milestone-editor">Set or override a standard date
-                      <select id="standard-milestone-editor">
-                        <option value="cohabitation">Cohabitation / CIR start</option>
-                        <option value="marriage">Marriage</option>
-                        <option value="separation">Separation</option>
-                        <option value="petition">Divorce petition filing</option>
-                      </select>
-                    </label>
-                    <div class="asset-milestone-actions">
-                      <label class="asset-milestone-field" for="standard-milestone-date">Calendar date
-                        <input id="standard-milestone-date" type="date" aria-describedby="standard-milestone-provenance standard-milestone-error">
-                      </label>
-                      <button class="asset-milestone-button primary" id="save-standard-milestone" type="button">Set date</button>
-                      <button class="asset-milestone-button" id="reset-standard-milestone" type="button">Reset</button>
-                    </div>
                   </div>
-                  <p class="asset-milestone-guidance" id="asset-milestone-guidance">Dates shown in this preview are fictional examples. N/A means no date is available. You can set or override a standard date above; no date is treated as verified legal information.</p>
-                  <p class="asset-milestone-status" id="standard-milestone-provenance" role="status" aria-live="polite"></p>
-                  <p class="asset-milestone-error" id="standard-milestone-error" role="alert"></p>
+                  <p class="asset-milestone-guidance" id="asset-milestone-guidance">Dates shown in this preview are fictional examples. N/A means no date is available. Dates from document analysis must be reviewed and are not verified legal information.</p>
                   <p class="asset-milestone-status" id="asset-milestone-status" role="status" aria-live="polite">No milestone selected.</p>
                   <figure>
                     <div class="asset-chart-scroll">
@@ -1147,12 +1133,7 @@
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
         const assetMilestoneStatus = document.getElementById("asset-milestone-status");
         const assetMilestoneIndex = document.getElementById("asset-milestone-index");
-        const standardMilestoneEditor = document.getElementById("standard-milestone-editor");
-        const standardMilestoneDate = document.getElementById("standard-milestone-date");
-        const standardMilestoneProvenance = document.getElementById("standard-milestone-provenance");
-        const standardMilestoneError = document.getElementById("standard-milestone-error");
-        const saveStandardMilestoneButton = document.getElementById("save-standard-milestone");
-        const resetStandardMilestoneButton = document.getElementById("reset-standard-milestone");
+        const standardMilestoneList = document.getElementById("standard-milestone-list");
         const customMilestoneForm = document.getElementById("custom-milestone-form");
         const customMilestoneLabel = document.getElementById("custom-milestone-label");
         const customMilestoneDate = document.getElementById("custom-milestone-date");
@@ -1573,15 +1554,57 @@
           return "Fictional demo date; not extracted from documents.";
         }
 
-        function renderStandardMilestoneEditor() {
-          const milestone = standardMilestones.find(
-            (item) => item.id === standardMilestoneEditor.value,
-          );
-          if (!milestone) return;
-          standardMilestoneDate.value = milestoneActiveDate(milestone);
-          standardMilestoneProvenance.textContent = milestoneProvenance(milestone);
-          resetStandardMilestoneButton.disabled = !milestone.overrideDate;
-          standardMilestoneError.textContent = "";
+        function renderStandardMilestoneList() {
+          standardMilestoneList.replaceChildren();
+          for (const milestone of standardMilestones) {
+            const item = document.createElement("li");
+            item.className = "asset-milestone-item";
+            item.dataset.milestoneId = milestone.id;
+            const fields = document.createElement("div");
+            fields.className = "asset-milestone-item-fields";
+            const name = document.createElement("span");
+            name.className = "asset-milestone-field";
+            name.textContent = milestone.label;
+            const field = document.createElement("label");
+            field.className = "asset-milestone-field";
+            field.textContent = "Date";
+            if (!milestoneActiveDate(milestone)) {
+              const unavailable = document.createElement("span");
+              unavailable.className = "asset-milestone-guidance";
+              unavailable.textContent = "N/A — date not identified";
+              field.append(unavailable);
+            }
+            const dateInput = document.createElement("input");
+            dateInput.type = "date";
+            dateInput.value = milestoneActiveDate(milestone);
+            dateInput.dataset.field = "date";
+            dateInput.setAttribute("aria-label", `${milestone.label} date`);
+            field.append(dateInput);
+            fields.append(name, field);
+            const actions = document.createElement("div");
+            actions.className = "asset-milestone-item-actions";
+            const provenance = document.createElement("span");
+            provenance.className = "asset-milestone-guidance";
+            provenance.textContent = milestoneProvenance(milestone);
+            const save = document.createElement("button");
+            save.className = "asset-milestone-button primary";
+            save.type = "button";
+            save.dataset.action = "save-standard";
+            save.textContent = milestone.overrideDate ? "Save override" : "Set date";
+            const reset = document.createElement("button");
+            reset.className = "asset-milestone-button";
+            reset.type = "button";
+            reset.dataset.action = "reset-standard";
+            reset.textContent = "Reset";
+            reset.disabled = !milestone.overrideDate;
+            actions.append(provenance, save, reset);
+            const error = document.createElement("p");
+            error.className = "asset-milestone-error";
+            error.setAttribute("role", "alert");
+            error.dataset.error = "";
+            item.append(fields, actions, error);
+            standardMilestoneList.append(item);
+          }
         }
 
         function renderCustomMilestoneList() {
@@ -1691,7 +1714,7 @@
             selectedAssetMilestoneId = "";
             assetMilestoneSelector.value = "";
           }
-          renderStandardMilestoneEditor();
+          renderStandardMilestoneList();
           renderCustomMilestoneList();
           renderAssetMilestoneIndex();
         }
@@ -1819,6 +1842,34 @@
           renderAssetMilestoneControls();
           renderAssetTimeline();
           announceSelectedAssetMilestone();
+        }
+
+        function applyExtractedMilestoneDates(dates) {
+          if (!dates || typeof dates !== "object" || Array.isArray(dates)) {
+            assetMilestoneStatus.textContent = "Extracted milestone dates could not be applied: expected an object keyed by standard milestone.";
+            return;
+          }
+          const invalidMilestones = [];
+          let updatedCount = 0;
+          for (const milestone of standardMilestones) {
+            if (!Object.hasOwn(dates, milestone.id)) continue;
+            const date = dates[milestone.id];
+            if (date === null || date === "") {
+              milestone.date = "";
+              milestone.source = "";
+              updatedCount += 1;
+            } else if (typeof date === "string" && isValidMilestoneDate(date)) {
+              milestone.date = date;
+              milestone.source = "extracted";
+              updatedCount += 1;
+            } else {
+              invalidMilestones.push(milestone.label);
+            }
+          }
+          refreshAssetMilestones();
+          assetMilestoneStatus.textContent = invalidMilestones.length
+            ? `Applied ${updatedCount} extracted milestone date(s). Invalid dates were ignored for: ${invalidMilestones.join(", ")}.`
+            : `${updatedCount} document-analyzed milestone date(s) added for review. Dates are unverified until reviewed.`;
         }
 
         function selectAssetMilestone(id) {
@@ -3353,6 +3404,9 @@
         renderAssetTimeline();
         announceSelectedAssetMilestone();
 
+        window.addEventListener("casework:milestones-extracted", (event) => {
+          applyExtractedMilestoneDates(event.detail);
+        });
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
         });
@@ -3367,29 +3421,32 @@
         assetYearNext.addEventListener("click", () => {
           renderAssetSnapshot(selectedAssetYearIndex + 1);
         });
-        standardMilestoneEditor.addEventListener("change", renderStandardMilestoneEditor);
-        saveStandardMilestoneButton.addEventListener("click", () => {
+        standardMilestoneList.addEventListener("click", (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const actionButton = target?.closest("[data-action]");
+          const item = target?.closest(".asset-milestone-item");
+          if (!actionButton || !item) return;
           const milestone = standardMilestones.find(
-            (item) => item.id === standardMilestoneEditor.value,
+            (entry) => entry.id === item.dataset.milestoneId,
           );
-          const date = standardMilestoneDate.value;
-          if (!milestone || !isValidMilestoneDate(date)) {
-            standardMilestoneError.textContent = "Choose a valid calendar date before setting this milestone.";
-            standardMilestoneDate.focus();
+          if (!milestone) return;
+          const error = item.querySelector("[data-error]");
+          if (actionButton.dataset.action === "reset-standard") {
+            milestone.overrideDate = "";
+            refreshAssetMilestones();
+            return;
+          }
+          if (actionButton.dataset.action !== "save-standard") return;
+          const dateInput = item.querySelector('[data-field="date"]');
+          const date = dateInput.value;
+          if (!isValidMilestoneDate(date)) {
+            error.textContent = "Choose a valid calendar date.";
+            dateInput.focus();
             return;
           }
           milestone.overrideDate = date;
-          standardMilestoneError.textContent = "";
           refreshAssetMilestones();
-          standardMilestoneProvenance.textContent = `User-overridden date: ${formatMilestoneDate(date)}.`;
-        });
-        resetStandardMilestoneButton.addEventListener("click", () => {
-          const milestone = standardMilestones.find(
-            (item) => item.id === standardMilestoneEditor.value,
-          );
-          if (!milestone) return;
-          milestone.overrideDate = "";
-          refreshAssetMilestones();
+          assetMilestoneStatus.textContent = `${milestone.label}, ${formatMilestoneDate(date)}, user-overridden in this preview only. Nothing was sent or saved.`;
         });
         customMilestoneForm.addEventListener("submit", (event) => {
           event.preventDefault();
