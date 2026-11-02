@@ -584,6 +584,15 @@
       .asset-comparison-table thead th:first-child, .asset-comparison-table tbody th, .asset-comparison-table tfoot th { text-align: left; }
       .asset-comparison-table tbody th { color: #34443a; font-weight: 650; }
       .asset-comparison-table tfoot th, .asset-comparison-table tfoot td { border-top: 2px solid #cbd8cc; border-bottom: 0; color: var(--green-dark); font-weight: 800; }
+      .asset-table-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      .asset-table-action { min-height: 38px; padding: 8px 12px; border: 1px solid #cbd8cc; border-radius: 6px; color: #344a3d; background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+      .asset-table-action.primary { border-color: var(--green-dark); color: #fff; background: var(--green-dark); }
+      .asset-table-action:focus-visible, .asset-edit-input:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 2px; }
+      .asset-edit-input { width: 120px; min-height: 38px; padding: 7px 8px; border: 1px solid #9aab9c; border-radius: 5px; font: inherit; text-align: right; }
+      .asset-edit-input[aria-invalid="true"] { border-color: #9c3228; }
+      .asset-edit-feedback { min-height: 20px; margin: 8px 0 0 !important; color: #536258 !important; font-size: 12px !important; }
+      .asset-edit-feedback[data-kind="error"] { color: #9c3228 !important; }
+      .asset-edit-feedback[hidden] { display: none; }
       .asset-year-status { min-height: 20px; margin: 9px 0 0 !important; color: #748078 !important; font-size: 11px !important; }
       .asset-chart { display: block; width: 100%; min-width: 520px; height: auto; }
       .asset-chart-scroll { overflow-x: auto; }
@@ -1186,6 +1195,13 @@
                       <tfoot id="asset-table-total"></tfoot>
                     </table>
                   </div>
+                  <div class="asset-table-actions" role="group" aria-label="Edit fictional sample values">
+                    <button class="asset-table-action" id="asset-edit-start" type="button">Edit values</button>
+                    <button class="asset-table-action primary" id="asset-edit-save" type="button" hidden>Save changes</button>
+                    <button class="asset-table-action" id="asset-edit-cancel" type="button" hidden>Cancel</button>
+                  </div>
+                  <p class="asset-edit-feedback" id="asset-edit-status" role="status" aria-live="polite"></p>
+                  <p class="asset-edit-feedback" id="asset-edit-error" role="alert" hidden></p>
                   <p class="asset-year-status" id="asset-year-status" role="status" aria-live="polite"></p>
                 </section>
 
@@ -1331,6 +1347,11 @@
         const assetYearCaption = document.getElementById("asset-year-caption");
         const assetTableRows = document.getElementById("asset-table-rows");
         const assetTableTotal = document.getElementById("asset-table-total");
+        const assetEditStart = document.getElementById("asset-edit-start");
+        const assetEditSave = document.getElementById("asset-edit-save");
+        const assetEditCancel = document.getElementById("asset-edit-cancel");
+        const assetEditStatus = document.getElementById("asset-edit-status");
+        const assetEditError = document.getElementById("asset-edit-error");
         const assetYearStatus = document.getElementById("asset-year-status");
         const assetChartGrid = document.getElementById("asset-chart-grid");
         const assetChartLabels = document.getElementById("asset-chart-labels");
@@ -1384,6 +1405,8 @@
         let materialsSelecting = false;
         let analysisCaseId = null;
         let selectedAssetYearIndex = 0;
+        let assetEditDraft = null;
+        let assetEditYearIndex = null;
         let selectedAssetMilestoneId = "";
         let nextCustomMilestoneId = 1;
         let assetChartLayout = {
@@ -2779,9 +2802,137 @@
           announceSelectedAssetMilestone();
         }
 
+        function updateAssetEditControls() {
+          const editing = assetEditDraft !== null;
+          assetEditStart.hidden = editing;
+          assetEditSave.hidden = !editing;
+          assetEditCancel.hidden = !editing;
+        }
+
+        function parseAssetEditValue(input) {
+          if (!/^-?\d+$/.test(input.value)) return null;
+          const value = Number(input.value);
+          if (!Number.isSafeInteger(value)) return null;
+          if (input.dataset.assetEditCategory !== "debt" && value < 0) return null;
+          return value;
+        }
+
+        function updateAssetEditDerivedValues() {
+          if (!assetEditDraft) return [];
+          const inputs = [...assetTableRows.querySelectorAll("[data-asset-edit-category]")];
+          const invalidInputs = inputs.filter((input) => parseAssetEditValue(input) === null);
+          for (const input of inputs) {
+            const invalid = parseAssetEditValue(input) === null;
+            if (invalid) input.setAttribute("aria-invalid", "true");
+            else input.removeAttribute("aria-invalid");
+          }
+          for (const [, category] of sampleAssetCategories) {
+            const values = assetEditDraft[category].map(Number);
+            const valid = assetEditDraft[category].every((value, partyIndex) => (
+              parseAssetEditValue(inputs.find(
+                (input) => input.dataset.assetEditCategory === category
+                  && Number(input.dataset.assetEditParty) === partyIndex,
+              )) !== null
+            ));
+            const combined = assetTableRows.querySelector(
+              `[data-asset-derived="${category}"]`,
+            );
+            combined.textContent = valid
+              ? formatSampleCurrency(values[0] + values[1])
+              : "—";
+          }
+          const totals = [0, 0];
+          for (const [, category] of sampleAssetCategories) {
+            for (let partyIndex = 0; partyIndex < 2; partyIndex += 1) {
+              const input = inputs.find(
+                (item) => item.dataset.assetEditCategory === category
+                  && Number(item.dataset.assetEditParty) === partyIndex,
+              );
+              const value = input ? parseAssetEditValue(input) : null;
+              if (value !== null) totals[partyIndex] += value;
+            }
+          }
+          const totalsValid = invalidInputs.length === 0;
+          for (let partyIndex = 0; partyIndex < 2; partyIndex += 1) {
+            const cell = assetTableTotal.querySelector(
+              `[data-asset-total-party="${partyIndex}"]`,
+            );
+            cell.textContent = totalsValid
+              ? formatSampleCurrency(totals[partyIndex])
+              : "—";
+          }
+          const combinedTotal = assetTableTotal.querySelector("[data-asset-total-combined]");
+          combinedTotal.textContent = totalsValid
+            ? formatSampleCurrency(totals[0] + totals[1])
+            : "—";
+          assetEditError.hidden = invalidInputs.length === 0;
+          assetEditError.textContent = invalidInputs.length
+            ? "Enter whole-dollar amounts. Asset values cannot be negative; liability values may be negative."
+            : "";
+          return invalidInputs;
+        }
+
+        function startAssetEdit() {
+          const sample = sampleAssetYears[selectedAssetYearIndex];
+          assetEditDraft = Object.fromEntries(
+            sampleAssetCategories.map(([, category]) => [
+              category,
+              sample[category].map(String),
+            ]),
+          );
+          assetEditYearIndex = selectedAssetYearIndex;
+          assetEditError.hidden = true;
+          assetEditError.textContent = "";
+          assetEditStatus.textContent = `Editing fictional values for ${sample.year}.`;
+          renderAssetSnapshot(selectedAssetYearIndex);
+          assetTableRows.querySelector("[data-asset-edit-category]")?.focus();
+        }
+
+        function cancelAssetEdit(announce = true) {
+          if (!assetEditDraft) return;
+          assetEditDraft = null;
+          assetEditYearIndex = null;
+          assetEditError.hidden = true;
+          assetEditError.textContent = "";
+          renderAssetSnapshot(selectedAssetYearIndex);
+          if (announce) {
+            assetEditStatus.textContent = "Unsaved edits canceled.";
+            assetEditStart.focus();
+          }
+        }
+
+        function saveAssetEdit() {
+          if (!assetEditDraft || assetEditYearIndex !== selectedAssetYearIndex) return;
+          const invalidInputs = updateAssetEditDerivedValues();
+          if (invalidInputs.length) {
+            assetEditStatus.textContent = "Changes were not saved. Correct the highlighted amounts.";
+            invalidInputs[0].focus();
+            return;
+          }
+          const sample = sampleAssetYears[selectedAssetYearIndex];
+          for (const [, category] of sampleAssetCategories) {
+            sample[category] = assetEditDraft[category].map(Number);
+          }
+          assetEditDraft = null;
+          assetEditYearIndex = null;
+          assetEditError.hidden = true;
+          assetEditError.textContent = "";
+          renderAssetSnapshot(selectedAssetYearIndex);
+          renderAssetTimeline();
+          assetEditStatus.textContent = `Fictional values for ${sample.year} updated in this page only.`;
+          assetEditStart.focus();
+        }
+
         function renderAssetSnapshot(index) {
           const sample = sampleAssetYears[index];
           if (!sample) return;
+          const canceledForYearChange = assetEditDraft !== null && index !== assetEditYearIndex;
+          if (canceledForYearChange) {
+            assetEditDraft = null;
+            assetEditYearIndex = null;
+            assetEditError.hidden = true;
+            assetEditError.textContent = "";
+          }
           selectedAssetYearIndex = index;
           const firstYear = sampleAssetYears[0];
           const lastYear = sampleAssetYears[sampleAssetYears.length - 1];
@@ -2800,19 +2951,45 @@
           assetTableRows.replaceChildren();
           const totals = [0, 0];
           for (const [label, category] of sampleAssetCategories) {
-            const values = sample[category];
-            totals[0] += values[0];
-            totals[1] += values[1];
+            const values = assetEditDraft && assetEditYearIndex === index
+              ? assetEditDraft[category].map(Number)
+              : sample[category];
+            if (!assetEditDraft) {
+              totals[0] += values[0];
+              totals[1] += values[1];
+            }
             const row = document.createElement("tr");
             const heading = document.createElement("th");
             heading.scope = "row";
             heading.textContent = label;
             row.append(heading);
-            for (const value of [...values, values[0] + values[1]]) {
+            for (let partyIndex = 0; partyIndex < 2; partyIndex += 1) {
               const cell = document.createElement("td");
-              cell.textContent = formatSampleCurrency(value);
+              if (assetEditDraft && assetEditYearIndex === index) {
+                const input = document.createElement("input");
+                input.className = "asset-edit-input";
+                input.type = "number";
+                input.step = "1";
+                input.max = String(Number.MAX_SAFE_INTEGER);
+                if (category !== "debt") input.min = "0";
+                input.value = assetEditDraft[category][partyIndex];
+                input.dataset.assetEditCategory = category;
+                input.dataset.assetEditParty = String(partyIndex);
+                input.setAttribute(
+                  "aria-label",
+                  `${label}, ${partyIndex === 0 ? "You" : "Other party"}, ${sample.year}, amount in dollars`,
+                );
+                input.setAttribute("aria-describedby", "asset-edit-error");
+                cell.append(input);
+              } else {
+                cell.textContent = formatSampleCurrency(values[partyIndex]);
+              }
               row.append(cell);
             }
+            const combinedCell = document.createElement("td");
+            combinedCell.dataset.assetDerived = category;
+            combinedCell.textContent = formatSampleCurrency(values[0] + values[1]);
+            row.append(combinedCell);
             assetTableRows.append(row);
           }
           const totalRow = document.createElement("tr");
@@ -2820,13 +2997,29 @@
           totalHeading.scope = "row";
           totalHeading.textContent = "Net assets";
           totalRow.append(totalHeading);
-          for (const value of [...totals, totals[0] + totals[1]]) {
+          for (let partyIndex = 0; partyIndex < 2; partyIndex += 1) {
             const cell = document.createElement("td");
-            cell.textContent = formatSampleCurrency(value);
+            cell.dataset.assetTotalParty = String(partyIndex);
+            const partyTotal = assetEditDraft && assetEditYearIndex === index
+              ? sampleAssetCategories.reduce(
+                (sum, [, category]) => sum + Number(assetEditDraft[category][partyIndex]),
+                0,
+              )
+              : totals[partyIndex];
+            cell.textContent = formatSampleCurrency(partyTotal);
             totalRow.append(cell);
           }
+          const combinedTotal = document.createElement("td");
+          combinedTotal.dataset.assetTotalCombined = "";
+          combinedTotal.textContent = formatSampleCurrency(totals[0] + totals[1]);
+          totalRow.append(combinedTotal);
           assetTableTotal.replaceChildren(totalRow);
           assetYearStatus.textContent = `Showing fictional figures for ${sample.year}. The timeline shows all ${sampleAssetYears.length} years, with ${sample.year} highlighted.`;
+          updateAssetEditControls();
+          if (assetEditDraft && assetEditYearIndex === index) updateAssetEditDerivedValues();
+          if (canceledForYearChange) {
+            assetEditStatus.textContent = "Unsaved edits canceled because you changed the selected year.";
+          }
         }
 
         function createChartElement(parent, name, attributes, text = "") {
@@ -4312,6 +4505,20 @@
         assetAnalysisBackButton.addEventListener("click", closeAssetAnalysis);
         assetYearRange.addEventListener("input", () => {
           renderAssetSnapshot(Number(assetYearRange.value));
+        });
+        assetEditStart.addEventListener("click", startAssetEdit);
+        assetEditSave.addEventListener("click", saveAssetEdit);
+        assetEditCancel.addEventListener("click", cancelAssetEdit);
+        assetTableRows.addEventListener("input", (event) => {
+          const input = event.target instanceof HTMLInputElement
+            ? event.target
+            : null;
+          if (!input?.dataset.assetEditCategory || !assetEditDraft) return;
+          const category = input.dataset.assetEditCategory;
+          const partyIndex = Number(input.dataset.assetEditParty);
+          if (!assetEditDraft[category] || ![0, 1].includes(partyIndex)) return;
+          assetEditDraft[category][partyIndex] = input.value;
+          updateAssetEditDerivedValues();
         });
         assetYearPrevious.addEventListener("click", () => {
           renderAssetSnapshot(selectedAssetYearIndex - 1);
