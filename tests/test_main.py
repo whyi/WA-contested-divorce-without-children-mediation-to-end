@@ -146,6 +146,44 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", open_view)
         self.assertNotIn("/analysis-requests", open_view)
 
+    def test_asset_analysis_milestones_are_editable_accessible_and_local_only(
+        self,
+    ) -> None:
+        status, body = asyncio.run(request_app("/"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="milestone-manager"', page)
+        self.assertIn("<summary>Manage milestone dates</summary>", page)
+        self.assertIn('id="standard-milestone-list"', page)
+        manager = page.split('id="milestone-manager"', 1)[1].split("</details>", 1)[0]
+        self.assertIn('id="standard-milestone-list"', manager)
+        self.assertIn('id="custom-milestone-form"', manager)
+        self.assertNotIn('id="standard-milestone-editor"', page)
+        self.assertIn('id="custom-milestone-list"', page)
+        self.assertIn('id="asset-milestone-selector"', page)
+        self.assertIn('dateInput.setAttribute("aria-label", `${milestone.label} date`)', page)
+        self.assertIn('id="asset-chart-milestones" aria-label="Relationship milestone markers"', page)
+        self.assertIn('id="asset-milestone-status" role="status" aria-live="polite"', page)
+        self.assertIn('id: "separation", label: "Separation", date: ""', page)
+        self.assertIn("option.disabled = !milestone.custom;", page)
+        self.assertIn('textContent = `${milestone.label} — N/A`', page)
+        self.assertIn("milestone.overrideDate = date;", page)
+        self.assertIn('window.addEventListener("casework:milestones-extracted"', page)
+        self.assertIn("applyExtractedMilestoneDates(event.detail)", page)
+        self.assertIn('milestone.source = "extracted";', page)
+        self.assertIn("document-analyzed milestone date(s) added for review", page)
+        self.assertIn('confirm.dataset.action = "confirm-delete"', page)
+        self.assertIn("isValidMilestoneDate(date)", page)
+        self.assertIn("This date is outside the displayed asset timeline", page)
+        self.assertIn("selectAssetMilestone(marker.dataset.milestoneId)", page)
+        milestone_logic = page.split(
+            "function milestoneActiveDate(milestone)", 1
+        )[1].split("function renderAssetSnapshot(index)", 1)[0]
+        self.assertNotIn("fetch(", milestone_logic)
+        self.assertNotIn("localStorage", milestone_logic)
+        self.assertNotIn("sessionStorage", milestone_logic)
+
     def test_case_data_endpoints_fail_closed_until_authentication_is_configured(
         self,
     ) -> None:
