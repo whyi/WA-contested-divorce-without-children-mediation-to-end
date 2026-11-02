@@ -511,6 +511,39 @@
       .asset-chart .chart-cursor-line { stroke: #344a3d; stroke-width: 1.5; stroke-dasharray: 4 4; }
       .asset-chart .chart-cursor-halo { fill: #fff; stroke: #344a3d; stroke-width: 2; }
       .asset-chart .chart-cursor-label { fill: #344a3d; font-size: 10px; font-weight: 750; }
+      .asset-milestone-manager { margin: 0 0 22px; border: 1px solid #d6e0d7; border-radius: 9px; background: #fff; }
+      .asset-milestone-manager summary { padding: 14px 16px; color: #344a3d; cursor: pointer; font-size: 14px; font-weight: 750; }
+      .asset-milestone-manager summary:focus-visible, .asset-milestone-marker:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 3px; }
+      .asset-milestone-manager-content { padding: 0 16px 16px; }
+      .asset-milestone-manager-content > p, .asset-milestone-guidance { color: var(--muted); font-size: 12px; line-height: 1.55; }
+      .asset-milestone-form, .asset-milestone-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+      .asset-milestone-field { display: grid; gap: 5px; min-width: 0; color: #405349; font-size: 12px; font-weight: 700; }
+      .asset-milestone-field input, .asset-milestone-field select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #cbd8cc; border-radius: 6px; background: #fff; color: #24352b; font: inherit; font-weight: 400; }
+      .asset-milestone-field input:focus-visible, .asset-milestone-field select:focus-visible, .asset-milestone-button:focus-visible, .asset-milestone-select:focus-visible, .asset-milestone-list button:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 2px; }
+      .asset-milestone-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+      .asset-milestone-button { min-height: 38px; padding: 8px 12px; border: 1px solid #cbd8cc; border-radius: 6px; color: #344a3d; background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+      .asset-milestone-button.primary { border-color: var(--green-dark); color: #fff; background: var(--green-dark); }
+      .asset-milestone-button.danger { color: #8a3026; }
+      .asset-milestone-error { grid-column: 1 / -1; min-height: 18px; margin: 0 !important; color: #8a3026 !important; font-size: 12px !important; }
+      .asset-milestone-list { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+      .asset-milestone-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid #e3e9e3; border-radius: 7px; }
+      .asset-milestone-item-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .7fr); gap: 8px; }
+      .asset-milestone-item-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+      .asset-milestone-chart-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; margin: 16px 0 8px; }
+      .asset-milestone-select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #cbd8cc; border-radius: 6px; color: #24352b; background: #fff; font: inherit; }
+      .asset-milestone-status { min-height: 20px; margin: 8px 0 !important; color: #536258 !important; font-size: 12px !important; }
+      .asset-milestone-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid #e8ede8; color: #536258; font-size: 12px; }
+      .asset-milestone-list button { padding: 4px 8px; border: 1px solid #cbd8cc; border-radius: 5px; color: #344a3d; background: #fff; cursor: pointer; font: inherit; font-weight: 700; }
+      .asset-milestone-marker { cursor: pointer; }
+      .asset-milestone-marker .marker-stem { stroke: #66776c; stroke-width: 1; stroke-dasharray: 3 3; }
+      .asset-milestone-marker .marker-shape { fill: #fff; stroke: #344a3d; stroke-width: 2; }
+      .asset-milestone-marker[aria-pressed="true"] .marker-shape { fill: #d3a64c; stroke: #2f4939; stroke-width: 3; }
+      .asset-milestone-marker .marker-label { fill: #344a3d; font-size: 9px; font-weight: 750; }
+      @media (max-width: 620px) {
+        .asset-milestone-form, .asset-milestone-editor, .asset-milestone-chart-controls { grid-template-columns: 1fr; }
+        .asset-milestone-item { grid-template-columns: 1fr; }
+        .asset-milestone-item-fields { grid-template-columns: 1fr; }
+      }
       .asset-chart-legend { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 12px 0 0; padding: 0; list-style: none; color: #506056; font-size: 12px; }
       .asset-chart-legend li { display: inline-flex; align-items: center; gap: 8px; }
       .asset-chart-legend span { width: 17px; height: 3px; border-radius: 3px; background: var(--legend-color); }
@@ -875,6 +908,25 @@
                   </div>
                 </header>
                 <p class="sample-analysis-notice" role="note"><strong>Fictional example only.</strong> These figures are made up and are not based on your uploaded documents or case facts. Nothing is sent to an AI provider or saved when you view this page. This is not legal advice or a recommendation about how property should be divided.</p>
+                <details class="asset-milestone-manager" id="custom-milestone-manager">
+                  <summary>Manage custom relationship dates</summary>
+                  <div class="asset-milestone-manager-content">
+                    <p>Add any case-specific dates you want to see on the timeline. These demo-only entries are not saved or sent anywhere.</p>
+                    <form id="custom-milestone-form" class="asset-milestone-form" novalidate>
+                      <label class="asset-milestone-field" for="custom-milestone-label">Custom date label
+                        <input id="custom-milestone-label" name="label" type="text" maxlength="80" autocomplete="off" placeholder="e.g., Moved to a new home" aria-describedby="custom-milestone-error">
+                      </label>
+                      <label class="asset-milestone-field" for="custom-milestone-date">Date
+                        <input id="custom-milestone-date" name="date" type="date" aria-describedby="custom-milestone-error">
+                      </label>
+                      <div class="asset-milestone-actions">
+                        <button class="asset-milestone-button primary" type="submit">Add custom date</button>
+                      </div>
+                      <p class="asset-milestone-error" id="custom-milestone-error" role="alert"></p>
+                    </form>
+                    <ul class="asset-milestone-list" id="custom-milestone-list" aria-label="Custom relationship dates"></ul>
+                  </div>
+                </details>
 
                 <section class="asset-analysis-panel" aria-labelledby="asset-table-title">
                   <h3 id="asset-table-title">Asset and liability comparison</h3>
@@ -903,18 +955,46 @@
 
                 <section class="asset-analysis-panel" aria-labelledby="asset-chart-heading">
                   <h3 id="asset-chart-heading">Illustrative asset trend</h3>
-                  <p>This timeline always shows every sample year. The marker follows your selection without hiding the rest of the trend.</p>
+                  <p>This timeline always shows every sample year. Select a milestone to highlight its date without hiding or changing the asset trend.</p>
+                  <div class="asset-milestone-chart-controls">
+                    <label class="asset-milestone-field" for="asset-milestone-selector">Highlight a milestone
+                      <select class="asset-milestone-select" id="asset-milestone-selector" aria-describedby="asset-milestone-guidance">
+                        <option value="">No milestone selected</option>
+                      </select>
+                    </label>
+                    <label class="asset-milestone-field" for="standard-milestone-editor">Set or override a standard date
+                      <select id="standard-milestone-editor">
+                        <option value="cohabitation">Cohabitation / CIR start</option>
+                        <option value="marriage">Marriage</option>
+                        <option value="separation">Separation</option>
+                        <option value="petition">Divorce petition filing</option>
+                      </select>
+                    </label>
+                    <div class="asset-milestone-actions">
+                      <label class="asset-milestone-field" for="standard-milestone-date">Calendar date
+                        <input id="standard-milestone-date" type="date" aria-describedby="standard-milestone-provenance standard-milestone-error">
+                      </label>
+                      <button class="asset-milestone-button primary" id="save-standard-milestone" type="button">Set date</button>
+                      <button class="asset-milestone-button" id="reset-standard-milestone" type="button">Reset</button>
+                    </div>
+                  </div>
+                  <p class="asset-milestone-guidance" id="asset-milestone-guidance">Dates shown in this preview are fictional examples. N/A means no date is available. You can set or override a standard date above; no date is treated as verified legal information.</p>
+                  <p class="asset-milestone-status" id="standard-milestone-provenance" role="status" aria-live="polite"></p>
+                  <p class="asset-milestone-error" id="standard-milestone-error" role="alert"></p>
+                  <p class="asset-milestone-status" id="asset-milestone-status" role="status" aria-live="polite">No milestone selected.</p>
                   <figure>
                     <div class="asset-chart-scroll">
                       <svg class="asset-chart" id="asset-timeline-chart" viewBox="0 0 720 300" role="img" aria-labelledby="asset-chart-title asset-chart-desc">
                         <title id="asset-chart-title">Fictional asset values over six relationship years</title>
-                        <desc id="asset-chart-desc">A line chart compares sample net assets for you, the other party, and both parties combined from 2020 through 2025. All amounts are illustrative U.S. dollars.</desc>
+                        <desc id="asset-chart-desc">A line chart compares sample net assets for you, the other party, and both parties combined from 2020 through 2025. Available relationship milestones are shown as separate markers. All amounts and dates are illustrative.</desc>
                         <g id="asset-chart-grid"></g>
                         <g id="asset-chart-labels"></g>
                         <g id="asset-chart-lines"></g>
+                        <g id="asset-chart-milestones" aria-label="Relationship milestone markers"></g>
                         <g id="asset-chart-cursor" aria-hidden="true"></g>
                       </svg>
                     </div>
+                    <ul class="asset-milestone-list" id="asset-milestone-index" aria-label="Available timeline milestones"></ul>
                     <ul class="asset-chart-legend" aria-label="Chart series">
                       <li><span style="--legend-color:#2f6652"></span>You</li>
                       <li><span style="--legend-color:#9c6a2c"></span>Other party</li>
@@ -1061,8 +1141,23 @@
         const assetChartGrid = document.getElementById("asset-chart-grid");
         const assetChartLabels = document.getElementById("asset-chart-labels");
         const assetChartLines = document.getElementById("asset-chart-lines");
+        const assetChartMilestones = document.getElementById("asset-chart-milestones");
         const assetChartCursor = document.getElementById("asset-chart-cursor");
         const assetChartDescription = document.getElementById("asset-chart-desc");
+        const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
+        const assetMilestoneStatus = document.getElementById("asset-milestone-status");
+        const assetMilestoneIndex = document.getElementById("asset-milestone-index");
+        const standardMilestoneEditor = document.getElementById("standard-milestone-editor");
+        const standardMilestoneDate = document.getElementById("standard-milestone-date");
+        const standardMilestoneProvenance = document.getElementById("standard-milestone-provenance");
+        const standardMilestoneError = document.getElementById("standard-milestone-error");
+        const saveStandardMilestoneButton = document.getElementById("save-standard-milestone");
+        const resetStandardMilestoneButton = document.getElementById("reset-standard-milestone");
+        const customMilestoneForm = document.getElementById("custom-milestone-form");
+        const customMilestoneLabel = document.getElementById("custom-milestone-label");
+        const customMilestoneDate = document.getElementById("custom-milestone-date");
+        const customMilestoneError = document.getElementById("custom-milestone-error");
+        const customMilestoneList = document.getElementById("custom-milestone-list");
         const scenarioOptions = document.getElementById("scenario-options");
         const scenarioStatus = document.getElementById("scenario-status");
         const analysisControls = document.getElementById("analysis-controls");
@@ -1100,6 +1195,23 @@
         let materialsSelecting = false;
         let analysisCaseId = null;
         let selectedAssetYearIndex = 0;
+        let selectedAssetMilestoneId = "";
+        let nextCustomMilestoneId = 1;
+        let assetChartLayout = {
+          left: 76,
+          right: 700,
+          top: 36,
+          bottom: 244,
+          height: 300,
+          xForYear: (year) => 76 + (700 - 76) * (year - 2020) / 5,
+        };
+        const standardMilestones = [
+          { id: "cohabitation", label: "Cohabitation / CIR start", date: "2020-02-01", overrideDate: "", source: "fictional" },
+          { id: "marriage", label: "Marriage", date: "2021-06-15", overrideDate: "", source: "fictional" },
+          { id: "separation", label: "Separation", date: "", overrideDate: "", source: "" },
+          { id: "petition", label: "Divorce petition filing", date: "2025-03-10", overrideDate: "", source: "fictional" },
+        ];
+        const customMilestones = [];
         const sampleAssetYears = [
           {
             year: 2020,
@@ -1429,6 +1541,295 @@
           }).format(value);
         }
 
+        function milestoneActiveDate(milestone) {
+          return milestone.overrideDate || milestone.date;
+        }
+
+        function allAssetMilestones() {
+          return [...standardMilestones, ...customMilestones];
+        }
+
+        function isValidMilestoneDate(value) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+          const date = new Date(`${value}T00:00:00Z`);
+          return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+        }
+
+        function formatMilestoneDate(value) {
+          if (!isValidMilestoneDate(value)) return "N/A";
+          return new Intl.DateTimeFormat("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          }).format(new Date(`${value}T00:00:00Z`));
+        }
+
+        function milestoneProvenance(milestone) {
+          if (milestone.overrideDate) return "User-overridden date.";
+          if (!milestone.date) return "No date available.";
+          if (milestone.source === "extracted") return "Document-extracted date; not verified.";
+          if (milestone.source === "user") return "User-entered date.";
+          return "Fictional demo date; not extracted from documents.";
+        }
+
+        function renderStandardMilestoneEditor() {
+          const milestone = standardMilestones.find(
+            (item) => item.id === standardMilestoneEditor.value,
+          );
+          if (!milestone) return;
+          standardMilestoneDate.value = milestoneActiveDate(milestone);
+          standardMilestoneProvenance.textContent = milestoneProvenance(milestone);
+          resetStandardMilestoneButton.disabled = !milestone.overrideDate;
+          standardMilestoneError.textContent = "";
+        }
+
+        function renderCustomMilestoneList() {
+          customMilestoneList.replaceChildren();
+          for (const milestone of customMilestones) {
+            const item = document.createElement("li");
+            item.className = "asset-milestone-item";
+            item.dataset.milestoneId = milestone.id;
+            if (milestone.pendingDelete) {
+              const confirmation = document.createElement("span");
+              confirmation.textContent = `Delete “${milestone.label}” from this preview?`;
+              const confirmationActions = document.createElement("div");
+              confirmationActions.className = "asset-milestone-item-actions";
+              const confirm = document.createElement("button");
+              confirm.className = "asset-milestone-button danger";
+              confirm.type = "button";
+              confirm.dataset.action = "confirm-delete";
+              confirm.textContent = "Confirm delete";
+              const cancel = document.createElement("button");
+              cancel.className = "asset-milestone-button";
+              cancel.type = "button";
+              cancel.dataset.action = "cancel-delete";
+              cancel.textContent = "Cancel";
+              confirmationActions.append(confirm, cancel);
+              item.append(confirmation, confirmationActions);
+              customMilestoneList.append(item);
+              continue;
+            }
+            const fields = document.createElement("div");
+            fields.className = "asset-milestone-item-fields";
+            const label = document.createElement("label");
+            label.className = "asset-milestone-field";
+            label.textContent = "Label";
+            const labelInput = document.createElement("input");
+            labelInput.type = "text";
+            labelInput.maxLength = 80;
+            labelInput.value = milestone.label;
+            labelInput.dataset.field = "label";
+            labelInput.setAttribute("aria-label", `Label for ${milestone.label}`);
+            label.append(labelInput);
+            const date = document.createElement("label");
+            date.className = "asset-milestone-field";
+            date.textContent = "Date";
+            const dateInput = document.createElement("input");
+            dateInput.type = "date";
+            dateInput.value = milestone.date;
+            dateInput.dataset.field = "date";
+            dateInput.setAttribute("aria-label", `Date for ${milestone.label}`);
+            date.append(dateInput);
+            fields.append(label, date);
+            const actions = document.createElement("div");
+            actions.className = "asset-milestone-item-actions";
+            const save = document.createElement("button");
+            save.className = "asset-milestone-button";
+            save.type = "button";
+            save.dataset.action = "save";
+            save.textContent = "Save changes";
+            const remove = document.createElement("button");
+            remove.className = "asset-milestone-button danger";
+            remove.type = "button";
+            remove.dataset.action = "delete";
+            remove.textContent = "Delete";
+            actions.append(save, remove);
+            const error = document.createElement("p");
+            error.className = "asset-milestone-error";
+            error.setAttribute("role", "alert");
+            error.dataset.error = "";
+            item.append(fields, actions, error);
+            customMilestoneList.append(item);
+          }
+        }
+
+        function renderAssetMilestoneControls() {
+          const selectedValue = selectedAssetMilestoneId;
+          assetMilestoneSelector.replaceChildren();
+          const emptyOption = document.createElement("option");
+          emptyOption.value = "";
+          emptyOption.textContent = "No milestone selected";
+          assetMilestoneSelector.append(emptyOption);
+          for (const milestone of allAssetMilestones()) {
+            const date = milestoneActiveDate(milestone);
+            const option = document.createElement("option");
+            option.value = milestone.id;
+            if (!date) {
+              option.disabled = !milestone.custom;
+              option.textContent = `${milestone.label} — N/A`;
+            } else {
+              const provenance = milestoneProvenance(milestone);
+              const sourceLabel = provenance.startsWith("Fictional")
+                ? " (fictional)"
+                : provenance.startsWith("Document-extracted")
+                  ? " (unverified extraction)"
+                  : provenance.startsWith("User-overridden")
+                    ? " (user-overridden)"
+                    : provenance.startsWith("User-entered")
+                      ? " (user-entered)"
+                      : "";
+              option.textContent = `${milestone.label} — ${formatMilestoneDate(date)}${sourceLabel}`;
+            }
+            assetMilestoneSelector.append(option);
+          }
+          if (selectedValue && allAssetMilestones().some(
+            (milestone) => milestone.id === selectedValue && milestoneActiveDate(milestone),
+          )) {
+            assetMilestoneSelector.value = selectedValue;
+          } else {
+            selectedAssetMilestoneId = "";
+            assetMilestoneSelector.value = "";
+          }
+          renderStandardMilestoneEditor();
+          renderCustomMilestoneList();
+          renderAssetMilestoneIndex();
+        }
+
+        function renderAssetMilestoneIndex() {
+          assetMilestoneIndex.replaceChildren();
+          const firstYear = sampleAssetYears[0].year;
+          const afterLastYear = sampleAssetYears[sampleAssetYears.length - 1].year + 1;
+          const availableMilestones = allAssetMilestones().filter(
+            (milestone) => milestoneActiveDate(milestone) && isValidMilestoneDate(milestoneActiveDate(milestone)),
+          ).sort((leftMilestone, rightMilestone) => (
+            milestoneActiveDate(leftMilestone).localeCompare(milestoneActiveDate(rightMilestone))
+          ));
+          availableMilestones.forEach((milestone, index) => {
+            const date = milestoneActiveDate(milestone);
+            const item = document.createElement("li");
+            const text = document.createElement("span");
+            const sourceLabel = milestone.overrideDate
+              ? " (user-overridden)"
+              : milestone.source === "user"
+                ? " (user-entered)"
+                : "";
+            text.textContent = `${index + 1}. ${milestone.label} — ${formatMilestoneDate(date)}${sourceLabel}`;
+            const dateYear = Number(date.slice(0, 4));
+            const outOfRange = dateYear < firstYear || dateYear >= afterLastYear;
+            if (outOfRange) {
+              const rangeNote = document.createElement("strong");
+              rangeNote.textContent = "Outside displayed timeline";
+              text.append(" — ", rangeNote);
+            }
+            const focus = document.createElement("button");
+            focus.type = "button";
+            focus.dataset.focusMilestone = milestone.id;
+            focus.textContent = selectedAssetMilestoneId === milestone.id ? "Selected" : "Highlight";
+            focus.setAttribute("aria-pressed", String(selectedAssetMilestoneId === milestone.id));
+            item.append(text, focus);
+            assetMilestoneIndex.append(item);
+          });
+          if (!assetMilestoneIndex.childElementCount) {
+            const empty = document.createElement("li");
+            empty.textContent = "No milestone dates are available yet.";
+            assetMilestoneIndex.append(empty);
+          }
+        }
+
+        function renderAssetMilestoneMarkers(positions, bottom) {
+          assetChartMilestones.replaceChildren();
+          const ordinals = new Map(
+            allAssetMilestones()
+              .filter((milestone) => milestoneActiveDate(milestone) && isValidMilestoneDate(milestoneActiveDate(milestone)))
+              .sort((leftMilestone, rightMilestone) => (
+                milestoneActiveDate(leftMilestone).localeCompare(milestoneActiveDate(rightMilestone))
+              ))
+              .map((milestone, index) => [milestone.id, index + 1]),
+          );
+          positions.forEach(({ milestone, timestamp, x, lane }) => {
+            const date = milestoneActiveDate(milestone);
+            const y = 18 + lane * 14;
+            const group = createChartElement(assetChartMilestones, "g", {
+              class: "asset-milestone-marker",
+              transform: `translate(${x} ${y})`,
+              tabindex: 0,
+              role: "button",
+              "aria-label": `${milestone.label}, ${formatMilestoneDate(date)}${milestone.overrideDate ? ", user-overridden" : milestone.source === "user" ? ", user-entered" : ""}`,
+              "aria-pressed": String(selectedAssetMilestoneId === milestone.id),
+              "data-milestone-id": milestone.id,
+            });
+            createChartElement(group, "title", {}, `${milestone.label}: ${formatMilestoneDate(date)}. ${milestoneProvenance(milestone)}`);
+            createChartElement(group, "line", {
+              x1: 0, y1: 5, x2: 0, y2: bottom - y,
+              class: "marker-stem",
+            });
+            const markerClass = "marker-shape";
+            if (milestone.custom) {
+              createChartElement(group, "polygon", {
+                points: "0,-6 6,0 0,6 -6,0", class: markerClass,
+              });
+            } else if (milestone.id === "cohabitation") {
+              createChartElement(group, "circle", { cx: 0, cy: 0, r: 5, class: markerClass });
+            } else if (milestone.id === "marriage") {
+              createChartElement(group, "rect", { x: -5, y: -5, width: 10, height: 10, class: markerClass });
+            } else if (milestone.id === "separation") {
+              createChartElement(group, "polygon", {
+                points: "0,-6 6,5 -6,5", class: markerClass,
+              });
+            } else {
+              createChartElement(group, "polygon", {
+                points: "0,-6 5,-3 5,3 0,6 -5,3 -5,-3", class: markerClass,
+              });
+            }
+            createChartElement(group, "text", {
+              x: 0, y: 3, "text-anchor": "middle", class: "marker-label",
+            }, String(ordinals.get(milestone.id)));
+          });
+        }
+
+        function announceSelectedAssetMilestone() {
+          if (!selectedAssetMilestoneId) {
+            assetMilestoneStatus.textContent = "No milestone selected.";
+            renderAssetMilestoneIndex();
+            return;
+          }
+          const milestone = allAssetMilestones().find(
+            (item) => item.id === selectedAssetMilestoneId,
+          );
+          if (!milestone) {
+            selectedAssetMilestoneId = "";
+            assetMilestoneSelector.value = "";
+            assetMilestoneStatus.textContent = "No milestone selected.";
+            renderAssetMilestoneIndex();
+            return;
+          }
+          const date = milestoneActiveDate(milestone);
+          const firstYear = sampleAssetYears[0].year;
+          const afterLastYear = sampleAssetYears[sampleAssetYears.length - 1].year + 1;
+          const outOfRange = Number(date.slice(0, 4)) < firstYear
+            || Number(date.slice(0, 4)) >= afterLastYear;
+          assetMilestoneStatus.textContent = outOfRange
+            ? `${milestone.label}, ${formatMilestoneDate(date)}, selected. This date is outside the displayed asset timeline; it is listed below and is not placed on the chart.`
+            : `${milestone.label}, ${formatMilestoneDate(date)}, selected on the chart. ${milestoneProvenance(milestone)}`;
+          renderAssetMilestoneIndex();
+        }
+
+        function refreshAssetMilestones() {
+          renderAssetMilestoneControls();
+          renderAssetTimeline();
+          announceSelectedAssetMilestone();
+        }
+
+        function selectAssetMilestone(id) {
+          const milestone = allAssetMilestones().find((item) => item.id === id);
+          if (id && (!milestone || !milestoneActiveDate(milestone))) return;
+          selectedAssetMilestoneId = id;
+          assetMilestoneSelector.value = id;
+          renderAssetTimeline();
+          announceSelectedAssetMilestone();
+        }
+
         function renderAssetSnapshot(index) {
           const sample = sampleAssetYears[index];
           if (!sample) return;
@@ -1445,7 +1846,7 @@
           assetYearPrevious.disabled = index === 0;
           assetYearNext.disabled = index === sampleAssetYears.length - 1;
           assetYearCaption.textContent = `Fictional sample snapshot — Year ${index + 1} (${sample.year})`;
-          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${firstYear.year} through ${lastYear.year}. All amounts are illustrative U.S. dollars. Year ${index + 1} (${sample.year}) is highlighted.`;
+          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${firstYear.year} through ${lastYear.year}. Available relationship milestones are marked separately. All amounts and dates are illustrative. Year ${index + 1} (${sample.year}) is highlighted.`;
           renderAssetTimelineCursor(index);
           assetTableRows.replaceChildren();
           const totals = [0, 0];
@@ -1492,11 +1893,51 @@
         function renderAssetTimeline() {
           const left = 76;
           const right = 700;
-          const top = 36;
-          const bottom = 244;
+          const firstYear = sampleAssetYears[0].year;
+          const lastYear = sampleAssetYears[sampleAssetYears.length - 1].year;
+          const chartStart = Date.UTC(firstYear, 0, 1);
+          const chartEnd = Date.UTC(lastYear + 1, 0, 1);
+          const dateSpan = chartEnd - chartStart;
+          const milestonesInRange = allAssetMilestones().flatMap((milestone) => {
+            const date = milestoneActiveDate(milestone);
+            if (!date || !isValidMilestoneDate(date)) return [];
+            const timestamp = Date.parse(`${date}T00:00:00Z`);
+            return timestamp >= chartStart && timestamp < chartEnd
+              ? [{ milestone, timestamp }]
+              : [];
+          }).sort((leftMilestone, rightMilestone) => leftMilestone.timestamp - rightMilestone.timestamp);
+          const laneEnds = [];
+          const milestonePositions = milestonesInRange.map(({ milestone, timestamp }) => {
+            const x = left + (right - left) * (timestamp - chartStart) / dateSpan;
+            let lane = laneEnds.findIndex((previousX) => x - previousX >= 14);
+            if (lane === -1) {
+              lane = laneEnds.length;
+              laneEnds.push(x);
+            } else {
+              laneEnds[lane] = x;
+            }
+            return { milestone, timestamp, x, lane };
+          });
+          const laneCount = Math.max(1, laneEnds.length);
+          const top = 36 + laneCount * 14;
+          const bottom = top + 208;
+          const chartHeight = bottom + 56;
           const maxValue = 700000;
-          const xFor = (index) => left + (right - left) * index / (sampleAssetYears.length - 1);
+          const xForDate = (timestamp) => left + (right - left) * (timestamp - chartStart) / dateSpan;
+          const xFor = (index) => xForDate(Date.UTC(sampleAssetYears[index].year, 0, 1));
           const yFor = (value) => bottom - (bottom - top) * value / maxValue;
+          assetChartLayout = {
+            left,
+            right,
+            top,
+            bottom,
+            height: chartHeight,
+            xForYear: (year) => xForDate(Date.UTC(year, 0, 1)),
+          };
+          document.getElementById("asset-timeline-chart").setAttribute(
+            "viewBox",
+            `0 0 720 ${chartHeight}`,
+          );
           assetChartGrid.replaceChildren();
           assetChartLabels.replaceChildren();
           assetChartLines.replaceChildren();
@@ -1522,7 +1963,7 @@
             }, String(sample.year));
           });
           createChartElement(assetChartLabels, "text", {
-            x: (left + right) / 2, y: 291, "text-anchor": "middle",
+            x: (left + right) / 2, y: chartHeight - 8, "text-anchor": "middle",
           }, "Time");
           createChartElement(assetChartLabels, "text", {
             x: 17, y: (top + bottom) / 2, "text-anchor": "middle",
@@ -1580,18 +2021,20 @@
               }
             });
           }
+          renderAssetMilestoneMarkers(milestonePositions, bottom);
+          const availableMilestoneCount = allAssetMilestones().filter(
+            (milestone) => milestoneActiveDate(milestone) && isValidMilestoneDate(milestoneActiveDate(milestone)),
+          ).length;
+          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${firstYear} through ${lastYear}. ${availableMilestoneCount} available relationship milestone(s) are identified separately. All amounts and dates are illustrative.`;
           renderAssetTimelineCursor(selectedAssetYearIndex);
         }
 
         function renderAssetTimelineCursor(index) {
           if (!assetChartCursor || !sampleAssetYears[index]) return;
-          const left = 76;
-          const right = 700;
-          const top = 36;
-          const bottom = 244;
           const maxValue = 700000;
           const sample = sampleAssetYears[index];
-          const x = left + (right - left) * index / (sampleAssetYears.length - 1);
+          const { left, right, top, bottom, xForYear } = assetChartLayout;
+          const x = xForYear(sample.year);
           const combinedAssets = sampleAssetCategories.reduce(
             (sum, [, category]) => sum + sample[category][0] + sample[category][1],
             0,
@@ -2906,7 +3349,9 @@
         }
 
         renderAssetSnapshot(sampleAssetYears.length - 1);
+        renderAssetMilestoneControls();
         renderAssetTimeline();
+        announceSelectedAssetMilestone();
 
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
@@ -2921,6 +3366,141 @@
         });
         assetYearNext.addEventListener("click", () => {
           renderAssetSnapshot(selectedAssetYearIndex + 1);
+        });
+        standardMilestoneEditor.addEventListener("change", renderStandardMilestoneEditor);
+        saveStandardMilestoneButton.addEventListener("click", () => {
+          const milestone = standardMilestones.find(
+            (item) => item.id === standardMilestoneEditor.value,
+          );
+          const date = standardMilestoneDate.value;
+          if (!milestone || !isValidMilestoneDate(date)) {
+            standardMilestoneError.textContent = "Choose a valid calendar date before setting this milestone.";
+            standardMilestoneDate.focus();
+            return;
+          }
+          milestone.overrideDate = date;
+          standardMilestoneError.textContent = "";
+          refreshAssetMilestones();
+          standardMilestoneProvenance.textContent = `User-overridden date: ${formatMilestoneDate(date)}.`;
+        });
+        resetStandardMilestoneButton.addEventListener("click", () => {
+          const milestone = standardMilestones.find(
+            (item) => item.id === standardMilestoneEditor.value,
+          );
+          if (!milestone) return;
+          milestone.overrideDate = "";
+          refreshAssetMilestones();
+        });
+        customMilestoneForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const label = customMilestoneLabel.value.trim();
+          const date = customMilestoneDate.value;
+          const duplicate = customMilestones.some(
+            (milestone) => milestone.label.trim().toLocaleLowerCase() === label.toLocaleLowerCase(),
+          );
+          if (!label || !isValidMilestoneDate(date) || duplicate) {
+            customMilestoneError.textContent = !label
+              ? "Enter a label for this custom date."
+              : !isValidMilestoneDate(date)
+                ? "Choose a valid calendar date."
+                : "A custom date with this label already exists.";
+            (!label || duplicate ? customMilestoneLabel : customMilestoneDate).focus();
+            return;
+          }
+          customMilestones.push({
+            id: `custom-${nextCustomMilestoneId++}`,
+            label,
+            date,
+            source: "user",
+            custom: true,
+          });
+          customMilestoneForm.reset();
+          customMilestoneError.textContent = "";
+          refreshAssetMilestones();
+          assetMilestoneStatus.textContent = `${label}, ${formatMilestoneDate(date)}, added to this preview only. Nothing was sent or saved.`;
+        });
+        customMilestoneList.addEventListener("click", (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const actionButton = target?.closest("[data-action]");
+          const item = target?.closest(".asset-milestone-item");
+          if (!actionButton || !item) return;
+          const milestone = customMilestones.find(
+            (entry) => entry.id === item.dataset.milestoneId,
+          );
+          if (!milestone) return;
+          const action = actionButton.dataset.action;
+          if (action === "delete") {
+            milestone.pendingDelete = true;
+            renderCustomMilestoneList();
+            customMilestoneList.querySelector('[data-action="confirm-delete"]')?.focus();
+            return;
+          }
+          if (action === "cancel-delete") {
+            delete milestone.pendingDelete;
+            renderCustomMilestoneList();
+            customMilestoneList.querySelector(
+              `[data-milestone-id="${milestone.id}"] [data-action="delete"]`,
+            )?.focus();
+            return;
+          }
+          if (action === "confirm-delete") {
+            const label = milestone.label;
+            customMilestones.splice(customMilestones.indexOf(milestone), 1);
+            if (selectedAssetMilestoneId === milestone.id) {
+              selectedAssetMilestoneId = "";
+            }
+            refreshAssetMilestones();
+            assetMilestoneStatus.textContent = `${label} was removed from this preview. Nothing was sent or saved.`;
+            return;
+          }
+          if (action !== "save") return;
+          const labelInput = item.querySelector('[data-field="label"]');
+          const dateInput = item.querySelector('[data-field="date"]');
+          const label = labelInput.value.trim();
+          const date = dateInput.value;
+          const duplicate = customMilestones.some(
+            (entry) => entry !== milestone
+              && entry.label.trim().toLocaleLowerCase() === label.toLocaleLowerCase(),
+          );
+          const error = item.querySelector("[data-error]");
+          if (!label || !isValidMilestoneDate(date) || duplicate) {
+            error.textContent = !label
+              ? "Enter a label for this custom date."
+              : !isValidMilestoneDate(date)
+                ? "Choose a valid calendar date."
+                : "A custom date with this label already exists.";
+            (!label || duplicate ? labelInput : dateInput).focus();
+            return;
+          }
+          milestone.label = label;
+          milestone.date = date;
+          delete milestone.pendingDelete;
+          refreshAssetMilestones();
+          assetMilestoneStatus.textContent = `${label}, ${formatMilestoneDate(date)}, updated in this preview only. Nothing was sent or saved.`;
+        });
+        assetMilestoneSelector.addEventListener("change", () => {
+          selectAssetMilestone(assetMilestoneSelector.value);
+        });
+        assetMilestoneIndex.addEventListener("click", (event) => {
+          const target = event.target instanceof Element
+            ? event.target.closest("[data-focus-milestone]")
+            : null;
+          if (target) selectAssetMilestone(target.dataset.focusMilestone);
+        });
+        assetChartMilestones.addEventListener("click", (event) => {
+          const marker = event.target instanceof Element
+            ? event.target.closest("[data-milestone-id]")
+            : null;
+          if (marker) selectAssetMilestone(marker.dataset.milestoneId);
+        });
+        assetChartMilestones.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const marker = event.target instanceof Element
+            ? event.target.closest("[data-milestone-id]")
+            : null;
+          if (!marker) return;
+          event.preventDefault();
+          selectAssetMilestone(marker.dataset.milestoneId);
         });
         scenarioOptions.addEventListener("click", (event) => {
           const choice = event.target instanceof Element
