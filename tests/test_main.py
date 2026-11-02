@@ -155,6 +155,33 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", open_view)
         self.assertNotIn("/analysis-requests", open_view)
 
+    def test_asset_comparison_edits_are_validated_accessible_and_local_only(
+        self,
+    ) -> None:
+        status, body = asyncio.run(request_app("/"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="asset-edit-start" type="button">Edit values</button>', page)
+        self.assertIn('id="asset-edit-save" type="button" hidden>Save changes</button>', page)
+        self.assertIn('id="asset-edit-cancel" type="button" hidden>Cancel</button>', page)
+        self.assertIn('id="asset-edit-status" role="status" aria-live="polite"', page)
+        self.assertIn('id="asset-edit-error" role="alert" hidden', page)
+        self.assertIn('role="group" aria-label="Edit fictional sample values"', page)
+        edit_logic = page.split("function updateAssetEditControls()", 1)[1].split(
+            "function createChartElement", 1
+        )[0]
+        self.assertIn("Number.isSafeInteger(value)", edit_logic)
+        self.assertIn('input.dataset.assetEditCategory !== "debt" && value < 0', edit_logic)
+        self.assertIn('input.setAttribute("aria-invalid", "true")', edit_logic)
+        self.assertIn("sample[category] = assetEditDraft[category].map(Number)", edit_logic)
+        self.assertIn("renderAssetTimeline();", edit_logic)
+        self.assertIn("Unsaved edits canceled because you changed the selected year.", edit_logic)
+        self.assertNotIn("localStorage", edit_logic)
+        self.assertNotIn("sessionStorage", edit_logic)
+        self.assertNotIn("indexedDB", edit_logic)
+        self.assertIn('assetTableRows.addEventListener("input"', page)
+
     def test_asset_analysis_milestones_are_editable_accessible_and_local_only(
         self,
     ) -> None:
