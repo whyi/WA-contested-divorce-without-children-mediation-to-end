@@ -70,14 +70,23 @@ class MainWorkflowTests(unittest.TestCase):
 
         self.assertEqual(status, 200)
         page = body.decode()
-        self.assertIn("I have the documents. Help me sort them.", page)
-        self.assertIn("Walk me through it, step by step.", page)
+        self.assertIn("I have all documents demo", page)
+        self.assertIn("Wizard demo", page)
         self.assertIn('id="signup-form"', page)
         self.assertIn('id="login-form"', page)
         self.assertIn('name="email" type="text" autocomplete="username"', page)
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
-        self.assertIn('id="demo-entry" href="/demo"', page)
+        self.assertIn('id="demo-entry" href="/demo">Existing demo</a>', page)
+        self.assertIn('href="/demo">Existing demo</a>', page)
+        self.assertIn('class="demo-quick-section" id="demo-choices"', page)
+        self.assertIn('class="demo-quick-link" href="/demo/documents"', page)
+        self.assertIn("<strong>I have all documents demo</strong>", page)
+        self.assertIn('class="demo-quick-link" href="/demo/wizard"', page)
+        self.assertIn("<strong>Wizard demo</strong>", page)
+        self.assertLess(page.index('id="demo-choices"'), page.index('class="hero"'))
+        self.assertIn('id="documents-demo"', page)
+        self.assertIn('id="wizard-demo"', page)
         self.assertIn('.authenticated-view .nav a:not(.demo-entry)', page)
         self.assertIn('const demoMode = window.location.pathname === "/demo";', page)
         self.assertIn('"/api/auth/signup"', page)
@@ -412,9 +421,11 @@ class MainWorkflowTests(unittest.TestCase):
             asyncio.run(request_app("/onboarding/upload")),
             asyncio.run(request_app("/onboarding/wizard")),
             asyncio.run(request_app("/demo")),
+            asyncio.run(request_app("/demo/documents")),
+            asyncio.run(request_app("/demo/wizard")),
         )
 
-        self.assertEqual([status for status, _ in responses], [200, 200, 200])
+        self.assertEqual([status for status, _ in responses], [200, 200, 200, 200, 200])
         for _, body in responses[:2]:
             page = body.decode()
             self.assertIn('id="account-dashboard"', page)
@@ -424,6 +435,19 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('const demoMode = window.location.pathname === "/demo";', demo_page)
         self.assertIn("Explore fictional sample figures without signing in or opening a case.", demo_page)
         self.assertIn('showPreparation("demo");', demo_page)
+        document_demo_page = responses[3][1].decode()
+        self.assertIn('const demoDocumentsMode = window.location.pathname === "/demo/documents";', document_demo_page)
+        self.assertIn('id="demo-file-input" type="file"', document_demo_page)
+        self.assertIn('id="demo-files-next" type="button" disabled', document_demo_page)
+        self.assertIn("Only PDF and DOCX files are supported.", document_demo_page)
+        self.assertIn('window.location.assign("/demo")', document_demo_page)
+        wizard_demo_page = responses[4][1].decode()
+        self.assertIn('id="wizard-filed-question"', wizard_demo_page)
+        self.assertIn('id="wizard-role-question" disabled', wizard_demo_page)
+        self.assertIn('<dialog class="demo-wizard-dialog"', wizard_demo_page)
+        self.assertIn("wizardFiledDialog.addEventListener(\"cancel\", (event) => event.preventDefault())", wizard_demo_page)
+        self.assertIn('id="wizard-finish" type="button" disabled', wizard_demo_page)
+        self.assertIn("Demo complete. Your answers were not submitted or saved.", wizard_demo_page)
         demo_bootstrap = demo_page.rsplit('if (demoMode) {', 1)[1].split(
             "} else {", 1
         )[0]
