@@ -446,8 +446,25 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="wizard-role-question" disabled', wizard_demo_page)
         self.assertIn('<dialog class="demo-wizard-dialog"', wizard_demo_page)
         self.assertIn("wizardFiledDialog.addEventListener(\"cancel\", (event) => event.preventDefault())", wizard_demo_page)
-        self.assertIn('id="wizard-finish" type="button" disabled', wizard_demo_page)
-        self.assertIn("Demo complete. Your answers were not submitted or saved.", wizard_demo_page)
+        self.assertIn('id="wizard-gated-content" hidden', wizard_demo_page)
+        self.assertIn('data-wizard-date="cohabitation"', wizard_demo_page)
+        self.assertIn('data-wizard-date="marriage"', wizard_demo_page)
+        self.assertIn('data-wizard-date="separation"', wizard_demo_page)
+        self.assertIn('data-wizard-date="petition"', wizard_demo_page)
+        self.assertIn('id="wizard-finance-list"', wizard_demo_page)
+        self.assertIn('id="wizard-issue-list"', wizard_demo_page)
+        self.assertIn('id="wizard-agreement-list"', wizard_demo_page)
+        self.assertIn('id="wizard-review-list"', wizard_demo_page)
+        self.assertIn('id="wizard-clear-dialog"', wizard_demo_page)
+        self.assertIn('id="wizard-finish" type="button" disabled>Save and view Existing demo', wizard_demo_page)
+        self.assertIn('indexedDB.open(wizardDatabaseName, wizardDatabaseVersion)', wizard_demo_page)
+        self.assertIn('wizardDatabaseName = "casework-wizard-intake"', wizard_demo_page)
+        self.assertIn("Restored the draft and attached files saved in this browser.", wizard_demo_page)
+        self.assertNotIn("localStorage.setItem", wizard_demo_page)
+        wizard_change_handler = wizard_demo_page.split(
+            "function handleWizardChange(event)", 1
+        )[1].split("function addWizardEntry", 1)[0]
+        self.assertNotIn("fetch(", wizard_change_handler)
         demo_bootstrap = demo_page.rsplit('if (demoMode) {', 1)[1].split(
             "} else {", 1
         )[0]
