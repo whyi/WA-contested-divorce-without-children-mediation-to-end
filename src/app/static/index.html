@@ -593,6 +593,8 @@
       .asset-edit-feedback { min-height: 20px; margin: 8px 0 0 !important; color: #536258 !important; font-size: 12px !important; }
       .asset-edit-feedback[data-kind="error"] { color: #9c3228 !important; }
       .asset-edit-feedback[hidden] { display: none; }
+      .asset-interpolation-notice { margin: 12px 0 !important; padding: 11px 13px; border: 1px solid #d88a76; border-left: 5px solid #b64232; border-radius: 6px; color: #742d25 !important; background: #fff1ed; font-size: 12px !important; font-weight: 650; line-height: 1.55; }
+      .asset-interpolation-notice[hidden] { display: none; }
       .asset-year-status { min-height: 20px; margin: 9px 0 0 !important; color: #748078 !important; font-size: 11px !important; }
       .asset-chart { display: block; width: 100%; min-width: 520px; height: auto; }
       .asset-chart-scroll { overflow-x: auto; }
@@ -1175,17 +1177,18 @@
 
                 <section class="asset-analysis-panel" aria-labelledby="asset-table-title">
                   <h3 id="asset-table-title">Asset and liability comparison</h3>
-                  <p>Move through the timeline to see the sample balance sheet for any year.</p>
-                  <div class="asset-year-controls" role="group" aria-label="Choose a relationship year">
-                    <button class="asset-year-step" id="asset-year-previous" type="button" aria-label="Previous year">← Previous</button>
+                  <p>Move through the timeline to see the sample balance sheet for an annual or milestone date.</p>
+                  <div class="asset-year-controls" role="group" aria-label="Choose a timeline point">
+                    <button class="asset-year-step" id="asset-year-previous" type="button" aria-label="Previous timeline point">← Previous</button>
                     <label class="asset-year-selector" for="asset-year-range">
                       <output class="asset-year-selected" id="asset-selected-year" for="asset-year-range">Year 6 · 2025</output>
-                      <input class="asset-year-range" id="asset-year-range" type="range" min="0" max="5" step="1" value="5" aria-valuetext="Year 6, 2025">
+                      <input class="asset-year-range" id="asset-year-range" type="range" min="0" max="5" step="1" value="5" list="asset-year-stops" aria-label="Choose a year or milestone date" aria-valuetext="Year 6, 2025">
+                      <datalist id="asset-year-stops"></datalist>
                       <span class="asset-year-range-ends" aria-hidden="true"><span id="asset-year-first">Year 1 · 2020</span><span id="asset-year-last">Year 6 · 2025</span></span>
                     </label>
-                    <button class="asset-year-step" id="asset-year-next" type="button" aria-label="Next year">Next →</button>
+                    <button class="asset-year-step" id="asset-year-next" type="button" aria-label="Next timeline point">Next →</button>
                   </div>
-                  <div class="asset-table-scroll" id="asset-year-panel" role="region" aria-label="Selected-year asset comparison" tabindex="0">
+                  <div class="asset-table-scroll" id="asset-year-panel" role="region" aria-label="Selected-date asset comparison" tabindex="0">
                     <table class="asset-comparison-table">
                       <caption id="asset-year-caption">Fictional sample snapshot — Year 6</caption>
                       <thead>
@@ -1202,12 +1205,13 @@
                   </div>
                   <p class="asset-edit-feedback" id="asset-edit-status" role="status" aria-live="polite"></p>
                   <p class="asset-edit-feedback" id="asset-edit-error" role="alert" hidden></p>
+                  <p class="asset-interpolation-notice" id="asset-interpolation-notice" role="note" hidden></p>
                   <p class="asset-year-status" id="asset-year-status" role="status" aria-live="polite"></p>
                 </section>
 
                 <section class="asset-analysis-panel" aria-labelledby="asset-chart-heading">
                   <h3 id="asset-chart-heading">Illustrative asset trend</h3>
-                  <p>This timeline always shows every sample year. Select a milestone to highlight its date without hiding or changing the asset trend.</p>
+                  <p>This trend includes every annual sample and milestone-date snapshot. Select a milestone to move to its date.</p>
                   <div class="asset-milestone-chart-controls">
                     <label class="asset-milestone-field" for="asset-milestone-selector">Highlight a milestone
                       <select class="asset-milestone-select" id="asset-milestone-selector" aria-describedby="asset-milestone-guidance">
@@ -1338,6 +1342,7 @@
         const assetAnalysisTitle = document.getElementById("asset-analysis-title");
         const assetAnalysisBackButton = document.getElementById("asset-analysis-back");
         const assetYearRange = document.getElementById("asset-year-range");
+        const assetYearStops = document.getElementById("asset-year-stops");
         const assetYearSelected = document.getElementById("asset-selected-year");
         const assetYearFirst = document.getElementById("asset-year-first");
         const assetYearLast = document.getElementById("asset-year-last");
@@ -1352,6 +1357,7 @@
         const assetEditCancel = document.getElementById("asset-edit-cancel");
         const assetEditStatus = document.getElementById("asset-edit-status");
         const assetEditError = document.getElementById("asset-edit-error");
+        const assetInterpolationNotice = document.getElementById("asset-interpolation-notice");
         const assetYearStatus = document.getElementById("asset-year-status");
         const assetChartGrid = document.getElementById("asset-chart-grid");
         const assetChartLabels = document.getElementById("asset-chart-labels");
@@ -1405,8 +1411,11 @@
         let materialsSelecting = false;
         let analysisCaseId = null;
         let selectedAssetYearIndex = 0;
+        let assetTimelineStops = [];
+        const interpolatedAssetOverrides = new Map();
         let assetEditDraft = null;
-        let assetEditYearIndex = null;
+        let assetEditStopIndex = null;
+        let assetEditStopDate = null;
         let selectedAssetMilestoneId = "";
         let nextCustomMilestoneId = 1;
         let assetChartLayout = {
@@ -2754,13 +2763,114 @@
           const outOfRange = Number(date.slice(0, 4)) < firstYear
             || Number(date.slice(0, 4)) >= afterLastYear;
           assetMilestoneStatus.textContent = outOfRange
-            ? `${milestone.label}, ${formatMilestoneDate(date)}, selected. This date is outside the displayed asset timeline; it is listed below and is not placed on the chart.`
+            ? `${milestone.label}, ${formatMilestoneDate(date)}, selected. This date is outside the annual sample range; it is shown on the chart using the nearest sample, with no extrapolation.`
             : `${milestone.label}, ${formatMilestoneDate(date)}, selected on the chart. ${milestoneProvenance(milestone)}`;
           renderAssetMilestoneIndex();
         }
 
+        function assetYearDate(sample) {
+          return `${sample.year}-01-01`;
+        }
+
+        function buildAssetTimelineStops(preferredDate = "") {
+          const previousDate = preferredDate
+            || assetTimelineStops[selectedAssetYearIndex]?.date
+            || assetYearDate(sampleAssetYears[sampleAssetYears.length - 1]);
+          const stopsByDate = new Map();
+          sampleAssetYears.forEach((sample, yearIndex) => {
+            const date = assetYearDate(sample);
+            stopsByDate.set(date, { date, yearIndex, milestones: [] });
+          });
+          for (const milestone of allAssetMilestones()) {
+            const date = milestoneActiveDate(milestone);
+            if (!date || !isValidMilestoneDate(date)) continue;
+            if (!stopsByDate.has(date)) {
+              stopsByDate.set(date, { date, yearIndex: null, milestones: [] });
+            }
+            stopsByDate.get(date).milestones.push(milestone);
+          }
+          assetTimelineStops = [...stopsByDate.values()].sort(
+            (left, right) => left.date.localeCompare(right.date),
+          );
+          assetYearStops.replaceChildren();
+          for (const [index, stop] of assetTimelineStops.entries()) {
+            const option = document.createElement("option");
+            option.value = String(index);
+            const yearLabel = stop.yearIndex === null
+              ? ""
+              : `Year ${stop.yearIndex + 1} · ${sampleAssetYears[stop.yearIndex].year}`;
+            const milestoneLabel = stop.milestones.map((item) => item.label).join(", ");
+            option.label = [yearLabel, milestoneLabel, formatMilestoneDate(stop.date)]
+              .filter(Boolean)
+              .join(" — ");
+            assetYearStops.append(option);
+          }
+          const selectedIndex = assetTimelineStops.findIndex((stop) => stop.date === previousDate);
+          if (selectedIndex >= 0) {
+            selectedAssetYearIndex = selectedIndex;
+          } else {
+            const targetTimestamp = Date.parse(`${previousDate}T00:00:00Z`);
+            selectedAssetYearIndex = assetTimelineStops.reduce((nearestIndex, stop, index) => {
+              const nearestDistance = Math.abs(
+                Date.parse(`${assetTimelineStops[nearestIndex].date}T00:00:00Z`) - targetTimestamp,
+              );
+              const distance = Math.abs(
+                Date.parse(`${stop.date}T00:00:00Z`) - targetTimestamp,
+              );
+              return distance < nearestDistance ? index : nearestIndex;
+            }, 0);
+          }
+          return selectedAssetYearIndex;
+        }
+
+        function assetSnapshotAtDate(date) {
+          const override = interpolatedAssetOverrides.get(date);
+          if (override) {
+            return { values: override, kind: "override", sourceYear: null };
+          }
+          const timestamp = Date.parse(`${date}T00:00:00Z`);
+          const firstSample = sampleAssetYears[0];
+          const lastSample = sampleAssetYears[sampleAssetYears.length - 1];
+          const firstDate = assetYearDate(firstSample);
+          const lastDate = assetYearDate(lastSample);
+          if (date < firstDate) {
+            return { values: firstSample, kind: "outside", sourceYear: firstSample.year };
+          }
+          if (date > lastDate) {
+            return { values: lastSample, kind: "outside", sourceYear: lastSample.year };
+          }
+          for (let index = 0; index < sampleAssetYears.length; index += 1) {
+            const sample = sampleAssetYears[index];
+            if (date === assetYearDate(sample)) {
+              return { values: sample, kind: "annual", sourceYear: sample.year };
+            }
+            const nextSample = sampleAssetYears[index + 1];
+            if (!nextSample) continue;
+            const startTimestamp = Date.parse(`${assetYearDate(sample)}T00:00:00Z`);
+            const endTimestamp = Date.parse(`${assetYearDate(nextSample)}T00:00:00Z`);
+            if (timestamp < endTimestamp) {
+              const fraction = (timestamp - startTimestamp) / (endTimestamp - startTimestamp);
+              const values = Object.fromEntries(sampleAssetCategories.map(([, category]) => [
+                category,
+                sample[category].map((value, partyIndex) => (
+                  Math.round(value + (nextSample[category][partyIndex] - value) * fraction)
+                )),
+              ]));
+              return { values, kind: "interpolated", sourceYear: sample.year };
+            }
+          }
+          return { values: lastSample, kind: "outside", sourceYear: lastSample.year };
+        }
+
         function refreshAssetMilestones() {
+          const selectedDate = assetTimelineStops[selectedAssetYearIndex]?.date || "";
           renderAssetMilestoneControls();
+          buildAssetTimelineStops(selectedDate);
+          renderAssetSnapshot(selectedAssetYearIndex);
+          const currentDate = assetTimelineStops[selectedAssetYearIndex]?.date || "";
+          if (selectedDate && currentDate !== selectedDate) {
+            assetYearStatus.textContent = `The selected date ${formatMilestoneDate(selectedDate)} is no longer available. Moved to the nearest remaining timeline point, ${formatMilestoneDate(currentDate)}.`;
+          }
           renderAssetTimeline();
           announceSelectedAssetMilestone();
         }
@@ -2798,6 +2908,12 @@
           if (id && (!milestone || !milestoneActiveDate(milestone))) return;
           selectedAssetMilestoneId = id;
           assetMilestoneSelector.value = id;
+          if (milestone) {
+            const stopIndex = assetTimelineStops.findIndex(
+              (stop) => stop.date === milestoneActiveDate(milestone),
+            );
+            if (stopIndex >= 0) renderAssetSnapshot(stopIndex);
+          }
           renderAssetTimeline();
           announceSelectedAssetMilestone();
         }
@@ -2873,17 +2989,20 @@
         }
 
         function startAssetEdit() {
-          const sample = sampleAssetYears[selectedAssetYearIndex];
+          const stop = assetTimelineStops[selectedAssetYearIndex];
+          if (!stop) return;
+          const snapshot = assetSnapshotAtDate(stop.date);
           assetEditDraft = Object.fromEntries(
             sampleAssetCategories.map(([, category]) => [
               category,
-              sample[category].map(String),
+              snapshot.values[category].map(String),
             ]),
           );
-          assetEditYearIndex = selectedAssetYearIndex;
+          assetEditStopIndex = selectedAssetYearIndex;
+          assetEditStopDate = stop.date;
           assetEditError.hidden = true;
           assetEditError.textContent = "";
-          assetEditStatus.textContent = `Editing fictional values for ${sample.year}.`;
+          assetEditStatus.textContent = `Editing fictional values for ${stop.milestones.map((item) => item.label).join(", ") || `Year ${stop.yearIndex + 1}`} on ${formatMilestoneDate(stop.date)}.`;
           renderAssetSnapshot(selectedAssetYearIndex);
           assetTableRows.querySelector("[data-asset-edit-category]")?.focus();
         }
@@ -2891,7 +3010,8 @@
         function cancelAssetEdit(announce = true) {
           if (!assetEditDraft) return;
           assetEditDraft = null;
-          assetEditYearIndex = null;
+          assetEditStopIndex = null;
+          assetEditStopDate = null;
           assetEditError.hidden = true;
           assetEditError.textContent = "";
           renderAssetSnapshot(selectedAssetYearIndex);
@@ -2902,34 +3022,49 @@
         }
 
         function saveAssetEdit() {
-          if (!assetEditDraft || assetEditYearIndex !== selectedAssetYearIndex) return;
+          if (
+            !assetEditDraft
+            || assetEditStopIndex !== selectedAssetYearIndex
+            || assetEditStopDate !== assetTimelineStops[selectedAssetYearIndex]?.date
+          ) return;
           const invalidInputs = updateAssetEditDerivedValues();
           if (invalidInputs.length) {
             assetEditStatus.textContent = "Changes were not saved. Correct the highlighted amounts.";
             invalidInputs[0].focus();
             return;
           }
-          const sample = sampleAssetYears[selectedAssetYearIndex];
-          for (const [, category] of sampleAssetCategories) {
-            sample[category] = assetEditDraft[category].map(Number);
+          const stop = assetTimelineStops[selectedAssetYearIndex];
+          const values = Object.fromEntries(sampleAssetCategories.map(([, category]) => [
+            category,
+            assetEditDraft[category].map(Number),
+          ]));
+          if (stop.yearIndex === null) {
+            interpolatedAssetOverrides.set(stop.date, values);
+          } else {
+            for (const [, category] of sampleAssetCategories) {
+              sampleAssetYears[stop.yearIndex][category] = values[category];
+            }
           }
           assetEditDraft = null;
-          assetEditYearIndex = null;
+          assetEditStopIndex = null;
+          assetEditStopDate = null;
           assetEditError.hidden = true;
           assetEditError.textContent = "";
           renderAssetSnapshot(selectedAssetYearIndex);
           renderAssetTimeline();
-          assetEditStatus.textContent = `Fictional values for ${sample.year} updated in this page only.`;
+          assetEditStatus.textContent = `Fictional values for ${stop.milestones.map((item) => item.label).join(", ") || `Year ${stop.yearIndex + 1}`} on ${formatMilestoneDate(stop.date)} updated in this page only.`;
           assetEditStart.focus();
         }
 
         function renderAssetSnapshot(index) {
-          const sample = sampleAssetYears[index];
-          if (!sample) return;
-          const canceledForYearChange = assetEditDraft !== null && index !== assetEditYearIndex;
+          const stop = assetTimelineStops[index];
+          if (!stop) return;
+          const canceledForYearChange = assetEditDraft !== null
+            && (index !== assetEditStopIndex || stop.date !== assetEditStopDate);
           if (canceledForYearChange) {
             assetEditDraft = null;
-            assetEditYearIndex = null;
+            assetEditStopIndex = null;
+            assetEditStopDate = null;
             assetEditError.hidden = true;
             assetEditError.textContent = "";
           }
@@ -2937,27 +3072,51 @@
           const firstYear = sampleAssetYears[0];
           const lastYear = sampleAssetYears[sampleAssetYears.length - 1];
           assetYearRange.min = "0";
-          assetYearRange.max = String(sampleAssetYears.length - 1);
+          assetYearRange.max = String(assetTimelineStops.length - 1);
           assetYearRange.value = String(index);
-          assetYearRange.setAttribute("aria-valuetext", `Year ${index + 1}, ${sample.year}`);
-          assetYearSelected.textContent = `Year ${index + 1} · ${sample.year}`;
+          const snapshot = assetSnapshotAtDate(stop.date);
+          const yearLabel = stop.yearIndex === null
+            ? ""
+            : `Year ${stop.yearIndex + 1} · ${sampleAssetYears[stop.yearIndex].year}`;
+          const milestoneLabel = stop.milestones.map((item) => item.label).join(", ");
+          const selectedLabel = [yearLabel, milestoneLabel, formatMilestoneDate(stop.date)]
+            .filter(Boolean)
+            .join(" · ");
+          assetYearRange.setAttribute("aria-valuetext", selectedLabel);
+          assetYearSelected.textContent = selectedLabel;
           assetYearFirst.textContent = `Year 1 · ${firstYear.year}`;
           assetYearLast.textContent = `Year ${sampleAssetYears.length} · ${lastYear.year}`;
           assetYearPrevious.disabled = index === 0;
-          assetYearNext.disabled = index === sampleAssetYears.length - 1;
-          assetYearCaption.textContent = `Fictional sample snapshot — Year ${index + 1} (${sample.year})`;
-          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${firstYear.year} through ${lastYear.year}. Available relationship milestones are marked separately. All amounts and dates are illustrative. Year ${index + 1} (${sample.year}) is highlighted.`;
-          renderAssetTimelineCursor(index);
+          assetYearNext.disabled = index === assetTimelineStops.length - 1;
+          assetYearCaption.textContent = stop.yearIndex === null
+            ? `Fictional sample snapshot — ${milestoneLabel} (${formatMilestoneDate(stop.date)})`
+            : `Fictional sample snapshot — Year ${stop.yearIndex + 1} (${sampleAssetYears[stop.yearIndex].year})`;
+          const interpolationNotice = snapshot.kind === "interpolated"
+            ? `Interpolated fictional values for ${milestoneLabel} on ${formatMilestoneDate(stop.date)}. These are estimates between annual sample dates, not source facts. Use Edit values to adjust this estimate.`
+            : snapshot.kind === "outside"
+              ? `${milestoneLabel} on ${formatMilestoneDate(stop.date)} is outside the annual sample range. Showing the nearest snapshot from ${snapshot.sourceYear}; no values were extrapolated. You can edit this fictional snapshot.`
+              : snapshot.kind === "override"
+                ? `User-edited fictional snapshot for ${milestoneLabel} on ${formatMilestoneDate(stop.date)}. This page-only value replaces the interpolation and can be edited again.`
+                : stop.milestones.length && stop.yearIndex !== null
+                  ? `${milestoneLabel} on ${formatMilestoneDate(stop.date)} coincides with an annual sample. Showing the Year ${stop.yearIndex + 1} sample; no interpolation is needed.`
+                  : "";
+          assetInterpolationNotice.hidden = !interpolationNotice;
+          assetInterpolationNotice.textContent = interpolationNotice;
+          assetInterpolationNotice.dataset.kind = snapshot.kind;
+          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${assetChartLayout.startYear} through ${assetChartLayout.endYear}. Available relationship milestones are marked separately. Custom-date values are interpolated between annual samples or use the nearest endpoint outside the sample range. All amounts and dates are illustrative. ${selectedLabel} is highlighted.`;
+          const values = assetEditDraft && assetEditStopIndex === index
+            ? Object.fromEntries(sampleAssetCategories.map(([, category]) => [
+              category,
+              assetEditDraft[category].map(Number),
+            ]))
+            : snapshot.values;
+          renderAssetTimelineCursor(index, values);
           assetTableRows.replaceChildren();
           const totals = [0, 0];
           for (const [label, category] of sampleAssetCategories) {
-            const values = assetEditDraft && assetEditYearIndex === index
-              ? assetEditDraft[category].map(Number)
-              : sample[category];
-            if (!assetEditDraft) {
-              totals[0] += values[0];
-              totals[1] += values[1];
-            }
+            const categoryValues = values[category];
+            totals[0] += categoryValues[0];
+            totals[1] += categoryValues[1];
             const row = document.createElement("tr");
             const heading = document.createElement("th");
             heading.scope = "row";
@@ -2965,7 +3124,7 @@
             row.append(heading);
             for (let partyIndex = 0; partyIndex < 2; partyIndex += 1) {
               const cell = document.createElement("td");
-              if (assetEditDraft && assetEditYearIndex === index) {
+              if (assetEditDraft && assetEditStopIndex === index) {
                 const input = document.createElement("input");
                 input.className = "asset-edit-input";
                 input.type = "number";
@@ -2977,18 +3136,18 @@
                 input.dataset.assetEditParty = String(partyIndex);
                 input.setAttribute(
                   "aria-label",
-                  `${label}, ${partyIndex === 0 ? "You" : "Other party"}, ${sample.year}, amount in dollars`,
+                  `${label}, ${partyIndex === 0 ? "You" : "Other party"}, ${formatMilestoneDate(stop.date)}, amount in dollars`,
                 );
                 input.setAttribute("aria-describedby", "asset-edit-error");
                 cell.append(input);
               } else {
-                cell.textContent = formatSampleCurrency(values[partyIndex]);
+                cell.textContent = formatSampleCurrency(categoryValues[partyIndex]);
               }
               row.append(cell);
             }
             const combinedCell = document.createElement("td");
             combinedCell.dataset.assetDerived = category;
-            combinedCell.textContent = formatSampleCurrency(values[0] + values[1]);
+            combinedCell.textContent = formatSampleCurrency(categoryValues[0] + categoryValues[1]);
             row.append(combinedCell);
             assetTableRows.append(row);
           }
@@ -3000,13 +3159,7 @@
           for (let partyIndex = 0; partyIndex < 2; partyIndex += 1) {
             const cell = document.createElement("td");
             cell.dataset.assetTotalParty = String(partyIndex);
-            const partyTotal = assetEditDraft && assetEditYearIndex === index
-              ? sampleAssetCategories.reduce(
-                (sum, [, category]) => sum + Number(assetEditDraft[category][partyIndex]),
-                0,
-              )
-              : totals[partyIndex];
-            cell.textContent = formatSampleCurrency(partyTotal);
+            cell.textContent = formatSampleCurrency(totals[partyIndex]);
             totalRow.append(cell);
           }
           const combinedTotal = document.createElement("td");
@@ -3014,11 +3167,17 @@
           combinedTotal.textContent = formatSampleCurrency(totals[0] + totals[1]);
           totalRow.append(combinedTotal);
           assetTableTotal.replaceChildren(totalRow);
-          assetYearStatus.textContent = `Showing fictional figures for ${sample.year}. The timeline shows all ${sampleAssetYears.length} years, with ${sample.year} highlighted.`;
+          assetYearStatus.textContent = snapshot.kind === "interpolated"
+            ? `Showing interpolated fictional figures for ${milestoneLabel} on ${formatMilestoneDate(stop.date)}.`
+            : snapshot.kind === "outside"
+              ? `Showing the nearest annual sample from ${snapshot.sourceYear} for ${milestoneLabel}.`
+              : stop.yearIndex === null
+                ? `Showing the edited fictional snapshot for ${milestoneLabel} on ${formatMilestoneDate(stop.date)}.`
+                : `Showing fictional figures for ${sampleAssetYears[stop.yearIndex].year}. The timeline shows all ${sampleAssetYears.length} annual samples.`;
           updateAssetEditControls();
-          if (assetEditDraft && assetEditYearIndex === index) updateAssetEditDerivedValues();
+          if (assetEditDraft && assetEditStopIndex === index) updateAssetEditDerivedValues();
           if (canceledForYearChange) {
-            assetEditStatus.textContent = "Unsaved edits canceled because you changed the selected year.";
+            assetEditStatus.textContent = "Unsaved edits canceled because you changed the selected timeline point.";
           }
         }
 
@@ -3037,14 +3196,22 @@
           const right = 700;
           const firstYear = sampleAssetYears[0].year;
           const lastYear = sampleAssetYears[sampleAssetYears.length - 1].year;
-          const chartStart = Date.UTC(firstYear, 0, 1);
-          const chartEnd = Date.UTC(lastYear + 1, 0, 1);
+          const sampleStart = Date.UTC(firstYear, 0, 1);
+          const sampleEnd = Date.UTC(lastYear, 0, 1);
+          const milestoneTimestamps = allAssetMilestones().flatMap((milestone) => {
+            const date = milestoneActiveDate(milestone);
+            return date && isValidMilestoneDate(date)
+              ? [Date.parse(`${date}T00:00:00Z`)]
+              : [];
+          });
+          const chartStart = Math.min(sampleStart, ...milestoneTimestamps);
+          const chartEnd = Math.max(sampleEnd, ...milestoneTimestamps);
           const dateSpan = chartEnd - chartStart;
           const milestonesInRange = allAssetMilestones().flatMap((milestone) => {
             const date = milestoneActiveDate(milestone);
             if (!date || !isValidMilestoneDate(date)) return [];
             const timestamp = Date.parse(`${date}T00:00:00Z`);
-            return timestamp >= chartStart && timestamp < chartEnd
+            return timestamp >= chartStart && timestamp <= chartEnd
               ? [{ milestone, timestamp }]
               : [];
           }).sort((leftMilestone, rightMilestone) => leftMilestone.timestamp - rightMilestone.timestamp);
@@ -3064,9 +3231,29 @@
           const top = 36 + laneCount * 14;
           const bottom = top + 208;
           const chartHeight = bottom + 56;
-          const maxValue = 700000;
           const xForDate = (timestamp) => left + (right - left) * (timestamp - chartStart) / dateSpan;
-          const xFor = (index) => xForDate(Date.UTC(sampleAssetYears[index].year, 0, 1));
+          const chartSamplesByDate = new Map();
+          for (const sample of sampleAssetYears) {
+            const date = assetYearDate(sample);
+            chartSamplesByDate.set(date, { date, values: sample });
+          }
+          for (const stop of assetTimelineStops) {
+            chartSamplesByDate.set(stop.date, {
+              date: stop.date,
+              values: assetSnapshotAtDate(stop.date).values,
+            });
+          }
+          const chartSamples = [...chartSamplesByDate.values()].sort(
+            (leftSample, rightSample) => leftSample.date.localeCompare(rightSample.date),
+          );
+          const seriesValues = chartSamples.map(({ values }) => sampleAssetCategories.reduce(
+            (sum, [, category]) => sum + values[category][0] + values[category][1],
+            0,
+          ));
+          const maxValue = Math.max(
+            700000,
+            Math.ceil(Math.max(...seriesValues) / 200000) * 200000,
+          );
           const yFor = (value) => bottom - (bottom - top) * value / maxValue;
           assetChartLayout = {
             left,
@@ -3074,7 +3261,14 @@
             top,
             bottom,
             height: chartHeight,
-            xForYear: (year) => xForDate(Date.UTC(year, 0, 1)),
+            maxValue,
+            startYear: Math.min(firstYear, ...milestoneTimestamps.map(
+              (timestamp) => new Date(timestamp).getUTCFullYear(),
+            )),
+            endYear: Math.max(lastYear, ...milestoneTimestamps.map(
+              (timestamp) => new Date(timestamp).getUTCFullYear(),
+            )),
+            xForDate,
           };
           document.getElementById("asset-timeline-chart").setAttribute(
             "viewBox",
@@ -3084,14 +3278,14 @@
           assetChartLabels.replaceChildren();
           assetChartLines.replaceChildren();
 
-          for (const value of [0, 200000, 400000, 600000]) {
+          for (const value of [0, maxValue / 3, 2 * maxValue / 3, maxValue]) {
             const y = yFor(value);
             createChartElement(assetChartGrid, "line", {
               x1: left, y1: y, x2: right, y2: y, class: "chart-grid",
             });
             createChartElement(assetChartLabels, "text", {
               x: left - 9, y: y + 4, "text-anchor": "end",
-            }, value === 0 ? "$0" : `$${value / 1000}k`);
+            }, value === 0 ? "$0" : `$${Math.round(value / 1000)}k`);
           }
           createChartElement(assetChartGrid, "line", {
             x1: left, y1: top, x2: left, y2: bottom, class: "chart-axis",
@@ -3099,11 +3293,14 @@
           createChartElement(assetChartGrid, "line", {
             x1: left, y1: bottom, x2: right, y2: bottom, class: "chart-axis",
           });
-          sampleAssetYears.forEach((sample, index) => {
+          const firstTickYear = new Date(chartStart).getUTCFullYear();
+          const lastTickYear = new Date(chartEnd).getUTCFullYear();
+          const tickStep = Math.max(1, Math.ceil((lastTickYear - firstTickYear) / 6));
+          for (let year = firstTickYear; year <= lastTickYear; year += tickStep) {
             createChartElement(assetChartLabels, "text", {
-              x: xFor(index), y: bottom + 24, "text-anchor": "middle",
-            }, String(sample.year));
-          });
+              x: xForDate(Date.UTC(year, 0, 1)), y: bottom + 24, "text-anchor": "middle",
+            }, String(year));
+          }
           createChartElement(assetChartLabels, "text", {
             x: (left + right) / 2, y: chartHeight - 8, "text-anchor": "middle",
           }, "Time");
@@ -3117,16 +3314,16 @@
               color: "#2f6652",
               dash: "",
               marker: "circle",
-              values: sampleAssetYears.map((year) =>
-                sampleAssetCategories.reduce((sum, [, key]) => sum + year[key][0], 0),
+              values: chartSamples.map(({ values }) =>
+                sampleAssetCategories.reduce((sum, [, key]) => sum + values[key][0], 0),
               ),
             },
             {
               color: "#9c6a2c",
               dash: "7 5",
               marker: "square",
-              values: sampleAssetYears.map((year) =>
-                sampleAssetCategories.reduce((sum, [, key]) => sum + year[key][1], 0),
+              values: chartSamples.map(({ values }) =>
+                sampleAssetCategories.reduce((sum, [, key]) => sum + values[key][1], 0),
               ),
             },
           ];
@@ -3134,17 +3331,17 @@
             color: "#58749c",
             dash: "2 5",
             marker: "triangle",
-            values: sampleAssetYears.map((_, index) => series[0].values[index] + series[1].values[index]),
+            values: chartSamples.map((_, index) => series[0].values[index] + series[1].values[index]),
           });
           for (const item of series) {
             const path = item.values.map((value, index) =>
-              `${index === 0 ? "M" : "L"} ${xFor(index)} ${yFor(value)}`,
+              `${index === 0 ? "M" : "L"} ${xForDate(Date.parse(`${chartSamples[index].date}T00:00:00Z`))} ${yFor(value)}`,
             ).join(" ");
             const pathAttributes = { d: path, class: "chart-line", stroke: item.color };
             if (item.dash) pathAttributes["stroke-dasharray"] = item.dash;
             createChartElement(assetChartLines, "path", pathAttributes);
             item.values.forEach((value, index) => {
-              const x = xFor(index);
+              const x = xForDate(Date.parse(`${chartSamples[index].date}T00:00:00Z`));
               const y = yFor(value);
               if (item.marker === "circle") {
                 createChartElement(assetChartLines, "circle", {
@@ -3167,18 +3364,18 @@
           const availableMilestoneCount = allAssetMilestones().filter(
             (milestone) => milestoneActiveDate(milestone) && isValidMilestoneDate(milestoneActiveDate(milestone)),
           ).length;
-          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${firstYear} through ${lastYear}. ${availableMilestoneCount} available relationship milestone(s) are identified separately. All amounts and dates are illustrative.`;
+          assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${new Date(chartStart).getUTCFullYear()} through ${new Date(chartEnd).getUTCFullYear()}. ${availableMilestoneCount} available relationship milestone(s) are identified separately. Custom-date values are interpolated between annual samples or use the nearest endpoint outside the sample range. All amounts and dates are illustrative.`;
           renderAssetTimelineCursor(selectedAssetYearIndex);
         }
 
-        function renderAssetTimelineCursor(index) {
-          if (!assetChartCursor || !sampleAssetYears[index]) return;
-          const maxValue = 700000;
-          const sample = sampleAssetYears[index];
-          const { left, right, top, bottom, xForYear } = assetChartLayout;
-          const x = xForYear(sample.year);
+        function renderAssetTimelineCursor(index, values = null) {
+          const stop = assetTimelineStops[index];
+          if (!assetChartCursor || !stop) return;
+          const { top, bottom, maxValue, xForDate } = assetChartLayout;
+          const x = xForDate(Date.parse(`${stop.date}T00:00:00Z`));
+          const snapshotValues = values || assetSnapshotAtDate(stop.date).values;
           const combinedAssets = sampleAssetCategories.reduce(
-            (sum, [, category]) => sum + sample[category][0] + sample[category][1],
+            (sum, [, category]) => sum + snapshotValues[category][0] + snapshotValues[category][1],
             0,
           );
           const y = bottom - (bottom - top) * combinedAssets / maxValue;
@@ -3197,7 +3394,9 @@
             y: top + 13,
             "text-anchor": x < 630 ? "start" : "end",
             class: "chart-cursor-label",
-          }, `Year ${index + 1} · ${sample.year}`);
+          }, stop.yearIndex === null
+            ? `${stop.milestones.map((item) => item.label).join(", ")} · ${formatMilestoneDate(stop.date)}`
+            : `Year ${stop.yearIndex + 1} · ${sampleAssetYears[stop.yearIndex].year}`);
         }
 
         function updateAnalysisPreviewLaunch() {
@@ -4490,9 +4689,10 @@
           }
         }
 
-        renderAssetSnapshot(sampleAssetYears.length - 1);
+        buildAssetTimelineStops();
         renderAssetMilestoneControls();
         renderAssetTimeline();
+        renderAssetSnapshot(selectedAssetYearIndex);
         announceSelectedAssetMilestone();
 
         window.addEventListener("casework:milestones-extracted", (event) => {
