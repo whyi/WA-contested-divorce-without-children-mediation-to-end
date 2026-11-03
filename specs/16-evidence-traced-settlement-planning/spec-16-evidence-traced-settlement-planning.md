@@ -64,6 +64,7 @@
 
 - **FR-16-31 — Review UI:** Provide an accessible event ledger, source-status cues, scenario comparison table, top-three highlight, complete scenario list, and a selected-scenario offer-draft action. Support keyboard use, responsive layouts, and announced async/error states.
 - **FR-16-32 — Existing records:** Cases without new ledger/scenario state remain readable and unchanged. Preserve existing profile facts, inventory, and negotiation events.
+- **FR-16-33 — Fictional demo:** The public `/demo` may display a fixed sample scenario comparison without sign-in, but it must be visibly fictional, unranked, and disconnected from case data, persistence, and AI processing.
 
 ## 7. Acceptance Criteria
 
