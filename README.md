@@ -81,6 +81,16 @@ source, consent, model, and decision provenance; conflicting values remain
 visible together. Review and adoption do not overwrite the existing case JSON
 profile or trigger another AI request.
 
+Authorized case members can also read and replace relationship milestones and
+property acquisition facts through `GET /cases/{case_id}/property-tracing` and
+`PUT /cases/{case_id}/property-tracing`. Milestones and asset facts are stored
+in dedicated case JSONB fields; the response derives separate-property,
+community-property, post-separation, or review-required candidates from the
+reported facts. These are organizational prompts, not legal determinations.
+The fictional analysis preview and browser-only wizard do not send these facts
+to the API. Apply database migration `0007_property_tracing` before using the
+new case fields.
+
 Run locally with Docker Compose:
 
 ```sh

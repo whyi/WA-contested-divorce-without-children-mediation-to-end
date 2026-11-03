@@ -11,8 +11,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
 from app.database import get_db
-from app.main import app, delete_document, preview_document
+from app.main import (
+    app,
+    delete_document,
+    preview_document,
+    read_property_tracing,
+    update_property_tracing,
+)
 from app.models import AuthSession, CaseMembership, Document, User
+from app.property_tracing import PropertyTracingUpdate
 
 
 async def request_app(
@@ -224,6 +231,65 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("localStorage", milestone_logic)
         self.assertNotIn("sessionStorage", milestone_logic)
 
+    def test_wizard_collects_acquisition_method_and_title_status(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        finance_markup = page.split("function renderWizardCollections()", 1)[1].split(
+            "function renderWizardDraft()", 1
+        )[0]
+        self.assertIn('data-wizard-field="acquisitionMethod"', finance_markup)
+        self.assertIn('value="purchase"', finance_markup)
+        self.assertIn('value="inheritance"', finance_markup)
+        self.assertIn('value="gift"', finance_markup)
+        self.assertIn('value="pre_existing"', finance_markup)
+        self.assertIn('data-wizard-field="holding"', finance_markup)
+        self.assertIn('value="joint"', finance_markup)
+        self.assertIn('value="individual"', finance_markup)
+
+    def test_property_tracing_api_persists_case_facts_and_returns_candidates(self) -> None:
+        case = SimpleNamespace(
+            relationship_milestones={},
+            property_assets=[],
+            asset_liability_inventory={"legacy": "preserved"},
+        )
+        db = Mock()
+        db.get.return_value = case
+        payload = PropertyTracingUpdate.model_validate(
+            {
+                "relationship_milestones": {
+                    "cohabitation_start_date": "2020-01-01",
+                    "marriage_date": "2021-01-01",
+                    "separation_start_date": "2025-01-01",
+                    "divorce_filing_date": "2025-02-01",
+                },
+                "assets": [
+                    {
+                        "name": "Family home",
+                        "acquisition_date": "2022-05-01",
+                        "acquisition_method": "purchase",
+                        "title_status": "joint",
+                    }
+                ],
+            }
+        )
+        case_id = uuid4()
+
+        updated = update_property_tracing(case_id, payload, db)
+        read_back = read_property_tracing(case_id, db)
+
+        self.assertEqual(
+            case.relationship_milestones["cohabitation_start_date"],
+            "2020-01-01",
+        )
+        self.assertEqual(case.property_assets[0]["acquisition_date"], "2022-05-01")
+        self.assertEqual(case.asset_liability_inventory, {"legacy": "preserved"})
+        self.assertEqual(updated.assets[0].classification, "community_property_candidate")
+        self.assertEqual(read_back.assets[0].classification, "community_property_candidate")
+        self.assertIn("not legal determinations", read_back.classification_notice)
+        db.commit.assert_called_once()
+
     def test_asset_timeline_includes_chronological_milestone_stops(self) -> None:
         status, body = asyncio.run(request_app("/"))
 
@@ -299,11 +365,19 @@ class MainWorkflowTests(unittest.TestCase):
                     b"{}",
                 )
             ),
+            asyncio.run(request_app(f"/cases/{case_id}/property-tracing")),
+            asyncio.run(
+                request_app(
+                    f"/cases/{case_id}/property-tracing",
+                    "PUT",
+                    b"{}",
+                )
+            ),
         )
 
         self.assertEqual(
             [status for status, _ in requests],
-            [503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503],
+            [503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503, 503],
         )
         for _, body in requests:
             self.assertIn(b"Authentication is not configured", body)
