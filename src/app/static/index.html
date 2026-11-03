@@ -1327,13 +1327,14 @@
 
                 <section class="asset-analysis-panel" id="settlement-scenarios-preview" aria-labelledby="settlement-scenarios-preview-title">
                   <h3 id="settlement-scenarios-preview-title">Settlement scenario comparison</h3>
-                  <p>Three illustrative calculations from the same fictional asset ledger. These are comparison examples, not recommendations or an AI ranking.</p>
+                  <p>All 27 combinations of the three date windows, three withdrawal tracing conventions, and three user-proposed community shares shown here. The rows are illustrative calculations, not recommendations or an AI ranking.</p>
                   <div class="asset-table-scroll" role="region" aria-label="Fictional settlement scenario comparison" tabindex="0">
                     <table class="asset-comparison-table">
-                      <caption>Fictional sample outcomes — user-proposed community share, not a Washington legal rule</caption>
+                      <caption>All combinations in this fictional demo's stated assumption set — not a Washington legal rule</caption>
                       <thead>
                         <tr>
-                          <th scope="col">Scenario assumptions</th>
+                          <th scope="col">Relationship-date assumption</th>
+                          <th scope="col">Withdrawal tracing convention</th>
                           <th scope="col">Proposed community share to user</th>
                           <th scope="col">Illustrative net to user</th>
                           <th scope="col">Illustrative net to other party</th>
@@ -1342,38 +1343,90 @@
                       </thead>
                       <tbody>
                         <tr>
-                          <th scope="row">Marriage-only window starts 2021-01-01; 2020-03-15 income treated as user separate</th>
-                          <td>50%</td>
-                          <td>$445,714.29</td>
-                          <td>$274,285.71</td>
-                          <td>$0.00</td>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>Pro-rata</td><td>45%</td><td>$434,000.00</td><td>$286,000.00</td><td>$0.00</td>
                         </tr>
                         <tr>
-                          <th scope="row">Earlier CIR date assumed from 2020-01-01; 2020-03-15 income treated as community</th>
-                          <td>50%</td>
-                          <td>$424,285.71</td>
-                          <td>$295,714.29</td>
-                          <td>$0.00</td>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>Pro-rata</td><td>50%</td><td>$460,000.00</td><td>$260,000.00</td><td>$0.00</td>
                         </tr>
                         <tr>
-                          <th scope="row">Intermediate window starts 2020-04-01; 2020-03-15 income treated as user separate</th>
-                          <td>55%</td>
-                          <td>$473,142.86</td>
-                          <td>$246,857.14</td>
-                          <td>$0.00</td>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>Pro-rata</td><td>55%</td><td>$486,000.00</td><td>$234,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>User-separate-first</td><td>45%</td><td>$414,000.00</td><td>$306,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>User-separate-first</td><td>50%</td><td>$441,818.18</td><td>$278,181.82</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>User-separate-first</td><td>55%</td><td>$469,636.36</td><td>$250,363.64</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>Community-first</td><td>45%</td><td>$444,000.00</td><td>$276,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>Community-first</td><td>50%</td><td>$469,090.91</td><td>$250,909.09</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Marriage-only starts 2021-01-01</th><td>Community-first</td><td>55%</td><td>$494,181.81</td><td>$225,818.19</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>Pro-rata</td><td>45%</td><td>$390,000.00</td><td>$330,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>Pro-rata</td><td>50%</td><td>$420,000.00</td><td>$300,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>Pro-rata</td><td>55%</td><td>$450,000.00</td><td>$270,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>User-separate-first</td><td>45%</td><td>$366,000.00</td><td>$354,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>User-separate-first</td><td>50%</td><td>$398,181.82</td><td>$321,818.18</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>User-separate-first</td><td>55%</td><td>$430,363.63</td><td>$289,636.37</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>Community-first</td><td>45%</td><td>$396,000.00</td><td>$324,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>Community-first</td><td>50%</td><td>$425,454.55</td><td>$294,545.45</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01</th><td>Community-first</td><td>55%</td><td>$454,909.09</td><td>$265,090.91</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>Pro-rata</td><td>45%</td><td>$412,000.00</td><td>$308,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>Pro-rata</td><td>50%</td><td>$440,000.00</td><td>$280,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>Pro-rata</td><td>55%</td><td>$468,000.00</td><td>$252,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>User-separate-first</td><td>45%</td><td>$390,000.00</td><td>$330,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>User-separate-first</td><td>50%</td><td>$420,000.00</td><td>$300,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>User-separate-first</td><td>55%</td><td>$450,000.00</td><td>$270,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>Community-first</td><td>45%</td><td>$420,000.00</td><td>$300,000.00</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>Community-first</td><td>50%</td><td>$447,272.73</td><td>$272,727.27</td><td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate date assumed from 2020-04-01</th><td>Community-first</td><td>55%</td><td>$474,545.45</td><td>$245,454.55</td><td>$0.00</td>
                         </tr>
                       </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Each scenario's illustrative net total</th>
-                          <td>Varies by assumption</td>
-                          <td colspan="2">$720,000.00</td>
-                          <td>$0.00</td>
-                        </tr>
-                      </tfoot>
                     </table>
                   </div>
-                  <p><strong>Fictional inputs:</strong> $600,000 home value, funded by a $120,000 user-separate starting source and $400,000 community contribution; $40,000 income dated 2020-03-15; $150,000 community retirement account; and $30,000 community debt. The valuation is apportioned in proportion to the recorded source balances. Each relationship date and proposed share is an explicit scenario assumption; none is a legal finding.</p>
+                  <p><strong>Fictional inputs:</strong> $600,000 home value, funded by a $120,000 user-separate starting source, $40,000 income on 2020-03-15, $40,000 income on 2020-05-15, and a $400,000 community contribution; a $50,000 home withdrawal on 2022-01-01; a $150,000 community retirement account; and $30,000 community debt. Home value changes are apportioned in proportion to the remaining source balances. Each date, withdrawal method, and proposed share is an explicit scenario assumption; none is a legal finding.</p>
                   <p class="scenario-disclaimer">This static preview is not based on a user's facts, does not call AI, and is not saved. Actual case scenarios require an authorized case workspace and reviewed inputs.</p>
                 </section>
               </section>
