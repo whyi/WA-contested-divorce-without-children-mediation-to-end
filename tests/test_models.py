@@ -112,6 +112,8 @@ class AuthenticationModelTests(unittest.TestCase):
 
     def test_case_profile_facts_are_append_only_and_keep_source_provenance(self) -> None:
         self.assertIn("profile_revision", Case.__table__.c)
+        self.assertIn("relationship_milestones", Case.__table__.c)
+        self.assertIn("property_assets", Case.__table__.c)
         self.assertIn("proposal_id_snapshot", CaseProfileFact.__table__.c)
         self.assertIn("source_document_id", CaseProfileFact.__table__.c)
         self.assertIn("source_sha256", CaseProfileFact.__table__.c)

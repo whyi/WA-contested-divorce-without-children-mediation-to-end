@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -33,6 +34,18 @@ class Case(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     asset_liability_inventory: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    relationship_milestones: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    property_assets: Mapped[list[dict]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
