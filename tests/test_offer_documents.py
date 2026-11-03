@@ -3,9 +3,14 @@ from io import BytesIO
 from uuid import uuid4
 
 from docx import Document
+from openpyxl import load_workbook
 from pydantic import ValidationError
 
-from app.offer_documents import MediationOfferTerms, render_mediation_offer_docx
+from app.offer_documents import (
+    MediationOfferTerms,
+    render_mediation_offer_docx,
+    render_property_schedule_xlsx,
+)
 from app.settlement_planning import (
     AssetLedger,
     LedgerEvent,
@@ -52,7 +57,7 @@ class MediationOfferDocumentTests(unittest.TestCase):
             ],
         )
 
-    def test_creates_editable_nonbinding_docx_without_private_source_notes(self) -> None:
+    def test_creates_editable_unsigned_docx_without_private_source_notes(self) -> None:
         terms = MediationOfferTerms(
             offer_from="You",
             offer_to="Other party",
@@ -71,13 +76,80 @@ class MediationOfferDocumentTests(unittest.TestCase):
             for cell in row.cells
         )
 
-        self.assertIn("NONBINDING DRAFT", paragraphs)
-        self.assertIn("not a court filing", paragraphs)
+        self.assertIn("UNSIGNED DRAFT", paragraphs)
+        self.assertIn("not signed, filed, or legal advice", paragraphs)
+        self.assertIn("may have legal effect", paragraphs)
+        self.assertIn("CR 2A AGREEMENT", paragraphs)
         self.assertIn("User separate", table_text)
         self.assertIn("Savings", table_text)
         self.assertIn("60.00% to the offering party", paragraphs)
         self.assertNotIn("Internal review notes", paragraphs)
         self.assertNotIn("source quote", paragraphs.lower())
+
+    def test_creates_editable_property_schedule_with_formula_totals_and_assumptions(self) -> None:
+        terms = MediationOfferTerms(
+            offer_from="You",
+            offer_to="Other party",
+            terms=["Each party keeps their own retirement account."],
+        )
+
+        payload = render_property_schedule_xlsx(terms, self.result)
+        workbook = load_workbook(BytesIO(payload), data_only=False)
+        sheet = workbook["Property Division"]
+        assumptions = workbook["Scenario Assumptions"]
+
+        self.assertEqual(sheet["A5"].value, "Property or debt")
+        self.assertEqual(sheet["B5"].value, "Type")
+        self.assertEqual(sheet["A6"].value, "Savings")
+        self.assertEqual(sheet["G6"].value, "=SUM(C6:F6)")
+        self.assertEqual(
+            sheet["H6"].value,
+            "=C6+E6*'Scenario Assumptions'!$B$6",
+        )
+        self.assertTrue(sheet["H7"].value.startswith("=SUM(H6:H6)"))
+        self.assertEqual(assumptions["A1"].value, "Scenario assumption")
+        self.assertEqual(assumptions["A2"].value, "Scenario")
+        self.assertEqual(assumptions["B6"].value, 0.6)
+        self.assertEqual(sheet["A10"].value, "Net unresolved (assets less debts)")
+        self.assertIn("SUMIF", sheet["F10"].value)
+        self.assertEqual(sheet.freeze_panes, "A6")
+
+    def test_workbook_treats_user_supplied_asset_names_as_text(self) -> None:
+        from app.settlement_planning import AssetLedger, LedgerEvent, calculate_scenario
+
+        malicious_name = "=HYPERLINK(\"https://example.invalid\",\"click\")"
+        result = calculate_scenario(
+            self.result.scenario,
+            [
+                AssetLedger(
+                    asset_id=uuid4(),
+                    name=malicious_name,
+                    kind="asset",
+                    events=[
+                        LedgerEvent(
+                            effective_date="2022-01-01",
+                            event_type="contribution",
+                            amount_cents=10_000,
+                            source_allocations={"community": 10_000},
+                            provenance="user_reported",
+                        )
+                    ],
+                )
+            ],
+        )
+        terms = MediationOfferTerms(
+            offer_from="You",
+            offer_to="Other party",
+            terms=["Review."],
+        )
+
+        workbook = load_workbook(
+            BytesIO(render_property_schedule_xlsx(terms, result)),
+            data_only=False,
+        )
+        name_cell = workbook["Property Division"]["A6"]
+        self.assertEqual(name_cell.value, malicious_name)
+        self.assertEqual(name_cell.data_type, "s")
 
     def test_rejects_blank_offer_terms_and_invalid_dates(self) -> None:
         with self.assertRaises(ValidationError):
@@ -99,6 +171,18 @@ class MediationOfferDocumentTests(unittest.TestCase):
                 offer_to="Other party",
                 effective_date="2026-02-02",
                 response_by_date="2026-02-01",
+                terms=["Offer"],
+            )
+        with self.assertRaises(ValidationError):
+            MediationOfferTerms(
+                offer_from="You",
+                offer_to="Other party",
+                terms=["x" * 2_001],
+            )
+        with self.assertRaises(ValidationError):
+            MediationOfferTerms(
+                offer_from="You\x00",
+                offer_to="Other party",
                 terms=["Offer"],
             )
 

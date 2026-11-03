@@ -31,6 +31,7 @@ from app.documents import (
     extract_document,
     render_template,
 )
+from app.export_integrations import router as export_integrations_router
 from app.models import (
     AuthSession,
     Case,
@@ -64,6 +65,25 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 storage = ObjectStorage(settings)
 
+
+class OAuthCallbackQueryFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        arguments = record.args
+        if (
+            isinstance(arguments, tuple)
+            and len(arguments) > 2
+            and isinstance(arguments[2], str)
+        ):
+            request_path = arguments[2]
+            path = request_path.split("?", 1)[0]
+            if path.startswith("/api/export-integrations/") and path.endswith("/callback"):
+                record.args = (*arguments[:2], path, *arguments[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(OAuthCallbackQueryFilter())
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if settings.demo_mode_enabled:
@@ -80,6 +100,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(export_integrations_router)
 app.include_router(materials_router)
 app.include_router(analysis_router)
 app.include_router(review_router)

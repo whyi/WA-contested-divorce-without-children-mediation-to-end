@@ -37,6 +37,8 @@ class SettingsTests(unittest.TestCase):
     def test_authentication_configuration_rejects_mismatched_provider_secrets(self) -> None:
         with self.assertRaisesRegex(ValueError, "configured together"):
             Settings(google_client_id="client-id")
+        with self.assertRaisesRegex(ValueError, "configured together"):
+            Settings(dropbox_app_key="app-key")
 
     def test_authentication_configuration_rejects_invalid_session_lifetimes(self) -> None:
         with self.assertRaisesRegex(ValueError, "cannot exceed"):
