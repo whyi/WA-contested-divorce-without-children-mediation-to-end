@@ -1687,6 +1687,21 @@
                 attachments: Array.isArray(item.attachments) ? item.attachments : [],
               }));
           }
+          normalized.finances = normalized.finances.map((item) => ({
+            ...item,
+            acquisitionMethod: [
+              "purchase",
+              "inheritance",
+              "gift",
+              "pre_existing",
+              "other",
+            ].includes(item.acquisitionMethod)
+              ? item.acquisitionMethod
+              : "",
+            holding: ["individual", "joint", "unclear"].includes(item.holding)
+              ? item.holding
+              : "",
+          }));
           normalized.filed = normalized.filed === "yes" || normalized.filed === "no"
             ? normalized.filed
             : "";
@@ -1867,20 +1882,34 @@
                 <label class="wizard-field">Acquisition date, if known
                   <input type="date" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="acquiredDate" value="${escapeWizardHtml(entry.acquiredDate)}">
                 </label>
+                ${entry.kind !== "debt" ? `
+                  <label class="wizard-field">Acquisition method, if known
+                    <select data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="acquisitionMethod">
+                      <option value="" ${!entry.acquisitionMethod ? "selected" : ""}>Select if known</option>
+                      <option value="purchase" ${entry.acquisitionMethod === "purchase" ? "selected" : ""}>Purchase</option>
+                      <option value="inheritance" ${entry.acquisitionMethod === "inheritance" ? "selected" : ""}>Inheritance</option>
+                      <option value="gift" ${entry.acquisitionMethod === "gift" ? "selected" : ""}>Gift</option>
+                      <option value="pre_existing" ${entry.acquisitionMethod === "pre_existing" ? "selected" : ""}>Owned before relationship</option>
+                      <option value="other" ${entry.acquisitionMethod === "other" ? "selected" : ""}>Other</option>
+                    </select>
+                  </label>
+                ` : ""}
                 <label class="wizard-field">${entry.kind === "debt" ? "Estimated balance (USD)" : "Estimated value (USD)"}
                   <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="Optional estimate" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="amount" value="${escapeWizardHtml(entry.amount)}">
                 </label>
                 <label class="wizard-field">Names on title or account
                   <input type="text" maxlength="240" placeholder="Names as shown on the record" data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="owners" value="${escapeWizardHtml(entry.owners)}">
                 </label>
-                <label class="wizard-field">How is it held?
-                  <select data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="holding">
-                    <option value="" ${!entry.holding ? "selected" : ""}>Select if known</option>
-                    <option value="individual" ${entry.holding === "individual" ? "selected" : ""}>Individual / one name</option>
-                    <option value="joint" ${entry.holding === "joint" ? "selected" : ""}>Joint / multiple names</option>
-                    <option value="unclear" ${entry.holding === "unclear" ? "selected" : ""}>Not sure</option>
-                  </select>
-                </label>
+                ${entry.kind !== "debt" ? `
+                  <label class="wizard-field">Title status, if known
+                    <select data-wizard-collection="finances" data-wizard-id="${escapeWizardHtml(entry.id)}" data-wizard-field="holding">
+                      <option value="" ${!entry.holding ? "selected" : ""}>Select if known</option>
+                      <option value="individual" ${entry.holding === "individual" ? "selected" : ""}>Individually titled</option>
+                      <option value="joint" ${entry.holding === "joint" ? "selected" : ""}>Jointly titled</option>
+                      <option value="unclear" ${entry.holding === "unclear" ? "selected" : ""}>Not sure</option>
+                    </select>
+                  </label>
+                ` : ""}
                 <p class="wizard-amount-note">This is information you provide, not a legal ownership or property-classification decision.</p>
               </div>
               ${wizardAttachmentMarkup(entry, "finances")}
@@ -1941,9 +1970,10 @@
               entry.category,
               entry.description,
               entry.acquiredDate && `acquired ${entry.acquiredDate}`,
+              entry.acquisitionMethod && `acquisition method: ${entry.acquisitionMethod}`,
               entry.amount && `${entry.kind === "debt" ? "balance" : "value"} $${entry.amount}`,
               entry.owners && `names: ${entry.owners}`,
-              entry.holding && `holding: ${entry.holding}`,
+              entry.holding && `title status: ${entry.holding}`,
               entry.attachments.length
                 ? `evidence: ${entry.attachments.map((file) => file.name).join(", ")}`
                 : "",
@@ -2141,6 +2171,7 @@
               category: "",
               description: "",
               acquiredDate: "",
+              acquisitionMethod: "",
               amount: "",
               owners: "",
               holding: "",
