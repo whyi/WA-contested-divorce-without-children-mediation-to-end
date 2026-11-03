@@ -359,6 +359,12 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('dateInput.setAttribute("aria-label", `${milestone.label} date`)', page)
         self.assertIn('id="asset-chart-milestones" aria-label="Relationship milestone markers"', page)
         self.assertIn('id="asset-milestone-status" role="status" aria-live="polite"', page)
+        self.assertNotIn('id="asset-milestone-index"', page)
+        self.assertNotIn("renderAssetMilestoneIndex", page)
+        self.assertNotIn("assetMilestoneIndex", page)
+        self.assertIn('assetMilestoneSelector.addEventListener("change"', page)
+        self.assertIn('assetChartMilestones.addEventListener("click"', page)
+        self.assertIn('assetChartMilestones.addEventListener("keydown"', page)
         self.assertIn('id: "separation", label: "Separation", date: ""', page)
         self.assertIn("option.disabled = !milestone.custom;", page)
         self.assertIn('textContent = `${milestone.label} — N/A`', page)
@@ -377,6 +383,29 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("fetch(", milestone_logic)
         self.assertNotIn("localStorage", milestone_logic)
         self.assertNotIn("sessionStorage", milestone_logic)
+
+    def test_asset_trend_uses_selector_without_duplicate_highlight_list(self) -> None:
+        status, body = asyncio.run(request_app("/demo"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        trend = page.split('id="asset-chart-heading"', 1)[1].split(
+            'id="settlement-scenarios-preview"', 1
+        )[0]
+        self.assertIn('<label class="asset-milestone-field" for="asset-milestone-selector">Milestone to highlight', trend)
+        self.assertIn('<select class="asset-milestone-select" id="asset-milestone-selector"', trend)
+        self.assertIn('id="asset-milestone-status" role="status" aria-live="polite"', trend)
+        self.assertIn('id="asset-chart-milestones"', trend)
+        self.assertNotIn('id="asset-milestone-index"', trend)
+        self.assertNotIn(">Highlight</button>", trend)
+        self.assertIn("grid-template-columns: minmax(0, 1fr); max-width: 460px", page)
+
+        selection_logic = page.split("function selectAssetMilestone(id)", 1)[1].split(
+            "function updateAssetEditControls()", 1
+        )[0]
+        self.assertIn("assetMilestoneSelector.value = id;", selection_logic)
+        self.assertIn("renderAssetTimeline();", selection_logic)
+        self.assertIn("announceSelectedAssetMilestone();", selection_logic)
 
     def test_wizard_collects_acquisition_method_and_title_status(self) -> None:
         status, body = asyncio.run(request_app("/demo/wizard"))
