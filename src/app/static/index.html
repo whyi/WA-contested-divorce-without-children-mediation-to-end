@@ -1231,61 +1231,9 @@
                     <p class="eyebrow">Sample asset overview</p>
                     <h2 id="asset-analysis-title" tabindex="-1">A snapshot across the relationship</h2>
                     <p class="asset-analysis-intro">Compare an illustrative household balance sheet year by year, see how the sample totals change over time, and explore possible discussion scenarios.</p>
-                    <a class="demo-choice-link" href="#settlement-scenarios-preview">View settlement scenario comparison ↓</a>
                   </div>
                 </header>
                 <p class="sample-analysis-notice" role="note"><strong>Fictional example only.</strong> These figures are made up and are not based on your uploaded documents or case facts. Nothing is sent to an AI provider or saved when you view this page. This is not legal advice or a recommendation about how property should be divided.</p>
-                <section class="asset-analysis-panel" id="settlement-scenarios-preview" aria-labelledby="settlement-scenarios-preview-title">
-                  <h3 id="settlement-scenarios-preview-title">Settlement scenario comparison</h3>
-                  <p>Three illustrative calculations from the same fictional asset ledger. These are comparison examples, not recommendations or an AI ranking.</p>
-                  <div class="asset-table-scroll" role="region" aria-label="Fictional settlement scenario comparison" tabindex="0">
-                    <table class="asset-comparison-table">
-                      <caption>Fictional sample outcomes — user-proposed community share, not a Washington legal rule</caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">Scenario assumptions</th>
-                          <th scope="col">Proposed community share to user</th>
-                          <th scope="col">Illustrative net to user</th>
-                          <th scope="col">Illustrative net to other party</th>
-                          <th scope="col">Unresolved</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <th scope="row">Marriage-only window starts 2021-01-01; 2020-03-15 income treated as user separate</th>
-                          <td>50%</td>
-                          <td>$445,714.29</td>
-                          <td>$274,285.71</td>
-                          <td>$0.00</td>
-                        </tr>
-                        <tr>
-                          <th scope="row">Earlier CIR date assumed from 2020-01-01; 2020-03-15 income treated as community</th>
-                          <td>50%</td>
-                          <td>$424,285.71</td>
-                          <td>$295,714.29</td>
-                          <td>$0.00</td>
-                        </tr>
-                        <tr>
-                          <th scope="row">Intermediate window starts 2020-04-01; 2020-03-15 income treated as user separate</th>
-                          <td>55%</td>
-                          <td>$473,142.86</td>
-                          <td>$246,857.14</td>
-                          <td>$0.00</td>
-                        </tr>
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Each scenario's illustrative net total</th>
-                          <td>Varies by assumption</td>
-                          <td colspan="2">$720,000.00</td>
-                          <td>$0.00</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                  <p><strong>Fictional inputs:</strong> $600,000 home value, funded by a $120,000 user-separate starting source and $400,000 community contribution; $40,000 income dated 2020-03-15; $150,000 community retirement account; and $30,000 community debt. The valuation is apportioned in proportion to the recorded source balances. Each relationship date and proposed share is an explicit scenario assumption; none is a legal finding.</p>
-                  <p class="scenario-disclaimer">This static preview is not based on a user's facts, does not call AI, and is not saved. Actual case scenarios require an authorized case workspace and reviewed inputs.</p>
-                </section>
                 <details class="asset-milestone-manager" id="milestone-manager">
                   <summary>Manage milestone dates</summary>
                   <div class="asset-milestone-manager-content">
@@ -1377,31 +1325,56 @@
                   </figure>
                 </section>
 
-                <section class="asset-analysis-panel" aria-labelledby="scenario-heading">
-                  <h3 id="scenario-heading">Possible discussion scenarios</h3>
-                  <p>Explore three hypothetical ways a conversation might be framed. Selecting one only changes this preview.</p>
-                  <div class="scenario-grid" id="scenario-options">
-                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="best">
-                      <span class="scenario-label">Best-case proposal</span>
-                      <strong>Opening position</strong>
-                      <span class="scenario-split">$346,500 you · $283,500 other party</span>
-                      <span>Illustrates asking for 55% of the fictional $630,000 net assets.</span>
-                    </button>
-                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="balanced">
-                      <span class="scenario-label">Balanced proposal</span>
-                      <strong>Shared starting point</strong>
-                      <span class="scenario-split">$315,000 each</span>
-                      <span>Illustrates an equal split of the fictional net assets for discussion.</span>
-                    </button>
-                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="fallback">
-                      <span class="scenario-label">Fallback position</span>
-                      <strong>Alternative to consider</strong>
-                      <span class="scenario-split">$283,500 you · $346,500 other party</span>
-                      <span>Illustrates a 45% share for you as one possible fallback discussion point.</span>
-                    </button>
+                <section class="asset-analysis-panel" id="settlement-scenarios-preview" aria-labelledby="settlement-scenarios-preview-title">
+                  <h3 id="settlement-scenarios-preview-title">Settlement scenario comparison</h3>
+                  <p>Three illustrative calculations from the same fictional asset ledger. These are comparison examples, not recommendations or an AI ranking.</p>
+                  <div class="asset-table-scroll" role="region" aria-label="Fictional settlement scenario comparison" tabindex="0">
+                    <table class="asset-comparison-table">
+                      <caption>Fictional sample outcomes — user-proposed community share, not a Washington legal rule</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Scenario assumptions</th>
+                          <th scope="col">Proposed community share to user</th>
+                          <th scope="col">Illustrative net to user</th>
+                          <th scope="col">Illustrative net to other party</th>
+                          <th scope="col">Unresolved</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <th scope="row">Marriage-only window starts 2021-01-01; 2020-03-15 income treated as user separate</th>
+                          <td>50%</td>
+                          <td>$445,714.29</td>
+                          <td>$274,285.71</td>
+                          <td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Earlier CIR date assumed from 2020-01-01; 2020-03-15 income treated as community</th>
+                          <td>50%</td>
+                          <td>$424,285.71</td>
+                          <td>$295,714.29</td>
+                          <td>$0.00</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Intermediate window starts 2020-04-01; 2020-03-15 income treated as user separate</th>
+                          <td>55%</td>
+                          <td>$473,142.86</td>
+                          <td>$246,857.14</td>
+                          <td>$0.00</td>
+                        </tr>
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th scope="row">Each scenario's illustrative net total</th>
+                          <td>Varies by assumption</td>
+                          <td colspan="2">$720,000.00</td>
+                          <td>$0.00</td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
-                  <p class="scenario-status" id="scenario-status" role="status" aria-live="polite">No scenario selected. Choose one to preview it; your choice will not be sent or saved.</p>
-                  <p class="scenario-disclaimer">These are not legal conclusions, predictions, or personalized recommendations. Actual property characterization, valuation, and division depend on facts and applicable law; discuss decisions with a qualified attorney or mediator.</p>
+                  <p><strong>Fictional inputs:</strong> $600,000 home value, funded by a $120,000 user-separate starting source and $400,000 community contribution; $40,000 income dated 2020-03-15; $150,000 community retirement account; and $30,000 community debt. The valuation is apportioned in proportion to the recorded source balances. Each relationship date and proposed share is an explicit scenario assumption; none is a legal finding.</p>
+                  <p class="scenario-disclaimer">This static preview is not based on a user's facts, does not call AI, and is not saved. Actual case scenarios require an authorized case workspace and reviewed inputs.</p>
                 </section>
               </section>
               <a class="back-to-account" href="/#account">Back to your account</a>
@@ -1535,8 +1508,6 @@
         const customMilestoneDate = document.getElementById("custom-milestone-date");
         const customMilestoneError = document.getElementById("custom-milestone-error");
         const customMilestoneList = document.getElementById("custom-milestone-list");
-        const scenarioOptions = document.getElementById("scenario-options");
-        const scenarioStatus = document.getElementById("scenario-status");
         const analysisControls = document.getElementById("analysis-controls");
         const analysisExplanation = document.getElementById("analysis-explanation");
         const analysisDocumentList = document.getElementById("analysis-documents");
@@ -5543,17 +5514,6 @@
           if (!marker) return;
           event.preventDefault();
           selectAssetMilestone(marker.dataset.milestoneId);
-        });
-        scenarioOptions.addEventListener("click", (event) => {
-          const choice = event.target instanceof Element
-            ? event.target.closest(".scenario-choice")
-            : null;
-          if (!choice) return;
-          for (const button of scenarioOptions.querySelectorAll(".scenario-choice")) {
-            button.setAttribute("aria-pressed", String(button === choice));
-          }
-          const selectedLabel = choice.querySelector(".scenario-label")?.textContent || "Scenario";
-          scenarioStatus.textContent = `${selectedLabel} selected for this preview only. Nothing was sent or saved.`;
         });
         materialsInput.addEventListener("change", () => {
           void addMaterials(Array.from(materialsInput.files || []));
