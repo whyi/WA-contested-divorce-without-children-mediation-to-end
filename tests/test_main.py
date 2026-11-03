@@ -1,4 +1,5 @@
 import asyncio
+import re
 import unittest
 from types import SimpleNamespace
 from datetime import UTC, datetime, timedelta
@@ -155,12 +156,38 @@ class MainWorkflowTests(unittest.TestCase):
             page.index('id="asset-chart-heading"'),
         )
         self.assertNotIn("Possible discussion scenarios", page)
-        self.assertIn("Marriage-only window starts 2021-01-01", page)
-        self.assertIn("Earlier CIR date assumed from 2020-01-01", page)
-        self.assertIn("Intermediate window starts 2020-04-01", page)
-        self.assertIn("$445,714.29", page)
-        self.assertIn("$424,285.71", page)
-        self.assertIn("$473,142.86", page)
+        self.assertIn("All 27 combinations of the three date windows", page)
+        self.assertNotIn("Each scenario's illustrative net total", page)
+        table_section = page.split('id="settlement-scenarios-preview"', 1)[1].split(
+            "</section>", 1
+        )[0]
+        table_body = re.search(r"<tbody>(.*?)</tbody>", table_section, re.DOTALL)
+        self.assertIsNotNone(table_body)
+        rows = re.findall(
+            r'<tr>\s*<th scope="row">(.*?)</th>((?:<td>.*?</td>){5})\s*</tr>',
+            table_body.group(1),
+            re.DOTALL,
+        )
+        self.assertEqual(len(rows), 27)
+        combinations = set()
+        for date_window, cells_html in rows:
+            method, share, *_ = re.findall(r"<td>(.*?)</td>", cells_html)
+            combinations.add((date_window, method, share))
+        self.assertEqual(len(combinations), 27)
+        self.assertEqual(
+            {row[1] for row in combinations},
+            {"Pro-rata", "User-separate-first", "Community-first"},
+        )
+        self.assertEqual({row[2] for row in combinations}, {"45%", "50%", "55%"})
+        self.assertEqual(
+            {row[0] for row in combinations},
+            {
+                "Marriage-only starts 2021-01-01",
+                "Earlier CIR date assumed from 2020-01-01",
+                "Intermediate date assumed from 2020-04-01",
+            },
+        )
+        self.assertIn("$494,181.81", table_body.group(1))
         self.assertIn("not recommendations or an AI ranking", page)
         self.assertIn("does not call AI, and is not saved", page)
 
