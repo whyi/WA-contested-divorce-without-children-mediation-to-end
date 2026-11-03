@@ -105,9 +105,11 @@ sent, and handling notice. Calculated candidates remain available without AI
 ranking, and provider or response failures are returned separately from the
 calculated results. The selected scenario can produce an editable, nonbinding
 DOCX draft; it is not stored, sent, or filed automatically.
-The public `/demo` page also shows all combinations of a fixed, fictional-only
-assumption set so the comparison layout can be inspected without signing in. It
-is not connected to case data, saved, or sent to an AI provider.
+The public `/demo` page also shows all 81 combinations of its fixed,
+fictional-only start dates, proposed division dates, withdrawal conventions, and
+user-proposed shares. The table labels `Start Date` and `End Date (Division
+Date)` separately. These demo dates are not legal conclusions, and the page is
+not connected to case data, saved, or sent to an AI provider.
 
 Run locally with Docker Compose:
 

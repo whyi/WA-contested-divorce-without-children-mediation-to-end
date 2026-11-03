@@ -156,39 +156,53 @@ class MainWorkflowTests(unittest.TestCase):
             page.index('id="asset-chart-heading"'),
         )
         self.assertNotIn("Possible discussion scenarios", page)
-        self.assertIn("All 27 combinations of the three date windows", page)
+        self.assertIn("All 81 combinations of three assumed start dates", page)
         self.assertNotIn("Each scenario's illustrative net total", page)
         table_section = page.split('id="settlement-scenarios-preview"', 1)[1].split(
             "</section>", 1
         )[0]
+        self.assertIn("<th scope=\"col\">Start Date</th>", table_section)
+        self.assertIn("<th scope=\"col\">End Date (Division Date)</th>", table_section)
+        self.assertNotIn("<tfoot>", table_section)
         table_body = re.search(r"<tbody>(.*?)</tbody>", table_section, re.DOTALL)
         self.assertIsNotNone(table_body)
         rows = re.findall(
-            r'<tr>\s*<th scope="row">(.*?)</th>((?:<td>.*?</td>){5})\s*</tr>',
+            r'<tr>\s*<th scope="row">(.*?)</th>((?:<td>.*?</td>){6})\s*</tr>',
             table_body.group(1),
             re.DOTALL,
         )
-        self.assertEqual(len(rows), 27)
+        self.assertEqual(len(rows), 81)
         combinations = set()
-        for date_window, cells_html in rows:
-            method, share, *_ = re.findall(r"<td>(.*?)</td>", cells_html)
-            combinations.add((date_window, method, share))
-        self.assertEqual(len(combinations), 27)
-        self.assertEqual(
-            {row[1] for row in combinations},
-            {"Pro-rata", "User-separate-first", "Community-first"},
-        )
-        self.assertEqual({row[2] for row in combinations}, {"45%", "50%", "55%"})
+        outcomes_by_division_date: dict[str, set[str]] = {}
+        for start_date, cells_html in rows:
+            end_date, method, share, user_net, *_ = re.findall(
+                r"<td>(.*?)</td>", cells_html
+            )
+            combinations.add((start_date, end_date, method, share))
+            outcomes_by_division_date.setdefault(end_date, set()).add(user_net)
+        self.assertEqual(len(combinations), 81)
         self.assertEqual(
             {row[0] for row in combinations},
-            {
-                "Marriage-only starts 2021-01-01",
-                "Earlier CIR date assumed from 2020-01-01",
-                "Intermediate date assumed from 2020-04-01",
-            },
+            {"2020-01-01", "2020-04-01", "2021-01-01"},
         )
-        self.assertIn("$494,181.81", table_body.group(1))
-        self.assertIn("not recommendations or an AI ranking", page)
+        self.assertEqual(
+            {row[1] for row in combinations},
+            {"2024-01-01", "2025-01-01", "2026-01-01"},
+        )
+        self.assertEqual(
+            {row[2] for row in combinations},
+            {"Pro-rata", "User-separate-first", "Community-first"},
+        )
+        self.assertEqual({row[3] for row in combinations}, {"45%", "50%", "55%"})
+        self.assertEqual(
+            len({tuple(sorted(outcomes)) for outcomes in outcomes_by_division_date.values()}),
+            3,
+        )
+        self.assertIn("$519,928.04", table_body.group(1))
+        self.assertIn("$500,000 on 2024-01-01", page)
+        self.assertIn("$600,000 on 2025-01-01", page)
+        self.assertIn("$650,000 on 2026-01-01", page)
+        self.assertIn("not a legal rule, recommendation, or AI ranking", page)
         self.assertIn("does not call AI, and is not saved", page)
 
     def test_asset_analysis_preview_is_fictional_and_local_only(self) -> None:
