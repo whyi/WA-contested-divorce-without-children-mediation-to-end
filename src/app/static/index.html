@@ -486,6 +486,32 @@
       .case-list { display: grid; gap: 10px; padding: 0; list-style: none; }
       .case-list li { padding: 16px; border: 1px solid var(--line); border-radius: 8px; color: #34443a; background: #fbfcfb; font-size: 14px; }
       .case-list strong { color: var(--green-dark); }
+      .settlement-planner { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--line); }
+      .settlement-planner[hidden] { display: none; }
+      .settlement-planner h3 { margin: 22px 0 8px; color: var(--green-dark); font-size: 17px; }
+      .settlement-planner p, .settlement-planner label { color: var(--muted); font-size: 13px; line-height: 1.6; }
+      .settlement-planner textarea, .settlement-planner input[type="text"], .settlement-planner input[type="date"] { width: 100%; padding: 10px 12px; border: 1px solid #d9e1d9; border-radius: 7px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
+      .settlement-planner textarea { min-height: 140px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .settlement-planner .materials-actions { margin: 10px 0 20px; }
+      .settlement-planner .materials-import { min-height: 40px; }
+      .settlement-consent { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0; padding: 14px; border: 1px solid #e8dcc0; border-radius: 8px; background: #fcf8ee; }
+      .settlement-consent input { margin-top: 4px; }
+      .settlement-facts { max-height: 190px; overflow: auto; padding: 12px 12px 12px 32px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfb; font-size: 12px; }
+      .settlement-facts li { margin: 5px 0; overflow-wrap: anywhere; }
+      .settlement-results { display: block; max-width: 100%; overflow-x: auto; margin-top: 14px; border-collapse: collapse; font-size: 12px; }
+      .settlement-results th, .settlement-results td { padding: 9px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+      .settlement-results th { color: var(--green-dark); background: #f3f7f3; }
+      .settlement-results tr[data-recommended="true"] { background: #eef6ee; }
+      .settlement-row-select { min-height: 34px; padding: 0 10px; border: 1px solid #b9c9bc; border-radius: 6px; color: var(--green-dark); background: #fff; cursor: pointer; font-weight: 700; }
+      .settlement-row-select:focus-visible, .settlement-planner button:focus-visible, .settlement-planner textarea:focus-visible, .settlement-planner input:focus-visible { outline: 3px solid rgba(47, 102, 82, .35); outline-offset: 2px; }
+      .settlement-status { min-height: 22px; color: var(--muted); font-size: 12px; }
+      .settlement-status[data-kind="error"] { color: #8d3026; }
+      .settlement-status[data-kind="success"] { color: var(--green-dark); }
+      .settlement-ledger-saved { max-height: 180px; overflow: auto; padding: 12px 12px 12px 32px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfb; font-size: 12px; }
+      .settlement-offer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .settlement-offer-grid label { display: grid; gap: 5px; }
+      .settlement-offer-grid label:last-child { grid-column: 1 / -1; }
+      .settlement-planner pre { overflow: auto; padding: 12px; border-radius: 8px; color: #34443a; background: #f1f5f1; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .preparation-view { padding-top: 12px; }
       .preparation-note { padding: 16px; border-radius: 8px; color: #574827; background: #fbf5e8; }
       .back-to-account { display: inline-flex; min-height: 44px; align-items: center; margin-top: 8px; color: var(--green-dark); font-weight: 750; }
@@ -1058,6 +1084,62 @@
               <h2 id="existing-cases-title">Your cases</h2>
               <p id="existing-case-count"></p>
               <ul class="case-list" id="case-list"></ul>
+              <section class="settlement-planner" id="settlement-planner" aria-labelledby="settlement-planner-title" hidden>
+                <h2 id="settlement-planner-title">Evidence-grounded settlement planning</h2>
+                <p>Washington-only decision support. The calculations use your entered assumptions; they are not legal classifications, a predicted result, or legal advice. A Washington attorney or mediator should review the draft.</p>
+                <p class="settlement-status" id="settlement-planner-status" role="status" aria-live="polite"></p>
+                <div id="settlement-planner-content">
+                  <h3>Separate consent for settlement planning</h3>
+                  <p>Local calculations and manual scenario selection do not require AI consent. This purpose is separate from document extraction. If you consent, the configured AI provider receives only the data listed below to rank supplied scenarios. Consent can be revoked at any time.</p>
+                  <dl class="analysis-notice" id="settlement-disclosure">
+                    <div><dt>Provider and model</dt><dd id="settlement-provider"></dd></div>
+                    <div><dt>Region and notice version</dt><dd id="settlement-region"></dd></div>
+                    <div><dt>Purpose and data sent</dt><dd id="settlement-data-sent"></dd></div>
+                    <div><dt>Data handling</dt><dd id="settlement-data-handling"></dd></div>
+                  </dl>
+                  <p class="settlement-status" id="settlement-consent-availability" role="status"></p>
+                  <label class="settlement-consent" for="settlement-consent">
+                    <input id="settlement-consent" type="checkbox">
+                    <span>I have reviewed what is sent and explicitly consent to AI ranking for settlement planning.</span>
+                  </label>
+                  <div class="materials-actions">
+                    <button class="materials-import" id="settlement-consent-grant" type="button">Grant settlement-planning consent</button>
+                    <button class="dashboard-retry" id="settlement-consent-revoke" type="button" hidden>Revoke consent</button>
+                  </div>
+                  <h3>Active adopted facts</h3>
+                  <p>Only adopted facts with an available source document can be used as evidence references. Copy a fact ID into scenario dates when it supports that assumption.</p>
+                  <ul class="settlement-facts" id="settlement-active-facts"></ul>
+                  <h3>Append ledger events</h3>
+                  <p>Enter events as JSON. Money amounts are integer cents. Events are append-only; corrections require a new, clearly labeled event. Source-supported entries must cite an active fact ID. Do not enter bank credentials or account numbers.</p>
+                  <ul class="settlement-ledger-saved" id="settlement-ledger-saved" aria-label="Saved ledger events"></ul>
+                  <label for="settlement-ledger-json">Ledger events JSON (array)</label>
+                  <textarea id="settlement-ledger-json" spellcheck="false" aria-describedby="settlement-ledger-example"></textarea>
+                  <pre id="settlement-ledger-example">[{"asset_id":"replace-with-uuid","asset_name":"Premarital savings","asset_kind":"asset","event":{"effective_date":"2020-01-01","sequence_number":0,"event_type":"acquisition","amount_cents":100000,"source_allocations":{"user_separate":100000,"other_separate":0,"community":0,"unresolved":0},"provenance":"user_reported","note":"Starting balance"}}]</pre>
+                  <button class="materials-import" id="settlement-ledger-add" type="button">Append ledger events</button>
+                  <h3>Compare bounded scenarios</h3>
+                  <p>Choose explicit dates, tracing conventions, and proposed community shares. The engine does not presume a 50/50 division or decide CIR status.</p>
+                  <label for="settlement-axes-json">Scenario assumptions JSON</label>
+                  <textarea id="settlement-axes-json" spellcheck="false" aria-describedby="settlement-axes-example"></textarea>
+                  <pre id="settlement-axes-example">{"relationship_windows":[{"id":"marriage-only","label":"Marriage-only dates","relationship_type":"marriage_only","start_date":"2020-01-01","separation_date":"2024-01-01","source_fact_ids":[],"assumption_note":"User-provided dates"}],"tracing_methods":["explicit"],"community_share_bps":[5000]}</pre>
+                  <label for="settlement-objective">Your negotiation objective</label>
+                  <input id="settlement-objective" type="text" maxlength="2000" value="Preserve traceable separate property while reaching a workable settlement.">
+                  <button class="materials-import" id="settlement-generate" type="button">Calculate and rank scenarios</button>
+                  <p class="settlement-status" id="settlement-scenarios-status" role="status" aria-live="polite"></p>
+                  <div id="settlement-scenarios-table"></div>
+                  <section id="settlement-offer" hidden aria-labelledby="settlement-offer-title">
+                    <h3 id="settlement-offer-title">Draft a nonbinding mediation offer</h3>
+                    <p>The selected calculation and your proposed terms are used to create an editable DOCX draft. It is not automatically sent, filed, or legally binding.</p>
+                    <div class="settlement-offer-grid">
+                      <label>From (you, the user party in the ledger)<input id="settlement-offer-from" type="text" maxlength="160" required></label>
+                      <label>To<input id="settlement-offer-to" type="text" maxlength="160" required></label>
+                      <label>Proposed effective date<input id="settlement-offer-effective" type="date"></label>
+                      <label>Proposed response date<input id="settlement-offer-response" type="date"></label>
+                      <label>Proposed terms (one per line)<textarea id="settlement-offer-terms" required></textarea></label>
+                    </div>
+                    <button class="materials-import" id="settlement-offer-download" type="button">Download editable DOCX draft</button>
+                  </section>
+                </div>
+              </section>
             </section>
             <section class="preparation-view" id="preparation-view" aria-labelledby="preparation-title" hidden>
               <p class="eyebrow" id="preparation-eyebrow">Your next step</p>
@@ -1325,6 +1407,33 @@
         const existingCases = document.getElementById("existing-cases");
         const existingCaseCount = document.getElementById("existing-case-count");
         const caseList = document.getElementById("case-list");
+        const settlementPlanner = document.getElementById("settlement-planner");
+        const settlementPlannerStatus = document.getElementById("settlement-planner-status");
+        const settlementPlannerContent = document.getElementById("settlement-planner-content");
+        const settlementConsent = document.getElementById("settlement-consent");
+        const settlementConsentGrant = document.getElementById("settlement-consent-grant");
+        const settlementConsentRevoke = document.getElementById("settlement-consent-revoke");
+        const settlementProvider = document.getElementById("settlement-provider");
+        const settlementRegion = document.getElementById("settlement-region");
+        const settlementDataSent = document.getElementById("settlement-data-sent");
+        const settlementDataHandling = document.getElementById("settlement-data-handling");
+        const settlementConsentAvailability = document.getElementById("settlement-consent-availability");
+        const settlementActiveFacts = document.getElementById("settlement-active-facts");
+        const settlementLedgerJson = document.getElementById("settlement-ledger-json");
+        const settlementLedgerSaved = document.getElementById("settlement-ledger-saved");
+        const settlementLedgerAdd = document.getElementById("settlement-ledger-add");
+        const settlementAxesJson = document.getElementById("settlement-axes-json");
+        const settlementObjective = document.getElementById("settlement-objective");
+        const settlementGenerate = document.getElementById("settlement-generate");
+        const settlementScenariosStatus = document.getElementById("settlement-scenarios-status");
+        const settlementScenariosTable = document.getElementById("settlement-scenarios-table");
+        const settlementOffer = document.getElementById("settlement-offer");
+        const settlementOfferFrom = document.getElementById("settlement-offer-from");
+        const settlementOfferTo = document.getElementById("settlement-offer-to");
+        const settlementOfferEffective = document.getElementById("settlement-offer-effective");
+        const settlementOfferResponse = document.getElementById("settlement-offer-response");
+        const settlementOfferTerms = document.getElementById("settlement-offer-terms");
+        const settlementOfferDownload = document.getElementById("settlement-offer-download");
         const preparationView = document.getElementById("preparation-view");
         const preparationNote = document.getElementById("preparation-note");
         const materialsWorkflow = document.getElementById("materials-workflow");
@@ -1410,6 +1519,13 @@
         let materialsImporting = false;
         let materialsSelecting = false;
         let analysisCaseId = null;
+        let settlementCaseId = null;
+        let settlementState = null;
+        let settlementFacts = [];
+        let settlementLedgerEvents = [];
+        let settlementSelectedScenario = null;
+        let settlementDisclosureAvailable = false;
+        let settlementRunId = null;
         let selectedAssetYearIndex = 0;
         let assetTimelineStops = [];
         const interpolatedAssetOverrides = new Map();
@@ -2282,8 +2398,484 @@
             const row = document.createElement("li");
             const label = document.createElement("strong");
             label.textContent = `Case ${item.id.slice(0, 8)}`;
-            row.append(label, document.createTextNode(` — ${item.status}`));
+            const openButton = document.createElement("button");
+            openButton.className = "dashboard-retry";
+            openButton.type = "button";
+            openButton.textContent = "Open settlement planner";
+            openButton.addEventListener("click", () => openSettlementPlanner(item.id));
+            row.append(label, document.createTextNode(` — ${item.status} `), openButton);
             caseList.append(row);
+          }
+        }
+
+        function setSettlementStatus(message, kind = "") {
+          settlementPlannerStatus.textContent = message;
+          if (kind) settlementPlannerStatus.dataset.kind = kind;
+          else settlementPlannerStatus.removeAttribute("data-kind");
+        }
+
+        async function settlementApi(url, options = {}) {
+          const response = await fetch(url, {
+            credentials: "same-origin",
+            ...options,
+            headers: {
+              Accept: "application/json",
+              ...(options.body ? { "Content-Type": "application/json" } : {}),
+              ...(options.method && options.method !== "GET" ? csrfHeaders() : {}),
+              ...(options.headers || {}),
+            },
+          });
+          if (response.status === 401) {
+            showSignIn("Your session has expired. Please sign in again.");
+            throw new Error("Please sign in again to continue.");
+          }
+          const result = response.status === 204 ? null : await response.json();
+          if (!response.ok) {
+            const detail = result?.detail;
+            throw new Error(
+              typeof detail === "string" ? detail : detail?.message || "Settlement planning request failed.",
+            );
+          }
+          return result;
+        }
+
+        async function openSettlementPlanner(caseId) {
+          settlementCaseId = caseId;
+          settlementSelectedScenario = null;
+          settlementRunId = null;
+          settlementPlanner.hidden = false;
+          settlementPlannerContent.hidden = false;
+          settlementConsent.checked = false;
+          settlementConsentRevoke.hidden = true;
+          if (settlementState) settlementState.consented = false;
+          settlementConsentGrant.disabled = !settlementDisclosureAvailable;
+          settlementOffer.hidden = true;
+          settlementScenariosTable.replaceChildren();
+          settlementLedgerJson.value = "[]";
+          settlementAxesJson.value = JSON.stringify({
+            relationship_windows: [{
+              id: "marriage-only",
+              label: "Marriage-only dates",
+              relationship_type: "marriage_only",
+              start_date: "2020-01-01",
+              separation_date: "2024-01-01",
+              source_fact_ids: [],
+              assumption_note: "User-provided dates",
+            }],
+            tracing_methods: ["explicit"],
+            community_share_bps: [5000],
+          }, null, 2);
+          setSettlementStatus("Loading settlement-planning consent, active facts, and ledger…");
+          try {
+            const [state, facts, events, disclosure] = await Promise.all([
+              settlementApi(`/cases/${caseId}/settlement-planning`),
+              settlementApi(`/cases/${caseId}/profile-facts`),
+              settlementApi(`/cases/${caseId}/settlement-planning/ledger-events`),
+              settlementApi(`/cases/${caseId}/settlement-planning/disclosure`),
+            ]);
+            if (settlementCaseId !== caseId) return;
+            settlementState = state;
+            settlementLedgerEvents = events;
+            settlementFacts = facts.facts.filter(
+              (fact) => fact.disposition === "active" && fact.source_available,
+            );
+            settlementConsent.checked = state.consented;
+            settlementPlannerContent.hidden = false;
+            settlementConsentRevoke.hidden = !state.consented;
+            settlementProvider.textContent =
+              `${disclosure.provider}; model: ${disclosure.model_id || "not configured"}`;
+            settlementRegion.textContent =
+              `${disclosure.region || "not configured"}; ${disclosure.notice_version}`;
+            settlementDataSent.textContent = disclosure.data_sent;
+            settlementDataHandling.textContent =
+              disclosure.data_handling_notice || "Not configured. AI ranking is unavailable.";
+            settlementDisclosureAvailable = disclosure.available;
+            settlementConsentGrant.disabled = !disclosure.available || state.consented;
+            settlementConsentAvailability.textContent = disclosure.available
+              ? "AI ranking is configured. Consent is optional for local calculations and required only before sending data for ranking."
+              : "AI ranking is not configured. Local calculations and offer drafting remain available; consent cannot enable ranking by itself.";
+            renderSettlementFacts();
+            renderSavedSettlementLedger(events);
+            settlementLedgerJson.value = "[]";
+            settlementPlanner.scrollIntoView({ behavior: "smooth", block: "start" });
+            setSettlementStatus(
+              `${events.length} append-only ledger event(s) saved. Case facts revision ${state.profile_revision}; ledger revision ${state.settlement_revision}.`,
+              "success",
+            );
+          } catch (error) {
+            if (settlementCaseId !== caseId) return;
+            setSettlementStatus(
+              error instanceof Error ? error.message : "Settlement-planning workspace could not be loaded.",
+              "error",
+            );
+          }
+        }
+
+        function renderSettlementFacts() {
+          settlementActiveFacts.replaceChildren();
+          if (!settlementFacts.length) {
+            const item = document.createElement("li");
+            item.textContent = "No active source-backed adopted facts are available yet. Review and adopt eligible facts first.";
+            settlementActiveFacts.append(item);
+            return;
+          }
+          for (const fact of settlementFacts) {
+            const item = document.createElement("li");
+            item.textContent = `${fact.id} — ${fact.field_key}: ${fact.value}`;
+            settlementActiveFacts.append(item);
+          }
+        }
+
+        function renderSavedSettlementLedger(events) {
+          settlementLedgerSaved.replaceChildren();
+          if (!events.length) {
+            const item = document.createElement("li");
+            item.textContent = "No ledger events have been saved.";
+            settlementLedgerSaved.append(item);
+            return;
+          }
+          for (const entry of events) {
+            const item = document.createElement("li");
+            item.textContent =
+              `${entry.event.effective_date} — ${entry.asset_name} (${entry.asset_kind}), ` +
+              `${entry.event.event_type}: ${formatSettlementCents(entry.event.amount_cents)}; ` +
+              `${entry.event.provenance}.`;
+            settlementLedgerSaved.append(item);
+          }
+        }
+
+        function newSettlementId() {
+          if (typeof crypto.randomUUID !== "function") {
+            throw new Error("Secure random IDs are unavailable in this browser.");
+          }
+          return crypto.randomUUID();
+        }
+
+        async function grantSettlementConsent() {
+          if (!settlementConsent.checked || !settlementCaseId) {
+            setSettlementStatus("Review the notice and check the consent box before continuing.", "error");
+            return;
+          }
+          if (settlementConsentGrant.disabled) {
+            setSettlementStatus("AI ranking is unavailable until provider and data-handling settings are configured.", "error");
+            return;
+          }
+          settlementConsentGrant.disabled = true;
+          try {
+            await settlementApi(`/cases/${settlementCaseId}/settlement-planning/consent`, {
+              method: "POST",
+              body: JSON.stringify({ confirm: true, notice_version: "settlement-planning-v1" }),
+            });
+            settlementState = await settlementApi(`/cases/${settlementCaseId}/settlement-planning`);
+            settlementPlannerContent.hidden = false;
+            settlementConsentRevoke.hidden = false;
+            setSettlementStatus("Settlement-planning consent recorded. You can revoke it at any time.", "success");
+          } catch (error) {
+            settlementConsent.checked = false;
+            setSettlementStatus(error instanceof Error ? error.message : "Consent could not be saved.", "error");
+          } finally {
+            settlementConsentGrant.disabled =
+              !settlementDisclosureAvailable || Boolean(settlementState?.consented);
+          }
+        }
+
+        async function revokeSettlementConsent() {
+          if (!settlementCaseId) return;
+          settlementConsentRevoke.disabled = true;
+          try {
+            await settlementApi(`/cases/${settlementCaseId}/settlement-planning/consent`, { method: "DELETE" });
+            settlementConsent.checked = false;
+            settlementConsentRevoke.hidden = true;
+            setSettlementStatus("Consent revoked. Future AI-ranking requests are blocked; local calculations remain available.", "success");
+          } catch (error) {
+            setSettlementStatus(error instanceof Error ? error.message : "Consent could not be revoked.", "error");
+          } finally {
+            settlementConsentRevoke.disabled = false;
+          }
+        }
+
+        async function appendSettlementLedgerEvents() {
+          let entries;
+          try {
+            entries = JSON.parse(settlementLedgerJson.value);
+            if (!Array.isArray(entries) || entries.length === 0) {
+              throw new Error("Enter a non-empty JSON array of ledger events.");
+            }
+          } catch (error) {
+            setSettlementStatus(error instanceof Error ? error.message : "Ledger JSON is invalid.", "error");
+            return;
+          }
+          settlementLedgerAdd.disabled = true;
+          let added = 0;
+          try {
+            for (const entry of entries) {
+              const result = await settlementApi(
+                `/cases/${settlementCaseId}/settlement-planning/ledger-events`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    ...entry,
+                    idempotency_key: newSettlementId(),
+                    expected_profile_revision: settlementState.profile_revision,
+                    expected_settlement_revision: settlementState.settlement_revision,
+                  }),
+                },
+              );
+              settlementState.settlement_revision = result.settlement_revision;
+              settlementLedgerEvents.push(result);
+              renderSavedSettlementLedger(settlementLedgerEvents);
+              added += 1;
+            }
+            settlementLedgerJson.value = "[]";
+            setSettlementStatus(
+              `${added} event(s) appended. Ledger revision ${settlementState.settlement_revision}.`,
+              "success",
+            );
+          } catch (error) {
+            setSettlementStatus(
+              `${added} event(s) appended before the error: ${error instanceof Error ? error.message : "request failed"}. Remove already-saved entries before retrying.`,
+              "error",
+            );
+          } finally {
+            settlementLedgerAdd.disabled = false;
+          }
+        }
+
+        function formatSettlementCents(cents) {
+          return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+          }).format(cents / 100);
+        }
+
+        function renderSettlementScenarios(result) {
+          const ranking = result.ranking?.ranked || [];
+          const rankById = new Map(ranking.map((item, index) => [item.scenario_id, { ...item, rank: index + 1 }]));
+          const scenarios = [...result.scenarios].sort((a, b) => {
+            const rankA = rankById.get(a.scenario.id)?.rank || Number.MAX_SAFE_INTEGER;
+            const rankB = rankById.get(b.scenario.id)?.rank || Number.MAX_SAFE_INTEGER;
+            return rankA - rankB;
+          });
+          const table = document.createElement("table");
+          table.className = "settlement-results";
+          const head = document.createElement("thead");
+          const headRow = document.createElement("tr");
+          ["Rank / scenario", "Assumptions", "Your net", "Other net", "Unresolved", "Action"].forEach((label) => {
+            const cell = document.createElement("th");
+            cell.scope = "col";
+            cell.textContent = label;
+            headRow.append(cell);
+          });
+          head.append(headRow);
+          const body = document.createElement("tbody");
+          for (const scenario of scenarios) {
+            const rank = rankById.get(scenario.scenario.id);
+            const row = document.createElement("tr");
+            row.dataset.recommended = String(Boolean(rank));
+            const idCell = document.createElement("td");
+            idCell.textContent = `${rank ? `AI rank ${rank.rank}` : "Other candidate"} — ${scenario.scenario.label}`;
+            if (rank) {
+              const reason = document.createElement("p");
+              reason.textContent = `${rank.reason} Uncertainty: ${rank.uncertainty}`;
+              idCell.append(reason);
+            }
+            const traceDetails = document.createElement("details");
+            const traceSummary = document.createElement("summary");
+            traceSummary.textContent = "View asset and event tracing detail";
+            traceDetails.append(traceSummary);
+            for (const ledger of scenario.ledgers) {
+              const asset = document.createElement("section");
+              const title = document.createElement("h4");
+              title.textContent = `${ledger.name} (${ledger.kind}) — ending balances`;
+              asset.append(title);
+              const ending = ledger.balances;
+              const endingSummary = document.createElement("p");
+              endingSummary.textContent =
+                `User separate ${formatSettlementCents(ending.user_separate_cents)}; ` +
+                `other separate ${formatSettlementCents(ending.other_separate_cents)}; ` +
+                `community ${formatSettlementCents(ending.community_cents)}; ` +
+                `unresolved ${formatSettlementCents(ending.unresolved_cents)}.`;
+              asset.append(endingSummary);
+              const trace = document.createElement("table");
+              trace.className = "settlement-results";
+              const traceHead = document.createElement("tr");
+              ["Date / event", "Amount", "Applied source allocations", "Running balances"].forEach((label) => {
+                const cell = document.createElement("th");
+                cell.scope = "col";
+                cell.textContent = label;
+                traceHead.append(cell);
+              });
+              const traceHeader = document.createElement("thead");
+              const traceBody = document.createElement("tbody");
+              traceHeader.append(traceHead);
+              for (const step of ledger.steps) {
+                const stepRow = document.createElement("tr");
+                const eventCell = document.createElement("td");
+                eventCell.textContent = `${step.effective_date} — ${step.event_type}`;
+                const amountCell = document.createElement("td");
+                amountCell.textContent = formatSettlementCents(step.amount_cents);
+                const allocationsCell = document.createElement("td");
+                allocationsCell.textContent = Object.entries(step.applied_source_allocations)
+                  .map(([source, cents]) => `${source}: ${formatSettlementCents(cents)}`)
+                  .join("; ");
+                const balancesCell = document.createElement("td");
+                balancesCell.textContent =
+                  `User ${formatSettlementCents(step.balances.user_separate_cents)}; ` +
+                  `other ${formatSettlementCents(step.balances.other_separate_cents)}; ` +
+                  `community ${formatSettlementCents(step.balances.community_cents)}; ` +
+                  `unresolved ${formatSettlementCents(step.balances.unresolved_cents)}`;
+                stepRow.append(eventCell, amountCell, allocationsCell, balancesCell);
+                traceBody.append(stepRow);
+              }
+              trace.append(traceHeader, traceBody);
+              asset.append(trace);
+              traceDetails.append(asset);
+            }
+            idCell.append(traceDetails);
+            const assumptions = document.createElement("td");
+            assumptions.textContent =
+              `${scenario.scenario.relationship_window.label}: ${scenario.scenario.relationship_window.start_date} to ${scenario.scenario.relationship_window.separation_date}; ` +
+              `${scenario.scenario.tracing_method}; ${scenario.scenario.community_share_bps / 100}% proposed community share.`;
+            const values = [
+              formatSettlementCents(scenario.user_net_cents),
+              formatSettlementCents(scenario.other_net_cents),
+              formatSettlementCents(scenario.unresolved_cents),
+            ];
+            row.append(idCell, assumptions);
+            for (const value of values) {
+              const cell = document.createElement("td");
+              cell.textContent = value;
+              row.append(cell);
+            }
+            const action = document.createElement("td");
+            const select = document.createElement("button");
+            select.type = "button";
+            select.className = "settlement-row-select";
+            select.textContent = "Choose scenario";
+            select.addEventListener("click", () => chooseSettlementScenario(scenario));
+            action.append(select);
+            row.append(action);
+            body.append(row);
+          }
+          table.append(head, body);
+          settlementScenariosTable.replaceChildren(table);
+        }
+
+        async function generateSettlementScenarios() {
+          let axes;
+          try {
+            axes = JSON.parse(settlementAxesJson.value);
+          } catch {
+            setSettlementStatus("Scenario assumptions must be valid JSON.", "error");
+            return;
+          }
+          settlementGenerate.disabled = true;
+          settlementScenariosStatus.textContent = "Calculating candidates and requesting the consented AI ranking…";
+          try {
+            const result = await settlementApi(
+              `/cases/${settlementCaseId}/settlement-planning/scenarios`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  expected_profile_revision: settlementState.profile_revision,
+                  expected_settlement_revision: settlementState.settlement_revision,
+                  objective: settlementObjective.value,
+                  axes,
+                }),
+              },
+            );
+            settlementState.profile_revision = result.profile_revision;
+            settlementState.settlement_revision = result.settlement_revision;
+            settlementRunId = result.run_id;
+            renderSettlementScenarios(result);
+            settlementScenariosStatus.textContent = ranking.length
+              ? `Showing all ${result.scenarios.length} candidates. The AI-ranked top ${ranking.length} are highlighted.`
+              : `${result.ranking?.unranked_reason || result.ranking_error || "No AI ranking was returned."} All ${result.scenarios.length} calculated candidates are shown without a recommendation.`;
+            settlementScenariosStatus.dataset.kind = ranking.length
+              ? "success"
+              : result.ranking_error ? "error" : "";
+          } catch (error) {
+            settlementScenariosStatus.textContent = error instanceof Error ? error.message : "Scenario ranking failed.";
+            settlementScenariosStatus.dataset.kind = "error";
+          } finally {
+            settlementGenerate.disabled = false;
+          }
+        }
+
+        async function chooseSettlementScenario(scenario) {
+          try {
+            const result = await settlementApi(
+              `/cases/${settlementCaseId}/settlement-planning/selections`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  idempotency_key: newSettlementId(),
+                  expected_profile_revision: settlementState.profile_revision,
+                  expected_settlement_revision: settlementState.settlement_revision,
+                  run_id: settlementRunId,
+                  scenario_id: scenario.scenario.id,
+                }),
+              },
+            );
+            settlementSelectedScenario = result;
+            settlementOffer.hidden = false;
+            settlementOffer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            setSettlementStatus("Scenario selection saved. Fill in the proposed terms to create an editable DOCX draft.", "success");
+          } catch (error) {
+            setSettlementStatus(error instanceof Error ? error.message : "Scenario selection could not be saved.", "error");
+          }
+        }
+
+        async function downloadSettlementOffer() {
+          if (!settlementSelectedScenario) {
+            setSettlementStatus("Choose a scenario before creating an offer.", "error");
+            return;
+          }
+          const terms = {
+            offer_from: settlementOfferFrom.value,
+            offer_to: settlementOfferTo.value,
+            effective_date: settlementOfferEffective.value || null,
+            response_by_date: settlementOfferResponse.value || null,
+            terms: settlementOfferTerms.value.split("\n").map((term) => term.trim()).filter(Boolean),
+          };
+          settlementOfferDownload.disabled = true;
+          try {
+            const response = await fetch(
+              `/cases/${settlementCaseId}/settlement-planning/offers/${settlementSelectedScenario.selection_id}/docx`,
+              {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                  ...csrfHeaders(),
+                  "Content-Type": "application/json",
+                  Accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                },
+                body: JSON.stringify({ terms }),
+              },
+            );
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              throw new Error("Please sign in again to continue.");
+            }
+            if (!response.ok) {
+              const error = await response.json();
+              const detail = error.detail;
+              throw new Error(
+                typeof detail === "string" ? detail : detail?.message || "Offer draft could not be created.",
+              );
+            }
+            const blob = await response.blob();
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            link.download = "settlement-proposal-draft.docx";
+            link.click();
+            URL.revokeObjectURL(downloadUrl);
+            setSettlementStatus("Editable, nonbinding DOCX draft downloaded. Review it with counsel before sharing.", "success");
+          } catch (error) {
+            setSettlementStatus(error instanceof Error ? error.message : "Offer draft could not be created.", "error");
+          } finally {
+            settlementOfferDownload.disabled = false;
           }
         }
 
@@ -4732,6 +5324,11 @@
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
         });
+        settlementConsentGrant.addEventListener("click", grantSettlementConsent);
+        settlementConsentRevoke.addEventListener("click", revokeSettlementConsent);
+        settlementLedgerAdd.addEventListener("click", appendSettlementLedgerEvents);
+        settlementGenerate.addEventListener("click", generateSettlementScenarios);
+        settlementOfferDownload.addEventListener("click", downloadSettlementOffer);
         analysisPreviewStartButton.addEventListener("click", openAssetAnalysis);
         assetAnalysisBackButton.addEventListener("click", closeAssetAnalysis);
         assetYearRange.addEventListener("input", () => {

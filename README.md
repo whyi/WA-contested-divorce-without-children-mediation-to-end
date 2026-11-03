@@ -91,6 +91,21 @@ The fictional analysis preview and browser-only wizard do not send these facts
 to the API. Apply database migration `0007_property_tracing` before using the
 new case fields.
 
+Evidence-grounded settlement planning is available only in an authorized,
+non-demo case workspace after migration `0008_settlement_planning`. It stores
+append-only, cent-denominated ledger events, requires current profile and
+ledger revisions for writes, and validates source references against active,
+source-backed adopted facts. Scenario calculations are bounded to 12 explicit
+date, tracing, and proposed-allocation combinations; AI ranking is optional and
+requires a separate, revocable purpose-specific consent. Configure
+`AI_ANALYSIS_ENABLED`, `BEDROCK_MODEL_ID`, `BEDROCK_REGION`, and
+`SETTLEMENT_PLANNING_DATA_HANDLING_NOTICE` before the provider ranking can be
+used. The consent notice lists the configured provider, model, region, data
+sent, and handling notice. Calculated candidates remain available without AI
+ranking, and provider or response failures are returned separately from the
+calculated results. The selected scenario can produce an editable, nonbinding
+DOCX draft; it is not stored, sent, or filed automatically.
+
 Run locally with Docker Compose:
 
 ```sh
