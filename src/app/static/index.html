@@ -667,10 +667,9 @@
       .asset-milestone-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid #e3e9e3; border-radius: 7px; }
       .asset-milestone-item-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .7fr); gap: 8px; }
       .asset-milestone-item-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-      .asset-milestone-chart-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; margin: 16px 0 8px; }
+      .asset-milestone-chart-controls { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 460px; margin: 16px 0 8px; }
       .asset-milestone-select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #cbd8cc; border-radius: 6px; color: #24352b; background: #fff; font: inherit; }
       .asset-milestone-status { min-height: 20px; margin: 8px 0 !important; color: #536258 !important; font-size: 12px !important; }
-      .asset-milestone-list#asset-milestone-index li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid #e8ede8; color: #536258; font-size: 12px; }
       .asset-milestone-list button { padding: 4px 8px; border: 1px solid #cbd8cc; border-radius: 5px; color: #344a3d; background: #fff; cursor: pointer; font: inherit; font-weight: 700; }
       .asset-milestone-marker { cursor: pointer; }
       .asset-milestone-marker .marker-stem { stroke: #66776c; stroke-width: 1; stroke-dasharray: 3 3; }
@@ -1312,7 +1311,7 @@
                   <h3 id="asset-chart-heading">Illustrative asset trend</h3>
                   <p>This trend includes every annual sample and milestone-date snapshot. Select a milestone to move to its date.</p>
                   <div class="asset-milestone-chart-controls">
-                    <label class="asset-milestone-field" for="asset-milestone-selector">Highlight a milestone
+                    <label class="asset-milestone-field" for="asset-milestone-selector">Milestone to highlight
                       <select class="asset-milestone-select" id="asset-milestone-selector" aria-describedby="asset-milestone-guidance">
                         <option value="">No milestone selected</option>
                       </select>
@@ -1342,7 +1341,6 @@
                       </label>
                     </div>
                     <p class="settlement-date-help">Drag along the chart to move the nearest date marker, or enter exact dates above. The highlighted range recalculates the examples below.</p>
-                    <ul class="asset-milestone-list" id="asset-milestone-index" aria-label="Available timeline milestones"></ul>
                     <ul class="asset-chart-legend" aria-label="Chart series">
                       <li><span style="--legend-color:#2f6652"></span>You</li>
                       <li><span style="--legend-color:#9c6a2c"></span>Other party</li>
@@ -1490,7 +1488,6 @@
         const settlementScenarioStatus = document.getElementById("settlement-scenario-status");
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
         const assetMilestoneStatus = document.getElementById("asset-milestone-status");
-        const assetMilestoneIndex = document.getElementById("asset-milestone-index");
         const standardMilestoneList = document.getElementById("standard-milestone-list");
         const customMilestoneForm = document.getElementById("custom-milestone-form");
         const customMilestoneLabel = document.getElementById("custom-milestone-label");
@@ -3283,48 +3280,6 @@
           }
           renderStandardMilestoneList();
           renderCustomMilestoneList();
-          renderAssetMilestoneIndex();
-        }
-
-        function renderAssetMilestoneIndex() {
-          assetMilestoneIndex.replaceChildren();
-          const firstYear = sampleAssetYears[0].year;
-          const afterLastYear = sampleAssetYears[sampleAssetYears.length - 1].year + 1;
-          const availableMilestones = allAssetMilestones().filter(
-            (milestone) => milestoneActiveDate(milestone) && isValidMilestoneDate(milestoneActiveDate(milestone)),
-          ).sort((leftMilestone, rightMilestone) => (
-            milestoneActiveDate(leftMilestone).localeCompare(milestoneActiveDate(rightMilestone))
-          ));
-          availableMilestones.forEach((milestone, index) => {
-            const date = milestoneActiveDate(milestone);
-            const item = document.createElement("li");
-            const text = document.createElement("span");
-            const sourceLabel = milestone.overrideDate
-              ? " (user-overridden)"
-              : milestone.source === "user"
-                ? " (user-entered)"
-                : "";
-            text.textContent = `${index + 1}. ${milestone.label} — ${formatMilestoneDate(date)}${sourceLabel}`;
-            const dateYear = Number(date.slice(0, 4));
-            const outOfRange = dateYear < firstYear || dateYear >= afterLastYear;
-            if (outOfRange) {
-              const rangeNote = document.createElement("strong");
-              rangeNote.textContent = "Outside displayed timeline";
-              text.append(" — ", rangeNote);
-            }
-            const focus = document.createElement("button");
-            focus.type = "button";
-            focus.dataset.focusMilestone = milestone.id;
-            focus.textContent = selectedAssetMilestoneId === milestone.id ? "Selected" : "Highlight";
-            focus.setAttribute("aria-pressed", String(selectedAssetMilestoneId === milestone.id));
-            item.append(text, focus);
-            assetMilestoneIndex.append(item);
-          });
-          if (!assetMilestoneIndex.childElementCount) {
-            const empty = document.createElement("li");
-            empty.textContent = "No milestone dates are available yet.";
-            assetMilestoneIndex.append(empty);
-          }
         }
 
         function renderAssetMilestoneMarkers(positions, bottom) {
@@ -3381,7 +3336,6 @@
         function announceSelectedAssetMilestone() {
           if (!selectedAssetMilestoneId) {
             assetMilestoneStatus.textContent = "No milestone selected.";
-            renderAssetMilestoneIndex();
             return;
           }
           const milestone = allAssetMilestones().find(
@@ -3391,7 +3345,6 @@
             selectedAssetMilestoneId = "";
             assetMilestoneSelector.value = "";
             assetMilestoneStatus.textContent = "No milestone selected.";
-            renderAssetMilestoneIndex();
             return;
           }
           const date = milestoneActiveDate(milestone);
@@ -3402,7 +3355,6 @@
           assetMilestoneStatus.textContent = outOfRange
             ? `${milestone.label}, ${formatMilestoneDate(date)}, selected. This date is outside the annual sample range; it is shown on the chart using the nearest sample, with no extrapolation.`
             : `${milestone.label}, ${formatMilestoneDate(date)}, selected on the chart. ${milestoneProvenance(milestone)}`;
-          renderAssetMilestoneIndex();
         }
 
         function assetYearDate(sample) {
@@ -5657,12 +5609,6 @@
         });
         assetMilestoneSelector.addEventListener("change", () => {
           selectAssetMilestone(assetMilestoneSelector.value);
-        });
-        assetMilestoneIndex.addEventListener("click", (event) => {
-          const target = event.target instanceof Element
-            ? event.target.closest("[data-focus-milestone]")
-            : null;
-          if (target) selectAssetMilestone(target.dataset.focusMilestone);
         });
         assetChartMilestones.addEventListener("click", (event) => {
           const marker = event.target instanceof Element
