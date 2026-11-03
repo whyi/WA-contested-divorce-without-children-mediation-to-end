@@ -629,6 +629,23 @@
       .asset-chart .chart-axis { stroke: #aab6ab; stroke-width: 1; }
       .asset-chart .chart-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
       .asset-chart .chart-point { stroke: #fff; stroke-width: 2; }
+      .asset-chart .settlement-date-band { fill: rgba(47, 102, 82, .13); pointer-events: none; }
+      .asset-chart .settlement-date-line { stroke: #2f6652; stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+      .asset-chart .settlement-date-hit-area { fill: transparent; cursor: crosshair; touch-action: none; }
+      .settlement-date-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 8px; }
+      .settlement-date-controls label { display: grid; gap: 6px; color: #43544a; font-size: 12px; font-weight: 750; }
+      .settlement-date-controls input { min-height: 40px; padding: 8px 10px; border: 1px solid #cbd8cc; border-radius: 6px; color: #24352b; background: #fff; font: inherit; }
+      .settlement-date-help { margin: 6px 0 0 !important; color: #68756c !important; font-size: 11px !important; }
+      .settlement-scenario-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+      .settlement-scenario-card { padding: 16px; border: 1px solid #dce5dc; border-radius: 9px; background: #fff; }
+      .settlement-scenario-card h4 { margin: 0 0 8px; color: var(--green-dark); font-size: 14px; }
+      .settlement-scenario-card p { margin: 7px 0; color: #536258; font-size: 12px; line-height: 1.5; }
+      .settlement-scenario-card strong { color: #24352b; }
+      .settlement-scenario-status { min-height: 20px; margin: 10px 0 0 !important; color: #536258 !important; font-size: 11px !important; }
+      .settlement-scenario-card[data-highlight="true"] { border-color: var(--green); background: #f7faf7; }
+      @media (max-width: 620px) {
+        .settlement-date-controls, .settlement-scenario-results { grid-template-columns: 1fr; }
+      }
       .asset-chart .chart-cursor-line { stroke: #344a3d; stroke-width: 1.5; stroke-dasharray: 4 4; }
       .asset-chart .chart-cursor-halo { fill: #fff; stroke: #344a3d; stroke-width: 2; }
       .asset-chart .chart-cursor-label { fill: #344a3d; font-size: 10px; font-weight: 750; }
@@ -1311,45 +1328,36 @@
                         <g id="asset-chart-grid"></g>
                         <g id="asset-chart-labels"></g>
                         <g id="asset-chart-lines"></g>
+                        <g id="settlement-date-range-overlay" aria-hidden="true"></g>
                         <g id="asset-chart-milestones" aria-label="Relationship milestone markers"></g>
                         <g id="asset-chart-cursor" aria-hidden="true"></g>
                       </svg>
                     </div>
+                    <div class="settlement-date-controls" aria-label="Scenario date range">
+                      <label for="settlement-start-date">Start Date
+                        <input id="settlement-start-date" type="date" value="2021-06-15">
+                      </label>
+                      <label for="settlement-end-date">End Date (Division Date)
+                        <input id="settlement-end-date" type="date" value="2025-01-01">
+                      </label>
+                    </div>
+                    <p class="settlement-date-help">Drag along the chart to move the nearest date marker, or enter exact dates above. The highlighted range recalculates the examples below.</p>
                     <ul class="asset-milestone-list" id="asset-milestone-index" aria-label="Available timeline milestones"></ul>
                     <ul class="asset-chart-legend" aria-label="Chart series">
                       <li><span style="--legend-color:#2f6652"></span>You</li>
                       <li><span style="--legend-color:#9c6a2c"></span>Other party</li>
                       <li><span style="--legend-color:#58749c"></span>Combined net assets</li>
                     </ul>
-                    <figcaption class="scenario-disclaimer">Sample relationship timeline: 2020–2025. The chart and table are fictional examples.</figcaption>
+                    <figcaption class="scenario-disclaimer">Sample relationship timeline: 2020–2025. Chart values and scenario calculations are fictional examples.</figcaption>
                   </figure>
                 </section>
 
-                <section class="asset-analysis-panel" aria-labelledby="scenario-heading">
-                  <h3 id="scenario-heading">Possible discussion scenarios</h3>
-                  <p>Explore three hypothetical ways a conversation might be framed. Selecting one only changes this preview.</p>
-                  <div class="scenario-grid" id="scenario-options">
-                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="best">
-                      <span class="scenario-label">Best-case proposal</span>
-                      <strong>Opening position</strong>
-                      <span class="scenario-split">$346,500 you · $283,500 other party</span>
-                      <span>Illustrates asking for 55% of the fictional $630,000 net assets.</span>
-                    </button>
-                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="balanced">
-                      <span class="scenario-label">Balanced proposal</span>
-                      <strong>Shared starting point</strong>
-                      <span class="scenario-split">$315,000 each</span>
-                      <span>Illustrates an equal split of the fictional net assets for discussion.</span>
-                    </button>
-                    <button class="scenario-choice" type="button" aria-pressed="false" data-scenario="fallback">
-                      <span class="scenario-label">Fallback position</span>
-                      <strong>Alternative to consider</strong>
-                      <span class="scenario-split">$283,500 you · $346,500 other party</span>
-                      <span>Illustrates a 45% share for you as one possible fallback discussion point.</span>
-                    </button>
-                  </div>
-                  <p class="scenario-status" id="scenario-status" role="status" aria-live="polite">No scenario selected. Choose one to preview it; your choice will not be sent or saved.</p>
-                  <p class="scenario-disclaimer">These are not legal conclusions, predictions, or personalized recommendations. Actual property characterization, valuation, and division depend on facts and applicable law; discuss decisions with a qualified attorney or mediator.</p>
+                <section class="asset-analysis-panel" id="settlement-scenarios-preview" aria-labelledby="settlement-scenarios-preview-title">
+                  <h3 id="settlement-scenarios-preview-title">Scenario ideas for the selected dates</h3>
+                  <p>These three fictional examples update when either date changes. Each keeps the parties' sample net balances at the Start Date as a baseline, then applies the displayed proposed share to the change in combined sample net assets through the End Date (Division Date). They are not legal characterizations, advice, or AI-ranked recommendations.</p>
+                  <div class="settlement-scenario-results" id="settlement-scenario-results" aria-live="polite"></div>
+                  <p class="settlement-scenario-status" id="settlement-scenario-status" role="status" aria-live="polite"></p>
+                  <p class="scenario-disclaimer">Fictional page-only calculation; no case data is used, saved, or sent to AI. The End Date is an illustrative valuation/division date and is not necessarily a legal separation or characterization date.</p>
                 </section>
               </section>
               <a class="back-to-account" href="/#account">Back to your account</a>
@@ -1471,9 +1479,15 @@
         const assetChartGrid = document.getElementById("asset-chart-grid");
         const assetChartLabels = document.getElementById("asset-chart-labels");
         const assetChartLines = document.getElementById("asset-chart-lines");
+        const settlementDateRangeOverlay = document.getElementById("settlement-date-range-overlay");
+        const assetTimelineChart = document.getElementById("asset-timeline-chart");
         const assetChartMilestones = document.getElementById("asset-chart-milestones");
         const assetChartCursor = document.getElementById("asset-chart-cursor");
         const assetChartDescription = document.getElementById("asset-chart-desc");
+        const settlementStartDate = document.getElementById("settlement-start-date");
+        const settlementEndDate = document.getElementById("settlement-end-date");
+        const settlementScenarioResults = document.getElementById("settlement-scenario-results");
+        const settlementScenarioStatus = document.getElementById("settlement-scenario-status");
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
         const assetMilestoneStatus = document.getElementById("asset-milestone-status");
         const assetMilestoneIndex = document.getElementById("asset-milestone-index");
@@ -1483,8 +1497,6 @@
         const customMilestoneDate = document.getElementById("custom-milestone-date");
         const customMilestoneError = document.getElementById("custom-milestone-error");
         const customMilestoneList = document.getElementById("custom-milestone-list");
-        const scenarioOptions = document.getElementById("scenario-options");
-        const scenarioStatus = document.getElementById("scenario-status");
         const analysisControls = document.getElementById("analysis-controls");
         const analysisExplanation = document.getElementById("analysis-explanation");
         const analysisDocumentList = document.getElementById("analysis-documents");
@@ -1527,6 +1539,8 @@
         let settlementDisclosureAvailable = false;
         let settlementRunId = null;
         let selectedAssetYearIndex = 0;
+        let settlementDateRangeDragHandle = "";
+        let settlementDateRangePointerId = null;
         let assetTimelineStops = [];
         const interpolatedAssetOverrides = new Map();
         let assetEditDraft = null;
@@ -2890,7 +2904,7 @@
           document.getElementById("preparation-description").textContent = isUpload
             ? "Choose files from your device, review your selection, and confirm before anything is imported."
             : isDemo
-              ? "Explore a sample asset comparison and possible discussion scenarios. No sign-in or case data is needed."
+              ? "Explore fictional sample assets and compare marriage-only, earlier CIR, and intermediate-date settlement assumptions. No sign-in or case data is needed."
               : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
           materialsWorkflow.hidden = !isUpload;
           preparationNote.hidden = isUpload || isDemo;
@@ -3885,6 +3899,8 @@
             bottom,
             height: chartHeight,
             maxValue,
+            dateStart: chartStart,
+            dateEnd: chartEnd,
             startYear: Math.min(firstYear, ...milestoneTimestamps.map(
               (timestamp) => new Date(timestamp).getUTCFullYear(),
             )),
@@ -3988,7 +4004,135 @@
             (milestone) => milestoneActiveDate(milestone) && isValidMilestoneDate(milestoneActiveDate(milestone)),
           ).length;
           assetChartDescription.textContent = `A line chart compares sample net assets for you, the other party, and both parties combined from ${new Date(chartStart).getUTCFullYear()} through ${new Date(chartEnd).getUTCFullYear()}. ${availableMilestoneCount} available relationship milestone(s) are identified separately. Custom-date values are interpolated between annual samples or use the nearest endpoint outside the sample range. All amounts and dates are illustrative.`;
+          const firstSampleDate = assetYearDate(sampleAssetYears[0]);
+          const lastSampleDate = assetYearDate(sampleAssetYears[sampleAssetYears.length - 1]);
+          settlementStartDate.min = firstSampleDate;
+          settlementStartDate.max = lastSampleDate;
+          settlementEndDate.min = firstSampleDate;
+          settlementEndDate.max = lastSampleDate;
+          if (!isValidMilestoneDate(settlementStartDate.value)
+            || settlementStartDate.value < firstSampleDate
+            || settlementStartDate.value > lastSampleDate) {
+            settlementStartDate.value = firstSampleDate;
+          }
+          if (!isValidMilestoneDate(settlementEndDate.value)
+            || settlementEndDate.value < firstSampleDate
+            || settlementEndDate.value > lastSampleDate) {
+            settlementEndDate.value = lastSampleDate;
+          }
+          if (settlementStartDate.value > settlementEndDate.value) {
+            settlementStartDate.value = settlementEndDate.value;
+          }
+          renderSettlementDateRange();
+          renderDemoSettlementScenarios();
           renderAssetTimelineCursor(selectedAssetYearIndex);
+        }
+
+        function settlementNetAssetsAt(date) {
+          const values = assetSnapshotAtDate(date).values;
+          return [0, 1].map((partyIndex) => sampleAssetCategories.reduce(
+            (total, [, category]) => total + values[category][partyIndex],
+            0,
+          ));
+        }
+
+        function renderDemoSettlementScenarios() {
+          const startDate = settlementStartDate.value;
+          const endDate = settlementEndDate.value;
+          if (!isValidMilestoneDate(startDate) || !isValidMilestoneDate(endDate) || startDate > endDate) {
+            settlementScenarioResults.replaceChildren();
+            settlementScenarioStatus.textContent = "Choose a valid Start Date on or before the End Date (Division Date).";
+            return;
+          }
+          const startBalances = settlementNetAssetsAt(startDate);
+          const endBalances = settlementNetAssetsAt(endDate);
+          const startingCombined = startBalances[0] + startBalances[1];
+          const endingCombined = endBalances[0] + endBalances[1];
+          const netChange = endingCombined - startingCombined;
+          const scenarios = [
+            { label: "Higher proposed share", share: 55 },
+            { label: "Even proposed share", share: 50 },
+            { label: "Lower proposed share", share: 45 },
+          ];
+          settlementScenarioResults.replaceChildren();
+          for (const [index, scenario] of scenarios.entries()) {
+            const userNet = startBalances[0] + Math.round(netChange * scenario.share / 100);
+            const otherNet = endingCombined - userNet;
+            const card = document.createElement("article");
+            card.className = "settlement-scenario-card";
+            card.dataset.highlight = String(index === 0);
+            const title = document.createElement("h4");
+            title.textContent = scenario.label;
+            card.append(title);
+            const share = document.createElement("p");
+            share.textContent = `${scenario.share}% of the net change allocated to you`;
+            card.append(share);
+            for (const [label, value] of [
+              ["Illustrative net to you", userNet],
+              ["Illustrative net to other party", otherNet],
+            ]) {
+              const row = document.createElement("p");
+              const strong = document.createElement("strong");
+              strong.textContent = `${label}: ${formatSampleCurrency(value)}`;
+              row.append(strong);
+              card.append(row);
+            }
+            const change = document.createElement("p");
+            change.textContent = `Combined net-asset change in this date range: ${formatSampleCurrency(netChange)}`;
+            card.append(change);
+            settlementScenarioResults.append(card);
+          }
+          settlementScenarioStatus.textContent = `Recalculated for ${formatMilestoneDate(startDate)} through ${formatMilestoneDate(endDate)}. Start-date balances are held as baselines; only the change in combined sample net assets is split by each displayed assumption.`;
+        }
+
+        function renderSettlementDateRange() {
+          const { left, right, top, bottom, xForDate } = assetChartLayout;
+          if (!Number.isFinite(assetChartLayout.dateStart) || !Number.isFinite(assetChartLayout.dateEnd)) return;
+          const startX = xForDate(Date.parse(`${settlementStartDate.value}T00:00:00Z`));
+          const endX = xForDate(Date.parse(`${settlementEndDate.value}T00:00:00Z`));
+          settlementDateRangeOverlay.replaceChildren();
+          createChartElement(settlementDateRangeOverlay, "rect", {
+            x: left, y: top, width: right - left, height: bottom - top,
+            class: "settlement-date-hit-area",
+          });
+          createChartElement(settlementDateRangeOverlay, "rect", {
+            x: Math.min(startX, endX), y: top,
+            width: Math.max(2, Math.abs(endX - startX)), height: bottom - top,
+            class: "settlement-date-band",
+          });
+          for (const x of [startX, endX]) {
+            createChartElement(settlementDateRangeOverlay, "line", {
+              x1: x, y1: top, x2: x, y2: bottom,
+              class: "settlement-date-line",
+            });
+          }
+        }
+
+        function settlementDateAtPointer(event) {
+          const matrix = assetTimelineChart.getScreenCTM();
+          if (!matrix) return "";
+          const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+          const { left, right, dateStart, dateEnd } = assetChartLayout;
+          const fraction = Math.max(0, Math.min(1, (point.x - left) / (right - left)));
+          const minTimestamp = Date.parse(`${settlementStartDate.min}T00:00:00Z`);
+          const maxTimestamp = Date.parse(`${settlementStartDate.max}T00:00:00Z`);
+          const timestamp = Math.max(minTimestamp, Math.min(
+            maxTimestamp,
+            dateStart + fraction * (dateEnd - dateStart),
+          ));
+          return new Date(Math.round(timestamp / 86400000) * 86400000).toISOString().slice(0, 10);
+        }
+
+        function updateSettlementDateFromPointer(event) {
+          const date = settlementDateAtPointer(event);
+          if (!date) return;
+          if (settlementDateRangeDragHandle === "start") {
+            settlementStartDate.value = date > settlementEndDate.value ? settlementEndDate.value : date;
+          } else if (settlementDateRangeDragHandle === "end") {
+            settlementEndDate.value = date < settlementStartDate.value ? settlementStartDate.value : date;
+          }
+          renderSettlementDateRange();
+          renderDemoSettlementScenarios();
         }
 
         function renderAssetTimelineCursor(index, values = null) {
@@ -5334,6 +5478,49 @@
         assetYearRange.addEventListener("input", () => {
           renderAssetSnapshot(Number(assetYearRange.value));
         });
+        for (const dateInput of [settlementStartDate, settlementEndDate]) {
+          dateInput.addEventListener("input", () => {
+            if (!isValidMilestoneDate(dateInput.value)) return;
+            if (dateInput === settlementStartDate && dateInput.value > settlementEndDate.value) {
+              settlementEndDate.value = dateInput.value;
+            }
+            if (dateInput === settlementEndDate && dateInput.value < settlementStartDate.value) {
+              settlementStartDate.value = dateInput.value;
+            }
+            renderSettlementDateRange();
+            renderDemoSettlementScenarios();
+          });
+        }
+        assetTimelineChart.addEventListener("pointerdown", (event) => {
+          const target = event.target instanceof Element
+            ? event.target.closest(".settlement-date-hit-area")
+            : null;
+          if (!target) return;
+          event.preventDefault();
+          const pointerDate = settlementDateAtPointer(event);
+          if (!pointerDate) return;
+          const startDistance = Math.abs(
+            Date.parse(`${settlementStartDate.value}T00:00:00Z`) - Date.parse(`${pointerDate}T00:00:00Z`),
+          );
+          const endDistance = Math.abs(
+            Date.parse(`${settlementEndDate.value}T00:00:00Z`) - Date.parse(`${pointerDate}T00:00:00Z`),
+          );
+          settlementDateRangeDragHandle = startDistance <= endDistance ? "start" : "end";
+          settlementDateRangePointerId = event.pointerId;
+          assetTimelineChart.setPointerCapture(event.pointerId);
+          updateSettlementDateFromPointer(event);
+        });
+        assetTimelineChart.addEventListener("pointermove", (event) => {
+          if (event.pointerId !== settlementDateRangePointerId) return;
+          updateSettlementDateFromPointer(event);
+        });
+        for (const eventName of ["pointerup", "pointercancel"]) {
+          assetTimelineChart.addEventListener(eventName, (event) => {
+            if (event.pointerId !== settlementDateRangePointerId) return;
+            settlementDateRangePointerId = null;
+            settlementDateRangeDragHandle = "";
+          });
+        }
         assetEditStart.addEventListener("click", startAssetEdit);
         assetEditSave.addEventListener("click", saveAssetEdit);
         assetEditCancel.addEventListener("click", cancelAssetEdit);
@@ -5491,17 +5678,6 @@
           if (!marker) return;
           event.preventDefault();
           selectAssetMilestone(marker.dataset.milestoneId);
-        });
-        scenarioOptions.addEventListener("click", (event) => {
-          const choice = event.target instanceof Element
-            ? event.target.closest(".scenario-choice")
-            : null;
-          if (!choice) return;
-          for (const button of scenarioOptions.querySelectorAll(".scenario-choice")) {
-            button.setAttribute("aria-pressed", String(button === choice));
-          }
-          const selectedLabel = choice.querySelector(".scenario-label")?.textContent || "Scenario";
-          scenarioStatus.textContent = `${selectedLabel} selected for this preview only. Nothing was sent or saved.`;
         });
         materialsInput.addEventListener("change", () => {
           void addMaterials(Array.from(materialsInput.files || []));

@@ -64,6 +64,7 @@
 
 - **FR-16-31 — Review UI:** Provide an accessible event ledger, source-status cues, scenario comparison table, top-three highlight, complete scenario list, and a selected-scenario offer-draft action. Support keyboard use, responsive layouts, and announced async/error states.
 - **FR-16-32 — Existing records:** Cases without new ledger/scenario state remain readable and unchanged. Preserve existing profile facts, inventory, and negotiation events.
+- **FR-16-33 — Fictional demo:** The public `/demo` may display a dynamic sample scenario comparison without sign-in. Provide separate `Start Date` and `End Date (Division Date)` calendar controls and graph-based range selection; recalculate three deterministic fictional examples when either date changes. Keep the demo visibly fictional and disconnected from case data, persistence, and AI processing. Do not imply the demo's date assumptions are legal rules, AI rankings, or that relationship-characterization and division dates are always the same.
 
 ## 7. Acceptance Criteria
 
