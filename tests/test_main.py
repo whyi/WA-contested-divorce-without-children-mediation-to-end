@@ -144,6 +144,37 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('settlementConsentRevoke.addEventListener("click", revokeSettlementConsent)', page)
         self.assertIn("openSettlementPlanner(item.id)", page)
 
+    def test_existing_demo_shows_dynamic_fictional_settlement_scenarios(self) -> None:
+        status, body = asyncio.run(request_app("/demo"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="settlement-scenarios-preview"', page)
+        self.assertGreater(
+            page.index('id="settlement-scenarios-preview"'),
+            page.index('id="asset-chart-heading"'),
+        )
+        self.assertNotIn("Possible discussion scenarios", page)
+        table_section = page.split('id="settlement-scenarios-preview"', 1)[1].split(
+            "</section>", 1
+        )[0]
+        self.assertIn('<input id="settlement-start-date" type="date"', page)
+        self.assertIn('<input id="settlement-end-date" type="date"', page)
+        self.assertIn('id="settlement-date-range-overlay"', page)
+        self.assertIn("Drag along the chart", page)
+        self.assertIn('id="settlement-scenario-results" aria-live="polite"', table_section)
+        self.assertIn('id="settlement-scenario-status" role="status"', table_section)
+        self.assertIn("function renderDemoSettlementScenarios()", page)
+        self.assertIn('{ label: "Higher proposed share", share: 55 }', page)
+        self.assertIn('{ label: "Even proposed share", share: 50 }', page)
+        self.assertIn('{ label: "Lower proposed share", share: 45 }', page)
+        self.assertIn('assetTimelineChart.addEventListener("pointerdown"', page)
+        self.assertIn("or sent to AI", table_section)
+        self.assertNotIn("<table", table_section)
+        self.assertNotIn("<tbody", table_section)
+        self.assertNotIn("81 combinations", page)
+        self.assertNotIn("$500,000 on 2024-01-01", page)
+
     def test_asset_analysis_preview_is_fictional_and_local_only(self) -> None:
         status, body = asyncio.run(request_app("/"))
 
@@ -168,10 +199,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("asset-year-tab", page)
         self.assertIn('assetYearRange.addEventListener("input"', page)
         self.assertIn("renderAssetTimelineCursor(index, values)", page)
-        self.assertIn("Best-case proposal", page)
-        self.assertIn("Balanced proposal", page)
-        self.assertIn("Fallback position", page)
-        self.assertIn('id="scenario-status" role="status" aria-live="polite"', page)
+        self.assertIn("Scenario ideas for the selected dates", page)
+        self.assertNotIn("Possible discussion scenarios", page)
+        self.assertNotIn("scenarioOptions.addEventListener", page)
         open_view = page.split("function openAssetAnalysis()", 1)[1].split(
             "function closeAssetAnalysis()", 1
         )[0]

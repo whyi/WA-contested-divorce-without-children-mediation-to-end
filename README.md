@@ -105,6 +105,13 @@ sent, and handling notice. Calculated candidates remain available without AI
 ranking, and provider or response failures are returned separately from the
 calculated results. The selected scenario can produce an editable, nonbinding
 DOCX draft; it is not stored, sent, or filed automatically.
+The public `/demo` page has a fictional date-range preview: users can drag the
+start/end markers on the asset chart or enter `Start Date` and `End Date
+(Division Date)` in calendar controls. Three sample share scenarios recalculate
+from the selected interval. They are deterministic examples, not AI rankings or
+legal conclusions; the end date is not necessarily a separation or
+characterization date. The demo is not connected to case data, saved, or sent
+to an AI provider.
 
 Run locally with Docker Compose:
 
