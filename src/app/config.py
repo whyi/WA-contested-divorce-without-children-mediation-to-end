@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     ai_analysis_enabled: bool = False
     ai_analysis_notice_version: str | None = None
     ai_analysis_data_handling_notice: str | None = None
+    settlement_planning_data_handling_notice: str | None = None
     auth_enabled: bool = False
     case_data_enabled: bool = False
     case_materials_enabled: bool = False

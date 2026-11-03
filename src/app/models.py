@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -47,6 +48,7 @@ class Case(Base):
         server_default=text("'[]'::jsonb"),
     )
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -67,6 +69,123 @@ class NegotiationEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     case: Mapped[Case] = relationship(back_populates="negotiations")
+
+
+class SettlementPlanningConsentEvent(Base):
+    __tablename__ = "settlement_planning_consent_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    notice_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    accepted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(100))
+    model_id: Mapped[str | None] = mapped_column(String(255))
+    region: Mapped[str | None] = mapped_column(String(100))
+    purpose: Mapped[str | None] = mapped_column(Text)
+    data_sent: Mapped[str | None] = mapped_column(Text)
+    data_handling_notice: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SettlementScenarioRun(Base):
+    __tablename__ = "settlement_scenario_runs"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    axes_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    scenario_results_json: Mapped[list[dict]] = mapped_column(JSONB, nullable=False)
+    ranking_json: Mapped[dict | None] = mapped_column(JSONB)
+    ranking_error: Mapped[str | None] = mapped_column(Text)
+    input_fact_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    provider: Mapped[str | None] = mapped_column(String(100))
+    model_id: Mapped[str | None] = mapped_column(String(255))
+    region: Mapped[str | None] = mapped_column(String(100))
+    notice_version: Mapped[str | None] = mapped_column(String(100))
+    data_handling_notice: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SettlementLedgerEvent(Base):
+    __tablename__ = "settlement_ledger_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "asset_id",
+            "effective_date",
+            "sequence_number",
+            name="uq_settlement_ledger_asset_event_order",
+        ),
+        UniqueConstraint(
+            "case_id",
+            "user_id_snapshot",
+            "idempotency_key",
+            name="uq_settlement_ledger_event_idempotency",
+        ),
+        CheckConstraint("sequence_number >= 0", name="ck_settlement_ledger_sequence"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    asset_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    asset_kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    idempotency_key: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SettlementScenarioSelection(Base):
+    __tablename__ = "settlement_scenario_selections"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "user_id_snapshot",
+            "idempotency_key",
+            name="uq_settlement_scenario_selection_idempotency",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    idempotency_key: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "settlement_scenario_runs.id",
+            name="fk_settlement_scenario_selections_run_id",
+            ondelete="CASCADE",
+        ),
+        index=True,
+    )
+    scenario_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    scenario_result_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class Document(Base):
