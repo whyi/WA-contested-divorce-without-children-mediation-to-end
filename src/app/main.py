@@ -41,6 +41,13 @@ from app.models import (
     NegotiationEvent,
     User,
 )
+from app.property_tracing import (
+    AssetClassification,
+    PropertyAsset,
+    PropertyTracingUpdate,
+    RelationshipMilestones,
+    classify_asset,
+)
 from app.materials import router as materials_router
 from app.review import router as review_router
 from app.services import (
@@ -186,6 +193,10 @@ class CaseCreate(BaseModel):
     status: Literal["draft", "mediation", "settlement", "finalized"] = "draft"
     metadata: dict = Field(default_factory=dict)
     asset_liability_inventory: dict = Field(default_factory=dict)
+    relationship_milestones: RelationshipMilestones = Field(
+        default_factory=RelationshipMilestones
+    )
+    property_assets: list[PropertyAsset] = Field(default_factory=list, max_length=250)
 
 
 class CaseRead(BaseModel):
@@ -195,6 +206,20 @@ class CaseRead(BaseModel):
     status: str
     metadata_json: dict
     asset_liability_inventory: dict
+    relationship_milestones: dict
+    property_assets: list[dict]
+
+
+class ClassifiedPropertyAsset(PropertyAsset):
+    classification: AssetClassification
+
+
+class PropertyTracingRead(BaseModel):
+    relationship_milestones: RelationshipMilestones
+    assets: list[ClassifiedPropertyAsset]
+    classification_notice: str = (
+        "Property classifications are organizational candidates only, not legal determinations."
+    )
 
 
 class NegotiationCreate(BaseModel):
@@ -381,6 +406,8 @@ def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
         status=payload.status,
         metadata_json=payload.metadata,
         asset_liability_inventory=payload.asset_liability_inventory,
+        relationship_milestones=payload.relationship_milestones.model_dump(mode="json"),
+        property_assets=[asset.model_dump(mode="json") for asset in payload.property_assets],
     )
     db.add(case)
     db.flush()
@@ -393,6 +420,58 @@ def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
 @app.get("/cases/{case_id}", response_model=CaseRead)
 def read_case(case_id: UUID, db: DbSession) -> Case:
     return _require_case(db, case_id)
+
+
+def _property_tracing_response(case: Case) -> PropertyTracingRead:
+    milestones = RelationshipMilestones.model_validate(case.relationship_milestones or {})
+    assets = [
+        PropertyAsset.model_validate(asset)
+        for asset in (case.property_assets or [])
+    ]
+    return PropertyTracingRead(
+        relationship_milestones=milestones,
+        assets=[
+            ClassifiedPropertyAsset(
+                **asset.model_dump(),
+                classification=classify_asset(asset, milestones),
+            )
+            for asset in assets
+        ],
+    )
+
+
+@app.get(
+    "/cases/{case_id}/property-tracing",
+    response_model=PropertyTracingRead,
+)
+def read_property_tracing(case_id: UUID, db: DbSession) -> PropertyTracingRead:
+    return _property_tracing_response(_require_case(db, case_id))
+
+
+@app.put(
+    "/cases/{case_id}/property-tracing",
+    response_model=PropertyTracingRead,
+)
+def update_property_tracing(
+    case_id: UUID,
+    payload: PropertyTracingUpdate,
+    db: DbSession,
+) -> PropertyTracingRead:
+    case = _require_case(db, case_id)
+    case.relationship_milestones = payload.relationship_milestones.model_dump(mode="json")
+    case.property_assets = [
+        asset.model_dump(mode="json") for asset in payload.assets
+    ]
+    try:
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Case property-tracing update failed.")
+        raise HTTPException(
+            status_code=503,
+            detail="Property-tracing data could not be saved. Please try again.",
+        ) from error
+    return _property_tracing_response(case)
 
 
 @app.get(
