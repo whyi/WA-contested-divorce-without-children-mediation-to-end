@@ -511,6 +511,15 @@
       .settlement-offer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
       .settlement-offer-grid label { display: grid; gap: 5px; }
       .settlement-offer-grid label:last-child { grid-column: 1 / -1; }
+      .settlement-export-actions, .settlement-export-provider { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+      .settlement-export-provider { justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+      .settlement-export-provider label { display: grid; gap: 5px; min-width: min(100%, 260px); }
+      .settlement-export-destinations { margin-top: 20px; }
+      .settlement-export-destinations > p, #settlement-export-confirmation-details { color: var(--muted); font-size: 13px; }
+      #settlement-export-confirmation { width: min(92vw, 520px); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--paper); }
+      #settlement-export-confirmation::backdrop { background: rgba(15, 25, 20, .55); }
+      #settlement-export-confirmation:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+      @media (max-width: 620px) { .settlement-offer-grid { grid-template-columns: minmax(0, 1fr); } .settlement-export-provider { align-items: stretch; flex-direction: column; } }
       .settlement-planner pre { overflow: auto; padding: 12px; border-radius: 8px; color: #34443a; background: #f1f5f1; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .preparation-view { padding-top: 12px; }
       .preparation-note { padding: 16px; border-radius: 8px; color: #574827; background: #fbf5e8; }
@@ -1143,17 +1152,62 @@
                   <p class="settlement-status" id="settlement-scenarios-status" role="status" aria-live="polite"></p>
                   <div id="settlement-scenarios-table"></div>
                   <section id="settlement-offer" hidden aria-labelledby="settlement-offer-title">
-                    <h3 id="settlement-offer-title">Draft a nonbinding mediation offer</h3>
-                    <p>The selected calculation and your proposed terms are used to create an editable DOCX draft. It is not automatically sent, filed, or legally binding.</p>
+                    <h3 id="settlement-offer-title">Prepare a CR 2A proposal draft</h3>
+                    <p>Create editable Word and Excel drafts from the selected calculation and your proposed terms. The Word draft is unsigned and is not filed. A signed CR 2A agreement may have legal effect; review it with qualified Washington counsel before signing or sharing. Nothing is sent unless you explicitly confirm delivery.</p>
                     <div class="settlement-offer-grid">
                       <label>From (you, the user party in the ledger)<input id="settlement-offer-from" type="text" maxlength="160" required></label>
                       <label>To<input id="settlement-offer-to" type="text" maxlength="160" required></label>
+                      <label>County<input id="settlement-offer-county" type="text" maxlength="100"></label>
+                      <label>Court cause number<input id="settlement-offer-cause-number" type="text" maxlength="100"></label>
                       <label>Proposed effective date<input id="settlement-offer-effective" type="date"></label>
                       <label>Proposed response date<input id="settlement-offer-response" type="date"></label>
                       <label>Proposed terms (one per line)<textarea id="settlement-offer-terms" required></textarea></label>
                     </div>
-                    <button class="materials-import" id="settlement-offer-download" type="button">Download editable DOCX draft</button>
+                    <div class="settlement-export-actions" role="group" aria-label="Download proposal drafts">
+                      <button class="materials-import" id="settlement-offer-download" type="button">Download CR 2A Word draft</button>
+                      <button class="materials-import" id="settlement-schedule-download" type="button">Download property schedule Excel</button>
+                    </div>
+                    <section class="settlement-export-destinations" aria-labelledby="settlement-export-destinations-title">
+                      <h4 id="settlement-export-destinations-title">Save or send both drafts</h4>
+                      <p>Connect an account first. Each action previews the destination and requires a separate confirmation. The files are never sent to AI.</p>
+                      <p id="settlement-export-status" role="status" aria-live="polite">Checking delivery options…</p>
+                      <div class="settlement-export-provider">
+                        <strong>Google Drive</strong>
+                        <span id="settlement-google-status">Not connected.</span>
+                        <button class="materials-import" id="settlement-google-connect" type="button" disabled>Connect Google Drive</button>
+                        <button class="materials-import" id="settlement-google-send" type="button" disabled>Save both drafts to Google Drive</button>
+                        <button class="materials-import" id="settlement-google-disconnect" type="button" hidden>Disconnect Google Drive</button>
+                      </div>
+                      <div class="settlement-export-provider">
+                        <strong>Dropbox</strong>
+                        <span id="settlement-dropbox-status">Not connected.</span>
+                        <button class="materials-import" id="settlement-dropbox-connect" type="button" disabled>Connect Dropbox</button>
+                        <button class="materials-import" id="settlement-dropbox-send" type="button" disabled>Save both drafts to Dropbox</button>
+                        <button class="materials-import" id="settlement-dropbox-disconnect" type="button" hidden>Disconnect Dropbox</button>
+                      </div>
+                      <div class="settlement-export-provider">
+                        <strong>Email</strong>
+                        <span id="settlement-email-status">Not configured.</span>
+                        <label for="settlement-export-recipient">Recipient email
+                          <input id="settlement-export-recipient" type="email" maxlength="320" autocomplete="email">
+                        </label>
+                        <button class="materials-import" id="settlement-email-send" type="button" disabled>Email both drafts</button>
+                      </div>
+                    </section>
                   </section>
+                  <dialog id="settlement-export-confirmation" aria-labelledby="settlement-export-confirmation-title">
+                    <h3 id="settlement-export-confirmation-title">Confirm delivery</h3>
+                    <p id="settlement-export-confirmation-details"></p>
+                    <ul>
+                      <li>cr2a-agreement-proposal-draft.docx</li>
+                      <li>property-division-proposal-draft.xlsx</li>
+                    </ul>
+                    <p>This action sends the two drafts to the displayed destination. It does not file them with a court.</p>
+                    <div class="settlement-export-actions">
+                      <button class="materials-import" id="settlement-export-cancel" type="button">Cancel</button>
+                      <button class="materials-import" id="settlement-export-confirm" type="button">Confirm and send both drafts</button>
+                    </div>
+                  </dialog>
                 </div>
               </section>
             </section>
@@ -1436,10 +1490,29 @@
         const settlementOffer = document.getElementById("settlement-offer");
         const settlementOfferFrom = document.getElementById("settlement-offer-from");
         const settlementOfferTo = document.getElementById("settlement-offer-to");
+        const settlementOfferCounty = document.getElementById("settlement-offer-county");
+        const settlementOfferCauseNumber = document.getElementById("settlement-offer-cause-number");
         const settlementOfferEffective = document.getElementById("settlement-offer-effective");
         const settlementOfferResponse = document.getElementById("settlement-offer-response");
         const settlementOfferTerms = document.getElementById("settlement-offer-terms");
         const settlementOfferDownload = document.getElementById("settlement-offer-download");
+        const settlementScheduleDownload = document.getElementById("settlement-schedule-download");
+        const settlementExportStatus = document.getElementById("settlement-export-status");
+        const settlementGoogleStatus = document.getElementById("settlement-google-status");
+        const settlementDropboxStatus = document.getElementById("settlement-dropbox-status");
+        const settlementEmailStatus = document.getElementById("settlement-email-status");
+        const settlementExportRecipient = document.getElementById("settlement-export-recipient");
+        const settlementGoogleConnect = document.getElementById("settlement-google-connect");
+        const settlementGoogleSend = document.getElementById("settlement-google-send");
+        const settlementGoogleDisconnect = document.getElementById("settlement-google-disconnect");
+        const settlementDropboxConnect = document.getElementById("settlement-dropbox-connect");
+        const settlementDropboxSend = document.getElementById("settlement-dropbox-send");
+        const settlementDropboxDisconnect = document.getElementById("settlement-dropbox-disconnect");
+        const settlementEmailSend = document.getElementById("settlement-email-send");
+        const settlementExportConfirmation = document.getElementById("settlement-export-confirmation");
+        const settlementExportConfirmationDetails = document.getElementById("settlement-export-confirmation-details");
+        const settlementExportConfirm = document.getElementById("settlement-export-confirm");
+        const settlementExportCancel = document.getElementById("settlement-export-cancel");
         const preparationView = document.getElementById("preparation-view");
         const preparationNote = document.getElementById("preparation-note");
         const materialsWorkflow = document.getElementById("materials-workflow");
@@ -1533,6 +1606,9 @@
         let settlementFacts = [];
         let settlementLedgerEvents = [];
         let settlementSelectedScenario = null;
+        let settlementExportDestinations = null;
+        let settlementPendingDelivery = null;
+        let settlementExportAuthPopup = null;
         let settlementDisclosureAvailable = false;
         let settlementRunId = null;
         let selectedAssetYearIndex = 0;
@@ -2831,37 +2907,76 @@
             settlementSelectedScenario = result;
             settlementOffer.hidden = false;
             settlementOffer.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            setSettlementStatus("Scenario selection saved. Fill in the proposed terms to create an editable DOCX draft.", "success");
+            setSettlementStatus("Scenario selection saved. Complete the editable CR 2A proposal terms and review both drafts before sharing.", "success");
+            void loadSettlementExportDestinations();
           } catch (error) {
             setSettlementStatus(error instanceof Error ? error.message : "Scenario selection could not be saved.", "error");
           }
         }
 
-        async function downloadSettlementOffer() {
-          if (!settlementSelectedScenario) {
-            setSettlementStatus("Choose a scenario before creating an offer.", "error");
-            return;
-          }
-          const terms = {
+        function collectSettlementOfferTerms() {
+          return {
             offer_from: settlementOfferFrom.value,
             offer_to: settlementOfferTo.value,
+            county: settlementOfferCounty.value || null,
+            court_case_number: settlementOfferCauseNumber.value || null,
             effective_date: settlementOfferEffective.value || null,
             response_by_date: settlementOfferResponse.value || null,
             terms: settlementOfferTerms.value.split("\n").map((term) => term.trim()).filter(Boolean),
           };
-          settlementOfferDownload.disabled = true;
+        }
+
+        function validateSettlementOfferTerms() {
+          if (!settlementOfferFrom.value.trim()) {
+            settlementOfferFrom.focus();
+            return "Enter the proposing party's name.";
+          }
+          if (!settlementOfferTo.value.trim()) {
+            settlementOfferTo.focus();
+            return "Enter the other party's name.";
+          }
+          if (!collectSettlementOfferTerms().terms.length) {
+            settlementOfferTerms.focus();
+            return "Enter at least one proposed term.";
+          }
+          if (
+            settlementOfferEffective.value
+            && settlementOfferResponse.value
+            && settlementOfferResponse.value < settlementOfferEffective.value
+          ) {
+            settlementOfferResponse.focus();
+            return "The response date cannot be before the proposed effective date.";
+          }
+          return "";
+        }
+
+        async function downloadSettlementDocument(format) {
+          if (!settlementSelectedScenario) {
+            setSettlementStatus("Choose a scenario before creating the proposal documents.", "error");
+            return;
+          }
+          const validationError = validateSettlementOfferTerms();
+          if (validationError) {
+            setSettlementStatus(validationError, "error");
+            return;
+          }
+          const isDocx = format === "docx";
+          const button = isDocx ? settlementOfferDownload : settlementScheduleDownload;
+          button.disabled = true;
           try {
             const response = await fetch(
-              `/cases/${settlementCaseId}/settlement-planning/offers/${settlementSelectedScenario.selection_id}/docx`,
+              `/cases/${settlementCaseId}/settlement-planning/offers/${settlementSelectedScenario.selection_id}/${format}`,
               {
                 method: "POST",
                 credentials: "same-origin",
                 headers: {
                   ...csrfHeaders(),
                   "Content-Type": "application/json",
-                  Accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  Accept: isDocx
+                    ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 },
-                body: JSON.stringify({ terms }),
+                body: JSON.stringify({ terms: collectSettlementOfferTerms() }),
               },
             );
             if (response.status === 401) {
@@ -2879,16 +2994,180 @@
             const downloadUrl = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = downloadUrl;
-            link.download = "settlement-proposal-draft.docx";
+            link.download = isDocx
+              ? "cr2a-agreement-proposal-draft.docx"
+              : "property-division-proposal-draft.xlsx";
             link.click();
-            URL.revokeObjectURL(downloadUrl);
-            setSettlementStatus("Editable, nonbinding DOCX draft downloaded. Review it with counsel before sharing.", "success");
+            window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+            setSettlementStatus(
+              isDocx
+                ? "Unsigned CR 2A-style Word draft downloaded. Review it with qualified Washington counsel before signing or sharing."
+                : "Editable property-division Excel schedule downloaded. Review its assumptions and unresolved amounts before sharing.",
+              "success",
+            );
           } catch (error) {
-            setSettlementStatus(error instanceof Error ? error.message : "Offer draft could not be created.", "error");
+            setSettlementStatus(error instanceof Error ? error.message : "Proposal document could not be created.", "error");
           } finally {
-            settlementOfferDownload.disabled = false;
+            button.disabled = false;
           }
         }
+
+        async function loadSettlementExportDestinations() {
+          settlementExportStatus.textContent = "Checking delivery options…";
+          try {
+            settlementExportDestinations = await settlementApi("/api/export-integrations/destinations");
+            const google = settlementExportDestinations.google_drive;
+            const dropbox = settlementExportDestinations.dropbox;
+            const email = settlementExportDestinations.email;
+            settlementGoogleStatus.textContent = google.connected
+              ? `Connected: ${google.account}. Destination: ${google.destination}.`
+              : google.configured ? "Configured; connect an account to enable uploads." : "Not configured by the service operator.";
+            settlementDropboxStatus.textContent = dropbox.connected
+              ? `Connected: ${dropbox.account}. Destination: ${dropbox.destination}.`
+              : dropbox.configured ? "Configured; connect an account to enable uploads." : "Not configured by the service operator.";
+            settlementEmailStatus.textContent = email.configured
+              ? `Sent from ${email.sender}; enter the exact recipient below.`
+              : "SMTP email delivery is not configured by the service operator.";
+            settlementGoogleConnect.hidden = google.connected;
+            settlementGoogleDisconnect.hidden = !google.connected;
+            settlementDropboxConnect.hidden = dropbox.connected;
+            settlementDropboxDisconnect.hidden = !dropbox.connected;
+            settlementGoogleConnect.disabled = !google.configured;
+            settlementDropboxConnect.disabled = !dropbox.configured;
+            settlementGoogleSend.disabled = !google.configured || !google.connected;
+            settlementDropboxSend.disabled = !dropbox.configured || !dropbox.connected;
+            settlementEmailSend.disabled = !email.configured;
+            settlementExportStatus.textContent = "Downloads are available independently. External delivery requires a separate confirmation each time.";
+            settlementExportStatus.dataset.kind = "";
+          } catch (error) {
+            settlementExportStatus.textContent = error instanceof Error ? error.message : "Delivery options could not be loaded.";
+            settlementExportStatus.dataset.kind = "error";
+          }
+        }
+
+        async function connectSettlementExportProvider(provider) {
+          const popup = window.open("about:blank", "_blank", "popup,width=560,height=720");
+          if (!popup) {
+            settlementExportStatus.textContent = "Allow pop-ups for this site to connect the provider.";
+            settlementExportStatus.dataset.kind = "error";
+            return;
+          }
+          settlementExportAuthPopup = popup;
+          try {
+            const result = await settlementApi(`/api/export-integrations/${provider}/connect`, {
+              method: "POST",
+            });
+            popup.location.assign(result.authorization_url);
+          } catch (error) {
+            popup.close();
+            settlementExportAuthPopup = null;
+            settlementExportStatus.textContent = error instanceof Error ? error.message : "Provider connection could not be started.";
+            settlementExportStatus.dataset.kind = "error";
+          }
+        }
+
+        async function disconnectSettlementExportProvider(provider) {
+          try {
+            const result = await settlementApi(`/api/export-integrations/${provider}/connection`, {
+              method: "DELETE",
+            });
+            await loadSettlementExportDestinations();
+            if (!result.provider_revoked) {
+              settlementExportStatus.textContent = "The app removed its local connection, but the provider did not confirm revocation. Review connected apps in that provider account.";
+              settlementExportStatus.dataset.kind = "error";
+            } else {
+              settlementExportStatus.textContent = "Provider disconnected and its grant was revoked.";
+              settlementExportStatus.dataset.kind = "success";
+            }
+          } catch (error) {
+            settlementExportStatus.textContent = error instanceof Error ? error.message : "Provider connection could not be removed.";
+            settlementExportStatus.dataset.kind = "error";
+          }
+        }
+
+        function queueSettlementExportDelivery(channel) {
+          if (!settlementSelectedScenario) {
+            settlementExportStatus.textContent = "Choose a scenario before sending proposal documents.";
+            settlementExportStatus.dataset.kind = "error";
+            return;
+          }
+          const validationError = validateSettlementOfferTerms();
+          if (validationError) {
+            settlementExportStatus.textContent = validationError;
+            settlementExportStatus.dataset.kind = "error";
+            return;
+          }
+          let details = "";
+          let recipient = null;
+          if (channel === "google_drive") {
+            details = `${settlementExportDestinations.google_drive.account}; Google Drive root (private).`;
+          } else if (channel === "dropbox") {
+            details = `${settlementExportDestinations.dropbox.account}; Dropbox app folder root (private).`;
+          } else {
+            recipient = settlementExportRecipient.value.trim();
+            if (!settlementExportRecipient.checkValidity() || !recipient) {
+              settlementExportRecipient.focus();
+              settlementExportStatus.textContent = "Enter a valid recipient email address.";
+              settlementExportStatus.dataset.kind = "error";
+              return;
+            }
+            details = `From ${settlementExportDestinations.email.sender} to ${recipient}.`;
+          }
+          settlementPendingDelivery = {
+            channel,
+            recipient,
+            idempotency_key: newSettlementId(),
+          };
+          settlementExportConfirmationDetails.textContent = details;
+          settlementExportConfirm.disabled = false;
+          settlementExportConfirmation.showModal();
+          settlementExportCancel.focus();
+        }
+
+        async function confirmSettlementExportDelivery() {
+          const pending = settlementPendingDelivery;
+          if (!pending) return;
+          settlementExportConfirm.disabled = true;
+          try {
+            const payload = {
+              ...pending,
+              confirm: true,
+              terms: collectSettlementOfferTerms(),
+            };
+            const result = await settlementApi(
+              `/cases/${settlementCaseId}/settlement-planning/offers/${settlementSelectedScenario.selection_id}/deliver`,
+              {
+                method: "POST",
+                body: JSON.stringify(payload),
+              },
+            );
+            settlementExportConfirmation.close();
+            settlementExportStatus.textContent = `${result.file_count} draft files delivered to the confirmed destination. Review the files with qualified Washington counsel.`;
+            settlementExportStatus.dataset.kind = "success";
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Delivery could not be confirmed.";
+            settlementExportConfirmationDetails.textContent = `${message} Check the destination before trying again; partial uploads are not retried automatically.`;
+            settlementExportStatus.textContent = message;
+            settlementExportStatus.dataset.kind = "error";
+          } finally {
+            settlementExportConfirm.disabled = false;
+          }
+        }
+
+        window.addEventListener("message", (event) => {
+          if (
+            event.origin !== window.location.origin
+            || event.source !== settlementExportAuthPopup
+            || event.data?.type !== "casework-export-connection"
+            || !["google_drive", "dropbox"].includes(event.data.provider)
+          ) return;
+          settlementExportAuthPopup = null;
+          void loadSettlementExportDestinations();
+          settlementExportStatus.textContent = event.data.connected
+            ? `${event.data.provider === "google_drive" ? "Google Drive" : "Dropbox"} account connected.`
+            : "Provider connection was canceled or could not be verified.";
+          settlementExportStatus.dataset.kind = event.data.connected ? "success" : "error";
+        });
 
         function showPreparation(mode) {
           const isUpload = mode === "upload";
@@ -5424,7 +5703,30 @@
         settlementConsentRevoke.addEventListener("click", revokeSettlementConsent);
         settlementLedgerAdd.addEventListener("click", appendSettlementLedgerEvents);
         settlementGenerate.addEventListener("click", generateSettlementScenarios);
-        settlementOfferDownload.addEventListener("click", downloadSettlementOffer);
+        settlementOfferDownload.addEventListener("click", () => downloadSettlementDocument("docx"));
+        settlementScheduleDownload.addEventListener("click", () => downloadSettlementDocument("xlsx"));
+        settlementGoogleConnect.addEventListener("click", () => {
+          void connectSettlementExportProvider("google_drive");
+        });
+        settlementDropboxConnect.addEventListener("click", () => {
+          void connectSettlementExportProvider("dropbox");
+        });
+        settlementGoogleDisconnect.addEventListener("click", () => {
+          void disconnectSettlementExportProvider("google_drive");
+        });
+        settlementDropboxDisconnect.addEventListener("click", () => {
+          void disconnectSettlementExportProvider("dropbox");
+        });
+        settlementGoogleSend.addEventListener("click", () => queueSettlementExportDelivery("google_drive"));
+        settlementDropboxSend.addEventListener("click", () => queueSettlementExportDelivery("dropbox"));
+        settlementEmailSend.addEventListener("click", () => queueSettlementExportDelivery("email"));
+        settlementExportConfirm.addEventListener("click", () => {
+          void confirmSettlementExportDelivery();
+        });
+        settlementExportCancel.addEventListener("click", () => settlementExportConfirmation.close());
+        settlementExportConfirmation.addEventListener("close", () => {
+          settlementPendingDelivery = null;
+        });
         analysisPreviewStartButton.addEventListener("click", openAssetAnalysis);
         assetAnalysisBackButton.addEventListener("click", closeAssetAnalysis);
         assetYearRange.addEventListener("input", () => {
