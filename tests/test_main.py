@@ -144,6 +144,22 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('settlementConsentRevoke.addEventListener("click", revokeSettlementConsent)', page)
         self.assertIn("openSettlementPlanner(item.id)", page)
 
+    def test_existing_demo_shows_fictional_settlement_scenario_comparison(self) -> None:
+        status, body = asyncio.run(request_app("/demo"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="settlement-scenarios-preview"', page)
+        self.assertIn('href="#settlement-scenarios-preview">View settlement scenario comparison', page)
+        self.assertIn("Marriage-only window starts 2021-01-01", page)
+        self.assertIn("Earlier CIR date assumed from 2020-01-01", page)
+        self.assertIn("Intermediate window starts 2020-04-01", page)
+        self.assertIn("$445,714.29", page)
+        self.assertIn("$424,285.71", page)
+        self.assertIn("$473,142.86", page)
+        self.assertIn("not recommendations or an AI ranking", page)
+        self.assertIn("does not call AI, and is not saved", page)
+
     def test_asset_analysis_preview_is_fictional_and_local_only(self) -> None:
         status, body = asyncio.run(request_app("/"))
 

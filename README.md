@@ -105,6 +105,9 @@ sent, and handling notice. Calculated candidates remain available without AI
 ranking, and provider or response failures are returned separately from the
 calculated results. The selected scenario can produce an editable, nonbinding
 DOCX draft; it is not stored, sent, or filed automatically.
+The public `/demo` page also shows a fixed, fictional-only three-scenario
+comparison so the assumptions and output layout can be inspected without signing
+in. It is not connected to case data, saved, or sent to an AI provider.
 
 Run locally with Docker Compose:
 
