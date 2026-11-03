@@ -150,7 +150,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 200)
         page = body.decode()
         self.assertIn('id="settlement-scenarios-preview"', page)
-        self.assertIn('href="#settlement-scenarios-preview">View settlement scenario comparison', page)
+        self.assertGreater(
+            page.index('id="settlement-scenarios-preview"'),
+            page.index('id="asset-chart-heading"'),
+        )
+        self.assertNotIn("Possible discussion scenarios", page)
         self.assertIn("Marriage-only window starts 2021-01-01", page)
         self.assertIn("Earlier CIR date assumed from 2020-01-01", page)
         self.assertIn("Intermediate window starts 2020-04-01", page)
@@ -184,10 +188,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("asset-year-tab", page)
         self.assertIn('assetYearRange.addEventListener("input"', page)
         self.assertIn("renderAssetTimelineCursor(index, values)", page)
-        self.assertIn("Best-case proposal", page)
-        self.assertIn("Balanced proposal", page)
-        self.assertIn("Fallback position", page)
-        self.assertIn('id="scenario-status" role="status" aria-live="polite"', page)
+        self.assertIn("Settlement scenario comparison", page)
+        self.assertNotIn("Possible discussion scenarios", page)
+        self.assertNotIn("scenarioOptions.addEventListener", page)
         open_view = page.split("function openAssetAnalysis()", 1)[1].split(
             "function closeAssetAnalysis()", 1
         )[0]
