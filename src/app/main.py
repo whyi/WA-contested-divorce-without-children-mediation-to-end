@@ -50,6 +50,7 @@ from app.property_tracing import (
 )
 from app.materials import router as materials_router
 from app.review import router as review_router
+from app.settlement_routes import router as settlement_router
 from app.services import (
     Artifact,
     get_case_or_none,
@@ -82,6 +83,7 @@ app.include_router(auth_router)
 app.include_router(materials_router)
 app.include_router(analysis_router)
 app.include_router(review_router)
+app.include_router(settlement_router)
 
 DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
 LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"

@@ -127,6 +127,23 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 
+    def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
+        status, body = asyncio.run(request_app("/"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="settlement-planner"', page)
+        self.assertIn('id="settlement-consent"', page)
+        self.assertIn('id="settlement-ledger-json"', page)
+        self.assertIn('id="settlement-axes-json"', page)
+        self.assertIn('id="settlement-scenarios-table"', page)
+        self.assertIn('id="settlement-offer-download"', page)
+        self.assertIn("View asset and event tracing detail", page)
+        self.assertIn("consent can be revoked at any time", page.lower())
+        self.assertIn("not automatically sent, filed, or legally binding", page)
+        self.assertIn('settlementConsentRevoke.addEventListener("click", revokeSettlementConsent)', page)
+        self.assertIn("openSettlementPlanner(item.id)", page)
+
     def test_asset_analysis_preview_is_fictional_and_local_only(self) -> None:
         status, body = asyncio.run(request_app("/"))
 
