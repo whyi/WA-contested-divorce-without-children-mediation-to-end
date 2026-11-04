@@ -13,9 +13,31 @@ def make_docx_container() -> bytes:
     return output.getvalue()
 
 
+def make_xlsx_container() -> bytes:
+    output = io.BytesIO()
+    with ZipFile(output, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("xl/workbook.xml", "<workbook/>")
+    return output.getvalue()
+
+
 class UploadValidationTests(unittest.TestCase):
     def test_accepts_docx_container_with_required_parts(self) -> None:
         validate_upload("draft.docx", make_docx_container(), "docx", 1024)
+
+    def test_accepts_xlsx_container_with_required_parts(self) -> None:
+        validate_upload("final.xlsx", make_xlsx_container(), "xlsx", 1024)
+
+    def test_rejects_malformed_xlsx(self) -> None:
+        with self.assertRaisesRegex(UploadValidationError, "valid Office workbook"):
+            validate_upload("final.xlsx", b"not a zip file", "xlsx", 1024)
+
+    def test_rejects_xlsx_missing_workbook(self) -> None:
+        output = io.BytesIO()
+        with ZipFile(output, "w") as archive:
+            archive.writestr("[Content_Types].xml", "<Types/>")
+        with self.assertRaisesRegex(UploadValidationError, "required workbook parts"):
+            validate_upload("final.xlsx", output.getvalue(), "xlsx", 1024)
 
     def test_rejects_empty_file(self) -> None:
         with self.assertRaisesRegex(UploadValidationError, "empty"):

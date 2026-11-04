@@ -50,6 +50,7 @@ from app.property_tracing import (
     classify_asset,
 )
 from app.materials import router as materials_router
+from app.offer_response import router as offer_response_router
 from app.review import router as review_router
 from app.settlement_routes import demo_export_router, router as settlement_router
 from app.services import (
@@ -102,6 +103,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(export_integrations_router)
 app.include_router(materials_router)
+app.include_router(offer_response_router)
 app.include_router(analysis_router)
 app.include_router(review_router)
 app.include_router(settlement_router)

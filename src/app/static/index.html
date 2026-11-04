@@ -936,6 +936,17 @@
       .settlement-export-provider label { display: grid; gap: 5px; min-width: min(100%, 260px); }
       .settlement-export-destinations { margin-top: 20px; }
       .settlement-export-destinations > p, #settlement-export-confirmation-details { color: var(--muted); font-size: 13px; }
+      .settlement-response-workflow { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+      .settlement-response-workflow[hidden], .settlement-response-counteroffer[hidden],
+      .settlement-response-checklist[hidden], .settlement-response-placeholder[hidden] { display: none; }
+      .settlement-response-workflow p, .settlement-response-workflow li { color: var(--muted); font-size: 13px; line-height: 1.6; }
+      .settlement-response-workflow fieldset { display: grid; gap: 10px; margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+      .settlement-response-workflow fieldset label { display: flex; align-items: flex-start; gap: 9px; color: var(--ink); }
+      .settlement-response-files { display: grid; gap: 12px; margin: 14px 0; }
+      .settlement-response-files label { display: grid; gap: 6px; }
+      .settlement-response-list { padding-left: 20px; overflow-wrap: anywhere; }
+      .settlement-response-note { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); }
+      .settlement-response-checklist h4 { margin: 20px 0 6px; }
       #settlement-export-confirmation { width: min(92vw, 520px); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--paper); }
       #settlement-export-confirmation::backdrop { background: rgba(15, 25, 20, .55); }
       #settlement-export-confirmation:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
@@ -1546,6 +1557,11 @@
                 <p>Washington-only decision support. The calculations use your entered assumptions; they are not legal classifications, a predicted result, or legal advice. A Washington attorney or mediator should review the draft.</p>
                 <p class="settlement-status" id="settlement-planner-status" role="status" aria-live="polite"></p>
                 <div id="settlement-planner-content">
+                  <section id="settlement-offer-response-history" hidden aria-labelledby="settlement-offer-response-history-title">
+                    <h3 id="settlement-offer-response-history-title">Saved offer responses</h3>
+                    <p>Open a prior case response to review its saved attachments and continue the appropriate workflow.</p>
+                    <ul id="settlement-offer-response-history-list" aria-live="polite"></ul>
+                  </section>
                   <h3>Separate consent for settlement planning</h3>
                   <p>Local calculations and manual scenario selection do not require AI consent. This purpose is separate from document extraction. If you consent, the configured AI provider receives only the data listed below to rank supplied scenarios. Consent can be revoked at any time.</p>
                   <dl class="analysis-notice" id="settlement-disclosure">
@@ -1600,8 +1616,8 @@
                       <button class="materials-import" id="settlement-schedule-download" type="button">Download property schedule Excel</button>
                     </div>
                     <section class="settlement-export-destinations" aria-labelledby="settlement-export-destinations-title">
-                      <h4 id="settlement-export-destinations-title">Save or send both drafts</h4>
-                      <p>Connect an account first. Each action previews the destination and requires a separate confirmation. The files are never sent to AI.</p>
+                      <h4 id="settlement-export-destinations-title">Optional: save or send generated drafts</h4>
+                      <p>These controls are separate from the response tracker. A delivery action explicitly sends the generated drafts only after confirmation; it does not send your later edits. To track the actual final offer, review and edit the files, send those final versions yourself, and attach the exact files below. The files are never sent to AI.</p>
                       <p id="settlement-export-status" role="status" aria-live="polite">Checking delivery options…</p>
                       <div class="settlement-export-provider">
                         <strong>Google Drive</strong>
@@ -1640,6 +1656,54 @@
                       <button class="materials-import" id="settlement-export-confirm" type="button">Confirm and send both drafts</button>
                     </div>
                   </dialog>
+                  <section class="settlement-response-workflow" id="settlement-response-workflow" hidden aria-labelledby="settlement-response-title">
+                    <h3 id="settlement-response-title">After you send your final offer</h3>
+                    <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> This response tracker does not send documents or call AI. After sending, attach the exact final DOCX and XLSX files you sent, then record the response.</p>
+                    <div class="settlement-response-files">
+                      <label for="settlement-response-sent-docx">Final DOCX you sent
+                        <input id="settlement-response-sent-docx" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                      </label>
+                      <label for="settlement-response-sent-xlsx">Final XLSX you sent
+                        <input id="settlement-response-sent-xlsx" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                      </label>
+                      <p class="settlement-response-note">Google Drive Picker is unavailable because this app has no configured, secure user-selected file picker. Your Drive files are not listed or downloaded. Use the local file upload below.</p>
+                    </div>
+                    <ul class="settlement-response-list" id="settlement-response-attachments" aria-label="Attached offer response files" aria-live="polite"></ul>
+                    <p id="settlement-response-status" role="status" aria-live="polite"></p>
+                    <fieldset>
+                      <legend>What response did you receive?</legend>
+                      <label><input type="radio" name="settlement-response-outcome" value="counteroffer"> Counteroffer received</label>
+                      <label><input type="radio" name="settlement-response-outcome" value="rejected"> Offer rejected</label>
+                      <label><input type="radio" name="settlement-response-outcome" value="accepted"> Offer accepted</label>
+                    </fieldset>
+                    <div class="settlement-response-counteroffer" id="settlement-response-counteroffer" hidden>
+                      <label for="settlement-response-counteroffer-file">Attach the received counteroffer (PDF, DOCX, or XLSX)
+                        <input id="settlement-response-counteroffer-file" type="file" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                      </label>
+                    </div>
+                    <button class="materials-import" id="settlement-response-continue" type="button" disabled>Next</button>
+                    <section class="settlement-response-placeholder" id="settlement-response-placeholder" hidden>
+                      <h4>Response recorded</h4>
+                      <p>No next legal step is provided here. Continue the conversation or use another workflow when available.</p>
+                    </section>
+                    <section class="settlement-response-checklist" id="settlement-response-checklist" hidden aria-labelledby="settlement-response-checklist-title">
+                      <h4 id="settlement-response-checklist-title">Accepted offer: final-document checklist</h4>
+                      <p>The accepted documents you supplied are not verified as signed, filed, or sufficient. Confirm the right forms, instructions, service, and filing steps for your case with qualified Washington counsel or the Superior Court Clerk.</p>
+                      <label for="settlement-response-accepted-file">Attach the document reflecting the offer the other party accepted (PDF, DOCX, or XLSX)
+                        <input id="settlement-response-accepted-file" type="file" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                      </label>
+                      <p id="settlement-response-accepted-status" class="settlement-status" role="status" aria-live="polite"></p>
+                      <ul>
+                        <li><a href="https://www.courts.wa.gov/forms/?fa=forms.contribute&amp;formID=13" target="_blank" rel="noopener noreferrer">Washington Courts Divorce (Dissolution) forms</a> — official state forms and instructions.</li>
+                        <li><a href="https://www.courts.wa.gov/forms/documents/FL%20Divorce%20231%20Findings-Conclusions-Marriage_2023%2007%2001.pdf" target="_blank" rel="noopener noreferrer">FL Divorce 231 — Findings and Conclusions About a Marriage (PDF)</a> — verify it is the right current form for your case.</li>
+                        <li><a href="https://kingcounty.gov/en/court/superior-court/courts-jails-legal-system/court-programs-children-families/divorce-custody-adoption/how-to-resources-family-law" target="_blank" rel="noopener noreferrer">King County Superior Court Family Law resources</a> — local information; other counties may differ.</li>
+                        <li><a href="https://app.leg.wa.gov/RCW/default.aspx?cite=4.64.080" target="_blank" rel="noopener noreferrer">RCW 4.64.080</a> — statutory judgment-satisfaction context; it is not itself a case-specific filing form.</li>
+                      </ul>
+                      <h4>Check any judgment and deadlines</h4>
+                      <p>The signed decree or order and case docket control whether money-judgment obligations or deadlines apply. Not every case has a judgment, and a certificate of dissolution does not resolve a money judgment.</p>
+                      <p>No statewide Superior Court family-law form titled “Satisfaction of Judgment” or “Stipulation and Order Regarding Final Payment of Judgment to Respondent” has been verified for this workflow. The similarly named WPF GARN 01.1200 form is for garnishment, not a generic divorce judgment. Ask the Superior Court Clerk or consult official local family-law resources about any applicable document and procedure after a judgment is fully satisfied. If a judgment deadline may be missed, seek advice promptly; any agreed stipulation or order may require court approval or acceptance.</p>
+                    </section>
+                  </section>
                 </div>
               </section>
             </section>
@@ -2008,6 +2072,20 @@
         const settlementExportConfirmationDetails = document.getElementById("settlement-export-confirmation-details");
         const settlementExportConfirm = document.getElementById("settlement-export-confirm");
         const settlementExportCancel = document.getElementById("settlement-export-cancel");
+        const settlementResponseWorkflow = document.getElementById("settlement-response-workflow");
+        const settlementResponseSentDocx = document.getElementById("settlement-response-sent-docx");
+        const settlementResponseSentXlsx = document.getElementById("settlement-response-sent-xlsx");
+        const settlementResponseAttachments = document.getElementById("settlement-response-attachments");
+        const settlementResponseStatus = document.getElementById("settlement-response-status");
+        const settlementResponseCounteroffer = document.getElementById("settlement-response-counteroffer");
+        const settlementResponseCounterofferFile = document.getElementById("settlement-response-counteroffer-file");
+        const settlementResponseAcceptedFile = document.getElementById("settlement-response-accepted-file");
+        const settlementResponseAcceptedStatus = document.getElementById("settlement-response-accepted-status");
+        const settlementResponseContinue = document.getElementById("settlement-response-continue");
+        const settlementResponsePlaceholder = document.getElementById("settlement-response-placeholder");
+        const settlementResponseChecklist = document.getElementById("settlement-response-checklist");
+        const settlementOfferResponseHistory = document.getElementById("settlement-offer-response-history");
+        const settlementOfferResponseHistoryList = document.getElementById("settlement-offer-response-history-list");
         const preparationView = document.getElementById("preparation-view");
         const preparationNote = document.getElementById("preparation-note");
         const materialsWorkflow = document.getElementById("materials-workflow");
@@ -2113,6 +2191,9 @@
         let settlementExportAuthPopup = null;
         let settlementDisclosureAvailable = false;
         let settlementRunId = null;
+        let settlementOfferResponseState = null;
+        let settlementGeneratedFormats = new Set();
+        let settlementResponseUploading = false;
         let selectedAssetYearIndex = 0;
         let settlementDateRangeDragHandle = "";
         let settlementDateRangePointerId = null;
@@ -3009,7 +3090,7 @@
             ...options,
             headers: {
               Accept: "application/json",
-              ...(options.body ? { "Content-Type": "application/json" } : {}),
+              ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
               ...(options.method && options.method !== "GET" ? csrfHeaders() : {}),
               ...(options.headers || {}),
             },
@@ -3032,6 +3113,9 @@
           settlementCaseId = caseId;
           settlementSelectedScenario = null;
           settlementRunId = null;
+          settlementOfferResponseState = null;
+          settlementGeneratedFormats = new Set();
+          settlementResponseWorkflow.hidden = true;
           settlementPlanner.hidden = false;
           settlementPlannerContent.hidden = false;
           settlementConsent.checked = false;
@@ -3085,6 +3169,7 @@
               : "AI ranking is not configured. Local calculations and offer drafting remain available; consent cannot enable ranking by itself.";
             renderSettlementFacts();
             renderSavedSettlementLedger(events);
+            void loadSettlementOfferResponseHistory(caseId);
             settlementLedgerJson.value = "[]";
             settlementPlanner.scrollIntoView({ behavior: "smooth", block: "start" });
             setSettlementStatus(
@@ -3391,6 +3476,240 @@
           }
         }
 
+        function selectedSettlementOutcome() {
+          return settlementResponseWorkflow.querySelector(
+            'input[name="settlement-response-outcome"]:checked',
+          )?.value || "";
+        }
+
+        function updateSettlementResponseControls() {
+          const current = settlementOfferResponseState;
+          const selectedOutcome = selectedSettlementOutcome();
+          const savedOutcome = current?.outcome || "";
+          const counterofferNeedsFile = savedOutcome === "counteroffer"
+            && !current?.counteroffer_attachment_present;
+          settlementResponseWorkflow.querySelector("fieldset").disabled =
+            !current?.sent_documents_complete || settlementResponseUploading;
+          settlementResponseCounteroffer.hidden =
+            selectedOutcome !== "counteroffer" && savedOutcome !== "counteroffer";
+          settlementResponseContinue.disabled = settlementResponseUploading
+            || !current?.sent_documents_complete
+            || !savedOutcome
+            || counterofferNeedsFile;
+          settlementResponseSentDocx.disabled = settlementResponseUploading;
+          settlementResponseSentXlsx.disabled = settlementResponseUploading;
+          settlementResponseCounterofferFile.disabled = settlementResponseUploading;
+          settlementResponseAcceptedFile.disabled = settlementResponseUploading;
+          settlementResponseAttachments.replaceChildren();
+          const acceptedOffer = current?.attachments.find((item) => item.kind === "accepted_offer");
+          settlementResponseAcceptedStatus.textContent = acceptedOffer
+            ? `Attached accepted offer document: ${acceptedOffer.filename}`
+            : "";
+          for (const attachment of current?.attachments || []) {
+            const item = document.createElement("li");
+            const label = {
+              sent_docx: "Final DOCX sent",
+              sent_xlsx: "Final XLSX sent",
+              counteroffer: "Counteroffer",
+              accepted_offer: "Accepted offer document",
+            }[attachment.kind] || "Attachment";
+            item.textContent = `${label}: ${attachment.filename} (${formatFileSize(attachment.size_bytes)})`;
+            settlementResponseAttachments.append(item);
+          }
+          settlementResponseSentDocx.setAttribute("aria-label", "Upload or replace the exact final DOCX you sent");
+          settlementResponseSentXlsx.setAttribute("aria-label", "Upload or replace the exact final XLSX you sent");
+        }
+
+        async function loadSettlementOfferResponse() {
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario?.selection_id;
+          if (!caseId || !selectionId) return;
+          settlementOfferResponseState = null;
+          settlementResponseWorkflow.hidden = false;
+          settlementResponsePlaceholder.hidden = true;
+          settlementResponseChecklist.hidden = true;
+          settlementResponseContinue.disabled = true;
+          settlementResponseWorkflow.querySelector("fieldset").disabled = true;
+          settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
+            input.checked = false;
+          });
+          settlementResponseAttachments.replaceChildren();
+          settlementResponseCounteroffer.hidden = true;
+          settlementResponseStatus.textContent = "Loading saved response and attachment status…";
+          try {
+            const loadedResponse = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`,
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementOfferResponseState = loadedResponse;
+            const outcome = settlementOfferResponseState.outcome;
+            settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
+              input.checked = input.value === outcome;
+            });
+            settlementResponseStatus.textContent = "Attach the exact final documents you sent. Your files stay in this case and are not processed by AI.";
+            updateSettlementResponseControls();
+          } catch (error) {
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? error.message
+              : "Saved response status could not be loaded.";
+            updateSettlementResponseControls();
+          }
+        }
+
+        async function loadSettlementOfferResponseHistory(caseId = settlementCaseId) {
+          if (!caseId) return;
+          try {
+            const items = await settlementApi(
+              `/cases/${caseId}/settlement-planning/offer-responses`,
+            );
+            if (settlementCaseId !== caseId) return;
+            settlementOfferResponseHistoryList.replaceChildren();
+            settlementOfferResponseHistory.hidden = items.length === 0;
+            for (const item of items) {
+              const row = document.createElement("li");
+              const openButton = document.createElement("button");
+              openButton.type = "button";
+              openButton.className = "dashboard-retry";
+              openButton.textContent = `Scenario ${item.scenario_id} — ${item.outcome || "response not selected"}`;
+              openButton.addEventListener("click", () => {
+                settlementSelectedScenario = { selection_id: item.selection_id };
+                settlementOffer.hidden = true;
+                settlementGeneratedFormats = new Set(["docx", "xlsx"]);
+                void loadSettlementOfferResponse().then(() => {
+                  settlementResponseWorkflow.scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+              });
+              row.append(openButton);
+              for (const attachment of item.attachments) {
+                const file = document.createElement("span");
+                file.textContent = ` — ${attachment.kind}: ${attachment.filename}`;
+                row.append(file);
+              }
+              settlementOfferResponseHistoryList.append(row);
+            }
+          } catch (error) {
+            if (settlementCaseId !== caseId) return;
+            settlementOfferResponseHistory.hidden = false;
+            settlementOfferResponseHistoryList.replaceChildren();
+            const row = document.createElement("li");
+            row.textContent = error instanceof Error
+              ? error.message
+              : "Saved offer-response history could not be loaded.";
+            settlementOfferResponseHistoryList.append(row);
+          }
+        }
+
+        async function uploadSettlementResponseFile(kind, file) {
+          if (!file || !settlementSelectedScenario || settlementResponseUploading) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          settlementResponseUploading = true;
+          settlementResponseStatus.textContent = `Uploading ${file.name}…`;
+          updateSettlementResponseControls();
+          const form = new FormData();
+          form.append("upload", file, file.name);
+          try {
+            const uploadedState = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/attachments/${kind}`,
+              { method: "POST", body: form },
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementOfferResponseState = uploadedState;
+            settlementResponseStatus.textContent = `${file.name} was securely attached to this case. It was not sent or analyzed.`;
+            updateSettlementResponseControls();
+            void loadSettlementOfferResponseHistory(caseId);
+          } catch (error) {
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? error.message
+              : "The file could not be attached.";
+          } finally {
+            settlementResponseUploading = false;
+            updateSettlementResponseControls();
+          }
+        }
+
+        async function saveSettlementResponseOutcome(outcome) {
+          if (!settlementSelectedScenario) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          settlementResponseStatus.textContent = "Saving response outcome…";
+          settlementResponseContinue.disabled = true;
+          try {
+            const savedState = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`,
+              { method: "PUT", body: JSON.stringify({ outcome }) },
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementOfferResponseState = savedState;
+            settlementResponseStatus.textContent = "Response outcome saved. Use Next only when the required documents are attached.";
+            updateSettlementResponseControls();
+            void loadSettlementOfferResponseHistory(caseId);
+          } catch (error) {
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? error.message
+              : "The response outcome could not be saved.";
+            updateSettlementResponseControls();
+          }
+        }
+
+        async function continueSettlementOfferResponse() {
+          if (!settlementSelectedScenario) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          settlementResponseContinue.disabled = true;
+          settlementResponseStatus.textContent = "Checking required attachments…";
+          try {
+            const result = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/continue`,
+              { method: "POST" },
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementResponsePlaceholder.hidden = result.next_step !== "future_placeholder";
+            settlementResponseChecklist.hidden = result.next_step !== "final_checklist";
+            settlementResponseStatus.textContent = result.next_step === "final_checklist"
+              ? "Acceptance recorded. Review the sourced checklist below."
+              : "Response recorded. No legal outcome or next legal step has been inferred.";
+            if (result.next_step === "final_checklist") {
+              settlementResponseChecklist.scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+              settlementResponsePlaceholder.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }
+          } catch (error) {
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? error.message
+              : "The response cannot continue yet.";
+            updateSettlementResponseControls();
+          }
+        }
+
         async function chooseSettlementScenario(scenario) {
           try {
             const result = await settlementApi(
@@ -3407,6 +3726,9 @@
               },
             );
             settlementSelectedScenario = result;
+            settlementGeneratedFormats = new Set();
+            settlementOfferResponseState = null;
+            settlementResponseWorkflow.hidden = true;
             settlementOffer.hidden = false;
             settlementOffer.scrollIntoView({ behavior: "smooth", block: "nearest" });
             setSettlementStatus("Scenario selection saved. Complete the editable CR 2A proposal terms and review both drafts before sharing.", "success");
@@ -3501,12 +3823,16 @@
               : "property-division-proposal-draft.xlsx";
             link.click();
             window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+            settlementGeneratedFormats.add(format);
             setSettlementStatus(
               isDocx
                 ? "Unsigned CR 2A-style Word draft downloaded. Review it with qualified Washington counsel before signing or sharing."
                 : "Editable property-division Excel schedule downloaded. Review its assumptions and unresolved amounts before sharing.",
               "success",
             );
+            if (settlementGeneratedFormats.has("docx") && settlementGeneratedFormats.has("xlsx")) {
+              await loadSettlementOfferResponse();
+            }
           } catch (error) {
             setSettlementStatus(error instanceof Error ? error.message : "Proposal document could not be created.", "error");
           } finally {
@@ -6295,6 +6621,42 @@
         settlementGenerate.addEventListener("click", generateSettlementScenarios);
         settlementOfferDownload.addEventListener("click", () => downloadSettlementDocument("docx"));
         settlementScheduleDownload.addEventListener("click", () => downloadSettlementDocument("xlsx"));
+        settlementResponseSentDocx.addEventListener("change", () => {
+          const file = settlementResponseSentDocx.files?.[0];
+          void uploadSettlementResponseFile("sent_docx", file).finally(() => {
+            settlementResponseSentDocx.value = "";
+          });
+        });
+        settlementResponseSentXlsx.addEventListener("change", () => {
+          const file = settlementResponseSentXlsx.files?.[0];
+          void uploadSettlementResponseFile("sent_xlsx", file).finally(() => {
+            settlementResponseSentXlsx.value = "";
+          });
+        });
+        settlementResponseCounterofferFile.addEventListener("change", () => {
+          const file = settlementResponseCounterofferFile.files?.[0];
+          void uploadSettlementResponseFile("counteroffer", file).finally(() => {
+            settlementResponseCounterofferFile.value = "";
+          });
+        });
+        settlementResponseAcceptedFile.addEventListener("change", () => {
+          const file = settlementResponseAcceptedFile.files?.[0];
+          if (!file) return;
+          settlementResponseAcceptedStatus.textContent = `Uploading ${file.name}…`;
+          void uploadSettlementResponseFile("accepted_offer", file).finally(() => {
+            settlementResponseAcceptedFile.value = "";
+          });
+        });
+        settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
+          input.addEventListener("change", () => {
+            settlementResponsePlaceholder.hidden = true;
+            settlementResponseChecklist.hidden = true;
+            void saveSettlementResponseOutcome(input.value);
+          });
+        });
+        settlementResponseContinue.addEventListener("click", () => {
+          void continueSettlementOfferResponse();
+        });
         settlementDemoDocxDownload.addEventListener("click", () => {
           void downloadDemoSettlementDocument("docx");
         });
