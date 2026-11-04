@@ -512,6 +512,47 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('value="joint"', finance_markup)
         self.assertIn('value="individual"', finance_markup)
 
+    def test_wizard_section_navigation_opens_an_editable_entry(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        for section_id in (
+            "wizard-dates",
+            "wizard-finances",
+            "wizard-issues",
+            "wizard-agreements",
+            "wizard-review",
+        ):
+            self.assertIn(f'id="{section_id}" tabindex="-1"', page)
+
+        navigation = page.split(
+            "function handleWizardSectionNavigation(event)", 1
+        )[1].split("function handleWizardCollectionClick", 1)[0]
+        self.assertIn('a[href^="#wizard-"]', navigation)
+        self.assertIn('"wizard-finances": "finances"', navigation)
+        self.assertIn('"wizard-issues": "issues"', navigation)
+        self.assertIn('"wizard-agreements": "agreements"', navigation)
+        self.assertIn("wizardDraft[collection].length === 0", navigation)
+        self.assertIn("addWizardEntry(collection)", navigation)
+        self.assertIn('setAttribute("aria-current", "step")', navigation)
+        self.assertIn("focusTarget.focus({ preventScroll: true })", navigation)
+
+    def test_wizard_supports_browser_local_optional_files_for_each_record(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        collection_renderer = page.split(
+            "function renderWizardCollections()", 1
+        )[1].split("function refreshWizardReview()", 1)[0]
+        for collection in ("finances", "issues", "agreements"):
+            self.assertIn(f'wizardAttachmentMarkup(entry, "{collection}")', collection_renderer)
+        self.assertIn('type="file" multiple data-wizard-files="${collection}"', page)
+        self.assertIn("stay in this browser only", page)
+        self.assertIn("blob: file.slice(0, file.size, file.type)", page)
+        self.assertIn("Evidence is not uploaded or analyzed.", page)
+
     def test_property_tracing_api_persists_case_facts_and_returns_candidates(self) -> None:
         case = SimpleNamespace(
             relationship_milestones={},

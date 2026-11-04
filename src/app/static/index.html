@@ -756,6 +756,8 @@
       .wizard-save-status[data-kind="error"] { color:var(--theme-text-9c3228) !important; }
       .wizard-progress { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; padding: 0; list-style: none; }
       .wizard-progress a { display: inline-flex; min-height: 34px; align-items: center; padding: 0 10px; border:1px solid var(--theme-border-d6e0d7); border-radius: 18px; color:var(--theme-text-405349); background:var(--theme-background-fff); font-size: 11px; font-weight: 700; text-decoration: none; }
+      .wizard-progress a[aria-current="step"] { border-color:var(--green); color:var(--green-dark); background:var(--theme-background-eaf0e9); }
+      .wizard-section:focus { outline:3px solid rgba(47, 102, 82, .22); outline-offset:3px; }
       .wizard-section { margin-top: 20px; padding: clamp(17px, 3vw, 24px); border:1px solid var(--line); border-radius: 10px; background:var(--theme-background-fff); scroll-margin-top: 18px; }
       .wizard-section h2 { margin-bottom: 7px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; }
       .wizard-section > p { color:var(--muted); font-size: 12px; line-height: 1.55; }
@@ -1357,7 +1359,7 @@
                   <li><a href="#wizard-review">Review</a></li>
                 </ol>
               </nav>
-              <section class="wizard-section" id="wizard-dates" aria-labelledby="wizard-dates-title">
+              <section class="wizard-section" id="wizard-dates" tabindex="-1" aria-labelledby="wizard-dates-title">
                 <h2 id="wizard-dates-title">Relationship and case dates</h2>
                 <p>Enter dates you know. Leave a date blank or mark it unknown to come back later.</p>
                 <div class="wizard-form-grid">
@@ -1387,25 +1389,25 @@
                   </div>
                 </div>
               </section>
-              <section class="wizard-section" id="wizard-finances" aria-labelledby="wizard-finances-title">
+              <section class="wizard-section" id="wizard-finances" tabindex="-1" aria-labelledby="wizard-finances-title">
                 <h2 id="wizard-finances-title">Assets and debts</h2>
                 <p>List each item separately, including multiple homes, vehicles, accounts, and debts. These are your descriptions only; the demo does not determine legal ownership or classification.</p>
                 <div class="wizard-collection" id="wizard-finance-list"></div>
                 <button class="wizard-add" type="button" data-wizard-add="finance">Add an asset or debt</button>
               </section>
-              <section class="wizard-section" id="wizard-issues" aria-labelledby="wizard-issues-title">
+              <section class="wizard-section" id="wizard-issues" tabindex="-1" aria-labelledby="wizard-issues-title">
                 <h2 id="wizard-issues-title">Issues and goals</h2>
                 <p>Add topics you want to discuss and what outcome you hope for. You can attach optional supporting material such as emails.</p>
                 <div class="wizard-collection" id="wizard-issue-list"></div>
                 <button class="wizard-add" type="button" data-wizard-add="issue">Add an issue or goal</button>
               </section>
-              <section class="wizard-section" id="wizard-agreements" aria-labelledby="wizard-agreements-title">
+              <section class="wizard-section" id="wizard-agreements" tabindex="-1" aria-labelledby="wizard-agreements-title">
                 <h2 id="wizard-agreements-title">Known agreements</h2>
                 <p>Note any agreements or items already resolved. Attach optional written confirmation if you have it.</p>
                 <div class="wizard-collection" id="wizard-agreement-list"></div>
                 <button class="wizard-add" type="button" data-wizard-add="agreement">Add an agreement</button>
               </section>
-              <section class="wizard-section" id="wizard-review" aria-labelledby="wizard-review-title">
+              <section class="wizard-section" id="wizard-review" tabindex="-1" aria-labelledby="wizard-review-title">
                 <h2 id="wizard-review-title">Review your draft</h2>
                 <p>This review reflects only what you entered. All sections above remain editable.</p>
                 <ul class="wizard-review-list" id="wizard-review-list"></ul>
@@ -2470,6 +2472,7 @@
         const wizardFiledDialog = document.getElementById("wizard-filed-dialog");
         const wizardDialogAcknowledge = document.getElementById("wizard-dialog-acknowledge");
         const wizardGatedContent = document.getElementById("wizard-gated-content");
+        const wizardProgress = wizardDemoPage.querySelector(".wizard-progress");
         const wizardFinish = document.getElementById("wizard-finish");
         const wizardSaveStatus = document.getElementById("wizard-save-status");
         const wizardFinanceList = document.getElementById("wizard-finance-list");
@@ -3150,6 +3153,33 @@
           const entry = wizardDemoPage.querySelector(`[data-wizard-entry="${defaults[collection].id}"]`);
           entry?.querySelector("input, textarea, select")?.focus();
           scheduleWizardSave(true);
+        }
+
+        function handleWizardSectionNavigation(event) {
+          const target = event.target instanceof Element ? event.target : null;
+          const link = target?.closest('a[href^="#wizard-"]');
+          if (!link) return;
+          const section = document.getElementById(link.hash.slice(1));
+          if (!section || !wizardGatedContent.contains(section)) return;
+
+          const collectionBySection = {
+            "wizard-finances": "finances",
+            "wizard-issues": "issues",
+            "wizard-agreements": "agreements",
+          };
+          const collection = collectionBySection[section.id];
+          if (collection && wizardDraft[collection].length === 0) {
+            addWizardEntry(collection);
+          }
+
+          wizardProgress.querySelectorAll("a").forEach((item) => {
+            if (item === link) item.setAttribute("aria-current", "step");
+            else item.removeAttribute("aria-current");
+          });
+          const focusTarget = section.querySelector(
+            'input:not([type="file"]):not(:disabled), textarea:not(:disabled), select:not(:disabled)',
+          ) || section;
+          focusTarget.focus({ preventScroll: true });
         }
 
         function handleWizardCollectionClick(event) {
@@ -7733,6 +7763,7 @@
           refreshWizardReview();
           scheduleWizardSave(true);
         });
+        wizardProgress.addEventListener("click", handleWizardSectionNavigation);
         wizardGatedContent.addEventListener("input", handleWizardInput);
         wizardGatedContent.addEventListener("change", handleWizardChange);
         wizardGatedContent.addEventListener("click", handleWizardCollectionClick);
