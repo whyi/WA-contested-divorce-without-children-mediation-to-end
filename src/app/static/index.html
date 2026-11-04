@@ -912,57 +912,26 @@
         border-radius: 12px;
         background: var(--surface-background);
       }
-      .settlement-demo-share-field {
-        display: grid;
-        flex: 1 1 240px;
-        max-width: 340px;
-        gap: 6px;
-        color: var(--text-primary) !important;
-        font-size: 12px !important;
-        font-weight: 750;
-        line-height: 1.4 !important;
+      .settlement-scenario-card[data-selected="true"] {
+        border-color: var(--green);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 18%, transparent);
       }
-      .settlement-demo-share-hint {
-        color: var(--text-secondary);
-        font-size: 11px;
-        font-weight: 450;
-      }
-      .settlement-demo-share-select-wrap { position: relative; }
-      .settlement-demo-share-select {
-        appearance: none;
-        width: 100%;
-        min-height: 46px;
-        padding: 0 42px 0 13px;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
+      .settlement-demo-scenario-choice {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
         color: var(--text-primary);
-        background: var(--surface-raised);
-        font: inherit;
-        font-size: 14px;
-        font-weight: 650;
+        font-size: 12px;
+        font-weight: 700;
         cursor: pointer;
       }
-      .settlement-demo-share-select-wrap::after {
-        position: absolute;
-        top: 17px;
-        right: 16px;
-        width: 8px;
-        height: 8px;
-        border-right: 2px solid var(--text-secondary);
-        border-bottom: 2px solid var(--text-secondary);
-        content: "";
-        pointer-events: none;
-        transform: rotate(45deg);
+      .settlement-demo-scenario-choice input {
+        width: 17px;
+        height: 17px;
+        accent-color: var(--green);
       }
-      .settlement-demo-share-select:focus-visible {
-        outline: 3px solid var(--focus-ring);
-        outline-offset: 2px;
-      }
-      .settlement-demo-share-select option {
-        color: var(--text-primary);
-        background: var(--surface-background);
-      }
-      .settlement-demo-export-actions .materials-import { align-self: flex-end; }
+      .settlement-demo-export-actions .materials-import { align-self: flex-start; }
       .settlement-export-provider { justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
       .settlement-export-provider label { display: grid; gap: 5px; min-width: min(100%, 260px); }
       .settlement-export-destinations { margin-top: 20px; }
@@ -1870,25 +1839,14 @@
                 <section class="asset-analysis-panel" id="settlement-scenarios-preview" aria-labelledby="settlement-scenarios-preview-title">
                   <h3 id="settlement-scenarios-preview-title">Scenario ideas for the selected dates</h3>
                   <p>These three fictional examples update when either date changes. Each keeps the parties' sample net balances at the Start Date as a baseline, then applies the displayed proposed share to the change in combined sample net assets through the End Date (Division Date). They are not legal characterizations, advice, or AI-ranked recommendations.</p>
-                  <div class="settlement-scenario-results" id="settlement-scenario-results" aria-live="polite"></div>
-                  <p class="settlement-scenario-status" id="settlement-scenario-status" role="status" aria-live="polite"></p>
-                  <p class="scenario-disclaimer">Fictional page-only calculation; no case data is used, saved, or sent to AI. The End Date is an illustrative valuation/division date and is not necessarily a legal separation or characterization date.</p>
-                  <div class="settlement-export-actions settlement-demo-export-actions" role="group" aria-label="Download fictional sample proposal documents">
-                    <label class="settlement-demo-share-field" for="settlement-demo-export-share">
-                      <span>Illustrative shared-property split</span>
-                      <span class="settlement-demo-share-hint">Choose the share proposed for Sam in this fictional example.</span>
-                      <span class="settlement-demo-share-select-wrap">
-                        <select class="settlement-demo-share-select" id="settlement-demo-export-share">
-                          <option value="5500">55% to Sam · 45% to Alex</option>
-                          <option value="5000" selected>50% to Sam · 50% to Alex</option>
-                          <option value="4500">45% to Sam · 55% to Alex</option>
-                        </select>
-                      </span>
-                    </label>
-                    <button class="materials-import" id="settlement-demo-docx-download" type="button">Download sample CR 2A Word draft</button>
-                    <button class="materials-import" id="settlement-demo-xlsx-download" type="button">Download sample property schedule Excel</button>
+                  <div class="settlement-scenario-results" id="settlement-scenario-results" role="radiogroup" aria-label="Select a fictional settlement scenario" aria-live="polite"></div>
+                  <div class="settlement-export-actions settlement-demo-export-actions" role="group" aria-label="Download documents for the selected fictional scenario">
+                    <button class="materials-import" id="settlement-demo-docx-download" type="button" disabled>Download sample CR 2A Word draft</button>
+                    <button class="materials-import" id="settlement-demo-xlsx-download" type="button" disabled>Download sample property schedule Excel</button>
                   </div>
                   <p class="settlement-scenario-status" id="settlement-demo-export-status" role="status" aria-live="polite">These files use fictional names and figures only. They are not sent to any external service.</p>
+                  <p class="settlement-scenario-status" id="settlement-scenario-status" role="status" aria-live="polite"></p>
+                  <p class="scenario-disclaimer">Fictional page-only calculation; no case data is used, saved, or sent to AI. The End Date is an illustrative valuation/division date and is not necessarily a legal separation or characterization date.</p>
                 </section>
               </section>
               <a class="back-to-account" href="/#account">Back to your account</a>
@@ -2098,10 +2056,11 @@
         const settlementEndDate = document.getElementById("settlement-end-date");
         const settlementScenarioResults = document.getElementById("settlement-scenario-results");
         const settlementScenarioStatus = document.getElementById("settlement-scenario-status");
-        const settlementDemoExportShare = document.getElementById("settlement-demo-export-share");
         const settlementDemoDocxDownload = document.getElementById("settlement-demo-docx-download");
         const settlementDemoXlsxDownload = document.getElementById("settlement-demo-xlsx-download");
         const settlementDemoExportStatus = document.getElementById("settlement-demo-export-status");
+        let settlementDemoSelectedShareBps = 5000;
+        let settlementDemoScenarioAvailable = false;
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
         const assetMilestoneStatus = document.getElementById("asset-milestone-status");
         const standardMilestoneList = document.getElementById("standard-milestone-list");
@@ -4817,6 +4776,9 @@
           const endDate = settlementEndDate.value;
           if (!isValidMilestoneDate(startDate) || !isValidMilestoneDate(endDate) || startDate > endDate) {
             settlementScenarioResults.replaceChildren();
+            settlementDemoScenarioAvailable = false;
+            settlementDemoDocxDownload.disabled = true;
+            settlementDemoXlsxDownload.disabled = true;
             settlementScenarioStatus.textContent = "Choose a valid Start Date on or before the End Date (Division Date).";
             return;
           }
@@ -4830,13 +4792,19 @@
             { label: "Even proposed share", share: 50 },
             { label: "Lower proposed share", share: 45 },
           ];
+          if (!scenarios.some((scenario) => scenario.share * 100 === settlementDemoSelectedShareBps)) {
+            settlementDemoSelectedShareBps = 5000;
+          }
+          settlementDemoScenarioAvailable = true;
+          settlementDemoDocxDownload.disabled = false;
+          settlementDemoXlsxDownload.disabled = false;
           settlementScenarioResults.replaceChildren();
           for (const [index, scenario] of scenarios.entries()) {
             const userNet = startBalances[0] + Math.round(netChange * scenario.share / 100);
             const otherNet = endingCombined - userNet;
             const card = document.createElement("article");
             card.className = "settlement-scenario-card";
-            card.dataset.highlight = String(index === 0);
+            card.dataset.selected = String(scenario.share * 100 === settlementDemoSelectedShareBps);
             const title = document.createElement("h4");
             title.textContent = scenario.label;
             card.append(title);
@@ -4856,13 +4824,49 @@
             const change = document.createElement("p");
             change.textContent = `Combined net-asset change in this date range: ${formatSampleCurrency(netChange)}`;
             card.append(change);
+            const choice = document.createElement("label");
+            choice.className = "settlement-demo-scenario-choice";
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "settlement-demo-scenario";
+            radio.value = String(scenario.share * 100);
+            radio.checked = scenario.share * 100 === settlementDemoSelectedShareBps;
+            choice.append(
+              radio,
+              document.createTextNode(`Select ${scenario.label}, ${scenario.share}% to Sam`),
+            );
+            card.append(choice);
             settlementScenarioResults.append(card);
           }
           settlementScenarioStatus.textContent = `Recalculated for ${formatMilestoneDate(startDate)} through ${formatMilestoneDate(endDate)}. Start-date balances are held as baselines; only the change in combined sample net assets is split by each displayed assumption.`;
         }
 
+        settlementScenarioResults.addEventListener("change", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)
+            || target.name !== "settlement-demo-scenario"
+            || !target.checked
+            || !settlementDemoScenarioAvailable) return;
+          const shareBps = Number(target.value);
+          if (![4500, 5000, 5500].includes(shareBps)) return;
+          settlementDemoSelectedShareBps = shareBps;
+          for (const card of settlementScenarioResults.querySelectorAll(".settlement-scenario-card")) {
+            card.dataset.selected = String(card.contains(target));
+          }
+          const scenarioName = shareBps === 5500
+            ? "Higher proposed share"
+            : shareBps === 5000 ? "Even proposed share" : "Lower proposed share";
+          settlementDemoExportStatus.textContent = `Selected: ${scenarioName} (${shareBps / 100}% to Sam). Both downloads will use this scenario and the current dates.`;
+          settlementDemoExportStatus.dataset.kind = "";
+        });
+
         async function downloadDemoSettlementDocument(format) {
           const button = format === "docx" ? settlementDemoDocxDownload : settlementDemoXlsxDownload;
+          if (!settlementDemoScenarioAvailable || ![4500, 5000, 5500].includes(settlementDemoSelectedShareBps)) {
+            settlementDemoExportStatus.textContent = "Select one of the displayed scenarios before downloading.";
+            settlementDemoExportStatus.dataset.kind = "error";
+            return;
+          }
           button.disabled = true;
           settlementDemoExportStatus.textContent = "Generating a document from fictional demo data…";
           settlementDemoExportStatus.dataset.kind = "";
@@ -4873,7 +4877,7 @@
               body: JSON.stringify({
                 start_date: settlementStartDate.value,
                 end_date: settlementEndDate.value,
-                community_share_bps: Number(settlementDemoExportShare.value),
+                community_share_bps: settlementDemoSelectedShareBps,
               }),
             });
             if (!response.ok) {
