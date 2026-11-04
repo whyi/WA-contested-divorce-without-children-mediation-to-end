@@ -1132,7 +1132,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('uploadSettlementResponseFile("accepted_offer", file)', html)
         self.assertIn("First Attempt — active and editable", html)
         self.assertIn('id="settlement-demo-attempt-status"', html)
-        self.assertIn("First Attempt — demo preview only", html)
+        self.assertIn("Free plan demo — First Attempt of 1", html)
         self.assertIn('body[data-demo-page="settlement"] .settlement-attempt-banner', html)
         self.assertIn("position: fixed", html)
         self.assertIn("min-height: 86px", html)

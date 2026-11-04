@@ -37,7 +37,7 @@ The prices below are starting experiments, not market-validated commitments. Con
 - **FR-30-10 — Comparison and status:** Display Free/Essential/Plus/Pro features, actual configured monthly price, case allowance, per-case attempts, monthly document credits, current plan, billing state, and renewal/cancellation date.
 - **FR-30-11 — Billing unavailable:** When required Stripe credentials/price IDs are missing, report that subscriptions are unavailable, keep the Free tier functional, and disable checkout/portal actions without a success-shaped response.
 - **FR-30-12 — Data minimization:** Persist provider IDs, status, plan, billing dates, and event IDs only. Do not retain card details or log raw billing payloads.
-- **FR-30-13 — Demo isolation:** Demo mode must not create real Checkout Sessions, apply live webhook entitlements, or issue charges.
+- **FR-30-13 — Demo isolation:** Demo mode must not create real Checkout Sessions, apply live webhook entitlements, or issue charges. The fictional offer-response demo represents Free's one-attempt limit and must not create a second attempt.
 
 ## 3. Acceptance criteria
 
@@ -57,5 +57,6 @@ The prices below are starting experiments, not market-validated commitments. Con
 - Plan prices are provisional product hypotheses. Stripe Price IDs and displayed amounts are supplied by deployment configuration.
 - The server-owned plan catalog, case and attempt limits, credit ledger fields, Stripe Checkout/Portal routes, signature-verified webhook handling, and plan comparison/account status UI are implemented.
 - Demo mode disables Checkout, customer portal sessions, and entitlement-changing webhooks.
+- The fictional offer-response demo now identifies itself as Free and blocks continuation to a second attempt after a counteroffer or rejection, while stating that it is not linked to an account.
 - Focused regression tests cover tier mapping, plan expiry, price formatting, unknown/mixed invoice prices, credit rollover caps, superseded subscriptions, and demo-mode billing isolation.
 - Full automated test execution and Stripe test-mode integration verification remain deployment/CI validation tasks; no live charge was attempted.
