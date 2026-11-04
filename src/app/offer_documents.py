@@ -3,7 +3,9 @@ from io import BytesIO
 import re
 
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt, RGBColor
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -91,48 +93,231 @@ def render_mediation_offer_docx(
 ) -> bytes:
     document = Document()
     section = document.sections[0]
-    section.top_margin = Inches(0.65)
-    section.bottom_margin = Inches(0.65)
+    section.top_margin = Inches(0.7)
+    section.bottom_margin = Inches(0.7)
+    section.left_margin = Inches(1)
+    section.right_margin = Inches(1)
     document.styles["Normal"].font.name = "Arial"
     document.styles["Normal"].font.size = Pt(10)
+    document.styles["Normal"].paragraph_format.space_after = Pt(4)
+    for style_name in ("Heading 1", "Heading 2"):
+        document.styles[style_name].font.name = "Arial"
+        document.styles[style_name].font.color.rgb = RGBColor(0, 0, 0)
+    document.styles["Heading 2"].font.size = Pt(11)
+    document.styles["Heading 2"].font.bold = True
 
-    heading = document.add_heading("CR 2A AGREEMENT — PROPOSED DRAFT", level=0)
-    heading.paragraph_format.space_after = Pt(4)
+    court = document.add_paragraph()
+    court.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    court.paragraph_format.space_after = Pt(0)
+    court_run = court.add_run("IN THE SUPERIOR COURT OF THE STATE OF WASHINGTON")
+    court_run.bold = True
+    court_run.font.size = Pt(11)
+    county = document.add_paragraph()
+    county.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    county.paragraph_format.space_after = Pt(8)
+    county.add_run(f"FOR {terms.county.upper() if terms.county else '[COUNTY]'} COUNTY")
+
+    caption = document.add_table(rows=1, cols=2)
+    caption.style = "Table Grid"
+    caption.autofit = False
+    caption_widths = (Inches(3.35), Inches(3.15))
+    for column, width in zip(caption.columns, caption_widths, strict=True):
+        column.width = width
+        for cell in column.cells:
+            cell.width = width
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    caption.cell(0, 0).text = (
+        f"In re:\nProposing party: {terms.offer_from}\n"
+        f"Other party: {terms.offer_to}"
+    )
+    caption.cell(0, 1).text = (
+        f"NO. {terms.court_case_number or '________________________'}\n"
+        "CR 2A AGREEMENT"
+    )
+    for cell in caption.rows[0].cells:
+        for paragraph in cell.paragraphs:
+            paragraph.paragraph_format.space_after = Pt(2)
+        if len(cell.paragraphs) > 1:
+            for run in cell.paragraphs[-1].runs:
+                run.bold = True
+    document.add_paragraph()
+
     notice = document.add_paragraph()
-    notice_run = notice.add_run("UNSIGNED DRAFT — REVIEW BEFORE SIGNING OR SHARING")
+    notice.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    notice.paragraph_format.space_after = Pt(4)
+    notice_run = notice.add_run("UNSIGNED PROPOSED DRAFT — REVIEW BEFORE SIGNING OR SHARING")
     notice_run.bold = True
-    notice_run.font.size = Pt(12)
-    document.add_paragraph(
+    notice_run.font.size = Pt(9)
+    disclaimer = document.add_paragraph(
         "This editable CR 2A-style proposal is not signed, filed, or legal advice. A signed "
         "agreement may have legal effect. Review the terms and form with qualified Washington "
         "family-law counsel before signing or sharing."
     )
-
-    document.add_heading("Superior Court of Washington", level=1)
-    document.add_paragraph(f"County: {terms.county or '____________________________'}")
-    document.add_paragraph(
-        f"Cause number: {terms.court_case_number or '____________________________'}"
+    disclaimer.paragraph_format.space_after = Pt(8)
+    intro = document.add_paragraph(
+        "The following is a proposed settlement stipulation and agreement for the parties' "
+        "review pursuant to CR 2A."
     )
-    document.add_paragraph(
-        f"Petitioner / proposing party: {terms.offer_from}"
-    )
-    document.add_paragraph(f"Respondent / receiving party: {terms.offer_to}")
-    document.add_heading("Agreement terms proposed for review", level=1)
-    document.add_paragraph(f"From: {terms.offer_from}")
-    document.add_paragraph(f"To: {terms.offer_to}")
+    intro.paragraph_format.space_after = Pt(8)
     if terms.effective_date is not None:
         document.add_paragraph(f"Proposed effective date: {terms.effective_date.isoformat()}")
     if terms.response_by_date is not None:
-        document.add_paragraph(f"Proposed response date: {terms.response_by_date.isoformat()}")
+        document.add_paragraph(f"Proposed response deadline: {terms.response_by_date.isoformat()}")
 
-    document.add_heading("Proposed terms", level=1)
+    def add_clause(number: str, text: str) -> None:
+        paragraph = document.add_paragraph()
+        paragraph.paragraph_format.left_indent = Inches(0.25)
+        paragraph.paragraph_format.first_line_indent = Inches(-0.25)
+        label = paragraph.add_run(f"{number} ")
+        label.bold = True
+        paragraph.add_run(text)
+
+    def add_section(title: str) -> None:
+        heading = document.add_heading(title, level=2)
+        heading.paragraph_format.keep_with_next = True
+        heading.paragraph_format.space_before = Pt(8)
+        heading.paragraph_format.space_after = Pt(3)
+
+    add_section("I. PARENTING PLAN")
+    add_clause("1.1", "Does not apply. This workflow is for a case without children.")
+    add_section("II. CHILD SUPPORT")
+    add_clause("2.1", "Does not apply. This workflow is for a case without children.")
+    add_section("III. SPOUSAL MAINTENANCE")
+    add_clause(
+        "3.1",
+        "Proposed maintenance terms: [Enter the parties' agreement or mark not applicable "
+        "after review.]",
+    )
+
+    add_section("IV. PROPERTY ALLOCATION")
+    add_clause(
+        "4.1",
+        f"Assets proposed to be awarded to {terms.offer_from}:",
+    )
+    for text in (
+        "All personal property in that party's possession, except as otherwise stated herein.",
+        "All bank accounts standing solely in that party's name, except as otherwise stated herein.",
+        "Assets allocated to that party in the accompanying property-division schedule, "
+        "to be reviewed and completed before signing.",
+    ):
+        document.add_paragraph(text, style="List Bullet")
+    add_clause(
+        "4.2",
+        f"Assets proposed to be awarded to {terms.offer_to}:",
+    )
+    for text in (
+        "All personal property in that party's possession, except as otherwise stated herein.",
+        "All bank accounts standing solely in that party's name, except as otherwise stated herein.",
+        "Assets allocated to that party in the accompanying property-division schedule, "
+        "to be reviewed and completed before signing.",
+    ):
+        document.add_paragraph(text, style="List Bullet")
+    add_clause(
+        "4.3",
+        "Each party shall promptly remove the other party from accounts and debts allocated "
+        "to that party within [number] days after the agreement is signed, unless otherwise "
+        "stated in the final agreement.",
+    )
+    add_clause(
+        "4.4",
+        "Property settlement payment, if any: [Identify the paying party, receiving party, "
+        "amount, payment method, and due date(s).]",
+    )
+    add_clause("4.5", "Proposed terms and additional settlement provisions:")
     for term in terms.terms:
-        document.add_paragraph(term, style="List Number")
+        document.add_paragraph(term, style="List Bullet")
 
-    document.add_heading("Illustrative property schedule", level=1)
+    add_section("V. ALLOCATION OF DEBTS")
+    add_clause(
+        "5.1",
+        "Each party shall pay debts incurred by that party after [separation date], except "
+        "as otherwise stated in the final agreement.",
+    )
+    add_clause("5.2", f"Debts proposed to be allocated to {terms.offer_from}:")
+    for text in (
+        "Credit cards or loans in that party's name, unless otherwise stated herein.",
+        "Liabilities associated with assets awarded to that party.",
+        "Liabilities allocated to that party in the accompanying property-division schedule.",
+    ):
+        document.add_paragraph(text, style="List Bullet")
+    add_clause("5.3", f"Debts proposed to be allocated to {terms.offer_to}:")
+    for text in (
+        "Credit cards or loans in that party's name, unless otherwise stated herein.",
+        "Liabilities associated with assets awarded to that party.",
+        "Liabilities allocated to that party in the accompanying property-division schedule.",
+    ):
+        document.add_paragraph(text, style="List Bullet")
+    add_clause(
+        "5.4",
+        "Attorney fees and costs: [State the parties' proposed agreement regarding fees and costs.]",
+    )
+
+    add_section("VI. MISCELLANEOUS PROVISIONS")
+    add_clause("6.1", "Marriage status or other requested finding: [Complete or remove after review.]")
+    add_clause("6.2", "Pregnancy status, if relevant: [Complete or remove after review.]")
+    add_clause(
+        "6.3",
+        "The parties acknowledge that the proposed agreement is fair and equitable "
+        "[confirm or revise before signing].",
+    )
+    add_clause(
+        "6.4",
+        "Each party's representations concerning any property or interests not listed in "
+        "this agreement: [Complete and review before signing.]",
+    )
+    add_clause(
+        "6.5",
+        "If a party does not pay a debt allocated to that party and a creditor seeks payment "
+        "from the other party, the responsible party shall hold the other party harmless "
+        "from that collection action, subject to the final agreement.",
+    )
+    add_clause(
+        "6.6",
+        "Preparation and review of final documents: [Identify the responsible counsel or "
+        "party and the review process.]",
+    )
+    add_clause(
+        "6.7",
+        "Process for disputes about drafting or other unresolved issues: [Identify the "
+        "process and decision-maker the parties choose; do not assume arbitration.]",
+    )
+
+    document.add_paragraph()
+    witness = document.add_paragraph(
+        "IN WITNESS WHEREOF, the parties and any counsel or mediator signing below intend "
+        "to sign this proposed agreement on the date(s) entered below."
+    )
+    witness.paragraph_format.space_before = Pt(6)
+    document.add_heading("SIGNATURES", level=2)
+    signature_table = document.add_table(rows=6, cols=2)
+    signature_table.style = "Table Grid"
+    signature_table.autofit = False
+    signature_column_widths = (Inches(3.25), Inches(3.25))
+    for column, width in zip(signature_table.columns, signature_column_widths, strict=True):
+        column.width = width
+        for cell in column.cells:
+            cell.width = width
+    signature_rows = (
+        (f"{terms.offer_from}\nProposing party", f"{terms.offer_to}\nOther party"),
+        ("Signature: __________________________\nDate: __________________", "Signature: __________________________\nDate: __________________"),
+        ("Counsel for proposing party (if applicable)\nSignature: __________________________", "Counsel for other party (if applicable)\nSignature: __________________________"),
+        ("Date: __________________", "Date: __________________"),
+        ("Mediator (if applicable)\nSignature: __________________________", "Additional signature, if applicable\nSignature: __________________________"),
+        ("Date: __________________", "Date: __________________"),
+    )
+    for row, values in zip(signature_table.rows, signature_rows, strict=True):
+        for cell, value in zip(row.cells, values, strict=True):
+            cell.text = value
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.space_after = Pt(4)
+
+    document.add_page_break()
+
+    document.add_heading("Schedule A — Selected scenario property division", level=1)
     document.add_paragraph(
         "Amounts below are derived from the selected scenario's stated assumptions and "
-        "user-provided ledger. They are proposals, not legal classifications or valuations."
+        "ledger entries. They are proposals, not legal classifications or valuations."
     )
     document.add_paragraph(
         "Debt ledger balances are shown as positive liability amounts and are subtracted "
@@ -140,6 +325,17 @@ def render_mediation_offer_docx(
     )
     table = document.add_table(rows=1, cols=6)
     table.style = "Light Shading Accent 1"
+    table.autofit = False
+    schedule_widths = (
+        Inches(1.65),
+        Inches(0.7),
+        Inches(1.05),
+        Inches(1.05),
+        Inches(0.95),
+        Inches(0.9),
+    )
+    for column, width in zip(table.columns, schedule_widths, strict=True):
+        column.width = width
     for cell, label in zip(
         table.rows[0].cells,
         (
@@ -181,23 +377,12 @@ def render_mediation_offer_docx(
     )
     document.add_paragraph(f"Tracing convention used: {result.scenario.tracing_method}.")
     document.add_paragraph(
-        "User-proposed community allocation: "
+        "Proposed community allocation: "
         f"{result.scenario.community_share_bps / 100:.2f}% to the offering party."
     )
     document.add_paragraph(
-        "The parties should review and complete any required provisions, dates, and signatures "
-        "with qualified Washington family-law counsel. This generated draft is not signed, "
-        "sent, or filed."
-    )
-    document.add_heading("Signatures", level=1)
-    document.add_paragraph(
-        f"{terms.offer_from}: ____________________________________    Date: ______________"
-    )
-    document.add_paragraph(
-        f"{terms.offer_to}: ______________________________________    Date: ______________"
-    )
-    document.add_paragraph(
-        "Attorney approval, if applicable: _______________________    Date: ______________"
+        "Review this schedule with the agreement. It is an illustrative export of the selected "
+        "scenario, not a valuation, legal classification, signed exhibit, or court filing."
     )
 
     output = BytesIO()

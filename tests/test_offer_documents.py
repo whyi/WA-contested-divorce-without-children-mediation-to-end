@@ -75,14 +75,47 @@ class MediationOfferDocumentTests(unittest.TestCase):
             for row in table.rows
             for cell in row.cells
         )
+        all_text = f"{paragraphs}\n{table_text}"
 
-        self.assertIn("UNSIGNED DRAFT", paragraphs)
+        self.assertIn("UNSIGNED PROPOSED DRAFT", paragraphs)
         self.assertIn("not signed, filed, or legal advice", paragraphs)
         self.assertIn("may have legal effect", paragraphs)
-        self.assertIn("CR 2A AGREEMENT", paragraphs)
+        self.assertIn("CR 2A AGREEMENT", all_text)
+        self.assertIn("IN THE SUPERIOR COURT OF THE STATE OF WASHINGTON", paragraphs)
+        self.assertIn("FOR [COUNTY] COUNTY", paragraphs)
+        self.assertIn("proposed settlement stipulation and agreement", paragraphs)
+        self.assertIn("Proposed effective date: 2026-01-01", paragraphs)
+        self.assertIn("Proposed response deadline: 2026-02-01", paragraphs)
+        self.assertIn("I. PARENTING PLAN", paragraphs)
+        self.assertIn("II. CHILD SUPPORT", paragraphs)
+        self.assertIn("III. SPOUSAL MAINTENANCE", paragraphs)
+        self.assertIn("IV. PROPERTY ALLOCATION", paragraphs)
+        self.assertIn("V. ALLOCATION OF DEBTS", paragraphs)
+        self.assertIn("VI. MISCELLANEOUS PROVISIONS", paragraphs)
+        self.assertIn("4.5 Proposed terms and additional settlement provisions:", paragraphs)
+        self.assertIn("Each party keeps their own retirement account.", paragraphs)
+        self.assertIn("SIGNATURES", paragraphs)
+        self.assertIn("Schedule A — Selected scenario property division", paragraphs)
+        self.assertIn("Scenario assumptions", paragraphs)
         self.assertIn("User separate", table_text)
         self.assertIn("Savings", table_text)
         self.assertIn("60.00% to the offering party", paragraphs)
+        self.assertIn("You", document.tables[0].cell(0, 0).text)
+        self.assertIn("Other party", document.tables[0].cell(0, 0).text)
+        self.assertIn("You", document.tables[1].cell(0, 0).text)
+        self.assertIn("Other party", document.tables[1].cell(0, 1).text)
+        page_breaks = [
+            index
+            for index, paragraph in enumerate(document.paragraphs)
+            if paragraph._p.xpath('.//w:br[@w:type="page"]')
+        ]
+        schedule_index = next(
+            index
+            for index, paragraph in enumerate(document.paragraphs)
+            if paragraph.text == "Schedule A — Selected scenario property division"
+        )
+        self.assertTrue(page_breaks)
+        self.assertLess(page_breaks[0], schedule_index)
         self.assertNotIn("Internal review notes", paragraphs)
         self.assertNotIn("source quote", paragraphs.lower())
 
