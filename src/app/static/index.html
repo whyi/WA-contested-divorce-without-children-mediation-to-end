@@ -1730,7 +1730,7 @@
                   <section class="settlement-response-workflow" id="settlement-response-workflow" hidden aria-labelledby="settlement-response-title">
                     <h3 id="settlement-response-title">After you send your final offer</h3>
                     <p id="settlement-response-attempt-status" role="status" aria-live="polite">First Attempt — active and editable</p>
-                    <p>Draft downloads and attaching final files do not freeze this attempt. After you have actually sent both files, confirm below to freeze its dates, milestones, values, and scenario. Then record the response. This tracker does not send documents or call AI.</p>
+                    <p>The first proposal download locks its terms and scenario so repeated downloads cannot create alternate offers. After you have actually sent both files, confirm below to freeze the sent attempt. Then record the response. This tracker does not send documents or call AI.</p>
                     <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> Attach the exact final DOCX and XLSX files you sent. Only the explicit confirmation below locks this attempt.</p>
                     <div class="settlement-response-files">
                       <label for="settlement-response-sent-docx"><span id="settlement-response-sent-docx-label">Final DOCX you sent</span>
@@ -3954,7 +3954,8 @@
           const selectedOutcome = selectedSettlementOutcome();
           const savedOutcome = current?.outcome || "";
           const frozen = Boolean(current?.frozen);
-          const inputsLocked = frozen;
+          const proposalIssued = Boolean(current?.proposal_issued);
+          const inputsLocked = frozen || proposalIssued;
           const modifiedMode = settlementAttemptEditableState.sent_offer_mode === "modified";
           const modifiedReviewed = Boolean(settlementAttemptEditableState.modified_offer_reviewed);
           const stateBusy = settlementAttemptStateDirty || settlementAttemptStateSaving;
@@ -4006,7 +4007,8 @@
             || !current?.sent_confirmed
             || !savedOutcome
             || counterofferNeedsFile
-            || (savedOutcome !== "counteroffer" && current?.has_next_attempt);
+            || (["counteroffer", "rejected"].includes(savedOutcome)
+              && current?.attempts_remaining <= 0);
           settlementResponseCounterofferFile.disabled = settlementResponseUploading
             || Boolean(current?.counteroffer_attachment_present);
           settlementResponseAcceptedFile.disabled = settlementResponseUploading
@@ -4014,20 +4016,24 @@
               || current?.attachments.some((item) => item.kind === "accepted_offer")));
           if (current) {
             const label = settlementAttemptOrdinalLabel(current.attempt_ordinal);
-            const attemptStatus = frozen
+            const attemptStatus = proposalIssued && !frozen
+              ? "proposal issued; terms and scenario are locked"
+              : frozen
               ? "sent and frozen; read-only"
               : current.sent_documents_complete
                 ? "final files attached; still editable until you confirm sending"
                 : "active and editable";
             settlementResponseAttemptStatus.textContent =
-              `${label} Attempt — ${attemptStatus}`;
+              `Attempt ${current.attempt_ordinal} of ${current.attempt_limit} — ${label} — ${attemptStatus}`;
             settlementOfferAttemptStatus.textContent =
-              `${label} Attempt — ${attemptStatus}`;
+              `Attempt ${current.attempt_ordinal} of ${current.attempt_limit} — ${label} — ${attemptStatus}`;
             settlementOffer.querySelectorAll(".settlement-offer-grid input, .settlement-offer-grid textarea")
               .forEach((input) => { input.disabled = inputsLocked; });
             settlementAxesJson.disabled = inputsLocked;
-            settlementResponseContinue.textContent = savedOutcome === "counteroffer"
-              ? `Next — ${settlementAttemptOrdinalLabel(current.attempt_ordinal + 1)} Attempt`
+            settlementResponseContinue.textContent = ["counteroffer", "rejected"].includes(savedOutcome)
+              ? current.attempts_remaining > 0
+                ? `Next — Attempt ${current.attempt_ordinal + 1} of ${current.attempt_limit}`
+                : "No attempts remaining"
               : "Next";
           }
           settlementResponseAttachments.replaceChildren();
@@ -4193,6 +4199,16 @@
             settlementOfferMilestones.value = JSON.stringify(attemptState.milestones || [], null, 2);
             settlementOfferValues.value = JSON.stringify(attemptState.proposed_values || [], null, 2);
             settlementOfferTerms.value = (attemptState.proposal_terms || []).join("\n");
+            if (loadedResponse.proposal_terms) {
+              const issuedTerms = loadedResponse.proposal_terms;
+              settlementOfferFrom.value = issuedTerms.offer_from;
+              settlementOfferTo.value = issuedTerms.offer_to;
+              settlementOfferCounty.value = issuedTerms.county || "";
+              settlementOfferCauseNumber.value = issuedTerms.court_case_number || "";
+              settlementOfferEffective.value = issuedTerms.effective_date || "";
+              settlementOfferResponse.value = issuedTerms.response_by_date || "";
+              settlementOfferTerms.value = issuedTerms.terms.join("\n");
+            }
             renderSettlementScenarios(
               { scenarios: [loadedResponse.scenario_result], ranking: null },
               { selectionLocked: true },
@@ -4242,7 +4258,8 @@
               openButton.type = "button";
               openButton.className = "dashboard-retry";
               const label = settlementAttemptOrdinalLabel(item.attempt_ordinal);
-              openButton.textContent = `${label} Attempt — ${item.frozen ? "frozen" : "active"} — ${item.outcome || "response not selected"}`;
+              openButton.textContent =
+                `Attempt ${item.attempt_ordinal} of ${item.attempt_limit} — ${label} — ${item.frozen ? "frozen" : "active"} — ${item.outcome || "response not selected"}`;
               openButton.addEventListener("click", () => openSettlementHistoryItem(item));
               row.append(openButton);
               for (const attachment of item.attachments) {
@@ -4464,7 +4481,11 @@
               || settlementSelectedScenario?.selection_id !== selectionId
             ) return;
             settlementOfferResponseState = savedState;
-            settlementResponseStatus.textContent = "Response outcome saved. Use Next only when the required documents are attached.";
+            settlementResponseStatus.textContent = outcome === "rejected"
+              ? "Offer rejection saved. Continue to revise the offer or stay here; everything is saved. Come back if things change."
+              : outcome === "counteroffer"
+                ? "Counteroffer saved. Attach the received offer, or stay here and return when ready."
+                : "Response outcome saved.";
             updateSettlementResponseControls();
             void loadSettlementOfferResponseHistory(caseId);
           } catch (error) {
@@ -4654,6 +4675,10 @@
             setSettlementStatus(validationError, "error");
             return;
           }
+          if (!(await saveSettlementAttemptState())) {
+            setSettlementStatus("Attempt changes must be saved before generating documents.", "error");
+            return;
+          }
           const isDocx = format === "docx";
           const button = isDocx ? settlementOfferDownload : settlementScheduleDownload;
           button.disabled = true;
@@ -4700,9 +4725,8 @@
                 : "Editable property-division Excel schedule downloaded. Review its assumptions and unresolved amounts before sharing.",
               "success",
             );
-            if (settlementGeneratedFormats.has("docx") && settlementGeneratedFormats.has("xlsx")) {
-              await loadSettlementOfferResponse();
-            }
+            await loadSettlementOfferResponse();
+            void loadSettlementOfferResponseHistory(settlementCaseId);
           } catch (error) {
             setSettlementStatus(error instanceof Error ? error.message : "Proposal document could not be created.", "error");
           } finally {
