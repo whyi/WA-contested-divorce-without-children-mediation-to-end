@@ -21,6 +21,7 @@ from app.analysis import router as analysis_router
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.billing_routes import router as billing_router
+from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import SessionLocal, get_db
 from app.demo import ensure_demo_user
@@ -41,6 +42,7 @@ from app.models import (
     DocumentExtraction,
     DocumentExtractionJob,
     NegotiationEvent,
+    SettlementNegotiationAttempt,
     User,
 )
 from app.property_tracing import (
@@ -221,6 +223,8 @@ async def authenticate_and_authorize_case_data(
 class CaseCreate(BaseModel):
     status: Literal["draft", "mediation", "settlement", "finalized"] = "draft"
     metadata: dict = Field(default_factory=dict)
+    case_title: str | None = Field(default=None, max_length=120)
+    workflow_mode: Literal["upload", "wizard"] | None = None
     asset_liability_inventory: dict = Field(default_factory=dict)
     relationship_milestones: RelationshipMilestones = Field(
         default_factory=RelationshipMilestones
@@ -311,11 +315,17 @@ class ConversionResponse(BaseModel):
 class DashboardCaseStatus(BaseModel):
     id: UUID
     status: str
+    title: str
+    workflow_mode: Literal["upload", "wizard"] | None
+    attempt_ordinal: int
 
 
 class DashboardData(BaseModel):
     has_cases: bool
     case_count: int
+    active_case_count: int
+    active_case_limit: int | None
+    plan_name: str
     cases: list[DashboardCaseStatus]
 
 
@@ -393,14 +403,27 @@ def dashboard_status(
     user: Annotated[User, Depends(require_current_user)],
     db: DbSession,
 ) -> DashboardStatus:
+    plan = plan_for_user(user)
     try:
         rows = db.execute(
-            select(Case.id, Case.status)
+            select(
+                Case.id,
+                Case.status,
+                Case.metadata_json,
+                func.coalesce(func.max(SettlementNegotiationAttempt.attempt_ordinal), 1),
+                CaseMembership.role,
+            )
             .join(CaseMembership, CaseMembership.case_id == Case.id)
+            .outerjoin(
+                SettlementNegotiationAttempt,
+                SettlementNegotiationAttempt.case_id == Case.id,
+            )
             .where(
                 CaseMembership.user_id == user.id,
                 CaseMembership.revoked_at.is_(None),
+                Case.status != "finalized",
             )
+            .group_by(Case.id, CaseMembership.role)
             .order_by(Case.created_at.desc(), Case.id)
         ).all()
     except SQLAlchemyError as error:
@@ -410,11 +433,32 @@ def dashboard_status(
             detail="Dashboard status is unavailable. Please try again.",
         ) from error
 
-    cases = [DashboardCaseStatus(id=case_id, status=case_status) for case_id, case_status in rows]
+    cases = []
+    active_case_count = 0
+    for case_id, case_status, metadata, attempt_ordinal, role in rows:
+        metadata = metadata if isinstance(metadata, dict) else {}
+        case_title = metadata.get("case_title")
+        if not isinstance(case_title, str) or not case_title.strip():
+            case_title = "New case"
+        workflow_mode = metadata.get("workflow_mode")
+        cases.append(
+            DashboardCaseStatus(
+                id=case_id,
+                status=case_status,
+                title=case_title.strip(),
+                workflow_mode=workflow_mode if workflow_mode in {"upload", "wizard"} else None,
+                attempt_ordinal=attempt_ordinal,
+            )
+        )
+        if role == "owner":
+            active_case_count += 1
     return DashboardStatus(
         data=DashboardData(
             has_cases=bool(cases),
             case_count=len(cases),
+            active_case_count=active_case_count,
+            active_case_limit=plan.active_case_limit,
+            plan_name=plan.name,
             cases=cases,
         )
     )
@@ -438,31 +482,15 @@ def readiness() -> dict[str, str]:
 @app.post("/cases", response_model=CaseRead, status_code=201)
 def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
     user_id = request.state.user_id
-    user = db.get(User, user_id, with_for_update=True)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    plan = plan_for_user(user)
-    active_case_count = db.scalar(
-        select(func.count(Case.id))
-        .join(CaseMembership, CaseMembership.case_id == Case.id)
-        .where(
-            CaseMembership.user_id == user_id,
-            CaseMembership.role == "owner",
-            CaseMembership.revoked_at.is_(None),
-            Case.status != "finalized",
-        )
-    ) or 0
-    if plan.active_case_limit is not None and active_case_count >= plan.active_case_limit:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"The {plan.name} plan allows {plan.active_case_limit} active case"
-                f"{'' if plan.active_case_limit == 1 else 's'}. Upgrade your plan to create another."
-            ),
-        )
+    require_active_case_slot(db, user_id)
+    case_metadata = dict(payload.metadata)
+    if payload.case_title and payload.case_title.strip():
+        case_metadata["case_title"] = payload.case_title.strip()
+    if payload.workflow_mode:
+        case_metadata["workflow_mode"] = payload.workflow_mode
     case = Case(
         status=payload.status,
-        metadata_json=payload.metadata,
+        metadata_json=case_metadata,
         asset_liability_inventory=payload.asset_liability_inventory,
         relationship_milestones=payload.relationship_milestones.model_dump(mode="json"),
         property_assets=[asset.model_dump(mode="json") for asset in payload.property_assets],
