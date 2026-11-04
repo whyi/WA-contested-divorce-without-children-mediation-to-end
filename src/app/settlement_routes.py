@@ -149,7 +149,16 @@ class ScenarioSelectionRead(BaseModel):
 
 
 class OfferResponseHistoryAttachment(BaseModel):
-    kind: Literal["sent_docx", "sent_xlsx", "counteroffer"]
+    kind: Literal[
+        "sent_docx",
+        "sent_xlsx",
+        "modified_docx",
+        "modified_xlsx",
+        "counteroffer",
+        "accepted_offer",
+        "modified_source_docx",
+        "modified_source_xlsx",
+    ]
     filename: str
 
 

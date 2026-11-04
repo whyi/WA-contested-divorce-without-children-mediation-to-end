@@ -290,7 +290,9 @@ class SettlementOfferResponseAttachment(Base):
     __tablename__ = "settlement_offer_response_attachments"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('sent_docx', 'sent_xlsx', 'counteroffer', 'accepted_offer')",
+            "kind IN ('sent_docx', 'sent_xlsx', 'modified_docx', 'modified_xlsx', "
+            "'counteroffer', 'accepted_offer', "
+            "'modified_source_docx', 'modified_source_xlsx')",
             name="ck_settlement_offer_response_attachments_kind",
         ),
         UniqueConstraint(
