@@ -350,12 +350,22 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Free plan demo (1 attempt per case)", page)
         self.assertIn("This demo represents the Free plan: one attempt per case.", page)
         self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached", page)
-        self.assertIn("Free plan's one-attempt limit blocks a second attempt.", page)
+        self.assertIn(
+            'id="settlement-demo-add-counteroffer" type="button" disabled hidden',
+            table_section,
+        )
+        self.assertIn(
+            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            table_section,
+        )
         self.assertNotIn("Congratulations", table_section)
         self.assertIn('id="settlement-completion-demo-content"', page)
         self.assertIn('window.location.assign("/demo/settlement-completion")', page)
         self.assertIn("fictional-final-cr2a-agreement.docx", table_section)
-        self.assertIn("fictional-counteroffer.pdf", page)
+        self.assertIn(
+            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            page,
+        )
         self.assertNotIn('type="file"', table_section)
         self.assertIn("never opens a file picker, uploads, reads, or saves documents", table_section)
         self.assertIn('id="settlement-scenario-status" role="status"', page)

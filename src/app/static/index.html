@@ -2052,7 +2052,8 @@
                         <label><input type="radio" name="settlement-demo-response-outcome" value="rejected"> Offer rejected</label>
                         <label><input type="radio" name="settlement-demo-response-outcome" value="accepted"> Offer accepted</label>
                       </fieldset>
-                      <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" hidden>Add fictional counteroffer example</button>
+                      <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" disabled hidden>Add fictional counteroffer example</button>
+                      <p id="settlement-demo-counteroffer-limit" hidden>Counteroffers require a second attempt, which is not available on the Free plan.</p>
                       <p id="settlement-demo-response-status" role="status" aria-live="polite">Select a response to preview the next step.</p>
                       <button class="materials-import" id="settlement-demo-response-next" type="button" disabled>Next</button>
                       <section id="settlement-demo-response-placeholder" hidden>
@@ -2359,7 +2360,6 @@
         const settlementDemoExportStatus = document.getElementById("settlement-demo-export-status");
         const settlementDemoMarkSent = document.getElementById("settlement-demo-mark-sent");
         const settlementDemoResponseFiles = document.getElementById("settlement-demo-response-files");
-        const settlementDemoAddCounteroffer = document.getElementById("settlement-demo-add-counteroffer");
         const settlementDemoAttemptStatus = document.getElementById("settlement-demo-attempt-status");
         const settlementDemoResponseStatus = document.getElementById("settlement-demo-response-status");
         const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
@@ -2376,7 +2376,6 @@
         const settlementStartDateInherited = document.getElementById("settlement-start-date-inherited");
         const settlementEndDateInherited = document.getElementById("settlement-end-date-inherited");
         let settlementDemoResponseOutcome = "";
-        let settlementDemoCounterofferAdded = false;
         let settlementDemoAttemptOrdinal = 1;
         let settlementDemoAttemptFrozen = false;
         let settlementDemoInheritedState = null;
@@ -8131,8 +8130,10 @@
         settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]').forEach((input) => {
           input.addEventListener("change", () => {
             settlementDemoResponseOutcome = input.value;
-            settlementDemoCounterofferAdded = false;
-            settlementDemoAddCounteroffer.hidden = settlementDemoResponseOutcome !== "counteroffer";
+            document.getElementById("settlement-demo-add-counteroffer").hidden =
+              settlementDemoResponseOutcome !== "counteroffer";
+            document.getElementById("settlement-demo-counteroffer-limit").hidden =
+              settlementDemoResponseOutcome !== "counteroffer";
             settlementDemoResponsePlaceholder.hidden = true;
             const attemptLimitReached = ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome);
             settlementDemoResponseNext.disabled = attemptLimitReached;
@@ -8144,58 +8145,15 @@
                 ? "Free plan limit reached"
                 : "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
-              ? "This demo represents the Free plan: one attempt per case. A counteroffer would require a second attempt, so continuing is blocked here. This demo is not connected to an account."
+              ? "This demo represents the Free plan: one attempt per case. Continuing after a counteroffer is unavailable. This demo is not connected to an account."
               : settlementDemoResponseOutcome === "accepted"
                 ? "The fictional offer was accepted. Select Next to open the completion page."
                 : "This demo represents the Free plan: one attempt per case. A rejected offer would require a second attempt, so continuing is blocked here. This demo is not connected to an account.";
           });
         });
-        settlementDemoAddCounteroffer.addEventListener("click", () => {
-          settlementDemoCounterofferAdded = true;
-          settlementDemoResponseNext.disabled = true;
-          settlementDemoResponseStatus.textContent = "Fictional response file recorded: fictional-counteroffer.pdf. The Free plan's one-attempt limit blocks a second attempt. No real file was opened, uploaded, or saved.";
-        });
         settlementDemoResponseNext.addEventListener("click", () => {
           if (!settlementDemoResponseOutcome
-            || (settlementDemoResponseOutcome === "counteroffer" && !settlementDemoCounterofferAdded)) return;
-          if (settlementDemoResponseOutcome === "counteroffer") {
-            const completedOrdinal = settlementDemoAttemptOrdinal;
-            const completedAttempt = captureSettlementDemoAttempt();
-            settlementDemoAttemptSnapshots.push(completedAttempt);
-            const nextAttemptCopy = settlementDemoClone(completedAttempt);
-            settlementDemoAttemptOrdinal += 1;
-            settlementDemoInheritedState = {
-              sourceOrdinal: completedOrdinal,
-              startDate: completedAttempt.startDate,
-              endDate: completedAttempt.endDate,
-              selectedShareBps: completedAttempt.selectedShareBps,
-              timelineDate: completedAttempt.timelineDate,
-              assetDataSignature: settlementDemoAssetDataSignature(completedAttempt),
-              milestoneSignature: settlementDemoMilestoneSignature(completedAttempt),
-            };
-            restoreSettlementDemoAttempt(nextAttemptCopy);
-            settlementDemoResponseOutcome = "";
-            settlementDemoCounterofferAdded = false;
-            settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]')
-              .forEach((input) => { input.checked = false; });
-            settlementDemoMarkSent.disabled = false;
-            settlementDemoResponseFiles.hidden = true;
-            settlementDemoAddCounteroffer.hidden = true;
-            settlementDemoResponsePlaceholder.hidden = true;
-            settlementDemoAttemptStatus.textContent =
-              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
-            settlementDemoResponseNext.textContent = "Next";
-            settlementDemoResponseNext.disabled = true;
-            setSettlementDemoAttemptFrozen(false);
-            renderDemoSettlementScenarios();
-            updateSettlementDemoInheritedIndicators();
-            settlementDemoResponseStatus.textContent =
-              `Preview only: ${settlementAttemptOrdinalLabel(completedOrdinal)} Attempt is frozen. The next attempt starts with the same sample dates and scenario; no case data is saved.`;
-            settlementDemoResponseStatus.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            assetAnalysisTitle.focus({ preventScroll: true });
-            assetAnalysisView.scrollIntoView({ behavior: "smooth", block: "start" });
-            return;
-          }
+            || ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome)) return;
           if (settlementDemoResponseOutcome === "accepted") {
             window.location.assign("/demo/settlement-completion");
             return;
