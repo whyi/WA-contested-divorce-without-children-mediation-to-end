@@ -2035,7 +2035,7 @@
                   </div>
                   <p class="settlement-scenario-status" id="settlement-demo-export-status" role="status" aria-live="polite">These files use fictional names and figures only. They are not sent to any external service.</p>
                   <section class="settlement-response-workflow settlement-demo-response-preview" id="settlement-demo-response-preview" aria-labelledby="settlement-demo-response-preview-title">
-                    <p class="settlement-attempt-banner" id="settlement-demo-attempt-status" role="status" aria-live="polite">First Attempt — demo preview only</p>
+                    <p class="settlement-attempt-banner" id="settlement-demo-attempt-status" role="status" aria-live="polite">Free plan demo — First Attempt of 1</p>
                     <h4 id="settlement-demo-response-preview-title">Preview what happens after you send an offer</h4>
                     <p>This interactive preview uses made-up filenames only. It never opens a file picker, uploads, reads, or saves documents, or accesses Google Drive.</p>
                     <p><strong>Review and edit your downloaded drafts, send them to the other party yourself, then continue here.</strong></p>
@@ -8134,23 +8134,26 @@
             settlementDemoCounterofferAdded = false;
             settlementDemoAddCounteroffer.hidden = settlementDemoResponseOutcome !== "counteroffer";
             settlementDemoResponsePlaceholder.hidden = true;
-            settlementDemoResponseNext.disabled = settlementDemoResponseOutcome === "counteroffer";
+            const attemptLimitReached = ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome);
+            settlementDemoResponseNext.disabled = attemptLimitReached;
             settlementDemoAttemptStatus.textContent =
-              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
+              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — Free plan demo (1 attempt per case)`;
             settlementDemoResponseNext.textContent = settlementDemoResponseOutcome === "counteroffer"
-              ? `Next — ${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal + 1)} Attempt`
-              : "Next";
+              ? "Free plan limit reached"
+              : settlementDemoResponseOutcome === "rejected"
+                ? "Free plan limit reached"
+                : "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
-              ? "A counteroffer would require an attachment. Add a fictional example to preview Next; no real file upload is available in this demo."
+              ? "This demo represents the Free plan: one attempt per case. A counteroffer would require a second attempt, so continuing is blocked here. This demo is not connected to an account."
               : settlementDemoResponseOutcome === "accepted"
                 ? "The fictional offer was accepted. Select Next to open the completion page."
-                : "Next is available for this preview outcome.";
+                : "This demo represents the Free plan: one attempt per case. A rejected offer would require a second attempt, so continuing is blocked here. This demo is not connected to an account.";
           });
         });
         settlementDemoAddCounteroffer.addEventListener("click", () => {
           settlementDemoCounterofferAdded = true;
-          settlementDemoResponseNext.disabled = false;
-          settlementDemoResponseStatus.textContent = "Fictional response file recorded: fictional-counteroffer.pdf. No file was opened, uploaded, or saved.";
+          settlementDemoResponseNext.disabled = true;
+          settlementDemoResponseStatus.textContent = "Fictional response file recorded: fictional-counteroffer.pdf. The Free plan's one-attempt limit blocks a second attempt. No real file was opened, uploaded, or saved.";
         });
         settlementDemoResponseNext.addEventListener("click", () => {
           if (!settlementDemoResponseOutcome
