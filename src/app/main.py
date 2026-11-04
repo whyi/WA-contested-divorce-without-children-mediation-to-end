@@ -10,7 +10,7 @@ from uuid import UUID
 from botocore.exceptions import BotoCoreError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
@@ -20,6 +20,7 @@ from starlette.responses import HTMLResponse, JSONResponse
 from app.analysis import router as analysis_router
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
+from app.billing_routes import router as billing_router
 from app.config import get_settings
 from app.database import SessionLocal, get_db
 from app.demo import ensure_demo_user
@@ -61,6 +62,7 @@ from app.services import (
 )
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
+from app.subscription_plans import plan_for_user
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -101,6 +103,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(billing_router)
 app.include_router(export_integrations_router)
 app.include_router(materials_router)
 app.include_router(offer_response_router)
@@ -434,6 +437,29 @@ def readiness() -> dict[str, str]:
 
 @app.post("/cases", response_model=CaseRead, status_code=201)
 def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
+    user_id = request.state.user_id
+    user = db.get(User, user_id, with_for_update=True)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    plan = plan_for_user(user)
+    active_case_count = db.scalar(
+        select(func.count(Case.id))
+        .join(CaseMembership, CaseMembership.case_id == Case.id)
+        .where(
+            CaseMembership.user_id == user_id,
+            CaseMembership.role == "owner",
+            CaseMembership.revoked_at.is_(None),
+            Case.status != "finalized",
+        )
+    ) or 0
+    if plan.active_case_limit is not None and active_case_count >= plan.active_case_limit:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"The {plan.name} plan allows {plan.active_case_limit} active case"
+                f"{'' if plan.active_case_limit == 1 else 's'}. Upgrade your plan to create another."
+            ),
+        )
     case = Case(
         status=payload.status,
         metadata_json=payload.metadata,

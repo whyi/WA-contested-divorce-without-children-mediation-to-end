@@ -867,6 +867,19 @@
       .dashboard-error { padding: 18px; border:1px solid var(--theme-border-e5c7c1); border-radius: 10px; background:var(--theme-background-fff8f6); }
       .dashboard-error p { margin-bottom: 12px; color:var(--theme-text-8d3026); }
       .dashboard-retry { min-height: 42px; padding: 0 14px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font-weight: 700; }
+      .subscription-pricing { padding: 34px 0 72px; }
+      .subscription-table-wrap { overflow-x: auto; border:1px solid var(--line); border-radius: 10px; background:var(--paper); }
+      .subscription-table { width:100%; min-width:720px; border-collapse: collapse; text-align:center; }
+      .subscription-table caption { padding: 12px; color:var(--muted); text-align:left; font-size:12px; }
+      .subscription-table th, .subscription-table td { min-width:120px; padding: 14px 12px; border-top:1px solid var(--line); }
+      .subscription-table th:first-child, .subscription-table td:first-child { min-width:150px; text-align:left; }
+      .subscription-table thead th { vertical-align:top; }
+      .subscription-table thead th strong, .subscription-table thead th span { display:block; margin-bottom:6px; }
+      .subscription-table thead th span { color:var(--muted); font-weight:500; }
+      .subscription-table button { max-width:100%; white-space:normal; }
+      .billing-account { margin: 0 0 28px; padding: 18px; border:1px solid var(--line); border-radius:10px; background:var(--surface-raised); }
+      .billing-account h2 { margin:0 0 8px; font-size:20px; }
+      .billing-account p { color:var(--muted); line-height:1.6; }
       .onboarding-heading { max-width: 680px; margin-bottom: 24px; }
       .onboarding-heading h2, .existing-cases h2, .preparation-view h2 { margin-bottom: 10px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 4vw, 38px); font-weight: 500; letter-spacing: -.035em; }
       .onboarding-heading p:not(.eyebrow), .existing-cases > p, .preparation-view > p { color:var(--muted); font-size: 14px; line-height: 1.7; }
@@ -1566,6 +1579,22 @@
           </div>
         </section>
 
+        <section class="subscription-pricing" id="subscription-pricing" aria-labelledby="subscription-pricing-title">
+          <div class="onboarding-heading">
+            <p class="eyebrow">Membership plans</p>
+            <h2 id="subscription-pricing-title">Choose the support that fits your casework.</h2>
+            <p>Preview and editing are free. Proposal credits are used only when generating a new DOCX + XLSX version. Existing case history remains available if a subscription ends.</p>
+          </div>
+          <p id="billing-plans-status" role="status" aria-live="polite">Loading membership plans…</p>
+          <div class="subscription-table-wrap">
+            <table class="subscription-table" id="billing-plans-table">
+              <caption>Monthly membership features and usage limits</caption>
+              <tbody id="billing-plans-body"></tbody>
+            </table>
+          </div>
+          <p class="account-footnote">Monthly document credits roll over up to twice your plan's monthly allowance. Suggested launch prices are shown only when confirmed by the billing provider.</p>
+        </section>
+
         <section class="principles" id="approach" aria-label="Product principles">
           <div class="principle">
             <span class="principle-icon" aria-hidden="true">✳</span>
@@ -1591,6 +1620,14 @@
               </div>
             </header>
             <p class="dashboard-state" id="dashboard-loading" role="status">Loading your account status…</p>
+            <section class="billing-account" id="billing-account" aria-labelledby="billing-account-title" hidden>
+              <h2 id="billing-account-title">Your membership</h2>
+              <p id="billing-account-status" role="status" aria-live="polite">Loading plan status…</p>
+              <div class="settlement-export-actions">
+                <button class="materials-import" id="billing-manage-button" type="button" hidden>Manage subscription</button>
+                <button class="dashboard-retry" id="billing-refresh-button" type="button">Refresh plan status</button>
+              </div>
+            </section>
             <div class="dashboard-state dashboard-error" id="dashboard-error" role="alert" hidden>
               <p id="dashboard-error-message">Your account status could not be loaded.</p>
               <button class="dashboard-retry" id="dashboard-retry" type="button">Try again</button>
@@ -2180,6 +2217,12 @@
         const dashboardLoading = document.getElementById("dashboard-loading");
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
+        const billingPlansStatus = document.getElementById("billing-plans-status");
+        const billingPlansBody = document.getElementById("billing-plans-body");
+        const billingAccount = document.getElementById("billing-account");
+        const billingAccountStatus = document.getElementById("billing-account-status");
+        const billingManageButton = document.getElementById("billing-manage-button");
+        const billingRefreshButton = document.getElementById("billing-refresh-button");
         const emptyAccountState = document.getElementById("empty-account-state");
         const existingCases = document.getElementById("existing-cases");
         const existingCaseCount = document.getElementById("existing-case-count");
@@ -2394,6 +2437,9 @@
         let settlementRunId = null;
         let settlementOfferResponseState = null;
         let settlementDocumentCreditsRemaining = null;
+        let billingPlans = [];
+        let billingAccountData = null;
+        let billingSignedIn = false;
         let settlementAttemptEditableState = {};
         let settlementAttemptStateLoaded = false;
         let settlementAttemptStateDirty = false;
@@ -7655,6 +7701,236 @@
           }
         }
 
+        function formatBillingDate(value) {
+          if (!value) return "";
+          const parsed = new Date(value);
+          return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
+        }
+
+        function renderBillingPlans() {
+          billingPlansBody.replaceChildren();
+          if (!billingPlans.length) return;
+          const headerRow = document.createElement("tr");
+          const featureHeading = document.createElement("th");
+          featureHeading.scope = "col";
+          featureHeading.textContent = "Plan";
+          headerRow.append(featureHeading);
+          for (const plan of billingPlans) {
+            const heading = document.createElement("th");
+            heading.scope = "col";
+            const name = document.createElement("strong");
+            name.textContent = plan.name;
+            const price = document.createElement("span");
+            price.textContent = plan.monthly_price || "Price unavailable";
+            const description = document.createElement("span");
+            description.textContent = plan.description;
+            const action = document.createElement("button");
+            action.type = "button";
+            action.className = plan.code === "free" ? "dashboard-retry" : "materials-import";
+            if (plan.code === "free") {
+              if (!billingSignedIn) {
+                action.textContent = "Create account";
+                action.addEventListener("click", () => {
+                  selectForm("signup");
+                  accountSection.scrollIntoView({ behavior: "smooth" });
+                });
+              } else if (billingAccountData?.plan_code === "free") {
+                action.textContent = "Current plan";
+                action.disabled = true;
+              } else {
+                action.textContent = "Manage subscription";
+                action.disabled = !billingAccountData?.manage_available;
+                action.addEventListener("click", () => void openBillingPortal());
+              }
+            } else if (billingAccountData?.plan_code === plan.code) {
+              action.textContent = "Current plan";
+              action.disabled = true;
+            } else if (billingAccountData?.manage_available) {
+              action.textContent = "Manage subscription";
+              action.disabled = false;
+              action.addEventListener("click", () => void openBillingPortal());
+            } else {
+              action.textContent = billingSignedIn ? "Choose plan" : "Sign in to choose";
+              action.disabled = !plan.available;
+              action.addEventListener("click", () => {
+                if (!billingSignedIn) {
+                  selectForm("signup");
+                  accountSection.scrollIntoView({ behavior: "smooth" });
+                } else {
+                  void startSubscriptionCheckout(plan.code);
+                }
+              });
+            }
+            if (!plan.available && plan.code !== "free") {
+              action.disabled = true;
+              action.textContent = "Subscriptions unavailable";
+            }
+            heading.append(name, price, description, action);
+            headerRow.append(heading);
+          }
+          const head = document.createElement("thead");
+          head.append(headerRow);
+          billingPlansBody.parentElement?.querySelector("thead")?.remove();
+          const table = document.getElementById("billing-plans-table");
+          table.insertBefore(head, billingPlansBody);
+          const rows = [
+            ["Active cases", (plan) => plan.active_case_limit === null ? "Unlimited" : String(plan.active_case_limit)],
+            ["Attempts per case", (plan) => String(plan.attempt_limit)],
+            ["Proposal credits / month", (plan) => String(plan.monthly_document_credits)],
+          ];
+          for (const [label, valueForPlan] of rows) {
+            const row = document.createElement("tr");
+            const labelCell = document.createElement("th");
+            labelCell.scope = "row";
+            labelCell.textContent = label;
+            row.append(labelCell);
+            for (const plan of billingPlans) {
+              const cell = document.createElement("td");
+              cell.textContent = valueForPlan(plan);
+              row.append(cell);
+            }
+            billingPlansBody.append(row);
+          }
+        }
+
+        async function loadBillingPlans() {
+          billingPlansStatus.textContent = "Loading membership plans…";
+          try {
+            const response = await fetch("/api/billing/plans", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Membership plans are unavailable.");
+            billingPlans = Array.isArray(result.plans) ? result.plans : [];
+            renderBillingPlans();
+            billingPlansStatus.dataset.kind = "";
+            billingPlansStatus.textContent = result.billing_configured
+              ? "Monthly plans are billed securely by Stripe. Final prices are confirmed before checkout."
+              : "Plan limits are shown for comparison. Paid subscriptions are not configured on this service yet.";
+          } catch (error) {
+            billingPlansStatus.textContent = error instanceof Error
+              ? `Membership plans could not be loaded: ${error.message}`
+              : "Membership plans could not be loaded.";
+            billingPlansStatus.dataset.kind = "error";
+          }
+        }
+
+        async function loadBillingAccount({ paymentPending = false } = {}) {
+          billingAccount.hidden = false;
+          try {
+            const response = await fetch("/api/billing/me", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (response.status === 401) {
+              billingSignedIn = false;
+              billingAccount.hidden = true;
+              renderBillingPlans();
+              return null;
+            }
+            if (!response.ok) throw new Error(result.detail || "Membership status is unavailable.");
+            billingSignedIn = true;
+            billingAccountData = result;
+            billingAccountStatus.textContent =
+              `${result.plan_name} plan (${result.subscription_status.replaceAll("_", " ")}) · `
+              + `${result.attempt_limit} attempt${result.attempt_limit === 1 ? "" : "s"} per case · `
+              + `${result.document_credit_balance} document credit${result.document_credit_balance === 1 ? "" : "s"} available`
+              + (result.period_end ? ` · Renews or ends ${formatBillingDate(result.period_end)}` : "")
+              + (result.cancel_at_period_end ? " · Cancellation scheduled" : "");
+            billingAccountStatus.dataset.kind = "";
+            billingManageButton.hidden = !result.manage_available;
+            renderBillingPlans();
+            return result;
+          } catch (error) {
+            billingAccountStatus.textContent = error instanceof Error
+              ? error.message
+              : "Membership status could not be loaded.";
+            if (paymentPending) {
+              billingAccountStatus.textContent =
+                "Payment return received. Membership changes only after the signed billing confirmation arrives; refresh shortly.";
+            }
+            billingAccountStatus.dataset.kind = "error";
+            return null;
+          }
+        }
+
+        async function startSubscriptionCheckout(planCode) {
+          try {
+            const response = await fetch("/api/billing/checkout", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: {
+                ...csrfHeaders(),
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({ plan_code: planCode }),
+            });
+            const result = await response.json();
+            if (response.status === 401) {
+              selectForm("signup");
+              accountSection.scrollIntoView({ behavior: "smooth" });
+              throw new Error("Sign in before choosing a paid membership.");
+            }
+            if (!response.ok) throw new Error(result.detail || "Checkout could not be started.");
+            const checkout = new URL(result.checkout_url);
+            if (checkout.protocol !== "https:" || checkout.hostname !== "checkout.stripe.com") {
+              throw new Error("The billing provider returned an invalid checkout address.");
+            }
+            window.location.assign(checkout.href);
+          } catch (error) {
+            billingPlansStatus.textContent = error instanceof Error
+              ? error.message
+              : "Checkout could not be started.";
+            billingPlansStatus.dataset.kind = "error";
+          }
+        }
+
+        async function openBillingPortal() {
+          try {
+            const response = await fetch("/api/billing/portal", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { ...csrfHeaders(), Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Subscription management is unavailable.");
+            const portal = new URL(result.portal_url);
+            if (portal.protocol !== "https:" || portal.hostname !== "billing.stripe.com") {
+              throw new Error("The billing provider returned an invalid management address.");
+            }
+            window.location.assign(portal.href);
+          } catch (error) {
+            billingAccountStatus.textContent = error instanceof Error
+              ? error.message
+              : "Subscription management is unavailable.";
+            billingAccountStatus.dataset.kind = "error";
+          }
+        }
+
+        async function refreshBillingStatus() {
+          const params = new URLSearchParams(window.location.search);
+          const paymentPending = params.get("billing") === "success";
+          billingRefreshButton.disabled = true;
+          let result = await loadBillingAccount({ paymentPending });
+          if (paymentPending && result?.plan_code === "free") {
+            billingAccountStatus.textContent =
+              "Payment return received. Waiting for verified confirmation from the billing provider…";
+            for (let attempt = 0; attempt < 5; attempt += 1) {
+              await new Promise((resolve) => window.setTimeout(resolve, 2000));
+              result = await loadBillingAccount({ paymentPending: true });
+              if (result?.plan_code !== "free") break;
+            }
+            if (result?.plan_code === "free") {
+              billingAccountStatus.textContent =
+                "Payment is still being confirmed. Your membership has not changed yet; use Refresh plan status in a moment.";
+            }
+          }
+          billingRefreshButton.disabled = false;
+        }
+
         async function loadDashboardStatus({ isStartup = false } = {}) {
           if (!isStartup || preparationMode) showDashboardShell();
           dashboardLoading.hidden = false;
@@ -7698,6 +7974,7 @@
             }
             showDashboardShell();
             dashboardLoading.hidden = true;
+            await refreshBillingStatus();
             if (preparationMode) {
               showPreparation(preparationMode);
             } else if (account.case_count === 0) {
@@ -7729,6 +8006,13 @@
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
         });
+        billingRefreshButton.addEventListener("click", () => {
+          void refreshBillingStatus();
+        });
+        billingManageButton.addEventListener("click", () => {
+          void openBillingPortal();
+        });
+        void loadBillingPlans();
         settlementConsentGrant.addEventListener("click", grantSettlementConsent);
         settlementConsentRevoke.addEventListener("click", revokeSettlementConsent);
         settlementLedgerAdd.addEventListener("click", appendSettlementLedgerEvents);
