@@ -288,7 +288,7 @@ class MainWorkflowTests(unittest.TestCase):
         )
         self.assertNotIn("Possible discussion scenarios", page)
         table_section = page.split('id="settlement-scenarios-preview"', 1)[1].split(
-            "</section>", 1
+            'id="settlement-scenario-status"', 1
         )[0]
         self.assertIn('<input id="settlement-start-date" type="date"', page)
         self.assertIn('<input id="settlement-end-date" type="date"', page)
@@ -298,7 +298,18 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('aria-label="Select a fictional settlement scenario"', table_section)
         self.assertIn('id="settlement-demo-docx-download"', table_section)
         self.assertIn('id="settlement-demo-xlsx-download"', table_section)
-        self.assertIn('id="settlement-scenario-status" role="status"', table_section)
+        self.assertIn('id="settlement-demo-response-preview"', table_section)
+        self.assertIn('id="settlement-demo-mark-sent"', table_section)
+        self.assertIn('id="settlement-demo-response-files"', table_section)
+        self.assertIn('name="settlement-demo-response-outcome"', table_section)
+        self.assertIn('id="settlement-demo-add-counteroffer"', table_section)
+        self.assertIn('id="settlement-demo-response-next"', table_section)
+        self.assertIn('id="settlement-demo-response-checklist"', table_section)
+        self.assertIn("fictional-final-cr2a-agreement.docx", table_section)
+        self.assertIn("fictional-counteroffer.pdf", page)
+        self.assertNotIn('type="file"', table_section)
+        self.assertIn("never opens a file picker, uploads, reads, or saves documents", table_section)
+        self.assertIn('id="settlement-scenario-status" role="status"', page)
         self.assertIn("function renderDemoSettlementScenarios()", page)
         self.assertIn('{ label: "Higher proposed share", share: 55 }', page)
         self.assertIn('{ label: "Even proposed share", share: 50 }', page)
@@ -307,16 +318,19 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("settlementDemoExportShare", page)
         self.assertIn('name = "settlement-demo-scenario"', page)
         self.assertIn("community_share_bps: settlementDemoSelectedShareBps", page)
+        self.assertIn("settlementDemoResponseFiles.hidden = false", page)
+        self.assertIn("settlementDemoResponseOutcome === \"counteroffer\"", page)
+        self.assertIn("settlementDemoResponseOutcome === \"accepted\"", page)
         self.assertLess(
             table_section.index('id="settlement-scenario-results"'),
             table_section.index('id="settlement-demo-docx-download"'),
         )
         self.assertLess(
-            table_section.index('id="settlement-demo-xlsx-download"'),
-            table_section.index('id="settlement-scenario-status"'),
+            page.index('id="settlement-demo-xlsx-download"'),
+            page.index('id="settlement-scenario-status"'),
         )
         self.assertIn('assetTimelineChart.addEventListener("pointerdown"', page)
-        self.assertIn("or sent to AI", table_section)
+        self.assertIn("or sent to AI", page)
         self.assertNotIn("<table", table_section)
         self.assertNotIn("<tbody", table_section)
         self.assertNotIn("81 combinations", page)
