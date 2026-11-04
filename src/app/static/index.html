@@ -1105,6 +1105,7 @@
       .asset-chart .settlement-date-band { fill:rgba(47, 102, 82, .13); pointer-events: none; }
       .asset-chart .settlement-date-line { stroke:var(--theme-graphic-stroke-2f6652); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
       .asset-chart .settlement-date-hit-area { fill:transparent; cursor: crosshair; touch-action: none; }
+      .asset-chart[data-settlement-frozen="true"] .settlement-date-hit-area { pointer-events: none; cursor: default; }
       .settlement-date-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 8px; }
       .settlement-date-controls label { display: grid; gap: 6px; color:var(--theme-text-43544a); font-size: 12px; font-weight: 750; }
       .settlement-date-controls input { min-height: 40px; padding: 8px 10px; border:1px solid var(--theme-border-cbd8cc); border-radius: 6px; color:var(--theme-text-24352b); background:var(--theme-background-fff); font: inherit; }
@@ -2239,6 +2240,7 @@
         let settlementDemoResponseOutcome = "";
         let settlementDemoCounterofferAdded = false;
         let settlementDemoAttemptOrdinal = 1;
+        let settlementDemoAttemptFrozen = false;
         let settlementDemoSelectedShareBps = 5000;
         let settlementDemoScenarioAvailable = false;
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
@@ -3709,10 +3711,7 @@
             || !settlementSelectedScenario
           ) return false;
           if (!settlementAttemptStateDirty) return true;
-          if (
-            settlementOfferResponseState?.frozen
-            || settlementOfferResponseState?.sent_documents_complete
-          ) return false;
+          if (settlementOfferResponseState?.frozen) return false;
           const caseId = settlementCaseId;
           const selectionId = settlementSelectedScenario.selection_id;
           settlementAttemptStateSaving = true;
@@ -5506,6 +5505,7 @@
             radio.name = "settlement-demo-scenario";
             radio.value = String(scenario.share * 100);
             radio.checked = scenario.share * 100 === settlementDemoSelectedShareBps;
+            radio.disabled = settlementDemoAttemptFrozen;
             choice.append(
               radio,
               document.createTextNode(`Select ${scenario.label}, ${scenario.share}% to Sam`),
@@ -5516,12 +5516,40 @@
           settlementScenarioStatus.textContent = `Recalculated for ${formatMilestoneDate(startDate)} through ${formatMilestoneDate(endDate)}. Start-date balances are held as baselines; only the change in combined sample net assets is split by each displayed assumption.`;
         }
 
+        function setSettlementDemoAttemptFrozen(frozen) {
+          settlementDemoAttemptFrozen = frozen;
+          assetTimelineChart.dataset.settlementFrozen = String(frozen);
+          settlementStartDate.disabled = frozen;
+          settlementEndDate.disabled = frozen;
+          settlementDemoDocxDownload.disabled = frozen || !settlementDemoScenarioAvailable;
+          settlementDemoXlsxDownload.disabled = frozen || !settlementDemoScenarioAvailable;
+          if (frozen && settlementDateRangePointerId !== null) {
+            if (assetTimelineChart.hasPointerCapture(settlementDateRangePointerId)) {
+              assetTimelineChart.releasePointerCapture(settlementDateRangePointerId);
+            }
+            settlementDateRangePointerId = null;
+            settlementDateRangeDragHandle = "";
+          }
+          for (const radio of settlementScenarioResults.querySelectorAll(
+            'input[name="settlement-demo-scenario"]',
+          )) {
+            radio.disabled = frozen;
+          }
+          settlementScenarioStatus.textContent = frozen
+            ? "This attempt is frozen. Its dates and selected scenario are read-only."
+            : settlementScenarioStatus.textContent;
+        }
+
         settlementScenarioResults.addEventListener("change", (event) => {
           const target = event.target;
           if (!(target instanceof HTMLInputElement)
             || target.name !== "settlement-demo-scenario"
             || !target.checked
             || !settlementDemoScenarioAvailable) return;
+          if (settlementDemoAttemptFrozen) {
+            renderDemoSettlementScenarios();
+            return;
+          }
           const shareBps = Number(target.value);
           if (![4500, 5000, 5500].includes(shareBps)) return;
           settlementDemoSelectedShareBps = shareBps;
@@ -5620,6 +5648,7 @@
         }
 
         function updateSettlementDateFromPointer(event) {
+          if (settlementDemoAttemptFrozen) return;
           const date = settlementDateAtPointer(event);
           if (!date) return;
           if (settlementDateRangeDragHandle === "start") {
@@ -7034,9 +7063,10 @@
           void downloadDemoSettlementDocument("xlsx");
         });
         settlementDemoMarkSent.addEventListener("click", () => {
+          setSettlementDemoAttemptFrozen(true);
           settlementDemoResponseFiles.hidden = false;
           settlementDemoMarkSent.disabled = true;
-          settlementDemoResponseStatus.textContent = "Preview only: fictional DOCX and XLSX filenames are marked as sent. No files were opened or uploaded.";
+          settlementDemoResponseStatus.textContent = "Preview only: fictional DOCX and XLSX filenames are marked as sent. This attempt's dates and scenario are frozen; no files were opened or uploaded.";
         });
         settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]').forEach((input) => {
           input.addEventListener("change", () => {
@@ -7080,6 +7110,8 @@
               `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
             settlementDemoResponseNext.textContent = "Next";
             settlementDemoResponseNext.disabled = true;
+            setSettlementDemoAttemptFrozen(false);
+            renderDemoSettlementScenarios();
             settlementDemoResponseStatus.textContent =
               `Preview only: ${settlementAttemptOrdinalLabel(completedOrdinal)} Attempt is frozen. The next attempt starts with the same sample dates and scenario; no case data is saved.`;
             settlementDemoResponseStatus.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -7125,6 +7157,7 @@
         });
         for (const dateInput of [settlementStartDate, settlementEndDate]) {
           dateInput.addEventListener("input", () => {
+            if (settlementDemoAttemptFrozen) return;
             if (!isValidMilestoneDate(dateInput.value)) return;
             if (dateInput === settlementStartDate && dateInput.value > settlementEndDate.value) {
               settlementEndDate.value = dateInput.value;
@@ -7137,6 +7170,7 @@
           });
         }
         assetTimelineChart.addEventListener("pointerdown", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const target = event.target instanceof Element
             ? event.target.closest(".settlement-date-hit-area")
             : null;
@@ -7156,7 +7190,7 @@
           updateSettlementDateFromPointer(event);
         });
         assetTimelineChart.addEventListener("pointermove", (event) => {
-          if (event.pointerId !== settlementDateRangePointerId) return;
+          if (settlementDemoAttemptFrozen || event.pointerId !== settlementDateRangePointerId) return;
           updateSettlementDateFromPointer(event);
         });
         for (const eventName of ["pointerup", "pointercancel"]) {
