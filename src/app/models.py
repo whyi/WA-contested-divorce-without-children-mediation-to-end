@@ -345,6 +345,7 @@ class SettlementNegotiationAttempt(Base):
     editable_state_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

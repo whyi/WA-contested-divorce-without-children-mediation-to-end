@@ -62,6 +62,7 @@ class OfferResponseRead(BaseModel):
     outcome: Literal["counteroffer", "rejected", "accepted"] | None
     attachments: list[OfferResponseAttachmentRead]
     sent_documents_complete: bool
+    sent_confirmed: bool
     counteroffer_attachment_present: bool
     attempt_ordinal: int
     frozen: bool
@@ -77,6 +78,12 @@ class OfferOutcomeUpdate(BaseModel):
 
     outcome: Literal["counteroffer", "rejected", "accepted"]
     expected_attempt_revision: int = Field(default=0, ge=0)
+
+
+class OfferSentConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_attempt_revision: int = Field(ge=0)
 
 
 class NegotiationMilestone(BaseModel):
@@ -355,6 +362,7 @@ def _read_response(
         outcome=response_record.outcome if response_record is not None else None,
         attachments=attachments,
         sent_documents_complete={"sent_docx", "sent_xlsx"}.issubset(kinds),
+        sent_confirmed=attempt.sent_confirmed_at is not None if attempt is not None else False,
         counteroffer_attachment_present="counteroffer" in kinds,
         attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
         frozen=attempt.frozen_at is not None if attempt is not None else bool(
@@ -370,6 +378,35 @@ def _read_response(
         scenario_result=selection.scenario_result_json,
         has_next_attempt=has_next_attempt,
     )
+
+
+def _frozen_attempt_snapshot(
+    attempt: SettlementNegotiationAttempt,
+    selection: SettlementScenarioSelection,
+    current: OfferResponseRead,
+    *,
+    confirmed_at: datetime,
+    user_id: UUID,
+) -> dict:
+    snapshot = deepcopy(attempt.snapshot_json)
+    snapshot["scenario"] = {
+        "run_id": str(selection.run_id),
+        "scenario_id": selection.scenario_id,
+        "objective": attempt.snapshot_json["scenario"]["objective"],
+        "axes": deepcopy(attempt.editable_state_json.get("scenario_assumptions")),
+        "result": deepcopy(selection.scenario_result_json),
+    }
+    snapshot["negotiation"] = deepcopy(attempt.editable_state_json)
+    snapshot["sent_attachments"] = [
+        item.model_dump(mode="json")
+        for item in current.attachments
+        if item.kind in {"sent_docx", "sent_xlsx"}
+    ]
+    snapshot["sent_confirmation"] = {
+        "confirmed_at": confirmed_at.isoformat(),
+        "user_id_snapshot": str(user_id),
+    }
+    return snapshot
 
 
 def _authorized_selection(
@@ -414,12 +451,6 @@ def update_offer_attempt_state(
         raise HTTPException(status_code=404, detail="Negotiation attempt not found.")
     if attempt.frozen_at is not None:
         raise HTTPException(status_code=409, detail="This negotiation attempt is frozen and read-only.")
-    current_response = _read_response(db, selection, _response_record(db, selection))
-    if current_response.sent_documents_complete:
-        raise HTTPException(
-            status_code=409,
-            detail="This attempt’s final sent files are recorded; its proposal inputs are read-only.",
-        )
     if payload.expected_revision != attempt.revision:
         raise HTTPException(
             status_code=409,
@@ -526,6 +557,67 @@ def update_offer_attempt_state(
         scenario_result=scenario_result,
         scenario_recalculated=scenario_recalculated,
     )
+
+
+@router.post("/confirm-sent", response_model=OfferResponseRead)
+def confirm_offer_sent(
+    case_id: UUID,
+    selection_id: UUID,
+    payload: OfferSentConfirmation,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> OfferResponseRead:
+    _authorized_selection(case_id, selection_id, user, db, write=True)
+    case = _lock_case(db, case_id)
+    selection = _selection(db, case_id, selection_id)
+    response_record = _response_record(db, selection)
+    attempt = _attempt_for_selection(db, selection)
+    current = _read_response(db, selection, response_record)
+    if not current.sent_documents_complete:
+        raise HTTPException(
+            status_code=409,
+            detail="Attach both final DOCX and XLSX files before confirming that you sent them.",
+        )
+    if attempt is None or response_record is None:
+        raise HTTPException(status_code=409, detail="Negotiation attempt is unavailable.")
+    if attempt.sent_confirmed_at is not None:
+        response.headers["Cache-Control"] = "no-store"
+        return current
+    if attempt.frozen_at is not None or response_record.outcome is not None:
+        raise HTTPException(status_code=409, detail="This negotiation attempt is already frozen.")
+    if payload.expected_attempt_revision != attempt.revision:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Negotiation attempt changed. Reload and retry.",
+                "attempt_revision": attempt.revision,
+            },
+        )
+    _require_current_attempt_revisions(case, attempt)
+    confirmed_at = datetime.now(UTC)
+    attempt.frozen_snapshot_json = _frozen_attempt_snapshot(
+        attempt,
+        selection,
+        current,
+        confirmed_at=confirmed_at,
+        user_id=user.id,
+    )
+    attempt.sent_confirmed_at = confirmed_at
+    attempt.frozen_at = confirmed_at
+    attempt.revision += 1
+    try:
+        db.commit()
+        db.refresh(attempt)
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.error("Sent-document confirmation failed (%s).", type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="The sent-document confirmation could not be saved.",
+        ) from error
+    response.headers["Cache-Control"] = "no-store"
+    return _read_response(db, selection, response_record)
 
 
 @router.post("/attachments/{kind}", response_model=OfferResponseRead, status_code=201)
@@ -700,7 +792,7 @@ def update_offer_response(
     db: Session = Depends(get_db),
 ) -> OfferResponseRead:
     _, selection = _authorized_selection(case_id, selection_id, user, db, write=True)
-    case = _lock_case(db, case_id)
+    _lock_case(db, case_id)
     response_record = _response_record(db, selection)
     current = _read_response(db, selection, response_record)
     if not current.sent_documents_complete:
@@ -708,11 +800,16 @@ def update_offer_response(
     attempt = _attempt_for_selection(db, selection)
     if response_record is None or attempt is None:
         raise HTTPException(status_code=409, detail="Offer response record is unavailable.")
-    if attempt.frozen_at is not None:
+    if response_record.outcome is not None:
         if response_record.outcome != payload.outcome:
             raise HTTPException(status_code=409, detail="This negotiation attempt is frozen and cannot be changed.")
         response.headers["Cache-Control"] = "no-store"
         return current
+    if attempt.sent_confirmed_at is None or attempt.frozen_at is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Confirm that you reviewed and sent the final documents before recording a response.",
+        )
     if payload.expected_attempt_revision != attempt.revision:
         raise HTTPException(
             status_code=409,
@@ -721,26 +818,7 @@ def update_offer_response(
                 "attempt_revision": attempt.revision,
             },
         )
-    _require_current_attempt_revisions(case, attempt)
     response_record.outcome = payload.outcome
-    frozen_snapshot = deepcopy(attempt.snapshot_json)
-    frozen_snapshot["scenario"] = {
-        "run_id": str(selection.run_id),
-        "scenario_id": selection.scenario_id,
-        "objective": attempt.snapshot_json["scenario"]["objective"],
-        "axes": deepcopy(attempt.editable_state_json.get("scenario_assumptions")),
-        "result": deepcopy(selection.scenario_result_json),
-    }
-    frozen_snapshot["negotiation"] = deepcopy(attempt.editable_state_json)
-    frozen_snapshot["sent_attachments"] = [
-        item.model_dump(mode="json")
-        for item in current.attachments
-        if item.kind in {"sent_docx", "sent_xlsx"}
-    ]
-    frozen_snapshot["outcome"] = payload.outcome
-    attempt.frozen_snapshot_json = frozen_snapshot
-    attempt.frozen_at = datetime.now(UTC)
-    attempt.revision += 1
     try:
         db.commit()
         db.refresh(response_record)
@@ -767,6 +845,11 @@ def continue_offer_response(
     current = _read_response(db, selection, response_record)
     if not current.sent_documents_complete:
         raise HTTPException(status_code=409, detail="Attach the final sent DOCX and XLSX before continuing.")
+    if not current.sent_confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail="Confirm that you reviewed and sent the final documents before continuing.",
+        )
     if current.outcome is None:
         raise HTTPException(status_code=409, detail="Choose a response outcome before continuing.")
     if current.outcome == "counteroffer" and not current.counteroffer_attachment_present:

@@ -20,8 +20,10 @@ from app.models import (
 from app.offer_response import (
     OfferOutcomeUpdate,
     OfferAttemptStateUpdate,
+    OfferSentConfirmation,
     _authorized_selection,
     _create_initial_attempt,
+    confirm_offer_sent,
     continue_offer_response,
     update_offer_attempt_state,
     update_offer_response,
@@ -127,6 +129,35 @@ class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
         delete.assert_not_called()
         rank.assert_not_called()
         deliver.assert_not_called()
+
+    async def test_confirmed_attempt_rejects_replacing_sent_files(self) -> None:
+        case_id = uuid4()
+        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        user = SimpleNamespace(id=uuid4())
+        attempt = SimpleNamespace(frozen_at=object())
+        with (
+            patch("app.offer_response._require_secure_case_storage"),
+            patch("app.offer_response._authorized_selection", return_value=(None, selection)),
+            patch("app.offer_response._lock_case", return_value=SimpleNamespace(id=case_id)),
+            patch(
+                "app.offer_response._response_record",
+                return_value=SimpleNamespace(outcome=None),
+            ),
+            patch("app.offer_response._attempt_for_selection", return_value=attempt),
+            patch("app.offer_response.storage.put") as store,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await upload_offer_response_attachment(
+                    case_id,
+                    selection.id,
+                    "sent_docx",
+                    Response(),
+                    AsyncUpload("replacement.docx", make_docx()),
+                    user,
+                    Mock(),
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+        store.assert_not_called()
 
     async def test_accepted_offer_attachment_is_stored_without_extraction(self) -> None:
         case_id = uuid4()
@@ -259,6 +290,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         user = SimpleNamespace(id=uuid4())
         current = SimpleNamespace(
             sent_documents_complete=True,
+            sent_confirmed=True,
             outcome="counteroffer",
             counteroffer_attachment_present=False,
         )
@@ -284,6 +316,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         ):
             current = SimpleNamespace(
                 sent_documents_complete=True,
+                sent_confirmed=True,
                 outcome=outcome,
                 counteroffer_attachment_present=True,
             )
@@ -310,6 +343,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         case = SimpleNamespace(id=case_id, profile_revision=2, settlement_revision=5)
         current = SimpleNamespace(
             sent_documents_complete=True,
+            sent_confirmed=True,
             outcome="counteroffer",
             counteroffer_attachment_present=True,
         )
@@ -324,6 +358,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
             },
             frozen_snapshot_json={
                 "frozen": {"baseline": "unchanged"},
+                "revisions": {"profile": 2, "settlement": 5},
                 "scenario": {"result": {"scenario": {"id": "saved"}}},
             },
             editable_state_json={"proposal_terms": ["Initial term"]},
@@ -374,11 +409,14 @@ class OfferResponseTransitionTests(unittest.TestCase):
             )
             self.assertEqual(attempt.editable_state_json, parent_editable_state)
             attempt = next_attempt
+            attempt.frozen_at = object()
+            attempt.sent_confirmed_at = object()
+            attempt.frozen_snapshot_json = deepcopy(attempt.snapshot_json)
             attempts.append(attempt)
 
         self.assertEqual([item.attempt_ordinal for item in attempts], [1, 2, 3, 4])
 
-    def test_selecting_counteroffer_freezes_server_snapshot(self) -> None:
+    def test_counteroffer_outcome_requires_prior_sent_confirmation(self) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(
             id=uuid4(),
@@ -392,6 +430,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         attempt = SimpleNamespace(
             id=uuid4(),
             frozen_at=None,
+            sent_confirmed_at=None,
             revision=2,
             snapshot_json={
                 "revisions": {"profile": 3, "settlement": 8},
@@ -413,21 +452,150 @@ class OfferResponseTransitionTests(unittest.TestCase):
             patch("app.offer_response._authorized_selection", return_value=(case, selection)),
             patch("app.offer_response._lock_case", return_value=case),
             patch("app.offer_response._response_record", return_value=response_record),
+            patch("app.offer_response._read_response", return_value=current),
+            patch("app.offer_response._attempt_for_selection", return_value=attempt),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                update_offer_response(
+                    case_id,
+                    selection.id,
+                    OfferOutcomeUpdate(outcome="counteroffer", expected_attempt_revision=2),
+                    Response(),
+                    SimpleNamespace(id=uuid4()),
+                    db,
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertIsNone(response_record.outcome)
+        self.assertIsNone(attempt.frozen_at)
+        db.commit.assert_not_called()
+
+    def test_explicit_sent_confirmation_freezes_attempt_snapshot(self) -> None:
+        case_id = uuid4()
+        user = SimpleNamespace(id=uuid4())
+        selection = SimpleNamespace(
+            id=uuid4(),
+            case_id=case_id,
+            run_id=uuid4(),
+            scenario_id="saved-scenario",
+            scenario_result_json={"scenario": {"id": "saved-scenario"}},
+        )
+        case = SimpleNamespace(profile_revision=3, settlement_revision=8)
+        attempt = SimpleNamespace(
+            attempt_ordinal=1,
+            frozen_at=None,
+            sent_confirmed_at=None,
+            revision=2,
+            snapshot_json={
+                "revisions": {"profile": 3, "settlement": 8},
+                "scenario": {"objective": "Keep property assumptions explicit"},
+            },
+            editable_state_json={"proposal_terms": ["One year to refinance"]},
+            frozen_snapshot_json=None,
+        )
+        current = SimpleNamespace(
+            sent_documents_complete=True,
+            outcome=None,
+            attachments=[
+                SimpleNamespace(kind="sent_docx", model_dump=lambda **_: {"kind": "sent_docx"}),
+                SimpleNamespace(kind="sent_xlsx", model_dump=lambda **_: {"kind": "sent_xlsx"}),
+            ],
+        )
+        expected = SimpleNamespace(sent_confirmed=True, frozen=True)
+        db = Mock()
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+            patch("app.offer_response._lock_case", return_value=case),
+            patch("app.offer_response._response_record", return_value=SimpleNamespace(outcome=None)),
             patch("app.offer_response._read_response", side_effect=[current, expected]),
             patch("app.offer_response._attempt_for_selection", return_value=attempt),
         ):
-            result = update_offer_response(
+            result = confirm_offer_sent(
                 case_id,
                 selection.id,
-                OfferOutcomeUpdate(outcome="counteroffer", expected_attempt_revision=2),
+                OfferSentConfirmation(expected_attempt_revision=2),
                 Response(),
-                SimpleNamespace(id=uuid4()),
+                user,
                 db,
             )
         self.assertIs(result, expected)
-        self.assertEqual(response_record.outcome, "counteroffer")
+        self.assertIsNotNone(attempt.sent_confirmed_at)
         self.assertIsNotNone(attempt.frozen_at)
-        self.assertEqual(attempt.frozen_snapshot_json["negotiation"], {"proposal_terms": ["One year to refinance"]})
+        self.assertEqual(
+            attempt.frozen_snapshot_json["negotiation"],
+            {"proposal_terms": ["One year to refinance"]},
+        )
+        self.assertEqual(
+            attempt.frozen_snapshot_json["sent_confirmation"]["user_id_snapshot"],
+            str(user.id),
+        )
+        self.assertEqual(
+            attempt.frozen_snapshot_json["sent_attachments"],
+            [{"kind": "sent_docx"}, {"kind": "sent_xlsx"}],
+        )
+        self.assertNotIn("outcome", attempt.frozen_snapshot_json)
+        self.assertEqual(attempt.revision, 3)
+        db.commit.assert_called_once()
+
+    def test_sent_confirmation_requires_both_final_attachments(self) -> None:
+        case_id = uuid4()
+        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        current = SimpleNamespace(sent_documents_complete=False)
+        db = Mock()
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(None, selection)),
+            patch("app.offer_response._lock_case"),
+            patch("app.offer_response._selection", return_value=selection),
+            patch("app.offer_response._response_record", return_value=object()),
+            patch("app.offer_response._attempt_for_selection", return_value=object()),
+            patch("app.offer_response._read_response", return_value=current),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                confirm_offer_sent(
+                    case_id,
+                    selection.id,
+                    OfferSentConfirmation(expected_attempt_revision=0),
+                    Response(),
+                    SimpleNamespace(id=uuid4()),
+                    db,
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+        db.commit.assert_not_called()
+
+    def test_attempt_inputs_remain_editable_after_final_documents_are_uploaded(self) -> None:
+        case_id = uuid4()
+        selection = SimpleNamespace(
+            id=uuid4(),
+            case_id=case_id,
+            scenario_result_json={"scenario": {"id": "scenario-1"}},
+        )
+        case = SimpleNamespace(profile_revision=3, settlement_revision=8)
+        attempt = SimpleNamespace(
+            attempt_ordinal=1,
+            frozen_at=None,
+            sent_confirmed_at=None,
+            revision=2,
+            snapshot_json={"revisions": {"profile": 3, "settlement": 8}},
+            editable_state_json={},
+        )
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+            patch("app.offer_response._lock_case", return_value=case),
+            patch("app.offer_response._selection", return_value=selection),
+            patch("app.offer_response._attempt_for_selection", return_value=attempt),
+            patch("app.offer_response._response_record", return_value=object()),
+            patch("app.offer_response._read_response", return_value=SimpleNamespace(
+                sent_documents_complete=True
+            )),
+        ):
+            update_offer_attempt_state(
+                case_id,
+                selection.id,
+                OfferAttemptStateUpdate(expected_revision=2, offer_to="Other party"),
+                Response(),
+                SimpleNamespace(id=uuid4()),
+                db := Mock(),
+            )
+        self.assertEqual(attempt.editable_state_json["offer_to"], "Other party")
         self.assertEqual(attempt.revision, 3)
         db.commit.assert_called_once()
 
@@ -449,6 +617,36 @@ class OfferResponseTransitionTests(unittest.TestCase):
                     case_id,
                     selection.id,
                     OfferOutcomeUpdate(outcome="accepted"),
+                    Response(),
+                    SimpleNamespace(id=uuid4()),
+                    Mock(),
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_outcome_cannot_be_recorded_until_sent_confirmation(self) -> None:
+        case_id = uuid4()
+        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        current = SimpleNamespace(
+            sent_documents_complete=True,
+            sent_confirmed=False,
+        )
+        attempt = SimpleNamespace(
+            frozen_at=None,
+            sent_confirmed_at=None,
+            revision=1,
+        )
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(None, selection)),
+            patch("app.offer_response._lock_case"),
+            patch("app.offer_response._response_record", return_value=SimpleNamespace(outcome=None)),
+            patch("app.offer_response._read_response", return_value=current),
+            patch("app.offer_response._attempt_for_selection", return_value=attempt),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                update_offer_response(
+                    case_id,
+                    selection.id,
+                    OfferOutcomeUpdate(outcome="rejected", expected_attempt_revision=1),
                     Response(),
                     SimpleNamespace(id=uuid4()),
                     Mock(),
@@ -570,15 +768,62 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("settlementDemoAttemptOrdinal += 1", html)
         self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
         self.assertIn("counterofferNeedsFile", html)
+        self.assertIn('id="settlement-response-confirm-sent"', html)
+        self.assertIn("offer-response/confirm-sent", html)
+        self.assertIn("I reviewed and sent these final documents", html)
+        self.assertIn("current?.sent_confirmed", html)
         attempt_save = html.split("async function saveSettlementAttemptState()", 1)[1].split(
             "async function loadSettlementOfferResponse", 1
         )[0]
-        self.assertLess(
-            attempt_save.index("if (!settlementAttemptStateDirty) return true;"),
-            attempt_save.index("settlementOfferResponseState?.sent_documents_complete"),
-        )
-        self.assertIn("Next opens an editable copy as the next attempt", html)
+        self.assertIn("if (settlementOfferResponseState?.frozen) return false;", attempt_save)
+        self.assertNotIn("settlementOfferResponseState?.sent_documents_complete", attempt_save)
+        self.assertIn("An editable copy was opened as the next attempt", html)
         self.assertIn("Google Drive Picker is unavailable", html)
+
+    def test_demo_attempt_freezes_chart_date_dragging(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            '.asset-chart[data-settlement-frozen="true"] .settlement-date-hit-area '
+            '{ pointer-events: none; cursor: default; }',
+            html,
+        )
+        self.assertIn("assetTimelineChart.dataset.settlementFrozen = String(frozen);", html)
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            "function updateSettlementDateFromPointer(event)", 1
+        )[1].split("function renderAssetTimelineCursor", 1)[0])
+        self.assertIn(
+            "if (settlementDemoAttemptFrozen || event.pointerId !== settlementDateRangePointerId) return;",
+            html,
+        )
+        self.assertIn("setSettlementDemoAttemptFrozen(false);", html)
+
+    def test_demo_attempt_freezes_asset_table_and_milestone_editing(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("assetEditStart.hidden = editing || settlementDemoAttemptFrozen;", html)
+        freeze = html.split("function setSettlementDemoAttemptFrozen(frozen)", 1)[1].split(
+            "settlementScenarioResults.addEventListener", 1
+        )[0]
+        for control in (
+            "assetYearRange.disabled = frozen;",
+            "assetMilestoneSelector.disabled = frozen;",
+            'customMilestoneForm.querySelectorAll("input, button")',
+            'standardMilestoneList.querySelectorAll("input, button")',
+            'customMilestoneList.querySelectorAll("input, button")',
+        ):
+            self.assertIn(control, freeze)
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            "function startAssetEdit()", 1
+        )[1].split("function cancelAssetEdit", 1)[0])
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            'standardMilestoneList.addEventListener("click"', 1
+        )[1].split('customMilestoneForm.addEventListener("submit"', 1)[0])
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            'customMilestoneForm.addEventListener("submit"', 1
+        )[1].split('customMilestoneList.addEventListener("click"', 1)[0])
 
 
 if __name__ == "__main__":
