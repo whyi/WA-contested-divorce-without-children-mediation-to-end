@@ -1,4 +1,5 @@
 import asyncio
+import re
 import unittest
 from types import SimpleNamespace
 from datetime import UTC, datetime, timedelta
@@ -96,6 +97,105 @@ class MainWorkflowTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         app.dependency_overrides.clear()
+
+    def test_theme_selection_persistence_and_shared_page_coverage(self) -> None:
+        pages = []
+        for path in ("/", "/demo", "/demo/wizard"):
+            status, body = asyncio.run(request_app(path))
+            self.assertEqual(status, 200)
+            pages.append(body.decode())
+
+        for page in pages:
+            self.assertIn('<label class="theme-control" for="theme-select">', page)
+            self.assertIn('<select id="theme-select" name="theme">', page)
+            self.assertIn('<option value="system">System</option>', page)
+            self.assertIn('<option value="light">Light</option>', page)
+            self.assertIn('<option value="dark">Dark</option>', page)
+            self.assertIn('id="theme-status" role="status" aria-live="polite"', page)
+            self.assertIn(':root[data-theme="dark"]', page)
+            self.assertIn("color-scheme: dark", page)
+            self.assertIn("--chart-you:", page)
+            self.assertIn("--chart-other:", page)
+            self.assertIn("--chart-combined:", page)
+            self.assertIn("prefers-reduced-motion: reduce", page)
+
+        page = pages[0]
+        bootstrap = page.split("<script>", 1)[1].split("</script>", 1)[0]
+        self.assertLess(page.index("</script>"), page.index("<style>"))
+        self.assertIn('getItem("casework-theme")', bootstrap)
+        self.assertIn('dataset.themePreference = preference', bootstrap)
+        self.assertIn('dataset.theme = theme', bootstrap)
+        self.assertIn('matchMedia("(prefers-color-scheme: dark)")', bootstrap)
+        self.assertIn("catch", bootstrap)
+
+        theme_handler = page.split('const themeSelect =', 1)[1].split(
+            'const signupTab =', 1
+        )[0]
+        self.assertIn('setItem(themePreferenceKey, preference)', theme_handler)
+        self.assertIn('addEventListener("change", handleSystemThemeChange)', theme_handler)
+        self.assertIn('addListener(handleSystemThemeChange)', theme_handler)
+        self.assertIn('dispatchEvent(new Event("casework:themechange"))', theme_handler)
+        self.assertIn('resolvedTheme === "dark" ? "#121a16" : "#f7f8f6"', theme_handler)
+        self.assertNotIn("fetch(", theme_handler)
+
+        css = page.split("<style>", 1)[1].split("</style>", 1)[0]
+        component_css = css.split(".preview-bar {", 1)[1]
+        declaration = re.compile(
+            r"(?P<property>background(?:-color)?|border(?:-(?:top|right|bottom|left|color))?|outline(?:-color)?|accent-color|color|fill|stroke)\s*:\s*(?P<value>[^;{}]+)",
+            re.IGNORECASE,
+        )
+        for rule in declaration.finditer(component_css):
+            self.assertNotRegex(
+                rule.group("value"),
+                r"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b",
+            )
+        dark_token_blocks = re.findall(
+            r':root\[data-theme="dark"\]\s*\{([^}]*)\}',
+            css,
+            re.DOTALL,
+        )
+        dark_tokens = dict(
+            (
+                f"{role}-{name}",
+                value,
+            )
+            for role, name, value in re.findall(
+                r"--theme-(background|text)-([0-9a-f]+):\s*(#[0-9a-fA-F]{6});",
+                dark_token_blocks[-1],
+            )
+        )
+        backgrounds = [
+            value for name, value in dark_tokens.items() if name.startswith("background-")
+        ]
+        text_colors = [
+            value for name, value in dark_tokens.items() if name.startswith("text-")
+        ]
+
+        def relative_luminance(color: str) -> float:
+            channels = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [
+                channel / 12.92
+                if channel <= 0.04045
+                else ((channel + 0.055) / 1.055) ** 2.4
+                for channel in channels
+            ]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        def contrast_ratio(first: str, second: str) -> float:
+            lighter, darker = sorted(
+                (relative_luminance(first), relative_luminance(second)),
+                reverse=True,
+            )
+            return (lighter + 0.05) / (darker + 0.05)
+
+        self.assertTrue(backgrounds)
+        self.assertTrue(text_colors)
+        self.assertGreaterEqual(
+            min(contrast_ratio(foreground, background)
+                for foreground in text_colors
+                for background in backgrounds),
+            4.5,
+        )
 
     def test_root_displays_mode_choices_and_authentication_gate(self) -> None:
         status, body = asyncio.run(request_app("/"))
@@ -692,11 +792,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('indexedDB.open(wizardDatabaseName, wizardDatabaseVersion)', wizard_demo_page)
         self.assertIn('wizardDatabaseName = "casework-wizard-intake"', wizard_demo_page)
         self.assertIn("Restored the draft and attached files saved in this browser.", wizard_demo_page)
-        self.assertNotIn("localStorage.setItem", wizard_demo_page)
         wizard_change_handler = wizard_demo_page.split(
             "function handleWizardChange(event)", 1
         )[1].split("function addWizardEntry", 1)[0]
         self.assertNotIn("fetch(", wizard_change_handler)
+        self.assertNotIn("localStorage", wizard_change_handler)
         demo_bootstrap = demo_page.rsplit('if (demoMode) {', 1)[1].split(
             "} else {", 1
         )[0]
