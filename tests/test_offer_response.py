@@ -1132,13 +1132,14 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('uploadSettlementResponseFile("accepted_offer", file)', html)
         self.assertIn("First Attempt — active and editable", html)
         self.assertIn('id="settlement-demo-attempt-status"', html)
-        self.assertIn("First Attempt — demo preview only", html)
+        self.assertIn("Free plan demo — First Attempt of 1", html)
         self.assertIn('body[data-demo-page="settlement"] .settlement-attempt-banner', html)
         self.assertIn("position: fixed", html)
         self.assertIn("min-height: 86px", html)
         self.assertIn('document.body.dataset.demoPage = "settlement"', html)
-        self.assertIn("settlementDemoAttemptOrdinal += 1", html)
+        self.assertIn("Free plan demo (1 attempt per case)", html)
         self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
+        self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn("counterofferNeedsFile", html)
         self.assertIn('id="settlement-response-confirm-sent"', html)
         self.assertIn("offer-response/confirm-sent", html)
@@ -1175,7 +1176,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
             "if (settlementDemoAttemptFrozen || event.pointerId !== settlementDateRangePointerId) return;",
             html,
         )
-        self.assertIn("setSettlementDemoAttemptFrozen(false);", html)
+        self.assertIn("setSettlementDemoAttemptFrozen(true);", html)
 
     def test_demo_attempt_freezes_asset_table_and_milestone_editing(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
@@ -1203,43 +1204,22 @@ class OfferResponseTransitionTests(unittest.TestCase):
             'customMilestoneForm.addEventListener("submit"', 1
         )[1].split('customMilestoneList.addEventListener("click"', 1)[0])
 
-    def test_demo_counteroffer_opens_next_attempt_with_inherited_highlights(self) -> None:
+    def test_free_plan_demo_blocks_counteroffers_and_rejections(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
             encoding="utf-8"
         )
-        for marker in (
-            'id="settlement-demo-inherited-notice"',
-            'id="settlement-start-date-inherited"',
-            'id="settlement-end-date-inherited"',
-            'id="asset-year-range-inherited"',
-            'id="asset-table-inherited"',
-            'id="settlement-demo-milestone-inherited"',
-            '.asset-table-scroll[data-inherited="true"] .asset-comparison-table tbody td',
-            'card.dataset.inherited = String(Boolean(selectedAndUnchanged));',
-        ):
-            self.assertIn(marker, html)
-        capture = html.split("function captureSettlementDemoAttempt()", 1)[1].split(
-            "function restoreSettlementDemoAttempt", 1
-        )[0]
-        for state_field in (
-            "startDate:",
-            "endDate:",
-            "selectedShareBps:",
-            "timelineDate:",
-            "sampleAssetYears:",
-            "interpolatedAssetOverrides:",
-            "standardMilestones:",
-            "customMilestones:",
-        ):
-            self.assertIn(state_field, capture)
+        self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
+        self.assertIn(
+            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            html,
+        )
+        self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached;", html)
         transition = html.split(
             'settlementDemoResponseNext.addEventListener("click"',
             1,
         )[1].split("for (const dateInput of [settlementStartDate", 1)[0]
-        self.assertIn("settlementDemoAttemptSnapshots.push(completedAttempt);", transition)
-        self.assertIn("restoreSettlementDemoAttempt(nextAttemptCopy);", transition)
-        self.assertIn("assetAnalysisView.scrollIntoView", transition)
-        self.assertIn("previous attempt remains unchanged", html)
+        self.assertIn('["counteroffer", "rejected"].includes(settlementDemoResponseOutcome)', transition)
+        self.assertNotIn("settlementDemoAttemptOrdinal +=", transition)
 
 
 if __name__ == "__main__":

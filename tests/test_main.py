@@ -13,8 +13,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import Settings
 from app.database import get_db
 from app.main import (
+    CaseCreate,
     OAuthCallbackQueryFilter,
     app,
+    create_case,
     delete_document,
     preview_document,
     read_property_tracing,
@@ -71,6 +73,21 @@ async def request_app(
 
 
 class MainWorkflowTests(unittest.TestCase):
+    def test_free_plan_active_case_limit_is_enforced_with_a_user_lock(self) -> None:
+        user_id = uuid4()
+        user = SimpleNamespace(subscription_plan="free", subscription_status="free")
+        db = Mock()
+        db.get.return_value = user
+        db.scalar.return_value = 1
+        request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
+
+        with self.assertRaises(HTTPException) as raised:
+            create_case(CaseCreate(), request, db)
+
+        self.assertEqual(raised.exception.status_code, 409)
+        db.get.assert_called_once_with(User, user_id, with_for_update=True)
+        db.add.assert_not_called()
+
     def test_oauth_callback_access_logs_redact_query_credentials(self) -> None:
         import logging
 
@@ -329,11 +346,26 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('name="settlement-demo-response-outcome"', table_section)
         self.assertIn('id="settlement-demo-add-counteroffer"', table_section)
         self.assertIn('id="settlement-demo-response-next"', table_section)
+        self.assertIn("Free plan demo — First Attempt of 1", table_section)
+        self.assertIn("Free plan demo (1 attempt per case)", page)
+        self.assertIn("This demo represents the Free plan: one attempt per case.", page)
+        self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached", page)
+        self.assertIn(
+            'id="settlement-demo-add-counteroffer" type="button" disabled hidden',
+            table_section,
+        )
+        self.assertIn(
+            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            table_section,
+        )
         self.assertNotIn("Congratulations", table_section)
         self.assertIn('id="settlement-completion-demo-content"', page)
         self.assertIn('window.location.assign("/demo/settlement-completion")', page)
         self.assertIn("fictional-final-cr2a-agreement.docx", table_section)
-        self.assertIn("fictional-counteroffer.pdf", page)
+        self.assertIn(
+            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            page,
+        )
         self.assertNotIn('type="file"', table_section)
         self.assertIn("never opens a file picker, uploads, reads, or saves documents", table_section)
         self.assertIn('id="settlement-scenario-status" role="status"', page)
