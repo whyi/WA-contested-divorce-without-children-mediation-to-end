@@ -1105,6 +1105,7 @@
       .asset-chart .settlement-date-band { fill:rgba(47, 102, 82, .13); pointer-events: none; }
       .asset-chart .settlement-date-line { stroke:var(--theme-graphic-stroke-2f6652); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
       .asset-chart .settlement-date-hit-area { fill:transparent; cursor: crosshair; touch-action: none; }
+      .asset-chart[data-settlement-frozen="true"] .settlement-date-hit-area { pointer-events: none; cursor: default; }
       .settlement-date-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 8px; }
       .settlement-date-controls label { display: grid; gap: 6px; color:var(--theme-text-43544a); font-size: 12px; font-weight: 750; }
       .settlement-date-controls input { min-height: 40px; padding: 8px 10px; border:1px solid var(--theme-border-cbd8cc); border-radius: 6px; color:var(--theme-text-24352b); background:var(--theme-background-fff); font: inherit; }
@@ -1699,8 +1700,8 @@
                   <section class="settlement-response-workflow" id="settlement-response-workflow" hidden aria-labelledby="settlement-response-title">
                     <h3 id="settlement-response-title">After you send your final offer</h3>
                     <p id="settlement-response-attempt-status" role="status" aria-live="polite">First Attempt — active and editable</p>
-                    <p>Choosing “Counteroffer received” freezes this attempt’s saved dates, milestones, values, and attachments. Attach the received counteroffer here; Next opens an editable copy as the next attempt. This tracker does not send documents or call AI.</p>
-                    <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> After sending, attach the exact final DOCX and XLSX files you sent, then record the response.</p>
+                    <p>Draft downloads and attaching final files do not freeze this attempt. After you have actually sent both files, confirm below to freeze its dates, milestones, values, and scenario. Then record the response. This tracker does not send documents or call AI.</p>
+                    <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> Attach the exact final DOCX and XLSX files you sent. Only the explicit confirmation below locks this attempt.</p>
                     <div class="settlement-response-files">
                       <label for="settlement-response-sent-docx">Final DOCX you sent
                         <input id="settlement-response-sent-docx" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
@@ -1716,6 +1717,7 @@
                       <pre id="settlement-response-snapshot-data"></pre>
                     </details>
                     <p id="settlement-response-status" role="status" aria-live="polite"></p>
+                    <button class="materials-import" id="settlement-response-confirm-sent" type="button" disabled>I reviewed and sent these final documents</button>
                     <fieldset>
                       <legend>What response did you receive?</legend>
                       <label><input type="radio" name="settlement-response-outcome" value="counteroffer"> Counteroffer received</label>
@@ -2165,6 +2167,7 @@
         const settlementResponseAttachments = document.getElementById("settlement-response-attachments");
         const settlementResponseSnapshotData = document.getElementById("settlement-response-snapshot-data");
         const settlementResponseStatus = document.getElementById("settlement-response-status");
+        const settlementResponseConfirmSent = document.getElementById("settlement-response-confirm-sent");
         const settlementResponseAttemptStatus = document.getElementById("settlement-response-attempt-status");
         const settlementResponseCounteroffer = document.getElementById("settlement-response-counteroffer");
         const settlementResponseCounterofferFile = document.getElementById("settlement-response-counteroffer-file");
@@ -2237,6 +2240,7 @@
         let settlementDemoResponseOutcome = "";
         let settlementDemoCounterofferAdded = false;
         let settlementDemoAttemptOrdinal = 1;
+        let settlementDemoAttemptFrozen = false;
         let settlementDemoSelectedShareBps = 5000;
         let settlementDemoScenarioAvailable = false;
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
@@ -3604,16 +3608,24 @@
           const selectedOutcome = selectedSettlementOutcome();
           const savedOutcome = current?.outcome || "";
           const frozen = Boolean(current?.frozen);
-          const inputsLocked = frozen || Boolean(current?.sent_documents_complete);
+          const inputsLocked = frozen;
           settlementGenerate.disabled = Boolean(current);
           const counterofferNeedsFile = savedOutcome === "counteroffer"
             && !current?.counteroffer_attachment_present;
           settlementResponseWorkflow.querySelector("fieldset").disabled =
-            !current?.sent_documents_complete || settlementResponseUploading || frozen;
+            !current?.sent_confirmed || settlementResponseUploading || frozen;
+          settlementResponseConfirmSent.disabled = settlementResponseUploading
+            || !current?.sent_documents_complete
+            || Boolean(current?.sent_confirmed)
+            || frozen;
+          settlementResponseConfirmSent.textContent = current?.sent_confirmed
+            ? "Sent confirmed — this attempt is frozen"
+            : "I reviewed and sent these final documents";
           settlementResponseCounteroffer.hidden =
             selectedOutcome !== "counteroffer" && savedOutcome !== "counteroffer";
           settlementResponseContinue.disabled = settlementResponseUploading
             || !current?.sent_documents_complete
+            || !current?.sent_confirmed
             || !savedOutcome
             || counterofferNeedsFile
             || (savedOutcome !== "counteroffer" && current?.has_next_attempt);
@@ -3627,9 +3639,9 @@
           if (current) {
             const label = settlementAttemptOrdinalLabel(current.attempt_ordinal);
             const attemptStatus = frozen
-              ? "frozen and read-only"
+              ? "sent and frozen; read-only"
               : current.sent_documents_complete
-                ? "active; final sent files recorded and proposal inputs locked"
+                ? "final files attached; still editable until you confirm sending"
                 : "active and editable";
             settlementResponseAttemptStatus.textContent =
               `${label} Attempt — ${attemptStatus}`;
@@ -3699,10 +3711,7 @@
             || !settlementSelectedScenario
           ) return false;
           if (!settlementAttemptStateDirty) return true;
-          if (
-            settlementOfferResponseState?.frozen
-            || settlementOfferResponseState?.sent_documents_complete
-          ) return false;
+          if (settlementOfferResponseState?.frozen) return false;
           const caseId = settlementCaseId;
           const selectionId = settlementSelectedScenario.selection_id;
           settlementAttemptStateSaving = true;
@@ -3761,6 +3770,7 @@
           settlementResponsePlaceholder.hidden = true;
           settlementResponseChecklist.hidden = true;
           settlementResponseContinue.disabled = true;
+          settlementResponseConfirmSent.disabled = true;
           settlementResponseWorkflow.querySelector("fieldset").disabled = true;
           settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
             input.checked = false;
@@ -3906,8 +3916,51 @@
           }
         }
 
+        async function confirmSettlementSentDocuments() {
+          if (
+            !settlementSelectedScenario
+            || !settlementOfferResponseState?.sent_documents_complete
+            || settlementOfferResponseState.sent_confirmed
+          ) return;
+          if (!(await saveSettlementAttemptState())) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          settlementResponseConfirmSent.disabled = true;
+          settlementResponseStatus.textContent =
+            "Recording your confirmation and freezing this attempt…";
+          try {
+            const confirmedState = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/confirm-sent`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  expected_attempt_revision: settlementOfferResponseState.attempt_revision,
+                }),
+              },
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementOfferResponseState = confirmedState;
+            settlementResponseStatus.textContent =
+              "Your sent documents are confirmed. This attempt is now frozen; choose the response you received.";
+            updateSettlementResponseControls();
+            void loadSettlementOfferResponseHistory(caseId);
+          } catch (error) {
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? error.message
+              : "The sent-document confirmation could not be saved.";
+            updateSettlementResponseControls();
+          }
+        }
+
         async function saveSettlementResponseOutcome(outcome) {
-          if (!settlementSelectedScenario) return;
+          if (!settlementSelectedScenario || !settlementOfferResponseState?.sent_confirmed) return;
           if (!(await saveSettlementAttemptState())) {
             settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
               input.checked = input.value === (settlementOfferResponseState?.outcome || "");
@@ -4543,6 +4596,7 @@
             const dateInput = document.createElement("input");
             dateInput.type = "date";
             dateInput.value = milestoneActiveDate(milestone);
+            dateInput.disabled = settlementDemoAttemptFrozen;
             dateInput.dataset.field = "date";
             dateInput.setAttribute("aria-label", `${milestone.label} date`);
             field.append(dateInput);
@@ -4555,14 +4609,15 @@
             const save = document.createElement("button");
             save.className = "asset-milestone-button primary";
             save.type = "button";
+            save.disabled = settlementDemoAttemptFrozen;
             save.dataset.action = "save-standard";
             save.textContent = milestone.overrideDate ? "Save override" : "Set date";
             const reset = document.createElement("button");
             reset.className = "asset-milestone-button";
             reset.type = "button";
+            reset.disabled = settlementDemoAttemptFrozen || !milestone.overrideDate;
             reset.dataset.action = "reset-standard";
             reset.textContent = "Reset";
-            reset.disabled = !milestone.overrideDate;
             actions.append(provenance, save, reset);
             const error = document.createElement("p");
             error.className = "asset-milestone-error";
@@ -4587,11 +4642,13 @@
               const confirm = document.createElement("button");
               confirm.className = "asset-milestone-button danger";
               confirm.type = "button";
+              confirm.disabled = settlementDemoAttemptFrozen;
               confirm.dataset.action = "confirm-delete";
               confirm.textContent = "Confirm delete";
               const cancel = document.createElement("button");
               cancel.className = "asset-milestone-button";
               cancel.type = "button";
+              cancel.disabled = settlementDemoAttemptFrozen;
               cancel.dataset.action = "cancel-delete";
               cancel.textContent = "Cancel";
               confirmationActions.append(confirm, cancel);
@@ -4608,6 +4665,7 @@
             labelInput.type = "text";
             labelInput.maxLength = 80;
             labelInput.value = milestone.label;
+            labelInput.disabled = settlementDemoAttemptFrozen;
             labelInput.dataset.field = "label";
             labelInput.setAttribute("aria-label", `Label for ${milestone.label}`);
             label.append(labelInput);
@@ -4617,6 +4675,7 @@
             const dateInput = document.createElement("input");
             dateInput.type = "date";
             dateInput.value = milestone.date;
+            dateInput.disabled = settlementDemoAttemptFrozen;
             dateInput.dataset.field = "date";
             dateInput.setAttribute("aria-label", `Date for ${milestone.label}`);
             date.append(dateInput);
@@ -4626,11 +4685,13 @@
             const save = document.createElement("button");
             save.className = "asset-milestone-button";
             save.type = "button";
+            save.disabled = settlementDemoAttemptFrozen;
             save.dataset.action = "save";
             save.textContent = "Save changes";
             const remove = document.createElement("button");
             remove.className = "asset-milestone-button danger";
             remove.type = "button";
+            remove.disabled = settlementDemoAttemptFrozen;
             remove.dataset.action = "delete";
             remove.textContent = "Delete";
             actions.append(save, remove);
@@ -4700,10 +4761,11 @@
             const group = createChartElement(assetChartMilestones, "g", {
               class: "asset-milestone-marker",
               transform: `translate(${x} ${y})`,
-              tabindex: 0,
+              tabindex: settlementDemoAttemptFrozen ? -1 : 0,
               role: "button",
               "aria-label": `${milestone.label}, ${formatMilestoneDate(date)}${milestone.overrideDate ? ", user-overridden" : milestone.source === "user" ? ", user-entered" : ""}`,
               "aria-pressed": String(selectedAssetMilestoneId === milestone.id),
+              "aria-disabled": String(settlementDemoAttemptFrozen),
               "data-milestone-id": milestone.id,
             });
             createChartElement(group, "title", {}, `${milestone.label}: ${formatMilestoneDate(date)}. ${milestoneProvenance(milestone)}`);
@@ -4895,6 +4957,7 @@
         }
 
         function selectAssetMilestone(id) {
+          if (settlementDemoAttemptFrozen) return;
           const milestone = allAssetMilestones().find((item) => item.id === id);
           if (id && (!milestone || !milestoneActiveDate(milestone))) return;
           selectedAssetMilestoneId = id;
@@ -4911,9 +4974,9 @@
 
         function updateAssetEditControls() {
           const editing = assetEditDraft !== null;
-          assetEditStart.hidden = editing;
-          assetEditSave.hidden = !editing;
-          assetEditCancel.hidden = !editing;
+          assetEditStart.hidden = editing || settlementDemoAttemptFrozen;
+          assetEditSave.hidden = !editing || settlementDemoAttemptFrozen;
+          assetEditCancel.hidden = !editing || settlementDemoAttemptFrozen;
         }
 
         function parseAssetEditValue(input) {
@@ -4980,6 +5043,7 @@
         }
 
         function startAssetEdit() {
+          if (settlementDemoAttemptFrozen) return;
           const stop = assetTimelineStops[selectedAssetYearIndex];
           if (!stop) return;
           const snapshot = assetSnapshotAtDate(stop.date);
@@ -5014,6 +5078,8 @@
 
         function saveAssetEdit() {
           if (
+            settlementDemoAttemptFrozen
+            ||
             !assetEditDraft
             || assetEditStopIndex !== selectedAssetYearIndex
             || assetEditStopDate !== assetTimelineStops[selectedAssetYearIndex]?.date
@@ -5065,6 +5131,7 @@
           assetYearRange.min = "0";
           assetYearRange.max = String(assetTimelineStops.length - 1);
           assetYearRange.value = String(index);
+          assetYearRange.disabled = settlementDemoAttemptFrozen;
           const snapshot = assetSnapshotAtDate(stop.date);
           const yearLabel = stop.yearIndex === null
             ? ""
@@ -5077,8 +5144,9 @@
           assetYearSelected.textContent = selectedLabel;
           assetYearFirst.textContent = `Year 1 · ${firstYear.year}`;
           assetYearLast.textContent = `Year ${sampleAssetYears.length} · ${lastYear.year}`;
-          assetYearPrevious.disabled = index === 0;
-          assetYearNext.disabled = index === assetTimelineStops.length - 1;
+          assetYearPrevious.disabled = settlementDemoAttemptFrozen || index === 0;
+          assetYearNext.disabled = settlementDemoAttemptFrozen
+            || index === assetTimelineStops.length - 1;
           assetYearCaption.textContent = stop.yearIndex === null
             ? `Fictional sample snapshot — ${milestoneLabel} (${formatMilestoneDate(stop.date)})`
             : `Fictional sample snapshot — Year ${stop.yearIndex + 1} (${sampleAssetYears[stop.yearIndex].year})`;
@@ -5452,6 +5520,7 @@
             radio.name = "settlement-demo-scenario";
             radio.value = String(scenario.share * 100);
             radio.checked = scenario.share * 100 === settlementDemoSelectedShareBps;
+            radio.disabled = settlementDemoAttemptFrozen;
             choice.append(
               radio,
               document.createTextNode(`Select ${scenario.label}, ${scenario.share}% to Sam`),
@@ -5462,12 +5531,71 @@
           settlementScenarioStatus.textContent = `Recalculated for ${formatMilestoneDate(startDate)} through ${formatMilestoneDate(endDate)}. Start-date balances are held as baselines; only the change in combined sample net assets is split by each displayed assumption.`;
         }
 
+        function setSettlementDemoAttemptFrozen(frozen) {
+          settlementDemoAttemptFrozen = frozen;
+          assetTimelineChart.dataset.settlementFrozen = String(frozen);
+          settlementStartDate.disabled = frozen;
+          settlementEndDate.disabled = frozen;
+          assetYearRange.disabled = frozen;
+          assetYearPrevious.disabled = frozen || selectedAssetYearIndex === 0;
+          assetYearNext.disabled = frozen
+            || selectedAssetYearIndex === assetTimelineStops.length - 1;
+          assetMilestoneSelector.disabled = frozen;
+          settlementDemoDocxDownload.disabled = frozen || !settlementDemoScenarioAvailable;
+          settlementDemoXlsxDownload.disabled = frozen || !settlementDemoScenarioAvailable;
+          for (const control of customMilestoneForm.querySelectorAll("input, button")) {
+            control.disabled = frozen;
+          }
+          for (const control of standardMilestoneList.querySelectorAll("input, button")) {
+            const milestoneId = control.closest(".asset-milestone-item")?.dataset.milestoneId;
+            const milestone = standardMilestones.find((item) => item.id === milestoneId);
+            control.disabled = frozen
+              || (control.dataset.action === "reset-standard" && !milestone?.overrideDate);
+          }
+          for (const control of customMilestoneList.querySelectorAll("input, button")) {
+            control.disabled = frozen;
+          }
+          for (const marker of assetChartMilestones.querySelectorAll("[data-milestone-id]")) {
+            marker.setAttribute("tabindex", frozen ? "-1" : "0");
+            marker.setAttribute("aria-disabled", String(frozen));
+          }
+          if (frozen && settlementDateRangePointerId !== null) {
+            if (assetTimelineChart.hasPointerCapture(settlementDateRangePointerId)) {
+              assetTimelineChart.releasePointerCapture(settlementDateRangePointerId);
+            }
+            settlementDateRangePointerId = null;
+            settlementDateRangeDragHandle = "";
+          }
+          if (frozen && assetEditDraft) {
+            assetEditDraft = null;
+            assetEditStopIndex = null;
+            assetEditStopDate = null;
+            assetEditError.hidden = true;
+            assetEditError.textContent = "";
+            assetEditStatus.textContent = "Unsaved sample-value edits were discarded when this attempt was frozen.";
+            renderAssetSnapshot(selectedAssetYearIndex);
+          }
+          updateAssetEditControls();
+          for (const radio of settlementScenarioResults.querySelectorAll(
+            'input[name="settlement-demo-scenario"]',
+          )) {
+            radio.disabled = frozen;
+          }
+          settlementScenarioStatus.textContent = frozen
+            ? "This attempt is frozen. Its dates and selected scenario are read-only."
+            : settlementScenarioStatus.textContent;
+        }
+
         settlementScenarioResults.addEventListener("change", (event) => {
           const target = event.target;
           if (!(target instanceof HTMLInputElement)
             || target.name !== "settlement-demo-scenario"
             || !target.checked
             || !settlementDemoScenarioAvailable) return;
+          if (settlementDemoAttemptFrozen) {
+            renderDemoSettlementScenarios();
+            return;
+          }
           const shareBps = Number(target.value);
           if (![4500, 5000, 5500].includes(shareBps)) return;
           settlementDemoSelectedShareBps = shareBps;
@@ -5566,6 +5694,7 @@
         }
 
         function updateSettlementDateFromPointer(event) {
+          if (settlementDemoAttemptFrozen) return;
           const date = settlementDateAtPointer(event);
           if (!date) return;
           if (settlementDateRangeDragHandle === "start") {
@@ -6952,6 +7081,9 @@
         settlementResponseContinue.addEventListener("click", () => {
           void continueSettlementOfferResponse();
         });
+        settlementResponseConfirmSent.addEventListener("click", () => {
+          void confirmSettlementSentDocuments();
+        });
         [
           settlementOfferFrom,
           settlementOfferTo,
@@ -6977,9 +7109,10 @@
           void downloadDemoSettlementDocument("xlsx");
         });
         settlementDemoMarkSent.addEventListener("click", () => {
+          setSettlementDemoAttemptFrozen(true);
           settlementDemoResponseFiles.hidden = false;
           settlementDemoMarkSent.disabled = true;
-          settlementDemoResponseStatus.textContent = "Preview only: fictional DOCX and XLSX filenames are marked as sent. No files were opened or uploaded.";
+          settlementDemoResponseStatus.textContent = "Preview only: fictional DOCX and XLSX filenames are marked as sent. This attempt's dates and scenario are frozen; no files were opened or uploaded.";
         });
         settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]').forEach((input) => {
           input.addEventListener("change", () => {
@@ -7023,6 +7156,8 @@
               `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
             settlementDemoResponseNext.textContent = "Next";
             settlementDemoResponseNext.disabled = true;
+            setSettlementDemoAttemptFrozen(false);
+            renderDemoSettlementScenarios();
             settlementDemoResponseStatus.textContent =
               `Preview only: ${settlementAttemptOrdinalLabel(completedOrdinal)} Attempt is frozen. The next attempt starts with the same sample dates and scenario; no case data is saved.`;
             settlementDemoResponseStatus.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -7064,10 +7199,12 @@
         analysisPreviewStartButton.addEventListener("click", openAssetAnalysis);
         assetAnalysisBackButton.addEventListener("click", closeAssetAnalysis);
         assetYearRange.addEventListener("input", () => {
+          if (settlementDemoAttemptFrozen) return;
           renderAssetSnapshot(Number(assetYearRange.value));
         });
         for (const dateInput of [settlementStartDate, settlementEndDate]) {
           dateInput.addEventListener("input", () => {
+            if (settlementDemoAttemptFrozen) return;
             if (!isValidMilestoneDate(dateInput.value)) return;
             if (dateInput === settlementStartDate && dateInput.value > settlementEndDate.value) {
               settlementEndDate.value = dateInput.value;
@@ -7080,6 +7217,7 @@
           });
         }
         assetTimelineChart.addEventListener("pointerdown", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const target = event.target instanceof Element
             ? event.target.closest(".settlement-date-hit-area")
             : null;
@@ -7099,7 +7237,7 @@
           updateSettlementDateFromPointer(event);
         });
         assetTimelineChart.addEventListener("pointermove", (event) => {
-          if (event.pointerId !== settlementDateRangePointerId) return;
+          if (settlementDemoAttemptFrozen || event.pointerId !== settlementDateRangePointerId) return;
           updateSettlementDateFromPointer(event);
         });
         for (const eventName of ["pointerup", "pointercancel"]) {
@@ -7124,12 +7262,15 @@
           updateAssetEditDerivedValues();
         });
         assetYearPrevious.addEventListener("click", () => {
+          if (settlementDemoAttemptFrozen) return;
           renderAssetSnapshot(selectedAssetYearIndex - 1);
         });
         assetYearNext.addEventListener("click", () => {
+          if (settlementDemoAttemptFrozen) return;
           renderAssetSnapshot(selectedAssetYearIndex + 1);
         });
         standardMilestoneList.addEventListener("click", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const target = event.target instanceof Element ? event.target : null;
           const actionButton = target?.closest("[data-action]");
           const item = target?.closest(".asset-milestone-item");
@@ -7158,6 +7299,7 @@
         });
         customMilestoneForm.addEventListener("submit", (event) => {
           event.preventDefault();
+          if (settlementDemoAttemptFrozen) return;
           const label = customMilestoneLabel.value.trim();
           const date = customMilestoneDate.value;
           const duplicate = customMilestones.some(
@@ -7185,6 +7327,7 @@
           assetMilestoneStatus.textContent = `${label}, ${formatMilestoneDate(date)}, added to this preview only. Nothing was sent or saved.`;
         });
         customMilestoneList.addEventListener("click", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const target = event.target instanceof Element ? event.target : null;
           const actionButton = target?.closest("[data-action]");
           const item = target?.closest(".asset-milestone-item");
@@ -7244,15 +7387,18 @@
           assetMilestoneStatus.textContent = `${label}, ${formatMilestoneDate(date)}, updated in this preview only. Nothing was sent or saved.`;
         });
         assetMilestoneSelector.addEventListener("change", () => {
+          if (settlementDemoAttemptFrozen) return;
           selectAssetMilestone(assetMilestoneSelector.value);
         });
         assetChartMilestones.addEventListener("click", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const marker = event.target instanceof Element
             ? event.target.closest("[data-milestone-id]")
             : null;
           if (marker) selectAssetMilestone(marker.dataset.milestoneId);
         });
         assetChartMilestones.addEventListener("keydown", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           if (event.key !== "Enter" && event.key !== " ") return;
           const marker = event.target instanceof Element
             ? event.target.closest("[data-milestone-id]")
