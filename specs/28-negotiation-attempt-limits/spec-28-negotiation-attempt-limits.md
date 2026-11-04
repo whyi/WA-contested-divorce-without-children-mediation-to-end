@@ -21,9 +21,9 @@
 
 ## 3. Proposal-Issuance Lock
 
-- **FR-28-08 — Lock first issued draft:** The first successful real-case DOCX or XLSX export stores the validated offer terms and issuance timestamp on the active attempt. It locks that attempt's terms, values, and scenario inputs against further updates.
-- **FR-28-09 — Same immutable pair:** The other document format and later downloads can only use the pinned terms and scenario. Requests with altered terms fail visibly; repeat downloads of the same version are idempotent and do not consume additional attempts.
-- **FR-28-10 — Server-side guards:** Enforce the issuance lock on all attempt-state and document-export endpoints, not only disabled browser controls. Only an authorized, quota-checked rejection/counteroffer transition can create the next editable attempt.
+- **FR-28-08 — Lock first issued draft:** The first successful real-case DOCX or XLSX export stores the validated offer terms and issuance timestamp on the active attempt. It locks that issued version's terms, values, and scenario inputs against further updates. Creating a separately charged new version follows Spec 29.
+- **FR-28-09 — Same immutable pair:** The other document format and later downloads within one version can only use its pinned terms and scenario. Requests with altered terms fail visibly; repeat downloads of the same version are idempotent and do not consume additional attempts or document credits. Additional versions follow Spec 29.
+- **FR-28-10 — Server-side guards:** Enforce the issuance lock on all attempt-state and document-export endpoints, not only disabled browser controls. Only an authorized, quota-checked rejection/counteroffer transition can create the next editable attempt; an explicitly unlocked, separately credited proposal version is governed by Spec 29.
 - **FR-28-11 — Modified documents:** Preserve the Spec 27 requirement to upload modified DOCX/XLSX and explicitly review them before confirmation. They remain attached to their issued attempt and cannot be used to unlock or revise that attempt in the app.
 
 ## 4. Accessible Limit Display
@@ -46,6 +46,6 @@
 - Implemented server-managed `settlement_attempt_limit` values of 1, 3, 5, and 10; new accounts default to Free (1). Payment processing and entitlement administration remain out of scope.
 - Rejection now follows the same next-attempt transition as a counteroffer, without requiring an attachment. Counteroffers still require their file.
 - DOCX, XLSX, and delivery routes pin the first successfully rendered proposal terms and scenario on the attempt. Later exports must match those terms and use the pinned scenario.
-- Attempt-state updates reject changes to the issued offer and scenario. Workflow-only state changes for the modified-offer review remain available.
+- Attempt-state updates reject changes to an issued version and scenario. A new version may be opened explicitly and is governed by Spec 29; workflow-only state changes for the modified-offer review remain available.
 - The response and history views report `Attempt N of M` and remaining attempts.
 - Focused tests cover entitlement values/defaulting, exhausted rejection/counteroffer transitions, immutable cross-format exports, stale case revisions after issuance, and direct attempt-state edits.

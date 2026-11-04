@@ -331,6 +331,10 @@ class SettlementNegotiationAttempt(Base):
         UniqueConstraint("predecessor_id", name="uq_settlement_negotiation_attempt_predecessor"),
         CheckConstraint("attempt_ordinal >= 1", name="ck_settlement_negotiation_attempt_ordinal"),
         CheckConstraint("revision >= 0", name="ck_settlement_negotiation_attempt_revision"),
+        CheckConstraint(
+            "proposal_version_ordinal >= 0",
+            name="ck_settlement_negotiation_attempt_proposal_version",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -348,6 +352,12 @@ class SettlementNegotiationAttempt(Base):
     proposal_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     proposal_terms_json: Mapped[dict | None] = mapped_column(JSONB)
     proposal_scenario_result_json: Mapped[dict | None] = mapped_column(JSONB)
+    proposal_version_ordinal: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    proposal_draft_unlocked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -356,6 +366,63 @@ class SettlementNegotiationAttempt(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class SettlementProposalVersion(Base):
+    __tablename__ = "settlement_proposal_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "attempt_id",
+            "version_ordinal",
+            name="uq_settlement_proposal_version_attempt_ordinal",
+        ),
+        CheckConstraint("version_ordinal >= 1", name="ck_settlement_proposal_version_ordinal"),
+        CheckConstraint("credit_cost IN (0, 1)", name="ck_settlement_proposal_version_credit_cost"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("settlement_negotiation_attempts.id", ondelete="CASCADE"), index=True
+    )
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
+    version_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    terms_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    scenario_result_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    docx_content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    xlsx_content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    credit_cost: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class DocumentCreditLedgerEntry(Base):
+    __tablename__ = "document_credit_ledger_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name="uq_document_credit_ledger_user_idempotency",
+        ),
+        CheckConstraint("delta <> 0", name="ck_document_credit_ledger_delta"),
+        CheckConstraint("balance_after >= 0", name="ck_document_credit_ledger_balance"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    proposal_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("settlement_proposal_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
@@ -746,6 +813,10 @@ class User(Base):
             "settlement_attempt_limit IN (1, 3, 5, 10)",
             name="ck_users_settlement_attempt_limit",
         ),
+        CheckConstraint(
+            "document_credit_balance >= 0",
+            name="ck_users_document_credit_balance",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -754,6 +825,9 @@ class User(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending_verification")
     settlement_attempt_limit: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default=text("1")
+    )
+    document_credit_balance: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
     )
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

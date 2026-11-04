@@ -1668,6 +1668,7 @@
                     <h3 id="settlement-offer-title">Prepare a CR 2A proposal draft</h3>
                     <p id="settlement-offer-attempt-status">First Attempt — active and editable</p>
                     <p>Create editable Word and Excel drafts from the selected calculation and your proposed terms. The Word draft is unsigned and is not filed. A signed CR 2A agreement may have legal effect; review it with qualified Washington counsel before signing or sharing. Nothing is sent unless you explicitly confirm delivery.</p>
+                    <p id="settlement-document-credit-status" role="status" aria-live="polite">Preview and editing are free. Generating a new version uses 1 document credit for both DOCX and XLSX. Checking your balance…</p>
                     <p>Milestones and proposed values below belong only to this negotiation attempt. They do not change source facts or the evidence-backed settlement ledger; a later attempt starts with a separate editable copy.</p>
                     <div class="settlement-offer-grid">
                       <label>From (you, the user party in the ledger)<input id="settlement-offer-from" type="text" maxlength="160" required></label>
@@ -1683,8 +1684,9 @@
                       <label>Proposed terms (one per line)<textarea id="settlement-offer-terms" required></textarea></label>
                     </div>
                     <div class="settlement-export-actions" role="group" aria-label="Download proposal drafts">
-                      <button class="materials-import" id="settlement-offer-download" type="button">Download CR 2A Word draft</button>
-                      <button class="materials-import" id="settlement-schedule-download" type="button">Download property schedule Excel</button>
+                      <button class="materials-import" id="settlement-offer-download" type="button">Download DOCX (uses 1 credit for a new version)</button>
+                      <button class="materials-import" id="settlement-schedule-download" type="button">Download XLSX (uses 1 credit for a new version)</button>
+                      <button class="dashboard-retry" id="settlement-new-proposal-version" type="button" hidden>Start a new proposal version</button>
                     </div>
                     <section class="settlement-export-destinations" aria-labelledby="settlement-export-destinations-title">
                       <h4 id="settlement-export-destinations-title">Optional: save or send generated drafts</h4>
@@ -1721,7 +1723,7 @@
                       <li>cr2a-agreement-proposal-draft.docx</li>
                       <li>property-division-proposal-draft.xlsx</li>
                     </ul>
-                    <p>This action sends the two drafts to the displayed destination. It does not file them with a court.</p>
+                    <p>This action sends the two drafts to the displayed destination. If this is a new proposal version, it uses 1 document credit for both files. It does not file them with a court.</p>
                     <div class="settlement-export-actions">
                       <button class="materials-import" id="settlement-export-cancel" type="button">Cancel</button>
                       <button class="materials-import" id="settlement-export-confirm" type="button">Confirm and send both drafts</button>
@@ -2215,6 +2217,8 @@
         const settlementOfferTerms = document.getElementById("settlement-offer-terms");
         const settlementOfferDownload = document.getElementById("settlement-offer-download");
         const settlementScheduleDownload = document.getElementById("settlement-schedule-download");
+        const settlementDocumentCreditStatus = document.getElementById("settlement-document-credit-status");
+        const settlementNewProposalVersion = document.getElementById("settlement-new-proposal-version");
         const settlementExportStatus = document.getElementById("settlement-export-status");
         const settlementGoogleStatus = document.getElementById("settlement-google-status");
         const settlementDropboxStatus = document.getElementById("settlement-dropbox-status");
@@ -2389,6 +2393,7 @@
         let settlementDisclosureAvailable = false;
         let settlementRunId = null;
         let settlementOfferResponseState = null;
+        let settlementDocumentCreditsRemaining = null;
         let settlementAttemptEditableState = {};
         let settlementAttemptStateLoaded = false;
         let settlementAttemptStateDirty = false;
@@ -3369,6 +3374,9 @@
           settlementSelectedScenario = null;
           settlementRunId = null;
           settlementOfferResponseState = null;
+          settlementDocumentCreditsRemaining = null;
+          settlementDocumentCreditStatus.textContent = "Checking document credit balance…";
+          settlementDocumentCreditStatus.removeAttribute("data-kind");
           settlementGeneratedFormats = new Set();
           settlementResponseWorkflow.hidden = true;
           settlementPlanner.hidden = false;
@@ -3949,13 +3957,73 @@
           }
         }
 
+        async function refreshSettlementDocumentCredits() {
+          const caseId = settlementCaseId;
+          if (!caseId) return;
+          try {
+            const result = await settlementApi(
+              `/cases/${caseId}/settlement-planning/document-credits`,
+            );
+            if (settlementCaseId !== caseId) return;
+            settlementDocumentCreditsRemaining = result.remaining;
+            updateSettlementDocumentCreditControls();
+          } catch (error) {
+            if (settlementCaseId !== caseId) return;
+            settlementDocumentCreditsRemaining = null;
+            settlementDocumentCreditStatus.textContent = error instanceof Error
+              ? `Document credit balance could not be loaded: ${error.message}`
+              : "Document credit balance could not be loaded.";
+            settlementDocumentCreditStatus.dataset.kind = "error";
+            updateSettlementDocumentCreditControls();
+          }
+        }
+
+        function updateSettlementDocumentCreditControls() {
+          const current = settlementOfferResponseState;
+          const needsCredit = !current?.proposal_issued || current?.proposal_draft_unlocked;
+          const remaining = settlementDocumentCreditsRemaining;
+          if (remaining === null) {
+            if (!settlementDocumentCreditStatus.dataset.kind) {
+              settlementDocumentCreditStatus.textContent = "Preview and editing are free. Generating a new version uses 1 document credit for both files. Balance unavailable.";
+            }
+          } else {
+            settlementDocumentCreditStatus.textContent = needsCredit
+              ? remaining > 0
+                ? `Preview and editing are free. Generating this version creates both DOCX and XLSX and uses 1 document credit. Balance: ${remaining}.`
+                : "Preview and editing are free. Generating this version needs 1 document credit for both files; add credits or upgrade your subscription. Balance: 0."
+              : `This proposal version is saved. Re-downloading either file is free. Balance: ${remaining} document credit${remaining === 1 ? "" : "s"}.`;
+            settlementDocumentCreditStatus.removeAttribute("data-kind");
+          }
+          const blocked = needsCredit && (remaining === null || remaining < 1);
+          settlementOfferDownload.disabled = blocked;
+          settlementScheduleDownload.disabled = blocked;
+          const canStartNewVersion = Boolean(
+            current?.proposal_issued
+            && !current?.proposal_draft_unlocked
+            && !current?.frozen
+            && !current?.sent_confirmed
+            && !current?.outcome
+          );
+          settlementNewProposalVersion.hidden = !canStartNewVersion;
+          settlementNewProposalVersion.disabled = !canStartNewVersion;
+          const providers = settlementExportDestinations;
+          if (providers) {
+            settlementGoogleSend.disabled = !providers.google_drive.configured
+              || !providers.google_drive.connected || blocked;
+            settlementDropboxSend.disabled = !providers.dropbox.configured
+              || !providers.dropbox.connected || blocked;
+            settlementEmailSend.disabled = !providers.email.configured || blocked;
+          }
+        }
+
         function updateSettlementResponseControls() {
           const current = settlementOfferResponseState;
           const selectedOutcome = selectedSettlementOutcome();
           const savedOutcome = current?.outcome || "";
           const frozen = Boolean(current?.frozen);
           const proposalIssued = Boolean(current?.proposal_issued);
-          const inputsLocked = frozen || proposalIssued;
+          const proposalDraftUnlocked = Boolean(current?.proposal_draft_unlocked);
+          const inputsLocked = frozen || (proposalIssued && !proposalDraftUnlocked);
           const modifiedMode = settlementAttemptEditableState.sent_offer_mode === "modified";
           const modifiedReviewed = Boolean(settlementAttemptEditableState.modified_offer_reviewed);
           const stateBusy = settlementAttemptStateDirty || settlementAttemptStateSaving;
@@ -4017,7 +4085,9 @@
           if (current) {
             const label = settlementAttemptOrdinalLabel(current.attempt_ordinal);
             const attemptStatus = proposalIssued && !frozen
-              ? "proposal issued; terms and scenario are locked"
+              ? proposalDraftUnlocked
+                ? "new proposal version open; generation uses 1 document credit"
+                : "proposal issued; terms and scenario are locked"
               : frozen
               ? "sent and frozen; read-only"
               : current.sent_documents_complete
@@ -4036,6 +4106,7 @@
                 : "No attempts remaining"
               : "Next";
           }
+          updateSettlementDocumentCreditControls();
           settlementResponseAttachments.replaceChildren();
           if (current) {
             settlementResponseSnapshotData.textContent = JSON.stringify({
@@ -4158,6 +4229,9 @@
           const selectionId = settlementSelectedScenario?.selection_id;
           if (!caseId || !selectionId) return false;
           settlementOfferResponseState = null;
+          settlementDocumentCreditsRemaining = null;
+          settlementDocumentCreditStatus.textContent = "Checking document credit balance…";
+          settlementDocumentCreditStatus.removeAttribute("data-kind");
           settlementAttemptStateLoaded = false;
           settlementAttemptStateDirty = false;
           settlementModifiedOfferParsed = false;
@@ -4199,7 +4273,7 @@
             settlementOfferMilestones.value = JSON.stringify(attemptState.milestones || [], null, 2);
             settlementOfferValues.value = JSON.stringify(attemptState.proposed_values || [], null, 2);
             settlementOfferTerms.value = (attemptState.proposal_terms || []).join("\n");
-            if (loadedResponse.proposal_terms) {
+            if (loadedResponse.proposal_terms && !loadedResponse.proposal_draft_unlocked) {
               const issuedTerms = loadedResponse.proposal_terms;
               settlementOfferFrom.value = issuedTerms.offer_from;
               settlementOfferTo.value = issuedTerms.offer_to;
@@ -4221,6 +4295,7 @@
               settlementAttemptEditableState.sent_offer_mode === "modified"
                 ? "Upload both modified documents. They stay in this case and are not processed by AI."
                 : "Attach the exact final documents you sent. Your files stay in this case and are not processed by AI.";
+            await refreshSettlementDocumentCredits();
             updateSettlementResponseControls();
             if (
               settlementAttemptEditableState.sent_offer_mode === "modified"
@@ -4665,6 +4740,35 @@
           return "";
         }
 
+        async function startSettlementProposalVersion() {
+          if (!settlementSelectedScenario || !settlementOfferResponseState?.proposal_issued) return;
+          settlementNewProposalVersion.disabled = true;
+          try {
+            const caseId = settlementCaseId;
+            const selectionId = settlementSelectedScenario.selection_id;
+            const result = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/new-proposal-version`,
+              { method: "POST" },
+            );
+            if (settlementCaseId !== caseId || settlementSelectedScenario?.selection_id !== selectionId) return;
+            settlementOfferResponseState.proposal_draft_unlocked = result.proposal_draft_unlocked;
+            settlementOfferResponseState.proposal_version_ordinal = result.proposal_version_ordinal;
+            settlementOfferResponseState.attempt_revision = result.attempt_revision;
+            setSettlementStatus(
+              `Version ${result.proposal_version_ordinal} is open for free editing. Generating it will use 1 document credit for both files.`,
+              "success",
+            );
+            updateSettlementResponseControls();
+          } catch (error) {
+            setSettlementStatus(
+              error instanceof Error ? error.message : "A new proposal version could not be opened.",
+              "error",
+            );
+          } finally {
+            updateSettlementDocumentCreditControls();
+          }
+        }
+
         async function downloadSettlementDocument(format) {
           if (!settlementSelectedScenario) {
             setSettlementStatus("Choose a scenario before creating the proposal documents.", "error");
@@ -4681,6 +4785,19 @@
           }
           const isDocx = format === "docx";
           const button = isDocx ? settlementOfferDownload : settlementScheduleDownload;
+          const needsCredit = !settlementOfferResponseState?.proposal_issued
+            || settlementOfferResponseState?.proposal_draft_unlocked;
+          if (needsCredit && (settlementDocumentCreditsRemaining === null
+            || settlementDocumentCreditsRemaining < 1)) {
+            setSettlementStatus(
+              "Your preview and edits are saved for free. Generating a new version requires 1 document credit, and your balance is unavailable or insufficient.",
+              "error",
+            );
+            return;
+          }
+          if (needsCredit && !window.confirm(
+            `Generate this proposal version? This creates both DOCX and XLSX and uses 1 document credit. Remaining after generation: ${settlementDocumentCreditsRemaining - 1}.`,
+          )) return;
           button.disabled = true;
           try {
             const response = await fetch(
@@ -4695,7 +4812,10 @@
                     ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 },
-                body: JSON.stringify({ terms: collectSettlementOfferTerms() }),
+                body: JSON.stringify({
+                  terms: collectSettlementOfferTerms(),
+                  confirm_credit_use: needsCredit,
+                }),
               },
             );
             if (response.status === 401) {
@@ -4730,7 +4850,7 @@
           } catch (error) {
             setSettlementStatus(error instanceof Error ? error.message : "Proposal document could not be created.", "error");
           } finally {
-            button.disabled = false;
+            updateSettlementDocumentCreditControls();
           }
         }
 
@@ -4761,6 +4881,7 @@
             settlementEmailSend.disabled = !email.configured;
             settlementExportStatus.textContent = "Downloads are available independently. External delivery requires a separate confirmation each time.";
             settlementExportStatus.dataset.kind = "";
+            updateSettlementDocumentCreditControls();
           } catch (error) {
             settlementExportStatus.textContent = error instanceof Error ? error.message : "Delivery options could not be loaded.";
             settlementExportStatus.dataset.kind = "error";
@@ -4807,7 +4928,7 @@
           }
         }
 
-        function queueSettlementExportDelivery(channel) {
+        async function queueSettlementExportDelivery(channel) {
           if (!settlementSelectedScenario) {
             settlementExportStatus.textContent = "Choose a scenario before sending proposal documents.";
             settlementExportStatus.dataset.kind = "error";
@@ -4816,6 +4937,20 @@
           const validationError = validateSettlementOfferTerms();
           if (validationError) {
             settlementExportStatus.textContent = validationError;
+            settlementExportStatus.dataset.kind = "error";
+            return;
+          }
+          const needsCredit = !settlementOfferResponseState?.proposal_issued
+            || settlementOfferResponseState?.proposal_draft_unlocked;
+          if (needsCredit && (settlementDocumentCreditsRemaining === null
+            || settlementDocumentCreditsRemaining < 1)) {
+            settlementExportStatus.textContent =
+              "Your preview and edits are saved for free. Generating a new version requires 1 document credit, and your balance is unavailable or insufficient.";
+            settlementExportStatus.dataset.kind = "error";
+            return;
+          }
+          if (!(await saveSettlementAttemptState())) {
+            settlementExportStatus.textContent = "Attempt changes must be saved before generating documents.";
             settlementExportStatus.dataset.kind = "error";
             return;
           }
@@ -4839,8 +4974,11 @@
             channel,
             recipient,
             idempotency_key: newSettlementId(),
+            confirm_credit_use: needsCredit,
           };
-          settlementExportConfirmationDetails.textContent = details;
+          settlementExportConfirmationDetails.textContent = needsCredit
+            ? `${details} Generating both documents uses 1 document credit; ${settlementDocumentCreditsRemaining - 1} will remain.`
+            : `${details} This saved proposal version is being reused at no additional credit cost.`;
           settlementExportConfirm.disabled = false;
           settlementExportConfirmation.showModal();
           settlementExportCancel.focus();
@@ -4854,6 +4992,7 @@
             const payload = {
               ...pending,
               confirm: true,
+              confirm_credit_use: pending.confirm_credit_use,
               terms: collectSettlementOfferTerms(),
             };
             const result = await settlementApi(
@@ -4866,6 +5005,7 @@
             settlementExportConfirmation.close();
             settlementExportStatus.textContent = `${result.file_count} draft files delivered to the confirmed destination. Review the files with qualified Washington counsel.`;
             settlementExportStatus.dataset.kind = "success";
+            await loadSettlementOfferResponse({ showWorkflow: false });
           } catch (error) {
             const message = error instanceof Error ? error.message : "Delivery could not be confirmed.";
             settlementExportConfirmationDetails.textContent = `${message} Check the destination before trying again; partial uploads are not retried automatically.`;
@@ -7595,6 +7735,9 @@
         settlementGenerate.addEventListener("click", generateSettlementScenarios);
         settlementOfferDownload.addEventListener("click", () => downloadSettlementDocument("docx"));
         settlementScheduleDownload.addEventListener("click", () => downloadSettlementDocument("xlsx"));
+        settlementNewProposalVersion.addEventListener("click", () => {
+          void startSettlementProposalVersion();
+        });
         settlementResponseSentDocx.addEventListener("change", () => {
           const file = settlementResponseSentDocx.files?.[0];
           void uploadSettlementResponseFile("sent_docx", file).finally(() => {
@@ -7786,9 +7929,15 @@
         settlementDropboxDisconnect.addEventListener("click", () => {
           void disconnectSettlementExportProvider("dropbox");
         });
-        settlementGoogleSend.addEventListener("click", () => queueSettlementExportDelivery("google_drive"));
-        settlementDropboxSend.addEventListener("click", () => queueSettlementExportDelivery("dropbox"));
-        settlementEmailSend.addEventListener("click", () => queueSettlementExportDelivery("email"));
+        settlementGoogleSend.addEventListener("click", () => {
+          void queueSettlementExportDelivery("google_drive");
+        });
+        settlementDropboxSend.addEventListener("click", () => {
+          void queueSettlementExportDelivery("dropbox");
+        });
+        settlementEmailSend.addEventListener("click", () => {
+          void queueSettlementExportDelivery("email");
+        });
         settlementExportConfirm.addEventListener("click", () => {
           void confirmSettlementExportDelivery();
         });

@@ -27,6 +27,7 @@ from app.offer_response import (
     _read_response,
     confirm_offer_sent,
     continue_offer_response,
+    start_new_proposal_version,
     update_offer_attempt_state,
     update_offer_response,
     upload_offer_response_attachment,
@@ -355,6 +356,52 @@ class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
 
 
 class OfferResponseTransitionTests(unittest.TestCase):
+    def test_new_proposal_version_unlock_is_idempotent_and_does_not_consume_credits(self) -> None:
+        case_id = uuid4()
+        selection_id = uuid4()
+        user = SimpleNamespace(id=uuid4())
+        selection = SimpleNamespace(id=selection_id, case_id=case_id)
+        attempt = SimpleNamespace(
+            id=uuid4(),
+            proposal_issued_at=object(),
+            frozen_at=None,
+            sent_confirmed_at=None,
+            proposal_version_ordinal=1,
+            proposal_draft_unlocked=False,
+            revision=3,
+        )
+        db = Mock()
+        db.scalar.return_value = object()
+        response = Response()
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(object(), selection)),
+            patch("app.offer_response._lock_case"),
+            patch("app.offer_response._selection", return_value=selection),
+            patch("app.offer_response._attempt_for_selection", return_value=attempt),
+            patch("app.offer_response._response_record", return_value=None),
+        ):
+            result = start_new_proposal_version(
+                case_id, selection_id, response, user, db
+            )
+            self.assertEqual(
+                result,
+                {
+                    "proposal_draft_unlocked": True,
+                    "proposal_version_ordinal": 2,
+                    "attempt_revision": 4,
+                },
+            )
+            self.assertEqual(attempt.proposal_version_ordinal, 2)
+            self.assertTrue(attempt.proposal_draft_unlocked)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(db.commit.call_count, 1)
+
+            repeated = start_new_proposal_version(
+                case_id, selection_id, Response(), user, db
+            )
+        self.assertEqual(repeated["proposal_version_ordinal"], 2)
+        self.assertEqual(db.commit.call_count, 1)
+
     def test_only_the_three_requested_outcomes_are_accepted(self) -> None:
         for outcome in ("counteroffer", "rejected", "accepted"):
             self.assertEqual(OfferOutcomeUpdate(outcome=outcome).outcome, outcome)
