@@ -799,6 +799,32 @@ class OfferResponseTransitionTests(unittest.TestCase):
         )
         self.assertIn("setSettlementDemoAttemptFrozen(false);", html)
 
+    def test_demo_attempt_freezes_asset_table_and_milestone_editing(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("assetEditStart.hidden = editing || settlementDemoAttemptFrozen;", html)
+        freeze = html.split("function setSettlementDemoAttemptFrozen(frozen)", 1)[1].split(
+            "settlementScenarioResults.addEventListener", 1
+        )[0]
+        for control in (
+            "assetYearRange.disabled = frozen;",
+            "assetMilestoneSelector.disabled = frozen;",
+            'customMilestoneForm.querySelectorAll("input, button")',
+            'standardMilestoneList.querySelectorAll("input, button")',
+            'customMilestoneList.querySelectorAll("input, button")',
+        ):
+            self.assertIn(control, freeze)
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            "function startAssetEdit()", 1
+        )[1].split("function cancelAssetEdit", 1)[0])
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            'standardMilestoneList.addEventListener("click"', 1
+        )[1].split('customMilestoneForm.addEventListener("submit"', 1)[0])
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            'customMilestoneForm.addEventListener("submit"', 1
+        )[1].split('customMilestoneList.addEventListener("click"', 1)[0])
+
 
 if __name__ == "__main__":
     unittest.main()
