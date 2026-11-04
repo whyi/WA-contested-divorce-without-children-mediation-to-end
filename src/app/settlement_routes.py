@@ -22,11 +22,13 @@ from app.models import (
     CaseMembership,
     CaseProfileFact,
     CaseProfileFactEvent,
+    DocumentCreditLedgerEntry,
     Document,
     ExportDeliveryEvent,
     SettlementLedgerEvent,
     SettlementNegotiationAttempt,
     SettlementOfferResponse,
+    SettlementProposalVersion,
     SettlementOfferResponseAttachment,
     SettlementPlanningConsentEvent,
     SettlementScenarioRun,
@@ -177,6 +179,7 @@ class OfferCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     terms: MediationOfferTerms
+    confirm_credit_use: bool = False
 
 
 class DemoExportRequest(BaseModel):
@@ -203,6 +206,7 @@ class OfferDelivery(BaseModel):
     idempotency_key: UUID
     recipient: EmailStr | None = None
     terms: MediationOfferTerms
+    confirm_credit_use: bool = False
 
     @model_validator(mode="after")
     def require_recipient_only_for_email(self) -> "OfferDelivery":
@@ -400,18 +404,30 @@ def _require_real_case_exports() -> None:
         )
 
 
+@router.get("/document-credits")
+def read_document_credit_balance(
+    case_id: UUID,
+    response: Response,
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, int]:
+    _authorize_case(db, user, case_id, write=False)
+    balance = db.scalar(select(User.document_credit_balance).where(User.id == user.id))
+    if balance is None:
+        raise HTTPException(status_code=404, detail="Document credit account is unavailable.")
+    response.headers["Cache-Control"] = "no-store"
+    return {"remaining": balance, "cost_per_version": 1}
+
+
 def _prepare_attempt_offer_export(
     db: Session,
     user: User,
     case_id: UUID,
     selection_id: UUID,
     requested_terms: MediationOfferTerms,
-) -> tuple[
-    SettlementNegotiationAttempt,
-    MediationOfferTerms,
-    SettlementScenarioResult,
-    bool,
-]:
+    *,
+    confirm_credit_use: bool,
+) -> tuple[SettlementNegotiationAttempt, SettlementProposalVersion]:
     _authorize_case(db, user, case_id, write=True)
     case = _lock_case(db, case_id)
     selection = db.scalar(
@@ -440,7 +456,25 @@ def _prepare_attempt_offer_export(
         )
 
     requested_json = requested_terms.model_dump(mode="json")
-    if attempt.proposal_issued_at is not None:
+    draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False))
+    version_ordinal = getattr(attempt, "proposal_version_ordinal", 0) or 1
+    locked_version = attempt.proposal_issued_at is not None and not draft_unlocked
+    existing_version = db.scalar(
+        select(SettlementProposalVersion).where(
+            SettlementProposalVersion.attempt_id == attempt.id,
+            SettlementProposalVersion.version_ordinal == version_ordinal,
+        )
+    )
+    if existing_version is not None:
+        if existing_version.terms_json != requested_json:
+            raise HTTPException(
+                status_code=409,
+                detail="This proposal version is immutable. Start a new version before changing its terms.",
+            )
+        return attempt, existing_version
+
+    legacy_version = locked_version
+    if legacy_version:
         if attempt.proposal_terms_json != requested_json:
             raise HTTPException(
                 status_code=409,
@@ -448,38 +482,88 @@ def _prepare_attempt_offer_export(
             )
         if attempt.proposal_scenario_result_json is None:
             raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
-        return (
-            attempt,
-            MediationOfferTerms.model_validate(attempt.proposal_terms_json),
-            SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json),
-            False,
+        result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
+    else:
+        if not confirm_credit_use:
+            raise HTTPException(
+                status_code=428,
+                detail="Confirm that generating this proposal version uses 1 document credit.",
+            )
+        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
+        credit_account = db.scalar(
+            select(User).where(User.id == user.id).with_for_update()
         )
+        if credit_account is None:
+            raise HTTPException(status_code=404, detail="Document credit account is unavailable.")
+        if credit_account.document_credit_balance < 1:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "This proposal version requires 1 document credit. Your preview and edits are saved; "
+                    "add credits or upgrade your subscription before generating."
+                ),
+            )
 
-    _check_revisions(case, selection.profile_revision, selection.settlement_revision)
-    result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
+    docx = render_mediation_offer_docx(requested_terms, result)
+    workbook = render_property_schedule_xlsx(requested_terms, result)
+    max_bytes = get_settings().max_upload_bytes
+    if len(docx) + len(workbook) > max_bytes:
+        raise HTTPException(status_code=413, detail="Generated proposal files exceed the file size limit.")
+
+    version = SettlementProposalVersion(
+        id=uuid4(),
+        case_id=case_id,
+        attempt_id=attempt.id,
+        user_id_snapshot=user.id,
+        version_ordinal=version_ordinal,
+        request_sha256=hashlib.sha256(
+            json.dumps(
+                {
+                    "version_ordinal": version_ordinal,
+                    "terms": requested_json,
+                    "scenario_result": result.model_dump(mode="json"),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest(),
+        terms_json=requested_json,
+        scenario_result_json=result.model_dump(mode="json"),
+        docx_content=docx,
+        xlsx_content=workbook,
+        credit_cost=0 if legacy_version else 1,
+    )
+    db.add(version)
+    if not legacy_version:
+        credit_account.document_credit_balance -= 1
+        db.add(
+            DocumentCreditLedgerEntry(
+                id=uuid4(),
+                user_id=user.id,
+                proposal_version_id=version.id,
+                idempotency_key=f"proposal:{attempt.id}:{version_ordinal}",
+                delta=-1,
+                balance_after=credit_account.document_credit_balance,
+            )
+        )
     attempt.proposal_terms_json = requested_json
     attempt.proposal_scenario_result_json = result.model_dump(mode="json")
-    attempt.proposal_issued_at = datetime.now(UTC)
-    return attempt, requested_terms, result, True
-
-
-def _commit_attempt_offer_issuance(
-    db: Session,
-    attempt: SettlementNegotiationAttempt,
-    first_issuance: bool,
-) -> None:
-    if not first_issuance:
-        return
+    if attempt.proposal_issued_at is None:
+        attempt.proposal_issued_at = datetime.now(UTC)
+    attempt.proposal_version_ordinal = version_ordinal
+    attempt.proposal_draft_unlocked = False
     try:
         db.commit()
-        db.refresh(attempt)
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Issued proposal snapshot could not be saved.")
+        logger.exception("Proposal version and document credit could not be saved.")
         raise HTTPException(
             status_code=503,
-            detail="The immutable proposal snapshot could not be saved.",
+            detail="The proposal version could not be confirmed as saved. Reload before retrying.",
         ) from error
+    return attempt, version
 
 
 def _demo_export_files(payload: DemoExportRequest) -> tuple[MediationOfferTerms, SettlementScenarioResult]:
@@ -1166,15 +1250,16 @@ def create_settlement_offer(
 ) -> Response:
     try:
         _require_real_case_exports()
-        attempt, terms, result, first_issuance = _prepare_attempt_offer_export(
-            db, user, case_id, selection_id, payload.terms
+        _, version = _prepare_attempt_offer_export(
+            db,
+            user,
+            case_id,
+            selection_id,
+            payload.terms,
+            confirm_credit_use=payload.confirm_credit_use,
         )
-        docx = render_mediation_offer_docx(terms, result)
-        if len(docx) > get_settings().max_upload_bytes:
-            raise HTTPException(status_code=413, detail="Generated proposal exceeds the file size limit.")
-        _commit_attempt_offer_issuance(db, attempt, first_issuance)
         return Response(
-            content=docx,
+            content=version.docx_content,
             media_type=DOCX_MEDIA_TYPE,
             headers={
                 "Cache-Control": "no-store",
@@ -1204,15 +1289,16 @@ def create_settlement_property_schedule(
 ) -> Response:
     try:
         _require_real_case_exports()
-        attempt, terms, result, first_issuance = _prepare_attempt_offer_export(
-            db, user, case_id, selection_id, payload.terms
+        _, version = _prepare_attempt_offer_export(
+            db,
+            user,
+            case_id,
+            selection_id,
+            payload.terms,
+            confirm_credit_use=payload.confirm_credit_use,
         )
-        workbook = render_property_schedule_xlsx(terms, result)
-        if len(workbook) > get_settings().max_upload_bytes:
-            raise HTTPException(status_code=413, detail="Generated proposal exceeds the file size limit.")
-        _commit_attempt_offer_issuance(db, attempt, first_issuance)
         return Response(
-            content=workbook,
+            content=version.xlsx_content,
             media_type=XLSX_MEDIA_TYPE,
             headers={
                 "Cache-Control": "no-store",
@@ -1239,20 +1325,17 @@ def _destination_digest(destination: str) -> str:
     return hmac.new(key.encode(), destination.encode(), hashlib.sha256).hexdigest()
 
 
-def _offer_exports(
-    terms: MediationOfferTerms,
-    result: SettlementScenarioResult,
-) -> list[ExportFile]:
+def _offer_exports(version: SettlementProposalVersion) -> list[ExportFile]:
     exports = [
         ExportFile(
             filename="cr2a-agreement-proposal-draft.docx",
             content_type=DOCX_MEDIA_TYPE,
-            content=render_mediation_offer_docx(terms, result),
+            content=version.docx_content,
         ),
         ExportFile(
             filename="property-division-proposal-draft.xlsx",
             content_type=XLSX_MEDIA_TYPE,
-            content=render_property_schedule_xlsx(terms, result),
+            content=version.xlsx_content,
         ),
     ]
     max_bytes = get_settings().max_upload_bytes
@@ -1272,11 +1355,6 @@ def deliver_settlement_offer(
 ) -> dict[str, int | str]:
     try:
         _require_real_case_exports()
-        attempt, terms, result, first_issuance = _prepare_attempt_offer_export(
-            db, user, case_id, selection_id, payload.terms
-        )
-        exports = _offer_exports(terms, result)
-        _commit_attempt_offer_issuance(db, attempt, first_issuance)
         settings = get_settings()
         if payload.channel == "email":
             if not settings.smtp_host or not settings.auth_email_from:
@@ -1292,6 +1370,15 @@ def deliver_settlement_offer(
             destination = "Connected Dropbox app folder (private)"
         destination_digest = _destination_digest(f"{payload.channel}:{destination}")
         request_hash = _delivery_request_digest(payload)
+        _, version = _prepare_attempt_offer_export(
+            db,
+            user,
+            case_id,
+            selection_id,
+            payload.terms,
+            confirm_credit_use=payload.confirm_credit_use,
+        )
+        exports = _offer_exports(version)
         prior = db.scalar(
             select(ExportDeliveryEvent)
             .where(
