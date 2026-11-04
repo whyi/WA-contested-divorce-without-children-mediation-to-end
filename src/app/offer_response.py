@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import UTC, date, datetime
 from pathlib import PurePath
 from typing import Literal
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
@@ -27,6 +28,7 @@ from app.models import (
     SettlementScenarioSelection,
     User,
 )
+from app.modified_offer import ModifiedOfferParseError, parse_modified_offer
 from app.settlement_planning import ScenarioAxes, calculate_scenario, generate_scenarios
 from app.settlement_routes import _active_profile_facts, _authorize_case, _lock_case
 from app.storage import ObjectStorage
@@ -45,16 +47,33 @@ PDF_MEDIA_TYPE = "application/pdf"
 ATTACHMENT_TYPES = {
     "sent_docx": {"docx"},
     "sent_xlsx": {"xlsx"},
+    "modified_docx": {"docx"},
+    "modified_xlsx": {"xlsx"},
     "counteroffer": {"docx", "xlsx", "pdf"},
     "accepted_offer": {"docx", "xlsx", "pdf"},
 }
 
 
 class OfferResponseAttachmentRead(BaseModel):
-    kind: Literal["sent_docx", "sent_xlsx", "counteroffer", "accepted_offer"]
+    id: UUID
+    kind: Literal[
+        "sent_docx",
+        "sent_xlsx",
+        "modified_docx",
+        "modified_xlsx",
+        "counteroffer",
+        "accepted_offer",
+        "modified_source_docx",
+        "modified_source_xlsx",
+    ]
     filename: str
     extension: Literal["docx", "xlsx", "pdf"]
     size_bytes: int
+
+
+class ModifiedOfferParseRead(BaseModel):
+    editable_state: dict
+    warnings: list[str]
 
 
 class OfferResponseRead(BaseModel):
@@ -114,6 +133,8 @@ class OfferAttemptStateUpdate(BaseModel):
     milestones: list[NegotiationMilestone] = Field(default_factory=list, max_length=100)
     proposed_values: list[NegotiationValue] = Field(default_factory=list, max_length=500)
     proposal_terms: list[str] = Field(default_factory=list, max_length=80)
+    sent_offer_mode: Literal["unchanged", "modified"] = "unchanged"
+    modified_offer_reviewed: bool = False
 
     @field_validator("proposal_terms")
     @classmethod
@@ -341,6 +362,7 @@ def _read_response(
         ).all()
         attachments = [
             {
+                "id": item.id,
                 "kind": item.kind,
                 "filename": item.filename,
                 "extension": document.extension,
@@ -348,8 +370,14 @@ def _read_response(
             }
             for item, document in rows
         ]
-    kinds = {item["kind"] for item in attachments}
     attempt = _attempt_for_selection(db, selection)
+    kinds = {item["kind"] for item in attachments}
+    sent_documents_complete = (
+        {"modified_docx", "modified_xlsx"}.issubset(kinds)
+        if attempt is not None
+        and attempt.editable_state_json.get("sent_offer_mode") == "modified"
+        else {"sent_docx", "sent_xlsx"}.issubset(kinds)
+    )
     has_next_attempt = False
     if attempt is not None:
         has_next_attempt = db.scalar(
@@ -361,7 +389,7 @@ def _read_response(
         selection_id=selection.id,
         outcome=response_record.outcome if response_record is not None else None,
         attachments=attachments,
-        sent_documents_complete={"sent_docx", "sent_xlsx"}.issubset(kinds),
+        sent_documents_complete=sent_documents_complete,
         sent_confirmed=attempt.sent_confirmed_at is not None if attempt is not None else False,
         counteroffer_attachment_present="counteroffer" in kinds,
         attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
@@ -400,7 +428,12 @@ def _frozen_attempt_snapshot(
     snapshot["sent_attachments"] = [
         item.model_dump(mode="json")
         for item in current.attachments
-        if item.kind in {"sent_docx", "sent_xlsx"}
+        if item.kind
+        in (
+            {"modified_docx", "modified_xlsx"}
+            if attempt.editable_state_json.get("sent_offer_mode") == "modified"
+            else {"sent_docx", "sent_xlsx"}
+        )
     ]
     snapshot["sent_confirmation"] = {
         "confirmed_at": confirmed_at.isoformat(),
@@ -421,6 +454,66 @@ def _authorized_selection(
     return case, _selection(db, case_id, selection_id)
 
 
+def _modified_offer_documents(
+    db: Session,
+    selection: SettlementScenarioSelection,
+    response_record: SettlementOfferResponse | None,
+) -> dict[str, bytes]:
+    if response_record is None:
+        raise HTTPException(status_code=409, detail="Upload both modified offer documents first.")
+    rows = db.execute(
+        select(SettlementOfferResponseAttachment, Document)
+        .join(Document, Document.id == SettlementOfferResponseAttachment.document_id)
+        .where(
+            SettlementOfferResponseAttachment.response_id == response_record.id,
+            SettlementOfferResponseAttachment.kind.in_(("modified_docx", "modified_xlsx")),
+            Document.case_id == selection.case_id,
+        )
+    ).all()
+    documents = {attachment.kind: (attachment, document) for attachment, document in rows}
+    if set(documents) != {"modified_docx", "modified_xlsx"}:
+        raise HTTPException(status_code=409, detail="Upload both modified DOCX and XLSX files first.")
+
+    contents: dict[str, bytes] = {}
+    max_bytes = get_settings().max_upload_bytes
+    for kind, expected_extension in (("modified_docx", "docx"), ("modified_xlsx", "xlsx")):
+        attachment, document = documents[kind]
+        if document.extension != expected_extension:
+            raise HTTPException(status_code=415, detail=f"The {kind} attachment has an unsupported file type.")
+        try:
+            content = storage.get(document.object_key)
+        except (BotoCoreError, RuntimeError) as error:
+            logger.error("Modified offer document could not be read from storage (%s).", type(error).__name__)
+            raise HTTPException(
+                status_code=503,
+                detail="A modified offer document could not be read. Please retry.",
+            ) from error
+        try:
+            validate_upload(attachment.filename, content, expected_extension, max_bytes)
+        except UploadValidationError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        contents[kind] = content
+    return contents
+
+
+def _parse_current_modified_offer(
+    db: Session,
+    selection: SettlementScenarioSelection,
+    response_record: SettlementOfferResponse | None,
+    attempt: SettlementNegotiationAttempt,
+) -> dict:
+    contents = _modified_offer_documents(db, selection, response_record)
+    known_assets = attempt.snapshot_json.get("settlement_ledger", [])
+    try:
+        return parse_modified_offer(
+            contents["modified_docx"],
+            contents["modified_xlsx"],
+            known_assets,
+        )
+    except ModifiedOfferParseError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
 @router.get("", response_model=OfferResponseRead)
 def read_offer_response(
     case_id: UUID,
@@ -432,6 +525,76 @@ def read_offer_response(
     _, selection = _authorized_selection(case_id, selection_id, user, db, write=False)
     response.headers["Cache-Control"] = "no-store"
     return _read_response(db, selection, _response_record(db, selection))
+
+
+@router.post("/parse-modified-offer", response_model=ModifiedOfferParseRead)
+def parse_uploaded_modified_offer(
+    case_id: UUID,
+    selection_id: UUID,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ModifiedOfferParseRead:
+    _require_secure_case_storage()
+    _, selection = _authorized_selection(case_id, selection_id, user, db, write=False)
+    attempt = _attempt_for_selection(db, selection)
+    if attempt is None:
+        raise HTTPException(status_code=404, detail="Negotiation attempt not found.")
+    contents = _modified_offer_documents(
+        db,
+        selection,
+        _response_record(db, selection),
+    )
+    try:
+        parsed = parse_modified_offer(
+            contents["modified_docx"],
+            contents["modified_xlsx"],
+            attempt.snapshot_json.get("settlement_ledger", []),
+        )
+    except ModifiedOfferParseError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    response.headers["Cache-Control"] = "no-store"
+    return ModifiedOfferParseRead(**parsed)
+
+
+@router.get("/attachments/{document_id}")
+def download_offer_response_attachment(
+    case_id: UUID,
+    selection_id: UUID,
+    document_id: UUID,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    _require_secure_case_storage()
+    _, selection = _authorized_selection(case_id, selection_id, user, db, write=False)
+    response_record = _response_record(db, selection)
+    if response_record is None:
+        raise HTTPException(status_code=404, detail="Offer response attachment not found.")
+    row = db.execute(
+        select(SettlementOfferResponseAttachment, Document)
+        .join(Document, Document.id == SettlementOfferResponseAttachment.document_id)
+        .where(
+            SettlementOfferResponseAttachment.response_id == response_record.id,
+            SettlementOfferResponseAttachment.document_id == document_id,
+            Document.case_id == case_id,
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Offer response attachment not found.")
+    attachment, document = row
+    try:
+        content = storage.get(document.object_key)
+    except (BotoCoreError, RuntimeError) as error:
+        logger.error("Offer-response attachment download failed (%s).", type(error).__name__)
+        raise HTTPException(status_code=503, detail="The attachment could not be downloaded.") from error
+    return Response(
+        content=content,
+        media_type=document.media_type,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(attachment.filename, safe='')}",
+        },
+    )
 
 
 @router.put("/attempt", response_model=OfferAttemptStateRead)
@@ -471,6 +634,18 @@ def update_offer_attempt_state(
     }
     if any(str(value.asset_id) not in known_asset_ids for value in payload.proposed_values):
         raise HTTPException(status_code=422, detail="Proposed values must reference an asset in this attempt snapshot.")
+    if payload.modified_offer_reviewed and payload.sent_offer_mode != "modified":
+        raise HTTPException(
+            status_code=422,
+            detail="Modified-offer review can be recorded only for the modified-offer path.",
+        )
+    if payload.sent_offer_mode == "modified" and payload.modified_offer_reviewed:
+        _parse_current_modified_offer(
+            db,
+            selection,
+            _response_record(db, selection),
+            attempt,
+        )
     if payload.scenario_assumptions is not None:
         known_fact_ids = {
             item["id"] for item in attempt.snapshot_json.get("case_profile", {}).get("facts", [])
@@ -595,6 +770,13 @@ def confirm_offer_sent(
             },
         )
     _require_current_attempt_revisions(case, attempt)
+    if attempt.editable_state_json.get("sent_offer_mode") == "modified":
+        if not attempt.editable_state_json.get("modified_offer_reviewed"):
+            raise HTTPException(
+                status_code=409,
+                detail="Review and accept the parsed modified-offer fields before confirming that you sent them.",
+            )
+        _parse_current_modified_offer(db, selection, response_record, attempt)
     confirmed_at = datetime.now(UTC)
     attempt.frozen_snapshot_json = _frozen_attempt_snapshot(
         attempt,
@@ -666,7 +848,7 @@ async def upload_offer_response_attachment(
     if (
         attempt is not None
         and attempt.frozen_at is None
-        and kind in {"sent_docx", "sent_xlsx"}
+        and kind in {"sent_docx", "sent_xlsx", "modified_docx", "modified_xlsx"}
     ):
         _require_current_attempt_revisions(case, attempt)
     if kind == "counteroffer" and (
@@ -681,7 +863,7 @@ async def upload_offer_response_attachment(
     ):
         raise HTTPException(status_code=409, detail="Record an accepted response before attaching its document.")
     if attempt is not None and attempt.frozen_at is not None:
-        if kind in {"sent_docx", "sent_xlsx"}:
+        if kind in {"sent_docx", "sent_xlsx", "modified_docx", "modified_xlsx"}:
             raise HTTPException(status_code=409, detail="This attempt is frozen; sent documents cannot be replaced.")
         expected_outcome = "counteroffer" if kind == "counteroffer" else "accepted"
         if response_record is None or response_record.outcome != expected_outcome:
@@ -728,7 +910,7 @@ async def upload_offer_response_attachment(
     db.add(document)
 
     old_objects: list[str] = []
-    if kind in {"sent_docx", "sent_xlsx"} and (
+    if kind in {"sent_docx", "sent_xlsx", "modified_docx", "modified_xlsx"} and (
         attempt is None or attempt.frozen_at is None
     ):
         existing_rows = db.scalars(
@@ -751,6 +933,18 @@ async def upload_offer_response_attachment(
             filename=filename,
         )
     )
+    if (
+        kind in {"modified_docx", "modified_xlsx"}
+        and attempt is not None
+        and attempt.frozen_at is None
+        and attempt.editable_state_json.get("sent_offer_mode") == "modified"
+        and attempt.editable_state_json.get("modified_offer_reviewed")
+    ):
+        attempt.editable_state_json = {
+            **attempt.editable_state_json,
+            "modified_offer_reviewed": False,
+        }
+        attempt.revision += 1
 
     try:
         storage.put(object_key, content, media_type)
@@ -893,15 +1087,43 @@ def continue_offer_response(
                 snapshot_json=deepcopy(attempt.frozen_snapshot_json or attempt.snapshot_json),
                 editable_state_json=deepcopy(attempt.editable_state_json),
             )
+            if attempt.editable_state_json.get("sent_offer_mode") == "modified":
+                next_attempt.editable_state_json["sent_offer_mode"] = "unchanged"
+                next_attempt.editable_state_json["modified_offer_reviewed"] = False
             db.add(next_attempt)
-            db.add(
-                SettlementOfferResponse(
-                    case_id=case.id,
-                    selection_id=next_selection.id,
-                    user_id=user.id,
-                    user_id_snapshot=user.id,
-                )
+            next_response = SettlementOfferResponse(
+                id=uuid4(),
+                case_id=case.id,
+                selection_id=next_selection.id,
+                user_id=user.id,
+                user_id_snapshot=user.id,
             )
+            db.add(next_response)
+            db.flush()
+            if (
+                attempt.editable_state_json.get("sent_offer_mode") == "modified"
+                and attempt.editable_state_json.get("modified_offer_reviewed")
+            ):
+                source_rows = db.execute(
+                    select(SettlementOfferResponseAttachment)
+                    .where(
+                        SettlementOfferResponseAttachment.response_id == response_record.id,
+                        SettlementOfferResponseAttachment.kind.in_(("modified_docx", "modified_xlsx")),
+                    )
+                ).scalars().all()
+                source_kinds = {
+                    "modified_docx": "modified_source_docx",
+                    "modified_xlsx": "modified_source_xlsx",
+                }
+                for source in source_rows:
+                    db.add(
+                        SettlementOfferResponseAttachment(
+                            response_id=next_response.id,
+                            document_id=source.document_id,
+                            kind=source_kinds[source.kind],
+                            filename=source.filename,
+                        )
+                    )
             try:
                 db.commit()
                 db.refresh(next_selection)
