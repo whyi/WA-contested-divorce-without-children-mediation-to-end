@@ -3,13 +3,14 @@ import logging
 from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
+from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import get_db
 from app.models import Case, CaseMembership, Document, MaterialImportBatch, MaterialImportItem, User
@@ -140,6 +141,7 @@ async def import_material_file(
     batch_id: UUID,
     item_id: UUID,
     upload: UploadFile = File(),
+    case_id: UUID | None = Form(default=None),
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ImportedFile:
@@ -170,6 +172,8 @@ async def import_material_file(
         batch, document = existing
         if batch.user_id != user.id:
             raise HTTPException(status_code=404, detail="Import batch not found.")
+        if case_id is not None and case_id != batch.case_id:
+            raise HTTPException(status_code=409, detail="Import batch belongs to another case.")
         try:
             membership = db.scalar(
                 select(CaseMembership).where(
@@ -190,13 +194,38 @@ async def import_material_file(
             return _document_response(item_id, batch.case_id, document)
         case_id = batch.case_id
     else:
-        case_id = uuid4()
-        case = Case(id=case_id, status="draft")
+        if case_id is None:
+            require_active_case_slot(db, user.id)
+            case = Case(id=uuid4(), status="draft")
+            db.add(case)
+            db.flush()
+            case_id = case.id
+            db.add(CaseMembership(case_id=case_id, user_id=user.id, role="owner"))
+        else:
+            try:
+                membership = db.scalar(
+                    select(CaseMembership).where(
+                        CaseMembership.case_id == case_id,
+                        CaseMembership.user_id == user.id,
+                        CaseMembership.revoked_at.is_(None),
+                    )
+                )
+                case_exists = db.get(Case, case_id) is not None
+            except SQLAlchemyError as error:
+                logger.exception("Case authorization lookup failed during material import.")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Case access could not be verified. Please try again.",
+                ) from error
+            if membership is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
+            if membership.role == "viewer":
+                raise HTTPException(status_code=403, detail="Case is read-only.")
+            if not case_exists:
+                raise HTTPException(status_code=404, detail="Case not found.")
         new_batch = MaterialImportBatch(id=batch_id, user_id=user.id, case_id=case_id)
         db.add_all(
             [
-                case,
-                CaseMembership(case_id=case_id, user_id=user.id, role="owner"),
                 new_batch,
             ]
         )

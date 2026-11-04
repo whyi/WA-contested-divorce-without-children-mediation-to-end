@@ -31,7 +31,9 @@ class DashboardStatusTests(unittest.TestCase):
         user_id = uuid4()
         case_id = uuid4()
         db = Mock()
-        db.execute.return_value.all.return_value = [(case_id, "draft")]
+        db.execute.return_value.all.return_value = [
+            (case_id, "draft", {"case_title": "XYZ vs ABC", "workflow_mode": "upload"}, 2, "owner")
+        ]
         app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=user_id)
 
         def override_db():
@@ -48,18 +50,32 @@ class DashboardStatusTests(unittest.TestCase):
                 "data": {
                     "has_cases": True,
                     "case_count": 1,
-                    "cases": [{"id": str(case_id), "status": "draft"}],
+                    "active_case_count": 1,
+                    "active_case_limit": 1,
+                    "plan_name": "Free",
+                    "cases": [{
+                        "id": str(case_id),
+                        "status": "draft",
+                        "title": "XYZ vs ABC",
+                        "workflow_mode": "upload",
+                        "attempt_ordinal": 2,
+                    }],
                 },
             },
         )
         statement = str(db.execute.call_args.args[0])
         self.assertIn("case_memberships.user_id", statement)
         self.assertIn("case_memberships.revoked_at IS NULL", statement)
+        self.assertIn("settlement_negotiation_attempts.attempt_ordinal", statement)
 
     def test_status_returns_empty_case_list_for_new_account(self) -> None:
         db = Mock()
         db.execute.return_value.all.return_value = []
-        app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=uuid4())
+        app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(
+            id=uuid4(),
+            subscription_plan="plus",
+            subscription_status="active",
+        )
 
         def override_db():
             yield db
@@ -70,7 +86,14 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["data"],
-            {"has_cases": False, "case_count": 0, "cases": []},
+            {
+                "has_cases": False,
+                "case_count": 0,
+                "active_case_count": 0,
+                "active_case_limit": 10,
+                "plan_name": "Plus",
+                "cases": [],
+            },
         )
 
     def test_status_reports_database_failure_as_retryable_service_error(self) -> None:
