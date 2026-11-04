@@ -416,14 +416,36 @@ class DocumentCreditLedgerEntry(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     proposal_version_id: Mapped[UUID] = mapped_column(
-        ForeignKey("settlement_proposal_versions.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey("settlement_proposal_versions.id", ondelete="RESTRICT"), nullable=True
     )
     idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="proposal_export", server_default="proposal_export"
+    )
+    source_reference: Mapped[str | None] = mapped_column(String(255))
     delta: Mapped[int] = mapped_column(Integer, nullable=False)
     balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class BillingWebhookEvent(Base):
+    __tablename__ = "billing_webhook_events"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('processing', 'processed', 'ignored')",
+            name="ck_billing_webhook_events_status",
+        ),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="processing")
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Document(Base):
@@ -817,6 +839,14 @@ class User(Base):
             "document_credit_balance >= 0",
             name="ck_users_document_credit_balance",
         ),
+        CheckConstraint(
+            "subscription_plan IN ('free', 'essential', 'plus', 'pro')",
+            name="ck_users_subscription_plan",
+        ),
+        CheckConstraint(
+            "subscription_status IN ('free', 'legacy', 'incomplete', 'active', 'trialing', 'past_due', 'unpaid', 'canceled', 'incomplete_expired')",
+            name="ck_users_subscription_status",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -828,6 +858,19 @@ class User(Base):
     )
     document_credit_balance: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
+    )
+    subscription_plan: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="free", server_default=text("'free'")
+    )
+    subscription_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="free", server_default=text("'free'")
+    )
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    subscription_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    billing_state_event_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subscription_cancel_at_period_end: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -848,12 +891,9 @@ class User(Base):
 
 
 def user_settlement_attempt_limit(user: User) -> int:
-    limit = getattr(user, "settlement_attempt_limit", 1)
-    return (
-        limit
-        if isinstance(limit, int) and not isinstance(limit, bool) and limit in {1, 3, 5, 10}
-        else 1
-    )
+    from app.subscription_plans import user_settlement_attempt_limit as plan_attempt_limit
+
+    return plan_attempt_limit(user)
 
 
 class ExternalIdentity(Base):

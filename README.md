@@ -158,6 +158,16 @@ the deployment has been reviewed. Do not use the development defaults or
 handle real case information before production secret management, operational
 email delivery, retention, and account-recovery policies are established.
 
+Subscription billing is disabled in demo mode. For a reviewed production
+deployment, configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the
+monthly recurring Price IDs in `STRIPE_PRICE_ID_ESSENTIAL`,
+`STRIPE_PRICE_ID_PLUS`, and `STRIPE_PRICE_ID_PRO`. Register
+`/api/billing/webhook` in Stripe for checkout completion, subscription
+created/updated/deleted, and paid-invoice events. Paid entitlements are applied
+only after webhook signature verification; a browser redirect alone never
+upgrades an account. See [Spec 30](specs/30-subscription-billing/spec-30-subscription-billing.md)
+for the provisional plan limits and credit policy.
+
 Case-material storage is separately gated by `CASE_MATERIALS_ENABLED` and
 requires authenticated case-data access. Production case-data access requires
 `S3_KMS_KEY_ID` for a customer-managed AWS KMS key; uploads explicitly request

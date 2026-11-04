@@ -13,8 +13,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import Settings
 from app.database import get_db
 from app.main import (
+    CaseCreate,
     OAuthCallbackQueryFilter,
     app,
+    create_case,
     delete_document,
     preview_document,
     read_property_tracing,
@@ -71,6 +73,21 @@ async def request_app(
 
 
 class MainWorkflowTests(unittest.TestCase):
+    def test_free_plan_active_case_limit_is_enforced_with_a_user_lock(self) -> None:
+        user_id = uuid4()
+        user = SimpleNamespace(subscription_plan="free", subscription_status="free")
+        db = Mock()
+        db.get.return_value = user
+        db.scalar.return_value = 1
+        request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
+
+        with self.assertRaises(HTTPException) as raised:
+            create_case(CaseCreate(), request, db)
+
+        self.assertEqual(raised.exception.status_code, 409)
+        db.get.assert_called_once_with(User, user_id, with_for_update=True)
+        db.add.assert_not_called()
+
     def test_oauth_callback_access_logs_redact_query_credentials(self) -> None:
         import logging
 
