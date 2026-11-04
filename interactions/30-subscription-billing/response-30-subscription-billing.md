@@ -398,3 +398,13 @@ Running requested command.
 - `alembic heads` reported `0016_subscription_memberships` as the sole head.
 - The edited landing page loaded in a browser from a temporary static server; expected API 404s occurred because that server served only static files.
 - The existing `http://192.168.1.17:8001` service does not yet expose `/api/billing/plans`; the worktree changes have not been deployed to that running service.
+
+### Assistant final response
+
+Implemented Spec 30 on `feature/92-subscription-tiers`. Issue #92 and PR #93 are open, assigned to `whyi`, linked to milestone `v0.2-core-implementation` and Project #5 with P1/XL/21-point planning fields.
+
+The Free/Essential/Plus/Pro plan catalog, server-side case and attempt limits, Stripe Checkout/Portal, signed/idempotent webhooks, paid-invoice credit grants, migration/backfill, billing UI, and regression tests are included. Prices remain provisional; the deployment must configure actual monthly Stripe Price IDs. Demo mode cannot start billing or apply webhook entitlements.
+
+Validation passed: repository harness and all 297 tests; Alembic reports the new migration as the sole head. No live payment was attempted.
+
+The requested `http://192.168.1.17:8001` server is reachable but still returns 404 for `/api/billing/plans`, so this branch is not deployed there. Docker daemon access was denied during the deployment check.
