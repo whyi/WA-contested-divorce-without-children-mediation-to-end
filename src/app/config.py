@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     dropbox_app_key: str | None = None
     dropbox_app_secret: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_price_id_essential: str | None = None
+    stripe_price_id_plus: str | None = None
+    stripe_price_id_pro: str | None = None
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Casework"
     webauthn_origin: str = "http://localhost:8000"
