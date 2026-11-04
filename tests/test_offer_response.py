@@ -775,12 +775,29 @@ class OfferResponseTransitionTests(unittest.TestCase):
         attempt_save = html.split("async function saveSettlementAttemptState()", 1)[1].split(
             "async function loadSettlementOfferResponse", 1
         )[0]
-        self.assertLess(
-            attempt_save.index("if (!settlementAttemptStateDirty) return true;"),
-            attempt_save.index("settlementOfferResponseState?.sent_documents_complete"),
-        )
+        self.assertIn("if (settlementOfferResponseState?.frozen) return false;", attempt_save)
+        self.assertNotIn("settlementOfferResponseState?.sent_documents_complete", attempt_save)
         self.assertIn("An editable copy was opened as the next attempt", html)
         self.assertIn("Google Drive Picker is unavailable", html)
+
+    def test_demo_attempt_freezes_chart_date_dragging(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            '.asset-chart[data-settlement-frozen="true"] .settlement-date-hit-area '
+            '{ pointer-events: none; cursor: default; }',
+            html,
+        )
+        self.assertIn("assetTimelineChart.dataset.settlementFrozen = String(frozen);", html)
+        self.assertIn("if (settlementDemoAttemptFrozen) return;", html.split(
+            "function updateSettlementDateFromPointer(event)", 1
+        )[1].split("function renderAssetTimelineCursor", 1)[0])
+        self.assertIn(
+            "if (settlementDemoAttemptFrozen || event.pointerId !== settlementDateRangePointerId) return;",
+            html,
+        )
+        self.assertIn("setSettlementDemoAttemptFrozen(false);", html)
 
 
 if __name__ == "__main__":
