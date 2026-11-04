@@ -1,9 +1,13 @@
+from io import BytesIO
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 from uuid import uuid4
+from zipfile import ZipFile
 
 from fastapi import HTTPException, Response
+from docx import Document
+from pydantic import ValidationError
 
 from app.offer_documents import MediationOfferTerms
 from app.settlement_planning import (
@@ -15,10 +19,13 @@ from app.settlement_planning import (
     generate_scenarios,
 )
 from app.settlement_routes import (
+    DemoExportRequest,
     OfferCreate,
     OfferDelivery,
     _delivery_request_digest,
     _destination_digest,
+    create_demo_settlement_offer,
+    create_demo_settlement_property_schedule,
     create_settlement_offer,
     create_settlement_property_schedule,
     deliver_settlement_offer,
@@ -153,6 +160,48 @@ class SettlementExportRouteTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 503)
         render_docx.assert_not_called()
         self.db.scalar.assert_not_called()
+
+    def test_demo_documents_download_from_fictional_data_without_case_access(self) -> None:
+        payload = DemoExportRequest(
+            start_date="2021-06-15",
+            end_date="2025-01-01",
+            community_share_bps=5500,
+        )
+        settings = SimpleNamespace(max_upload_bytes=2_000_000)
+        with patch("app.settlement_routes.get_settings", return_value=settings):
+            docx = create_demo_settlement_offer(payload)
+            workbook = create_demo_settlement_property_schedule(payload)
+
+        self.assertEqual(docx.media_type, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        self.assertIn("fictional-demo-cr2a-proposal.docx", docx.headers["Content-Disposition"])
+        demo_document = Document(BytesIO(docx.body))
+        self.assertIn("Sam Taylor (fictional)", demo_document.tables[0].cell(0, 0).text)
+        self.assertIn("Alex Taylor (fictional)", demo_document.tables[0].cell(0, 0).text)
+        self.assertEqual(workbook.media_type, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.assertIn("fictional-demo-property-schedule.xlsx", workbook.headers["Content-Disposition"])
+        for response, required_member in (
+            (docx, "word/document.xml"),
+            (workbook, "xl/workbook.xml"),
+        ):
+            with ZipFile(BytesIO(response.body)) as archive:
+                self.assertIn(required_member, archive.namelist())
+                if required_member == "word/document.xml":
+                    self.assertIn("Sam Taylor (fictional)", archive.read(required_member).decode())
+                    self.assertIn("Fictional home equity", archive.read(required_member).decode())
+
+    def test_demo_export_rejects_out_of_range_dates_and_shares(self) -> None:
+        with self.assertRaises(ValidationError):
+            DemoExportRequest(
+                start_date="2025-01-02",
+                end_date="2025-01-01",
+                community_share_bps=5000,
+            )
+        with self.assertRaises(ValidationError):
+            DemoExportRequest(
+                start_date="2021-01-01",
+                end_date="2025-01-01",
+                community_share_bps=6000,
+            )
 
     def test_idempotent_success_returns_existing_result_without_resending(self) -> None:
         payload = OfferDelivery(

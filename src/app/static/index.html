@@ -905,6 +905,64 @@
       .settlement-offer-grid label { display: grid; gap: 5px; }
       .settlement-offer-grid label:last-child { grid-column: 1 / -1; }
       .settlement-export-actions, .settlement-export-provider { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+      .settlement-demo-export-actions {
+        align-items: stretch;
+        padding: 16px;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--surface-background);
+      }
+      .settlement-demo-share-field {
+        display: grid;
+        flex: 1 1 240px;
+        max-width: 340px;
+        gap: 6px;
+        color: var(--text-primary) !important;
+        font-size: 12px !important;
+        font-weight: 750;
+        line-height: 1.4 !important;
+      }
+      .settlement-demo-share-hint {
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-weight: 450;
+      }
+      .settlement-demo-share-select-wrap { position: relative; }
+      .settlement-demo-share-select {
+        appearance: none;
+        width: 100%;
+        min-height: 46px;
+        padding: 0 42px 0 13px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-primary);
+        background: var(--surface-raised);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      .settlement-demo-share-select-wrap::after {
+        position: absolute;
+        top: 17px;
+        right: 16px;
+        width: 8px;
+        height: 8px;
+        border-right: 2px solid var(--text-secondary);
+        border-bottom: 2px solid var(--text-secondary);
+        content: "";
+        pointer-events: none;
+        transform: rotate(45deg);
+      }
+      .settlement-demo-share-select:focus-visible {
+        outline: 3px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+      .settlement-demo-share-select option {
+        color: var(--text-primary);
+        background: var(--surface-background);
+      }
+      .settlement-demo-export-actions .materials-import { align-self: flex-end; }
       .settlement-export-provider { justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
       .settlement-export-provider label { display: grid; gap: 5px; min-width: min(100%, 260px); }
       .settlement-export-destinations { margin-top: 20px; }
@@ -1815,6 +1873,22 @@
                   <div class="settlement-scenario-results" id="settlement-scenario-results" aria-live="polite"></div>
                   <p class="settlement-scenario-status" id="settlement-scenario-status" role="status" aria-live="polite"></p>
                   <p class="scenario-disclaimer">Fictional page-only calculation; no case data is used, saved, or sent to AI. The End Date is an illustrative valuation/division date and is not necessarily a legal separation or characterization date.</p>
+                  <div class="settlement-export-actions settlement-demo-export-actions" role="group" aria-label="Download fictional sample proposal documents">
+                    <label class="settlement-demo-share-field" for="settlement-demo-export-share">
+                      <span>Illustrative shared-property split</span>
+                      <span class="settlement-demo-share-hint">Choose the share proposed for Sam in this fictional example.</span>
+                      <span class="settlement-demo-share-select-wrap">
+                        <select class="settlement-demo-share-select" id="settlement-demo-export-share">
+                          <option value="5500">55% to Sam · 45% to Alex</option>
+                          <option value="5000" selected>50% to Sam · 50% to Alex</option>
+                          <option value="4500">45% to Sam · 55% to Alex</option>
+                        </select>
+                      </span>
+                    </label>
+                    <button class="materials-import" id="settlement-demo-docx-download" type="button">Download sample CR 2A Word draft</button>
+                    <button class="materials-import" id="settlement-demo-xlsx-download" type="button">Download sample property schedule Excel</button>
+                  </div>
+                  <p class="settlement-scenario-status" id="settlement-demo-export-status" role="status" aria-live="polite">These files use fictional names and figures only. They are not sent to any external service.</p>
                 </section>
               </section>
               <a class="back-to-account" href="/#account">Back to your account</a>
@@ -2024,6 +2098,10 @@
         const settlementEndDate = document.getElementById("settlement-end-date");
         const settlementScenarioResults = document.getElementById("settlement-scenario-results");
         const settlementScenarioStatus = document.getElementById("settlement-scenario-status");
+        const settlementDemoExportShare = document.getElementById("settlement-demo-export-share");
+        const settlementDemoDocxDownload = document.getElementById("settlement-demo-docx-download");
+        const settlementDemoXlsxDownload = document.getElementById("settlement-demo-xlsx-download");
+        const settlementDemoExportStatus = document.getElementById("settlement-demo-export-status");
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
         const assetMilestoneStatus = document.getElementById("asset-milestone-status");
         const standardMilestoneList = document.getElementById("standard-milestone-list");
@@ -4783,6 +4861,47 @@
           settlementScenarioStatus.textContent = `Recalculated for ${formatMilestoneDate(startDate)} through ${formatMilestoneDate(endDate)}. Start-date balances are held as baselines; only the change in combined sample net assets is split by each displayed assumption.`;
         }
 
+        async function downloadDemoSettlementDocument(format) {
+          const button = format === "docx" ? settlementDemoDocxDownload : settlementDemoXlsxDownload;
+          button.disabled = true;
+          settlementDemoExportStatus.textContent = "Generating a document from fictional demo data…";
+          settlementDemoExportStatus.dataset.kind = "";
+          try {
+            const response = await fetch(`/demo/exports/${format}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                start_date: settlementStartDate.value,
+                end_date: settlementEndDate.value,
+                community_share_bps: Number(settlementDemoExportShare.value),
+              }),
+            });
+            if (!response.ok) {
+              const error = await response.json();
+              const detail = error.detail;
+              throw new Error(typeof detail === "string" ? detail : "Demo document could not be created.");
+            }
+            const blob = await response.blob();
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            link.download = format === "docx"
+              ? "fictional-demo-cr2a-proposal.docx"
+              : "fictional-demo-property-schedule.xlsx";
+            link.click();
+            window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+            settlementDemoExportStatus.textContent = "Fictional sample document downloaded. It contains no real case data and was not sent anywhere.";
+            settlementDemoExportStatus.dataset.kind = "success";
+          } catch (error) {
+            settlementDemoExportStatus.textContent = error instanceof Error
+              ? error.message
+              : "Demo document could not be created.";
+            settlementDemoExportStatus.dataset.kind = "error";
+          } finally {
+            button.disabled = false;
+          }
+        }
+
         function renderSettlementDateRange() {
           const { left, right, top, bottom, xForDate } = assetChartLayout;
           if (!Number.isFinite(assetChartLayout.dateStart) || !Number.isFinite(assetChartLayout.dateEnd)) return;
@@ -6172,6 +6291,12 @@
         settlementGenerate.addEventListener("click", generateSettlementScenarios);
         settlementOfferDownload.addEventListener("click", () => downloadSettlementDocument("docx"));
         settlementScheduleDownload.addEventListener("click", () => downloadSettlementDocument("xlsx"));
+        settlementDemoDocxDownload.addEventListener("click", () => {
+          void downloadDemoSettlementDocument("docx");
+        });
+        settlementDemoXlsxDownload.addEventListener("click", () => {
+          void downloadDemoSettlementDocument("xlsx");
+        });
         settlementGoogleConnect.addEventListener("click", () => {
           void connectSettlementExportProvider("google_drive");
         });

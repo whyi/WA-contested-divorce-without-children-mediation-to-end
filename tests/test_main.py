@@ -120,6 +120,10 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn("prefers-reduced-motion: reduce", page)
 
         page = pages[0]
+        self.assertIn('class="settlement-demo-share-select"', page)
+        self.assertIn("Illustrative shared-property split", page)
+        self.assertIn("var(--surface-raised)", page)
+        self.assertIn("var(--focus-ring)", page)
         bootstrap = page.split("<script>", 1)[1].split("</script>", 1)[0]
         self.assertLess(page.index("</script>"), page.index("<style>"))
         self.assertIn('getItem("casework-theme")', bootstrap)

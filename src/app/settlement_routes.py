@@ -3,7 +3,7 @@ import hmac
 import json
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -53,6 +53,7 @@ from app.settlement_planning import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/settlement-planning", tags=["settlement planning"])
+demo_export_router = APIRouter(tags=["demo exports"])
 SETTLEMENT_CONSENT_NOTICE_VERSION = "settlement-planning-v1"
 MAX_LEDGER_EVENTS_PER_CASE = 25_000
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -147,6 +148,22 @@ class OfferCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     terms: MediationOfferTerms
+
+
+class DemoExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_date: date
+    end_date: date
+    community_share_bps: Literal[4500, 5000, 5500]
+
+    @model_validator(mode="after")
+    def validate_demo_dates(self) -> "DemoExportRequest":
+        if self.start_date > self.end_date:
+            raise ValueError("Start date must not follow the end date.")
+        if self.start_date.year < 2020 or self.end_date.year > 2025:
+            raise ValueError("Demo dates must be between 2020 and 2025.")
+        return self
 
 
 class OfferDelivery(BaseModel):
@@ -352,6 +369,134 @@ def _require_real_case_exports() -> None:
             status_code=503,
             detail="Case document exports are available only for authenticated real-case workflows.",
         )
+
+
+def _demo_export_files(payload: DemoExportRequest) -> tuple[MediationOfferTerms, SettlementScenarioResult]:
+    window = RelationshipWindow(
+        id="fictional-demo",
+        label="Fictional demo dates",
+        relationship_type="alternate",
+        start_date=payload.start_date,
+        separation_date=payload.end_date,
+        assumption_note="Fictional sample dates for a product preview; not a legal characterization.",
+    )
+    scenario = generate_scenarios(
+        ScenarioAxes(
+            relationship_windows=[window],
+            tracing_methods=["explicit"],
+            community_share_bps=[payload.community_share_bps],
+        )
+    )[0]
+    ledgers = [
+        AssetLedger(
+            asset_id=UUID("00000000-0000-4000-8000-000000000001"),
+            name="Fictional home equity",
+            kind="asset",
+            events=[
+                LedgerEvent(
+                    effective_date=payload.start_date,
+                    event_type="acquisition",
+                    amount_cents=33_000_000,
+                    source_allocations={
+                        "user_separate": 10_000_000,
+                        "other_separate": 8_000_000,
+                        "community": 15_000_000,
+                        "unresolved": 0,
+                    },
+                    provenance="scenario_assumed",
+                    note="Fictional demo value and allocations.",
+                )
+            ],
+        ),
+        AssetLedger(
+            asset_id=UUID("00000000-0000-4000-8000-000000000002"),
+            name="Fictional savings",
+            kind="asset",
+            events=[
+                LedgerEvent(
+                    effective_date=payload.start_date,
+                    event_type="acquisition",
+                    amount_cents=8_500_000,
+                    source_allocations={
+                        "user_separate": 4_000_000,
+                        "other_separate": 1_500_000,
+                        "community": 3_000_000,
+                        "unresolved": 0,
+                    },
+                    provenance="scenario_assumed",
+                    note="Fictional demo value and allocations.",
+                )
+            ],
+        ),
+        AssetLedger(
+            asset_id=UUID("00000000-0000-4000-8000-000000000003"),
+            name="Fictional credit-card debt",
+            kind="debt",
+            events=[
+                LedgerEvent(
+                    effective_date=payload.start_date,
+                    event_type="acquisition",
+                    amount_cents=1_200_000,
+                    source_allocations={
+                        "user_separate": 0,
+                        "other_separate": 0,
+                        "community": 1_200_000,
+                        "unresolved": 0,
+                    },
+                    provenance="scenario_assumed",
+                    note="Fictional demo liability and allocation.",
+                )
+            ],
+        ),
+    ]
+    terms = MediationOfferTerms(
+        offer_from="Sam Taylor (fictional)",
+        offer_to="Alex Taylor (fictional)",
+        county="King",
+        terms=[
+            "Fictional sample proposal only; these names, figures, and allocations are invented.",
+            (
+                f"Illustrative community share: "
+                f"{payload.community_share_bps / 100:g}% to the proposing party."
+            ),
+            "Each party retains the fictional property and debts shown in their proposed column.",
+        ],
+    )
+    return terms, calculate_scenario(scenario, ledgers)
+
+
+@demo_export_router.post("/demo/exports/docx")
+def create_demo_settlement_offer(payload: DemoExportRequest) -> Response:
+    terms, result = _demo_export_files(payload)
+    docx = render_mediation_offer_docx(terms, result)
+    if len(docx) > get_settings().max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Generated demo proposal exceeds the file size limit.")
+    return Response(
+        content=docx,
+        media_type=DOCX_MEDIA_TYPE,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="fictional-demo-cr2a-proposal.docx"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@demo_export_router.post("/demo/exports/xlsx")
+def create_demo_settlement_property_schedule(payload: DemoExportRequest) -> Response:
+    terms, result = _demo_export_files(payload)
+    workbook = render_property_schedule_xlsx(terms, result)
+    if len(workbook) > get_settings().max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Generated demo schedule exceeds the file size limit.")
+    return Response(
+        content=workbook,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="fictional-demo-property-schedule.xlsx"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 def _settlement_disclosure(settings: Settings | None = None) -> SettlementPlanningDisclosure:
