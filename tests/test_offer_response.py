@@ -561,6 +561,10 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('id="settlement-response-accepted-file"', html)
         self.assertIn('uploadSettlementResponseFile("accepted_offer", file)', html)
         self.assertIn("First Attempt — active and editable", html)
+        self.assertIn('id="settlement-demo-attempt-status"', html)
+        self.assertIn("First Attempt — demo preview only", html)
+        self.assertIn("settlementDemoAttemptOrdinal += 1", html)
+        self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
         self.assertIn("counterofferNeedsFile", html)
         attempt_save = html.split("async function saveSettlementAttemptState()", 1)[1].split(
             "async function loadSettlementOfferResponse", 1

@@ -938,6 +938,7 @@
       .settlement-export-destinations > p, #settlement-export-confirmation-details { color: var(--muted); font-size: 13px; }
       .settlement-response-workflow { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
       .settlement-demo-response-preview { margin-top: 18px; padding: 16px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--surface-background); }
+      .settlement-attempt-banner { display: inline-flex; margin: 0 0 12px; padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--green-dark); background: var(--surface-raised); font-size: 14px !important; font-weight: 800; }
       .settlement-response-workflow[hidden], .settlement-response-counteroffer[hidden],
       .settlement-response-checklist[hidden], .settlement-response-placeholder[hidden],
       .settlement-demo-response-files[hidden] { display: none; }
@@ -1925,6 +1926,7 @@
                   </div>
                   <p class="settlement-scenario-status" id="settlement-demo-export-status" role="status" aria-live="polite">These files use fictional names and figures only. They are not sent to any external service.</p>
                   <section class="settlement-response-workflow settlement-demo-response-preview" id="settlement-demo-response-preview" aria-labelledby="settlement-demo-response-preview-title">
+                    <p class="settlement-attempt-banner" id="settlement-demo-attempt-status" role="status" aria-live="polite">First Attempt — demo preview only</p>
                     <h4 id="settlement-demo-response-preview-title">Preview what happens after you send an offer</h4>
                     <p>This interactive preview uses made-up filenames only. It never opens a file picker, uploads, reads, or saves documents, or accesses Google Drive.</p>
                     <p><strong>Review and edit your downloaded drafts, send them to the other party yourself, then continue here.</strong></p>
@@ -2197,12 +2199,14 @@
         const settlementDemoMarkSent = document.getElementById("settlement-demo-mark-sent");
         const settlementDemoResponseFiles = document.getElementById("settlement-demo-response-files");
         const settlementDemoAddCounteroffer = document.getElementById("settlement-demo-add-counteroffer");
+        const settlementDemoAttemptStatus = document.getElementById("settlement-demo-attempt-status");
         const settlementDemoResponseStatus = document.getElementById("settlement-demo-response-status");
         const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
         const settlementDemoResponsePlaceholder = document.getElementById("settlement-demo-response-placeholder");
         const settlementDemoResponseChecklist = document.getElementById("settlement-demo-response-checklist");
         let settlementDemoResponseOutcome = "";
         let settlementDemoCounterofferAdded = false;
+        let settlementDemoAttemptOrdinal = 1;
         let settlementDemoSelectedShareBps = 5000;
         let settlementDemoScenarioAvailable = false;
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
@@ -6955,6 +6959,11 @@
             settlementDemoResponsePlaceholder.hidden = true;
             settlementDemoResponseChecklist.hidden = true;
             settlementDemoResponseNext.disabled = settlementDemoResponseOutcome === "counteroffer";
+            settlementDemoAttemptStatus.textContent =
+              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
+            settlementDemoResponseNext.textContent = settlementDemoResponseOutcome === "counteroffer"
+              ? `Next — ${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal + 1)} Attempt`
+              : "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
               ? "A counteroffer would require an attachment. Add a fictional example to preview Next; no real file upload is available in this demo."
               : "Next is available for this preview outcome.";
@@ -6968,6 +6977,27 @@
         settlementDemoResponseNext.addEventListener("click", () => {
           if (!settlementDemoResponseOutcome
             || (settlementDemoResponseOutcome === "counteroffer" && !settlementDemoCounterofferAdded)) return;
+          if (settlementDemoResponseOutcome === "counteroffer") {
+            const completedOrdinal = settlementDemoAttemptOrdinal;
+            settlementDemoAttemptOrdinal += 1;
+            settlementDemoResponseOutcome = "";
+            settlementDemoCounterofferAdded = false;
+            settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]')
+              .forEach((input) => { input.checked = false; });
+            settlementDemoMarkSent.disabled = false;
+            settlementDemoResponseFiles.hidden = true;
+            settlementDemoAddCounteroffer.hidden = true;
+            settlementDemoResponsePlaceholder.hidden = true;
+            settlementDemoResponseChecklist.hidden = true;
+            settlementDemoAttemptStatus.textContent =
+              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
+            settlementDemoResponseNext.textContent = "Next";
+            settlementDemoResponseNext.disabled = true;
+            settlementDemoResponseStatus.textContent =
+              `Preview only: ${settlementAttemptOrdinalLabel(completedOrdinal)} Attempt is frozen. The next attempt starts with the same sample dates and scenario; no case data is saved.`;
+            settlementDemoResponseStatus.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            return;
+          }
           settlementDemoResponseChecklist.hidden = settlementDemoResponseOutcome !== "accepted";
           settlementDemoResponsePlaceholder.hidden = settlementDemoResponseOutcome === "accepted";
           if (settlementDemoResponseOutcome === "accepted") {
