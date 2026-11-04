@@ -4,7 +4,7 @@
 - **Related issue:** [#74 — Track offer responses and guide accepted agreements to final forms](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/74)
 - **Related specifications:** [Spec 16: Evidence-Traced Settlement Planning](../16-evidence-traced-settlement-planning/spec-16-evidence-traced-settlement-planning.md), [Spec 19: CR 2A Proposal and Property-Division Exports](../19-cr2a-property-division-exports/spec-19-cr2a-property-division-exports.md)
 - **Objective:** Let an authorized case member record the exact proposal documents sent, track the other party's response, collect a counteroffer, and provide a carefully sourced final-document checklist after acceptance.
-- **Scope:** Authenticated, authorized, non-demo case workflows. The public fictional demo must not accept real documents, access a user's Drive, or present the checklist as legal advice.
+- **Scope:** Authenticated, authorized, non-demo case workflows. The public fictional demo may present a browser-only interaction preview with invented filenames and text, but must not accept or read real documents, access a user's Drive, save response data, or invoke case APIs.
 - **Legal-content boundary:** The application provides process prompts and links, not legal advice. Court forms, filing requirements, deadlines, and whether an agreed proposal resolves a judgment depend on the signed orders, case, and court. Users must review official court instructions and seek qualified Washington counsel or clerk guidance as appropriate.
 
 ## 1. Sent Documents and Response
@@ -33,6 +33,7 @@
 - **FR-21-16 — Privacy and retention:** Store attachments only within the authorized case-material system, enforce existing file type/size limits, and audit only minimal metadata. Do not log file contents, OAuth credentials, or document text.
 - **FR-21-17 — No automatic AI processing:** Importing sent documents or counteroffers does not grant AI consent and does not trigger extraction or AI analysis. Any later analysis must use existing explicit consent controls.
 - **FR-21-18 — Failure handling:** Surface unsupported files, missing Drive configuration, authorization failures, stale selections, and storage errors; do not report success when an import fails.
+- **FR-21-19 — Fictional demo preview:** The public `/demo` may simulate marking fictional files as sent, selecting one of the three outcomes, requiring a fictional counteroffer step, and showing the acceptance checklist. Use no real file input, network request, persistence, case data, or AI. Clearly identify it as a preview and ensure the authenticated workflow remains the only place that stores real case documents.
 
 ## 4. Acceptance Criteria
 
@@ -40,7 +41,7 @@
 2. The workflow offers the three specified response outcomes and does not infer a legal result.
 3. Counteroffer Continue remains disabled until at least one response attachment is successfully imported; rejection Continue leads only to a neutral future-step placeholder; acceptance Continue leads to the checklist.
 4. The checklist links FL Divorce 231 and verified official resources, and clearly marks the two judgment-related document names as unverified for statewide Superior Court family-law use.
-5. Real documents never enter the public demo, become public Drive links, or reach AI automatically.
+5. Real documents never enter the public demo, become public Drive links, or reach AI automatically; the demo interaction uses only invented filenames and page-local state.
 6. Existing case authorization, secure storage, file limits, audit boundaries, accessibility, and error handling remain in effect.
 
 ## 5. Verified Official References
@@ -55,3 +56,4 @@
 - The authenticated settlement-selection workspace now records and lists/reopens the final sent DOCX and XLSX, the user-selected response outcome, and any counteroffer attachment. Case membership and write permissions are checked; uploaded files use existing encrypted case object storage and validation limits. Imports do not trigger document extraction, AI, email, or third-party delivery.
 - Local computer upload is supported. Google Drive Picker is not integrated: existing export OAuth does not provide a secure browser Picker flow or an endpoint for user-selected file bytes. The workflow explicitly reports this limitation and does not broaden Drive scopes or expose OAuth tokens.
 - Acceptance displays the verified official links and the judgment/form caveats in section 5. Counteroffer and rejection continue only to a neutral placeholder.
+- The public demo includes a click-through preview using fictional file names. It does not expose file inputs, make API requests, or save state.

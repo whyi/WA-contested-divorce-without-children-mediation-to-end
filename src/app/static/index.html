@@ -937,8 +937,10 @@
       .settlement-export-destinations { margin-top: 20px; }
       .settlement-export-destinations > p, #settlement-export-confirmation-details { color: var(--muted); font-size: 13px; }
       .settlement-response-workflow { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+      .settlement-demo-response-preview { margin-top: 18px; padding: 16px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--surface-background); }
       .settlement-response-workflow[hidden], .settlement-response-counteroffer[hidden],
-      .settlement-response-checklist[hidden], .settlement-response-placeholder[hidden] { display: none; }
+      .settlement-response-checklist[hidden], .settlement-response-placeholder[hidden],
+      .settlement-demo-response-files[hidden] { display: none; }
       .settlement-response-workflow p, .settlement-response-workflow li { color: var(--muted); font-size: 13px; line-height: 1.6; }
       .settlement-response-workflow fieldset { display: grid; gap: 10px; margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
       .settlement-response-workflow fieldset label { display: flex; align-items: flex-start; gap: 9px; color: var(--ink); }
@@ -1909,6 +1911,43 @@
                     <button class="materials-import" id="settlement-demo-xlsx-download" type="button" disabled>Download sample property schedule Excel</button>
                   </div>
                   <p class="settlement-scenario-status" id="settlement-demo-export-status" role="status" aria-live="polite">These files use fictional names and figures only. They are not sent to any external service.</p>
+                  <section class="settlement-response-workflow settlement-demo-response-preview" id="settlement-demo-response-preview" aria-labelledby="settlement-demo-response-preview-title">
+                    <h4 id="settlement-demo-response-preview-title">Preview what happens after you send an offer</h4>
+                    <p>This interactive preview uses made-up filenames only. It never opens a file picker, uploads, reads, or saves documents, or accesses Google Drive.</p>
+                    <p><strong>Review and edit your downloaded drafts, send them to the other party yourself, then continue here.</strong></p>
+                    <button class="materials-import" id="settlement-demo-mark-sent" type="button">I reviewed and sent the final documents</button>
+                    <div class="settlement-demo-response-files" id="settlement-demo-response-files" hidden>
+                      <p>Example files recorded as sent:</p>
+                      <ul class="settlement-response-list">
+                        <li>fictional-final-cr2a-agreement.docx</li>
+                        <li>fictional-final-property-schedule.xlsx</li>
+                      </ul>
+                      <fieldset>
+                        <legend>What response did you receive?</legend>
+                        <label><input type="radio" name="settlement-demo-response-outcome" value="counteroffer"> Counteroffer received</label>
+                        <label><input type="radio" name="settlement-demo-response-outcome" value="rejected"> Offer rejected</label>
+                        <label><input type="radio" name="settlement-demo-response-outcome" value="accepted"> Offer accepted</label>
+                      </fieldset>
+                      <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" hidden>Add fictional counteroffer example</button>
+                      <p id="settlement-demo-response-status" role="status" aria-live="polite">Select a response to preview the next step.</p>
+                      <button class="materials-import" id="settlement-demo-response-next" type="button" disabled>Next</button>
+                      <section id="settlement-demo-response-placeholder" hidden>
+                        <h5>Response recorded</h5>
+                        <p>No next legal step is provided here. Continue the conversation or use another workflow when available.</p>
+                      </section>
+                      <section id="settlement-demo-response-checklist" hidden aria-labelledby="settlement-demo-checklist-title">
+                        <h5 id="settlement-demo-checklist-title">Congratulations. You’re nearly done.</h5>
+                        <p>Complete Findings and Conclusions About a Marriage (FL Divorce 231) and attach the document reflecting the other party’s accepted offer. Review the signed judgment/order and case docket for any payment obligations or deadlines.</p>
+                        <ul>
+                          <li><a href="https://www.courts.wa.gov/forms/?fa=forms.contribute&amp;formID=13" target="_blank" rel="noopener noreferrer">Washington Courts Divorce (Dissolution) forms</a></li>
+                          <li><a href="https://www.courts.wa.gov/forms/documents/FL%20Divorce%20231%20Findings-Conclusions-Marriage_2023%2007%2001.pdf" target="_blank" rel="noopener noreferrer">FL Divorce 231 — Findings and Conclusions About a Marriage (PDF)</a></li>
+                          <li><a href="https://kingcounty.gov/en/court/superior-court/courts-jails-legal-system/court-programs-children-families/divorce-custody-adoption/how-to-resources-family-law" target="_blank" rel="noopener noreferrer">King County Superior Court Family Law resources</a></li>
+                          <li><a href="https://app.leg.wa.gov/RCW/default.aspx?cite=4.64.080" target="_blank" rel="noopener noreferrer">RCW 4.64.080 — judgment satisfaction context</a></li>
+                        </ul>
+                        <p>No statewide Superior Court family-law form titled “Satisfaction of Judgment” or “Stipulation and Order Regarding Final Payment of Judgment to Respondent” has been verified here. WPF GARN 01.1200 is for garnishment, not a generic divorce judgment. Ask the Superior Court Clerk or qualified Washington counsel which document and process apply after a judgment is fully satisfied. If a payment deadline may be missed, seek advice promptly; any agreed stipulation/order may require court approval.</p>
+                      </section>
+                    </div>
+                  </section>
                   <p class="settlement-scenario-status" id="settlement-scenario-status" role="status" aria-live="polite"></p>
                   <p class="scenario-disclaimer">Fictional page-only calculation; no case data is used, saved, or sent to AI. The End Date is an illustrative valuation/division date and is not necessarily a legal separation or characterization date.</p>
                 </section>
@@ -2137,6 +2176,15 @@
         const settlementDemoDocxDownload = document.getElementById("settlement-demo-docx-download");
         const settlementDemoXlsxDownload = document.getElementById("settlement-demo-xlsx-download");
         const settlementDemoExportStatus = document.getElementById("settlement-demo-export-status");
+        const settlementDemoMarkSent = document.getElementById("settlement-demo-mark-sent");
+        const settlementDemoResponseFiles = document.getElementById("settlement-demo-response-files");
+        const settlementDemoAddCounteroffer = document.getElementById("settlement-demo-add-counteroffer");
+        const settlementDemoResponseStatus = document.getElementById("settlement-demo-response-status");
+        const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
+        const settlementDemoResponsePlaceholder = document.getElementById("settlement-demo-response-placeholder");
+        const settlementDemoResponseChecklist = document.getElementById("settlement-demo-response-checklist");
+        let settlementDemoResponseOutcome = "";
+        let settlementDemoCounterofferAdded = false;
         let settlementDemoSelectedShareBps = 5000;
         let settlementDemoScenarioAvailable = false;
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
@@ -6662,6 +6710,43 @@
         });
         settlementDemoXlsxDownload.addEventListener("click", () => {
           void downloadDemoSettlementDocument("xlsx");
+        });
+        settlementDemoMarkSent.addEventListener("click", () => {
+          settlementDemoResponseFiles.hidden = false;
+          settlementDemoMarkSent.disabled = true;
+          settlementDemoResponseStatus.textContent = "Preview only: fictional DOCX and XLSX filenames are marked as sent. No files were opened or uploaded.";
+        });
+        settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]').forEach((input) => {
+          input.addEventListener("change", () => {
+            settlementDemoResponseOutcome = input.value;
+            settlementDemoCounterofferAdded = false;
+            settlementDemoAddCounteroffer.hidden = settlementDemoResponseOutcome !== "counteroffer";
+            settlementDemoResponsePlaceholder.hidden = true;
+            settlementDemoResponseChecklist.hidden = true;
+            settlementDemoResponseNext.disabled = settlementDemoResponseOutcome === "counteroffer";
+            settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
+              ? "A counteroffer would require an attachment. Add a fictional example to preview Next; no real file upload is available in this demo."
+              : "Next is available for this preview outcome.";
+          });
+        });
+        settlementDemoAddCounteroffer.addEventListener("click", () => {
+          settlementDemoCounterofferAdded = true;
+          settlementDemoResponseNext.disabled = false;
+          settlementDemoResponseStatus.textContent = "Fictional response file recorded: fictional-counteroffer.pdf. No file was opened, uploaded, or saved.";
+        });
+        settlementDemoResponseNext.addEventListener("click", () => {
+          if (!settlementDemoResponseOutcome
+            || (settlementDemoResponseOutcome === "counteroffer" && !settlementDemoCounterofferAdded)) return;
+          settlementDemoResponseChecklist.hidden = settlementDemoResponseOutcome !== "accepted";
+          settlementDemoResponsePlaceholder.hidden = settlementDemoResponseOutcome === "accepted";
+          if (settlementDemoResponseOutcome === "accepted") {
+            settlementDemoResponseStatus.textContent = "Previewing the accepted-offer checklist using fictional data only.";
+          } else {
+            settlementDemoResponseStatus.textContent = "Previewing the placeholder next step using fictional data only.";
+          }
+          (settlementDemoResponseChecklist.hidden
+            ? settlementDemoResponsePlaceholder
+            : settlementDemoResponseChecklist).scrollIntoView({ behavior: "smooth", block: "nearest" });
         });
         settlementGoogleConnect.addEventListener("click", () => {
           void connectSettlementExportProvider("google_drive");
