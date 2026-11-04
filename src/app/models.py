@@ -256,6 +256,67 @@ class ExportDeliveryEvent(Base):
     )
 
 
+class SettlementOfferResponse(Base):
+    __tablename__ = "settlement_offer_responses"
+    __table_args__ = (
+        UniqueConstraint("selection_id", name="uq_settlement_offer_responses_selection"),
+        CheckConstraint(
+            "outcome IS NULL OR outcome IN ('counteroffer', 'rejected', 'accepted')",
+            name="ck_settlement_offer_responses_outcome",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    selection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("settlement_scenario_selections.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    outcome: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    attachments: Mapped[list["SettlementOfferResponseAttachment"]] = relationship(
+        back_populates="response", cascade="all, delete-orphan"
+    )
+
+
+class SettlementOfferResponseAttachment(Base):
+    __tablename__ = "settlement_offer_response_attachments"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('sent_docx', 'sent_xlsx', 'counteroffer', 'accepted_offer')",
+            name="ck_settlement_offer_response_attachments_kind",
+        ),
+        UniqueConstraint(
+            "response_id",
+            "kind",
+            "document_id",
+            name="uq_settlement_offer_response_attachment_document",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("settlement_offer_responses.id", ondelete="CASCADE"), index=True
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    response: Mapped[SettlementOfferResponse] = relationship(back_populates="attachments")
+
+
 class Document(Base):
     __tablename__ = "documents"
 
