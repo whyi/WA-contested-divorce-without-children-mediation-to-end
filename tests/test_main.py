@@ -120,10 +120,9 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn("prefers-reduced-motion: reduce", page)
 
         page = pages[0]
-        self.assertIn('class="settlement-demo-share-select"', page)
-        self.assertIn("Illustrative shared-property split", page)
-        self.assertIn("var(--surface-raised)", page)
-        self.assertIn("var(--focus-ring)", page)
+        self.assertIn(".settlement-demo-scenario-choice", page)
+        self.assertIn("data-selected", page)
+        self.assertIn("accent-color: var(--green)", page)
         bootstrap = page.split("<script>", 1)[1].split("</script>", 1)[0]
         self.assertLess(page.index("</script>"), page.index("<style>"))
         self.assertIn('getItem("casework-theme")', bootstrap)
@@ -295,12 +294,27 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('<input id="settlement-end-date" type="date"', page)
         self.assertIn('id="settlement-date-range-overlay"', page)
         self.assertIn("Drag along the chart", page)
-        self.assertIn('id="settlement-scenario-results" aria-live="polite"', table_section)
+        self.assertIn('id="settlement-scenario-results" role="radiogroup"', table_section)
+        self.assertIn('aria-label="Select a fictional settlement scenario"', table_section)
+        self.assertIn('id="settlement-demo-docx-download"', table_section)
+        self.assertIn('id="settlement-demo-xlsx-download"', table_section)
         self.assertIn('id="settlement-scenario-status" role="status"', table_section)
         self.assertIn("function renderDemoSettlementScenarios()", page)
         self.assertIn('{ label: "Higher proposed share", share: 55 }', page)
         self.assertIn('{ label: "Even proposed share", share: 50 }', page)
         self.assertIn('{ label: "Lower proposed share", share: 45 }', page)
+        self.assertNotIn('id="settlement-demo-export-share"', page)
+        self.assertNotIn("settlementDemoExportShare", page)
+        self.assertIn('name = "settlement-demo-scenario"', page)
+        self.assertIn("community_share_bps: settlementDemoSelectedShareBps", page)
+        self.assertLess(
+            table_section.index('id="settlement-scenario-results"'),
+            table_section.index('id="settlement-demo-docx-download"'),
+        )
+        self.assertLess(
+            table_section.index('id="settlement-demo-xlsx-download"'),
+            table_section.index('id="settlement-scenario-status"'),
+        )
         self.assertIn('assetTimelineChart.addEventListener("pointerdown"', page)
         self.assertIn("or sent to AI", table_section)
         self.assertNotIn("<table", table_section)
