@@ -512,6 +512,61 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('value="joint"', finance_markup)
         self.assertIn('value="individual"', finance_markup)
 
+    def test_wizard_section_navigation_opens_an_editable_entry(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        for section_id in (
+            "wizard-dates",
+            "wizard-finances",
+            "wizard-issues",
+            "wizard-agreements",
+            "wizard-review",
+        ):
+            self.assertIn(f'id="{section_id}" tabindex="-1"', page)
+
+        navigation = page.split(
+            "function handleWizardSectionNavigation(event)", 1
+        )[1].split("function handleWizardCollectionClick", 1)[0]
+        self.assertIn('a[href^="#wizard-"]', navigation)
+        self.assertIn('"wizard-finances": "finances"', navigation)
+        self.assertIn('"wizard-issues": "issues"', navigation)
+        self.assertIn('"wizard-agreements": "agreements"', navigation)
+        self.assertIn("wizardDraft[collection].length === 0", navigation)
+        self.assertIn("addWizardEntry(collection)", navigation)
+        self.assertIn('setAttribute("aria-current", "step")', navigation)
+        self.assertIn("focusTarget.focus({ preventScroll: true })", navigation)
+
+    def test_wizard_entry_ids_work_on_insecure_lan_http(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        id_generator = page.split("function createWizardId()", 1)[1].split(
+            "function normalizeWizardDraft", 1
+        )[0]
+        self.assertIn("globalThis.crypto", id_generator)
+        self.assertIn("webCrypto?.randomUUID", id_generator)
+        self.assertIn("webCrypto?.getRandomValues", id_generator)
+        self.assertIn("Math.random()", id_generator)
+        self.assertNotIn("return crypto.randomUUID()", id_generator)
+
+    def test_wizard_supports_browser_local_optional_files_for_each_record(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        collection_renderer = page.split(
+            "function renderWizardCollections()", 1
+        )[1].split("function refreshWizardReview()", 1)[0]
+        for collection in ("finances", "issues", "agreements"):
+            self.assertIn(f'wizardAttachmentMarkup(entry, "{collection}")', collection_renderer)
+        self.assertIn('type="file" multiple data-wizard-files="${collection}"', page)
+        self.assertIn("stay in this browser only", page)
+        self.assertIn("blob: file.slice(0, file.size, file.type)", page)
+        self.assertIn("Evidence is not uploaded or analyzed.", page)
+
     def test_property_tracing_api_persists_case_facts_and_returns_candidates(self) -> None:
         case = SimpleNamespace(
             relationship_milestones={},
@@ -835,6 +890,12 @@ class MainWorkflowTests(unittest.TestCase):
         wizard_demo_page = responses[4][1].decode()
         self.assertIn('id="wizard-filed-question"', wizard_demo_page)
         self.assertIn('id="wizard-role-question" disabled', wizard_demo_page)
+        self.assertIn(
+            'id="wizard-unlock-status" role="status" aria-live="polite"',
+            wizard_demo_page,
+        )
+        self.assertIn("answer Yes to the filed-case question, then choose your role", wizard_demo_page)
+        self.assertIn("Your intake sections are open. Choose Dates, Finances, Issues, Agreements, or Review below.", wizard_demo_page)
         self.assertIn('<dialog class="demo-wizard-dialog"', wizard_demo_page)
         self.assertIn("wizardFiledDialog.addEventListener(\"cancel\", (event) => event.preventDefault())", wizard_demo_page)
         self.assertIn('id="wizard-gated-content" hidden', wizard_demo_page)
