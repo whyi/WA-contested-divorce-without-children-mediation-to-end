@@ -317,6 +317,42 @@ class SettlementOfferResponseAttachment(Base):
     response: Mapped[SettlementOfferResponse] = relationship(back_populates="attachments")
 
 
+class SettlementNegotiationAttempt(Base):
+    __tablename__ = "settlement_negotiation_attempts"
+    __table_args__ = (
+        UniqueConstraint("selection_id", name="uq_settlement_negotiation_attempt_selection"),
+        UniqueConstraint(
+            "case_id",
+            "attempt_ordinal",
+            name="uq_settlement_negotiation_attempt_case_ordinal",
+        ),
+        UniqueConstraint("predecessor_id", name="uq_settlement_negotiation_attempt_predecessor"),
+        CheckConstraint("attempt_ordinal >= 1", name="ck_settlement_negotiation_attempt_ordinal"),
+        CheckConstraint("revision >= 0", name="ck_settlement_negotiation_attempt_revision"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    selection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("settlement_scenario_selections.id", ondelete="CASCADE"), index=True
+    )
+    predecessor_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("settlement_negotiation_attempts.id", ondelete="CASCADE"), index=True
+    )
+    attempt_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    frozen_snapshot_json: Mapped[dict | None] = mapped_column(JSONB)
+    editable_state_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class Document(Base):
     __tablename__ = "documents"
 
