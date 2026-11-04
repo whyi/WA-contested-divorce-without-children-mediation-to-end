@@ -1083,6 +1083,15 @@
       .asset-comparison-table thead th:first-child, .asset-comparison-table tbody th, .asset-comparison-table tfoot th { text-align: left; }
       .asset-comparison-table tbody th { color:var(--theme-text-34443a); font-weight: 650; }
       .asset-comparison-table tfoot th, .asset-comparison-table tfoot td { border-top:2px solid var(--theme-border-cbd8cc); border-bottom:0; color:var(--green-dark); font-weight: 800; }
+      .settlement-demo-inherited-notice { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--theme-border-e8dcc0); border-left: 5px solid var(--theme-border-e8dcc0); border-radius: 8px; color:var(--theme-text-43544a); background:var(--theme-background-fbf5e8); font-size: 13px; font-weight: 650; }
+      .settlement-demo-inherited-badge { display: inline-flex; width: fit-content; align-items: center; margin: 4px 0; padding: 3px 8px; border: 1px solid var(--theme-border-e8dcc0); border-radius: 999px; color:var(--theme-text-43544a); background:var(--theme-background-fbf5e8); font-size: 11px; font-weight: 750; line-height: 1.4; }
+      .settlement-demo-inherited-badge[hidden], .settlement-demo-inherited-notice[hidden] { display: none; }
+      .settlement-demo-inherited-input { border-color:var(--theme-border-e8dcc0) !important; background:var(--theme-background-fbf5e8) !important; box-shadow: inset 0 0 0 1px var(--theme-border-e8dcc0); }
+      .asset-table-scroll[data-inherited="true"] { border-color:var(--theme-border-e8dcc0); box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-border-e8dcc0) 24%, transparent); }
+      .asset-table-scroll[data-inherited="true"] .asset-comparison-table tbody td,
+      .asset-table-scroll[data-inherited="true"] .asset-comparison-table tfoot td { background:var(--theme-background-fbf5e8); }
+      .asset-year-controls[data-inherited="true"] { border-radius: 8px; outline: 2px solid color-mix(in srgb, var(--theme-background-c69a50) 55%, transparent); outline-offset: 4px; }
+      .settlement-scenario-card[data-inherited="true"] .settlement-demo-scenario-choice { padding: 6px 8px; border-radius: 6px; background:var(--theme-background-fbf5e8); }
       .asset-table-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       .asset-table-action { min-height: 38px; padding: 8px 12px; border:1px solid var(--theme-border-cbd8cc); border-radius: 6px; color:var(--theme-text-344a3d); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
       .asset-table-action.primary { border-color:var(--green-dark); color:var(--theme-text-fff); background:var(--green-dark); }
@@ -1848,9 +1857,11 @@
                   </div>
                 </header>
                 <p class="sample-analysis-notice" role="note"><strong>Fictional example only.</strong> These figures are made up and are not based on your uploaded documents or case facts. Nothing is sent to an AI provider or saved when you view this page. This is not legal advice or a recommendation about how property should be divided.</p>
+                <p class="settlement-demo-inherited-notice" id="settlement-demo-inherited-notice" role="status" aria-live="polite" hidden></p>
                 <details class="asset-milestone-manager" id="milestone-manager">
                   <summary>Manage milestone dates</summary>
                   <div class="asset-milestone-manager-content">
+                    <p class="settlement-demo-inherited-badge" id="settlement-demo-milestone-inherited" hidden></p>
                     <p>Standard dates identified during document analysis appear here for review. In this demo, sample dates are fictional; no documents are analyzed. You can override any date or add your own custom milestones. Changes are not saved or sent anywhere.</p>
                     <ul class="asset-milestone-list" id="standard-milestone-list" aria-label="Standard relationship milestone dates"></ul>
                     <h4>Custom dates</h4>
@@ -1874,10 +1885,11 @@
                 <section class="asset-analysis-panel" aria-labelledby="asset-table-title">
                   <h3 id="asset-table-title">Asset and liability comparison</h3>
                   <p>Move through the timeline to see the sample balance sheet for an annual or milestone date.</p>
-                  <div class="asset-year-controls" role="group" aria-label="Choose a timeline point">
+                  <div class="asset-year-controls" id="asset-year-controls" role="group" aria-label="Choose a timeline point">
                     <button class="asset-year-step" id="asset-year-previous" type="button" aria-label="Previous timeline point">← Previous</button>
                     <label class="asset-year-selector" for="asset-year-range">
                       <output class="asset-year-selected" id="asset-selected-year" for="asset-year-range">Year 6 · 2025</output>
+                      <span class="settlement-demo-inherited-badge" id="asset-year-range-inherited" hidden></span>
                       <input class="asset-year-range" id="asset-year-range" type="range" min="0" max="5" step="1" value="5" list="asset-year-stops" aria-label="Choose a year or milestone date" aria-valuetext="Year 6, 2025">
                       <datalist id="asset-year-stops"></datalist>
                       <span class="asset-year-range-ends" aria-hidden="true"><span id="asset-year-first">Year 1 · 2020</span><span id="asset-year-last">Year 6 · 2025</span></span>
@@ -1894,6 +1906,7 @@
                       <tfoot id="asset-table-total"></tfoot>
                     </table>
                   </div>
+                  <p class="settlement-demo-inherited-badge" id="asset-table-inherited" hidden></p>
                   <div class="asset-table-actions" role="group" aria-label="Edit fictional sample values">
                     <button class="asset-table-action" id="asset-edit-start" type="button">Edit values</button>
                     <button class="asset-table-action primary" id="asset-edit-save" type="button" hidden>Save changes</button>
@@ -1932,9 +1945,11 @@
                     </div>
                     <div class="settlement-date-controls" aria-label="Scenario date range">
                       <label for="settlement-start-date">Start Date
+                        <span class="settlement-demo-inherited-badge" id="settlement-start-date-inherited" hidden></span>
                         <input id="settlement-start-date" type="date" value="2021-06-15">
                       </label>
                       <label for="settlement-end-date">End Date (Division Date)
+                        <span class="settlement-demo-inherited-badge" id="settlement-end-date-inherited" hidden></span>
                         <input id="settlement-end-date" type="date" value="2025-01-01">
                       </label>
                     </div>
@@ -2194,6 +2209,7 @@
         const assetAnalysisView = document.getElementById("asset-analysis-view");
         const assetAnalysisTitle = document.getElementById("asset-analysis-title");
         const assetAnalysisBackButton = document.getElementById("asset-analysis-back");
+        const assetYearControls = document.getElementById("asset-year-controls");
         const assetYearRange = document.getElementById("asset-year-range");
         const assetYearStops = document.getElementById("asset-year-stops");
         const assetYearSelected = document.getElementById("asset-selected-year");
@@ -2237,10 +2253,18 @@
         const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
         const settlementDemoResponsePlaceholder = document.getElementById("settlement-demo-response-placeholder");
         const settlementDemoResponseChecklist = document.getElementById("settlement-demo-response-checklist");
+        const settlementDemoInheritedNotice = document.getElementById("settlement-demo-inherited-notice");
+        const settlementDemoMilestoneInherited = document.getElementById("settlement-demo-milestone-inherited");
+        const assetYearRangeInherited = document.getElementById("asset-year-range-inherited");
+        const assetTableInherited = document.getElementById("asset-table-inherited");
+        const settlementStartDateInherited = document.getElementById("settlement-start-date-inherited");
+        const settlementEndDateInherited = document.getElementById("settlement-end-date-inherited");
         let settlementDemoResponseOutcome = "";
         let settlementDemoCounterofferAdded = false;
         let settlementDemoAttemptOrdinal = 1;
         let settlementDemoAttemptFrozen = false;
+        let settlementDemoInheritedState = null;
+        const settlementDemoAttemptSnapshots = [];
         let settlementDemoSelectedShareBps = 5000;
         let settlementDemoScenarioAvailable = false;
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
@@ -3597,6 +3621,160 @@
           return `${ordinal}${suffix}`;
         }
 
+        function settlementDemoClone(value) {
+          return JSON.parse(JSON.stringify(value));
+        }
+
+        function settlementDemoAssetDataSignature(snapshot = null) {
+          return JSON.stringify({
+            sampleAssetYears: snapshot?.sampleAssetYears || sampleAssetYears,
+            interpolatedAssetOverrides: snapshot?.interpolatedAssetOverrides
+              || [...interpolatedAssetOverrides.entries()],
+          });
+        }
+
+        function settlementDemoMilestoneSignature(snapshot = null) {
+          return JSON.stringify({
+            standardMilestones: snapshot?.standardMilestones || standardMilestones,
+            customMilestones: snapshot?.customMilestones || customMilestones,
+          });
+        }
+
+        function captureSettlementDemoAttempt() {
+          return {
+            ordinal: settlementDemoAttemptOrdinal,
+            startDate: settlementStartDate.value,
+            endDate: settlementEndDate.value,
+            selectedShareBps: settlementDemoSelectedShareBps,
+            timelineDate: assetTimelineStops[selectedAssetYearIndex]?.date || "",
+            selectedMilestoneId: selectedAssetMilestoneId,
+            sampleAssetYears: settlementDemoClone(sampleAssetYears),
+            interpolatedAssetOverrides: settlementDemoClone(
+              [...interpolatedAssetOverrides.entries()],
+            ),
+            standardMilestones: settlementDemoClone(standardMilestones),
+            customMilestones: settlementDemoClone(customMilestones),
+          };
+        }
+
+        function restoreSettlementDemoAttempt(snapshot) {
+          sampleAssetYears.splice(0, sampleAssetYears.length, ...settlementDemoClone(snapshot.sampleAssetYears));
+          standardMilestones.splice(
+            0,
+            standardMilestones.length,
+            ...settlementDemoClone(snapshot.standardMilestones),
+          );
+          customMilestones.splice(
+            0,
+            customMilestones.length,
+            ...settlementDemoClone(snapshot.customMilestones),
+          );
+          interpolatedAssetOverrides.clear();
+          for (const [date, values] of settlementDemoClone(snapshot.interpolatedAssetOverrides)) {
+            interpolatedAssetOverrides.set(date, values);
+          }
+          settlementDemoSelectedShareBps = snapshot.selectedShareBps;
+          selectedAssetMilestoneId = snapshot.selectedMilestoneId;
+          settlementStartDate.value = snapshot.startDate;
+          settlementEndDate.value = snapshot.endDate;
+          selectedAssetYearIndex = 0;
+          buildAssetTimelineStops(snapshot.timelineDate);
+          refreshAssetMilestones();
+        }
+
+        function updateSettlementDemoInheritedIndicators() {
+          const inherited = settlementDemoInheritedState;
+          if (!inherited) {
+            settlementDemoInheritedNotice.hidden = true;
+            settlementStartDateInherited.hidden = true;
+            settlementEndDateInherited.hidden = true;
+            assetYearRangeInherited.hidden = true;
+            assetTableInherited.hidden = true;
+            assetYearPanel.dataset.inherited = "false";
+            assetYearControls.dataset.inherited = "false";
+            settlementStartDate.classList.remove("settlement-demo-inherited-input");
+            settlementEndDate.classList.remove("settlement-demo-inherited-input");
+            assetYearRange.classList.remove("settlement-demo-inherited-input");
+            settlementDemoMilestoneInherited.hidden = true;
+            return;
+          }
+
+          const sourceLabel = `${settlementAttemptOrdinalLabel(inherited.sourceOrdinal)} Attempt`;
+          settlementDemoInheritedNotice.hidden = false;
+          settlementDemoInheritedNotice.textContent =
+            `Highlighted values were carried forward from ${sourceLabel}. Changing a value removes its inherited highlight; the previous attempt remains unchanged.`;
+          for (const [input, badge, value] of [
+            [settlementStartDate, settlementStartDateInherited, inherited.startDate],
+            [settlementEndDate, settlementEndDateInherited, inherited.endDate],
+          ]) {
+            const unchanged = input.value === value;
+            badge.hidden = !unchanged;
+            badge.textContent = `From ${sourceLabel}`;
+            input.classList.toggle("settlement-demo-inherited-input", unchanged);
+          }
+
+          const timelineUnchanged =
+            assetTimelineStops[selectedAssetYearIndex]?.date === inherited.timelineDate;
+          assetYearRangeInherited.hidden = !timelineUnchanged;
+          assetYearRangeInherited.textContent = `From ${sourceLabel}`;
+          assetYearRange.classList.toggle("settlement-demo-inherited-input", timelineUnchanged);
+          assetYearControls.dataset.inherited = String(timelineUnchanged);
+
+          const currentTableValues = assetTimelineStops[selectedAssetYearIndex]
+            ? assetSnapshotAtDate(assetTimelineStops[selectedAssetYearIndex].date).values
+            : null;
+          const draftChangedTable = Boolean(assetEditDraft && currentTableValues)
+            && JSON.stringify(Object.fromEntries(sampleAssetCategories.map(([, category]) => [
+              category,
+              assetEditDraft[category].map(Number),
+            ]))) !== JSON.stringify(currentTableValues);
+          const tableUnchanged = !draftChangedTable
+            && settlementDemoAssetDataSignature() === inherited.assetDataSignature;
+          assetYearPanel.dataset.inherited = String(tableUnchanged);
+          assetTableInherited.hidden = !tableUnchanged;
+          assetTableInherited.textContent = `Asset and liability values carried forward from ${sourceLabel}.`;
+
+          const pendingStandardMilestoneEdit = Array.from(
+            standardMilestoneList.querySelectorAll('[data-field="date"]'),
+          ).some((input) => {
+            const milestoneId = input.closest(".asset-milestone-item")?.dataset.milestoneId;
+            const milestone = standardMilestones.find((item) => item.id === milestoneId);
+            return milestone && input.value !== milestoneActiveDate(milestone);
+          });
+          const pendingCustomMilestoneEdit = Array.from(
+            customMilestoneList.querySelectorAll(".asset-milestone-item"),
+          ).some((item) => {
+            const milestone = customMilestones.find(
+              (entry) => entry.id === item.dataset.milestoneId,
+            );
+            return milestone && (
+              item.querySelector('[data-field="label"]')?.value !== milestone.label
+              || item.querySelector('[data-field="date"]')?.value !== milestone.date
+            );
+          });
+          const milestonesUnchanged = !pendingStandardMilestoneEdit
+            && !pendingCustomMilestoneEdit
+            && settlementDemoMilestoneSignature() === inherited.milestoneSignature;
+          settlementDemoMilestoneInherited.hidden = !milestonesUnchanged;
+          settlementDemoMilestoneInherited.textContent = `From ${sourceLabel}`;
+
+          for (const card of settlementScenarioResults.querySelectorAll(".settlement-scenario-card")) {
+            const title = card.querySelector("h4");
+            const existingBadge = title?.querySelector(".settlement-demo-inherited-badge");
+            existingBadge?.remove();
+            const radio = card.querySelector('input[name="settlement-demo-scenario"]');
+            const selectedAndUnchanged = radio?.checked
+              && Number(radio.value) === inherited.selectedShareBps;
+            card.dataset.inherited = String(Boolean(selectedAndUnchanged));
+            if (selectedAndUnchanged && title) {
+              const badge = document.createElement("span");
+              badge.className = "settlement-demo-inherited-badge";
+              badge.textContent = `Share from ${sourceLabel}`;
+              title.append(badge);
+            }
+          }
+        }
+
         function selectedSettlementOutcome() {
           return settlementResponseWorkflow.querySelector(
             'input[name="settlement-response-outcome"]:checked',
@@ -4926,6 +5104,7 @@
           }
           renderAssetTimeline();
           announceSelectedAssetMilestone();
+          updateSettlementDemoInheritedIndicators();
         }
 
         function applyExtractedMilestoneDates(dates) {
@@ -5238,6 +5417,7 @@
           if (canceledForYearChange) {
             assetEditStatus.textContent = "Unsaved edits canceled because you changed the selected timeline point.";
           }
+          updateSettlementDemoInheritedIndicators();
         }
 
         function createChartElement(parent, name, attributes, text = "") {
@@ -5529,6 +5709,7 @@
             settlementScenarioResults.append(card);
           }
           settlementScenarioStatus.textContent = `Recalculated for ${formatMilestoneDate(startDate)} through ${formatMilestoneDate(endDate)}. Start-date balances are held as baselines; only the change in combined sample net assets is split by each displayed assumption.`;
+          updateSettlementDemoInheritedIndicators();
         }
 
         function setSettlementDemoAttemptFrozen(frozen) {
@@ -5607,6 +5788,7 @@
             : shareBps === 5000 ? "Even proposed share" : "Lower proposed share";
           settlementDemoExportStatus.textContent = `Selected: ${scenarioName} (${shareBps / 100}% to Sam). Both downloads will use this scenario and the current dates.`;
           settlementDemoExportStatus.dataset.kind = "";
+          updateSettlementDemoInheritedIndicators();
         });
 
         async function downloadDemoSettlementDocument(format) {
@@ -7142,7 +7324,20 @@
             || (settlementDemoResponseOutcome === "counteroffer" && !settlementDemoCounterofferAdded)) return;
           if (settlementDemoResponseOutcome === "counteroffer") {
             const completedOrdinal = settlementDemoAttemptOrdinal;
+            const completedAttempt = captureSettlementDemoAttempt();
+            settlementDemoAttemptSnapshots.push(completedAttempt);
+            const nextAttemptCopy = settlementDemoClone(completedAttempt);
             settlementDemoAttemptOrdinal += 1;
+            settlementDemoInheritedState = {
+              sourceOrdinal: completedOrdinal,
+              startDate: completedAttempt.startDate,
+              endDate: completedAttempt.endDate,
+              selectedShareBps: completedAttempt.selectedShareBps,
+              timelineDate: completedAttempt.timelineDate,
+              assetDataSignature: settlementDemoAssetDataSignature(completedAttempt),
+              milestoneSignature: settlementDemoMilestoneSignature(completedAttempt),
+            };
+            restoreSettlementDemoAttempt(nextAttemptCopy);
             settlementDemoResponseOutcome = "";
             settlementDemoCounterofferAdded = false;
             settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]')
@@ -7158,9 +7353,12 @@
             settlementDemoResponseNext.disabled = true;
             setSettlementDemoAttemptFrozen(false);
             renderDemoSettlementScenarios();
+            updateSettlementDemoInheritedIndicators();
             settlementDemoResponseStatus.textContent =
               `Preview only: ${settlementAttemptOrdinalLabel(completedOrdinal)} Attempt is frozen. The next attempt starts with the same sample dates and scenario; no case data is saved.`;
             settlementDemoResponseStatus.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            assetAnalysisTitle.focus({ preventScroll: true });
+            assetAnalysisView.scrollIntoView({ behavior: "smooth", block: "start" });
             return;
           }
           settlementDemoResponseChecklist.hidden = settlementDemoResponseOutcome !== "accepted";
@@ -7260,6 +7458,7 @@
           if (!assetEditDraft[category] || ![0, 1].includes(partyIndex)) return;
           assetEditDraft[category][partyIndex] = input.value;
           updateAssetEditDerivedValues();
+          updateSettlementDemoInheritedIndicators();
         });
         assetYearPrevious.addEventListener("click", () => {
           if (settlementDemoAttemptFrozen) return;
@@ -7297,6 +7496,7 @@
           refreshAssetMilestones();
           assetMilestoneStatus.textContent = `${milestone.label}, ${formatMilestoneDate(date)}, user-overridden in this preview only. Nothing was sent or saved.`;
         });
+        standardMilestoneList.addEventListener("input", updateSettlementDemoInheritedIndicators);
         customMilestoneForm.addEventListener("submit", (event) => {
           event.preventDefault();
           if (settlementDemoAttemptFrozen) return;
@@ -7326,6 +7526,7 @@
           refreshAssetMilestones();
           assetMilestoneStatus.textContent = `${label}, ${formatMilestoneDate(date)}, added to this preview only. Nothing was sent or saved.`;
         });
+        customMilestoneList.addEventListener("input", updateSettlementDemoInheritedIndicators);
         customMilestoneList.addEventListener("click", (event) => {
           if (settlementDemoAttemptFrozen) return;
           const target = event.target instanceof Element ? event.target : null;
