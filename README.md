@@ -45,10 +45,11 @@ upload existing case materials or use the step-by-step wizard. The materials
 page supports local multi-file selection, drag-and-drop, file review/removal,
 and explicit import confirmation. Device uploads and their idempotent import
 API remain disabled in the local preview because `CASE_DATA_ENABLED` is false.
-Google Drive and Dropbox pickers are not configured and remain unavailable;
-provider registration, minimum scopes, token lifecycle, and deployment settings
-must be established before enabling them. The wizard remains a preview-only
-screen. The local Docker Compose preview enables a demo-only account (`demo` /
+The Google Drive and Dropbox **materials-import** pickers remain unavailable;
+they are separate from the provider connections used for proposal exports.
+Import-provider registration, scopes, token lifecycle, and deployment settings
+must be established before enabling those pickers. The wizard remains a
+preview-only screen. The local Docker Compose preview enables a demo-only account (`demo` /
 `demo`) to exercise sign-in and the empty dashboard. Demo mode is restricted to
 localhost and never enables case-data APIs. Outside that local preview,
 authentication and case-data APIs remain disabled by default; case/document
@@ -103,8 +104,25 @@ requires a separate, revocable purpose-specific consent. Configure
 used. The consent notice lists the configured provider, model, region, data
 sent, and handling notice. Calculated candidates remain available without AI
 ranking, and provider or response failures are returned separately from the
-calculated results. The selected scenario can produce an editable, nonbinding
-DOCX draft; it is not stored, sent, or filed automatically.
+calculated results. After a user selects a current scenario, the case workflow
+can generate an unsigned CR 2A-style DOCX proposal and an editable XLSX
+property schedule. These drafts are not stored or sent by generation/download;
+a signed agreement may have legal effect, so users should consult qualified
+Washington counsel.
+
+Migration `0009_cr2a_property_exports` adds encrypted Google Drive/Dropbox
+connections and minimal delivery audit records. Google Drive linking uses the
+existing `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` with the `drive.file`
+scope. Register `${AUTH_PUBLIC_BASE_URL}/api/export-integrations/google_drive/callback`
+as an authorized redirect URI (without a duplicate slash). Dropbox delivery
+additionally requires `DROPBOX_APP_KEY` and `DROPBOX_APP_SECRET` and the
+redirect URI `${AUTH_PUBLIC_BASE_URL}/api/export-integrations/dropbox/callback`.
+Provider refresh tokens require `AUTH_ENCRYPTION_KEY` (at least 32 bytes).
+Email delivery uses the configured `SMTP_HOST` and `AUTH_EMAIL_FROM` settings.
+If a destination is not configured, its delivery option stays unavailable while
+DOCX/XLSX downloads remain available within authenticated real-case workflows.
+Upload/email occurs only after the user confirms the exact destination; exports
+are not sent to AI.
 The public `/demo` page has a fictional date-range preview: users can drag the
 start/end markers on the asset chart or enter `Start Date` and `End Date
 (Division Date)` in calendar controls. Three sample share scenarios recalculate

@@ -13,8 +13,6 @@ from uuid import UUID, uuid4
 import httpx
 import jwt
 import pyotp
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import case, select, update
@@ -62,6 +60,8 @@ from app.models import (
     TotpCredential,
     User,
 )
+from app.mail_delivery import send_smtp_message
+from app.secret_encryption import decrypt_secret, derive_encryption_key, encrypt_secret
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
@@ -154,12 +154,7 @@ def _send_email(recipient: str, subject: str, body: str) -> None:
     message["To"] = recipient
     message["Subject"] = subject
     message.set_content(body)
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as client:
-        if settings.smtp_starttls:
-            client.starttls()
-        if settings.smtp_username:
-            client.login(settings.smtp_username, settings.smtp_password)
-        client.send_message(message)
+    send_smtp_message(message, settings)
 
 
 def _audit(
@@ -326,23 +321,23 @@ def _finish_login(
 
 
 def _encrypted_totp_key() -> bytes:
-    value = get_settings().auth_encryption_key
-    if not value or len(value.encode()) < 32:
-        raise HTTPException(status_code=503, detail="MFA encryption is not configured.")
-    return hashlib.sha256(value.encode()).digest()
+    try:
+        return derive_encryption_key(get_settings().auth_encryption_key)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="MFA encryption is not configured.",
+        ) from error
 
 
 def _encrypt_totp(secret: str) -> bytes:
-    nonce = secrets.token_bytes(12)
-    return nonce + AESGCM(_encrypted_totp_key()).encrypt(nonce, secret.encode(), None)
+    return encrypt_secret(secret.encode(), _encrypted_totp_key())
 
 
 def _decrypt_totp(encrypted: bytes) -> str:
     try:
-        return AESGCM(_encrypted_totp_key()).decrypt(
-            encrypted[:12], encrypted[12:], None
-        ).decode()
-    except (InvalidTag, UnicodeDecodeError) as error:
+        return decrypt_secret(encrypted, _encrypted_totp_key()).decode()
+    except (ValueError, UnicodeDecodeError) as error:
         logger.exception("Could not decrypt a TOTP credential.")
         raise HTTPException(status_code=503, detail="MFA credential is unavailable.") from error
 

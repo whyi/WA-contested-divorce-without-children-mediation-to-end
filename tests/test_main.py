@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import Settings
 from app.database import get_db
 from app.main import (
+    OAuthCallbackQueryFilter,
     app,
     delete_document,
     preview_document,
@@ -70,6 +71,30 @@ async def request_app(
 
 
 class MainWorkflowTests(unittest.TestCase):
+    def test_oauth_callback_access_logs_redact_query_credentials(self) -> None:
+        import logging
+
+        record = logging.LogRecord(
+            "uvicorn.access",
+            logging.INFO,
+            __file__,
+            1,
+            '%s - "%s %s HTTP/%s" %d',
+            (
+                "127.0.0.1",
+                "GET",
+                "/api/export-integrations/google_drive/callback?code=secret&state=state",
+                "1.1",
+                200,
+            ),
+            None,
+        )
+
+        OAuthCallbackQueryFilter().filter(record)
+
+        self.assertNotIn("secret", record.getMessage())
+        self.assertNotIn("state", record.getMessage())
+
     def tearDown(self) -> None:
         app.dependency_overrides.clear()
 
@@ -95,6 +120,10 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn("prefers-reduced-motion: reduce", page)
 
         page = pages[0]
+        self.assertIn('class="settlement-demo-share-select"', page)
+        self.assertIn("Illustrative shared-property split", page)
+        self.assertIn("var(--surface-raised)", page)
+        self.assertIn("var(--focus-ring)", page)
         bootstrap = page.split("<script>", 1)[1].split("</script>", 1)[0]
         self.assertLess(page.index("</script>"), page.index("<style>"))
         self.assertIn('getItem("casework-theme")', bootstrap)
@@ -240,7 +269,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="settlement-offer-download"', page)
         self.assertIn("View asset and event tracing detail", page)
         self.assertIn("consent can be revoked at any time", page.lower())
-        self.assertIn("not automatically sent, filed, or legally binding", page)
+        self.assertIn("A signed CR 2A agreement may have legal effect", page)
+        self.assertIn('id="settlement-export-confirmation"', page)
+        self.assertIn('id="settlement-google-send"', page)
+        self.assertIn('id="settlement-dropbox-send"', page)
+        self.assertIn('id="settlement-email-send"', page)
         self.assertIn('settlementConsentRevoke.addEventListener("click", revokeSettlementConsent)', page)
         self.assertIn("openSettlementPlanner(item.id)", page)
 

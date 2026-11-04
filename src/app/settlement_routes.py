@@ -1,14 +1,15 @@
 import hashlib
+import hmac
 import json
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -22,13 +23,23 @@ from app.models import (
     CaseProfileFact,
     CaseProfileFactEvent,
     Document,
+    ExportDeliveryEvent,
     SettlementLedgerEvent,
     SettlementPlanningConsentEvent,
     SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
 )
-from app.offer_documents import MediationOfferTerms, render_mediation_offer_docx
+from app.export_delivery import (
+    ExportDeliveryError,
+    ExportFile,
+    deliver_export_files,
+)
+from app.offer_documents import (
+    MediationOfferTerms,
+    render_mediation_offer_docx,
+    render_property_schedule_xlsx,
+)
 from app.settlement_ai import ScenarioRankingResult, rank_settlement_scenarios
 from app.settlement_planning import (
     AssetLedger,
@@ -42,9 +53,11 @@ from app.settlement_planning import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/settlement-planning", tags=["settlement planning"])
+demo_export_router = APIRouter(tags=["demo exports"])
 SETTLEMENT_CONSENT_NOTICE_VERSION = "settlement-planning-v1"
 MAX_LEDGER_EVENTS_PER_CASE = 25_000
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class ConsentCreate(BaseModel):
@@ -135,6 +148,40 @@ class OfferCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     terms: MediationOfferTerms
+
+
+class DemoExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_date: date
+    end_date: date
+    community_share_bps: Literal[4500, 5000, 5500]
+
+    @model_validator(mode="after")
+    def validate_demo_dates(self) -> "DemoExportRequest":
+        if self.start_date > self.end_date:
+            raise ValueError("Start date must not follow the end date.")
+        if self.start_date.year < 2020 or self.end_date.year > 2025:
+            raise ValueError("Demo dates must be between 2020 and 2025.")
+        return self
+
+
+class OfferDelivery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel: Literal["google_drive", "dropbox", "email"]
+    confirm: Literal[True]
+    idempotency_key: UUID
+    recipient: EmailStr | None = None
+    terms: MediationOfferTerms
+
+    @model_validator(mode="after")
+    def require_recipient_only_for_email(self) -> "OfferDelivery":
+        if self.channel == "email" and self.recipient is None:
+            raise ValueError("Confirm the email recipient before delivery.")
+        if self.channel != "email" and self.recipient is not None:
+            raise ValueError("An email recipient is only valid for email delivery.")
+        return self
 
 
 def _authorize_case(db: Session, user: User, case_id: UUID, *, write: bool) -> Case:
@@ -304,6 +351,152 @@ def _request_sha256(payload: BaseModel) -> str:
     data = payload.model_dump(mode="json")
     encoded = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _delivery_request_digest(payload: OfferDelivery) -> str:
+    key = get_settings().auth_jwt_secret
+    if not key:
+        raise HTTPException(status_code=503, detail="Delivery audit protection is not configured.")
+    data = payload.model_dump(mode="json")
+    encoded = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hmac.new(key.encode(), encoded.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _require_real_case_exports() -> None:
+    settings = get_settings()
+    if not settings.auth_enabled or not settings.case_data_enabled or settings.demo_mode_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Case document exports are available only for authenticated real-case workflows.",
+        )
+
+
+def _demo_export_files(payload: DemoExportRequest) -> tuple[MediationOfferTerms, SettlementScenarioResult]:
+    window = RelationshipWindow(
+        id="fictional-demo",
+        label="Fictional demo dates",
+        relationship_type="alternate",
+        start_date=payload.start_date,
+        separation_date=payload.end_date,
+        assumption_note="Fictional sample dates for a product preview; not a legal characterization.",
+    )
+    scenario = generate_scenarios(
+        ScenarioAxes(
+            relationship_windows=[window],
+            tracing_methods=["explicit"],
+            community_share_bps=[payload.community_share_bps],
+        )
+    )[0]
+    ledgers = [
+        AssetLedger(
+            asset_id=UUID("00000000-0000-4000-8000-000000000001"),
+            name="Fictional home equity",
+            kind="asset",
+            events=[
+                LedgerEvent(
+                    effective_date=payload.start_date,
+                    event_type="acquisition",
+                    amount_cents=33_000_000,
+                    source_allocations={
+                        "user_separate": 10_000_000,
+                        "other_separate": 8_000_000,
+                        "community": 15_000_000,
+                        "unresolved": 0,
+                    },
+                    provenance="scenario_assumed",
+                    note="Fictional demo value and allocations.",
+                )
+            ],
+        ),
+        AssetLedger(
+            asset_id=UUID("00000000-0000-4000-8000-000000000002"),
+            name="Fictional savings",
+            kind="asset",
+            events=[
+                LedgerEvent(
+                    effective_date=payload.start_date,
+                    event_type="acquisition",
+                    amount_cents=8_500_000,
+                    source_allocations={
+                        "user_separate": 4_000_000,
+                        "other_separate": 1_500_000,
+                        "community": 3_000_000,
+                        "unresolved": 0,
+                    },
+                    provenance="scenario_assumed",
+                    note="Fictional demo value and allocations.",
+                )
+            ],
+        ),
+        AssetLedger(
+            asset_id=UUID("00000000-0000-4000-8000-000000000003"),
+            name="Fictional credit-card debt",
+            kind="debt",
+            events=[
+                LedgerEvent(
+                    effective_date=payload.start_date,
+                    event_type="acquisition",
+                    amount_cents=1_200_000,
+                    source_allocations={
+                        "user_separate": 0,
+                        "other_separate": 0,
+                        "community": 1_200_000,
+                        "unresolved": 0,
+                    },
+                    provenance="scenario_assumed",
+                    note="Fictional demo liability and allocation.",
+                )
+            ],
+        ),
+    ]
+    terms = MediationOfferTerms(
+        offer_from="Sam Taylor (fictional)",
+        offer_to="Alex Taylor (fictional)",
+        county="King",
+        terms=[
+            "Fictional sample proposal only; these names, figures, and allocations are invented.",
+            (
+                f"Illustrative community share: "
+                f"{payload.community_share_bps / 100:g}% to the proposing party."
+            ),
+            "Each party retains the fictional property and debts shown in their proposed column.",
+        ],
+    )
+    return terms, calculate_scenario(scenario, ledgers)
+
+
+@demo_export_router.post("/demo/exports/docx")
+def create_demo_settlement_offer(payload: DemoExportRequest) -> Response:
+    terms, result = _demo_export_files(payload)
+    docx = render_mediation_offer_docx(terms, result)
+    if len(docx) > get_settings().max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Generated demo proposal exceeds the file size limit.")
+    return Response(
+        content=docx,
+        media_type=DOCX_MEDIA_TYPE,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="fictional-demo-cr2a-proposal.docx"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@demo_export_router.post("/demo/exports/xlsx")
+def create_demo_settlement_property_schedule(payload: DemoExportRequest) -> Response:
+    terms, result = _demo_export_files(payload)
+    workbook = render_property_schedule_xlsx(terms, result)
+    if len(workbook) > get_settings().max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Generated demo schedule exceeds the file size limit.")
+    return Response(
+        content=workbook,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="fictional-demo-property-schedule.xlsx"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 def _settlement_disclosure(settings: Settings | None = None) -> SettlementPlanningDisclosure:
@@ -780,6 +973,7 @@ def create_settlement_offer(
     db: Annotated[Session, Depends(get_db)],
 ) -> Response:
     try:
+        _require_real_case_exports()
         case = _authorize_case(db, user, case_id, write=True)
         selection = db.scalar(
             select(SettlementScenarioSelection).where(
@@ -792,12 +986,14 @@ def create_settlement_offer(
         _check_revisions(case, selection.profile_revision, selection.settlement_revision)
         result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
         docx = render_mediation_offer_docx(payload.terms, result)
+        if len(docx) > get_settings().max_upload_bytes:
+            raise HTTPException(status_code=413, detail="Generated proposal exceeds the file size limit.")
         return Response(
             content=docx,
             media_type=DOCX_MEDIA_TYPE,
             headers={
                 "Cache-Control": "no-store",
-                "Content-Disposition": 'attachment; filename="settlement-proposal-draft.docx"',
+                "Content-Disposition": 'attachment; filename="cr2a-agreement-proposal-draft.docx"',
                 "X-Content-Type-Options": "nosniff",
             },
         )
@@ -808,3 +1004,184 @@ def create_settlement_offer(
     except SQLAlchemyError as error:
         logger.exception("Selected settlement scenario could not be loaded.")
         raise HTTPException(status_code=503, detail="Offer draft could not be generated.") from error
+
+
+@router.post("/offers/{selection_id}/xlsx")
+def create_settlement_property_schedule(
+    case_id: UUID,
+    selection_id: UUID,
+    payload: OfferCreate,
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    try:
+        _require_real_case_exports()
+        case = _authorize_case(db, user, case_id, write=True)
+        selection = db.scalar(
+            select(SettlementScenarioSelection).where(
+                SettlementScenarioSelection.id == selection_id,
+                SettlementScenarioSelection.case_id == case_id,
+            )
+        )
+        if selection is None:
+            raise HTTPException(status_code=404, detail="Selected settlement scenario not found.")
+        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
+        workbook = render_property_schedule_xlsx(payload.terms, result)
+        if len(workbook) > get_settings().max_upload_bytes:
+            raise HTTPException(status_code=413, detail="Generated proposal exceeds the file size limit.")
+        return Response(
+            content=workbook,
+            media_type=XLSX_MEDIA_TYPE,
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Disposition": 'attachment; filename="property-division-proposal-draft.xlsx"',
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="Saved scenario data is invalid.") from error
+    except SQLAlchemyError as error:
+        logger.exception("Selected settlement scenario could not be loaded for workbook export.")
+        raise HTTPException(status_code=503, detail="Property schedule could not be generated.") from error
+
+
+def _destination_digest(destination: str) -> str:
+    key = get_settings().auth_jwt_secret
+    if not key:
+        raise HTTPException(status_code=503, detail="Delivery audit protection is not configured.")
+    return hmac.new(key.encode(), destination.encode(), hashlib.sha256).hexdigest()
+
+
+def _offer_exports(
+    terms: MediationOfferTerms,
+    result: SettlementScenarioResult,
+) -> list[ExportFile]:
+    exports = [
+        ExportFile(
+            filename="cr2a-agreement-proposal-draft.docx",
+            content_type=DOCX_MEDIA_TYPE,
+            content=render_mediation_offer_docx(terms, result),
+        ),
+        ExportFile(
+            filename="property-division-proposal-draft.xlsx",
+            content_type=XLSX_MEDIA_TYPE,
+            content=render_property_schedule_xlsx(terms, result),
+        ),
+    ]
+    max_bytes = get_settings().max_upload_bytes
+    if sum(len(export.content) for export in exports) > max_bytes:
+        raise HTTPException(status_code=413, detail="Generated proposal files exceed the delivery size limit.")
+    return exports
+
+
+@router.post("/offers/{selection_id}/deliver")
+def deliver_settlement_offer(
+    case_id: UUID,
+    selection_id: UUID,
+    payload: OfferDelivery,
+    response: Response,
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, int | str]:
+    try:
+        _require_real_case_exports()
+        case = _authorize_case(db, user, case_id, write=True)
+        selection = db.scalar(
+            select(SettlementScenarioSelection).where(
+                SettlementScenarioSelection.id == selection_id,
+                SettlementScenarioSelection.case_id == case_id,
+            )
+        )
+        if selection is None:
+            raise HTTPException(status_code=404, detail="Selected settlement scenario not found.")
+        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
+        exports = _offer_exports(payload.terms, result)
+        settings = get_settings()
+        if payload.channel == "email":
+            if not settings.smtp_host or not settings.auth_email_from:
+                raise HTTPException(status_code=503, detail="Email delivery is not configured.")
+            destination = str(payload.recipient)
+        elif payload.channel == "google_drive":
+            if not settings.google_client_id or not settings.google_client_secret:
+                raise HTTPException(status_code=503, detail="Google Drive delivery is not configured.")
+            destination = "Google Drive root (private)"
+        else:
+            if not settings.dropbox_app_key or not settings.dropbox_app_secret:
+                raise HTTPException(status_code=503, detail="Dropbox delivery is not configured.")
+            destination = "Connected Dropbox app folder (private)"
+        destination_digest = _destination_digest(f"{payload.channel}:{destination}")
+        request_hash = _delivery_request_digest(payload)
+        prior = db.scalar(
+            select(ExportDeliveryEvent)
+            .where(
+                ExportDeliveryEvent.user_id_snapshot == user.id,
+                ExportDeliveryEvent.idempotency_key == payload.idempotency_key,
+            )
+            .with_for_update()
+        )
+        if prior is not None:
+            if (
+                prior.request_sha256 != request_hash
+                or prior.selection_id != selection_id
+                or prior.case_id != case_id
+                or prior.channel != payload.channel
+                or prior.destination_digest != destination_digest
+            ):
+                raise HTTPException(status_code=409, detail="Delivery key was reused for a different request.")
+            if prior.outcome != "success":
+                raise HTTPException(
+                    status_code=409,
+                    detail="A delivery attempt is already recorded. Check the destination before retrying.",
+                )
+            response.headers["Cache-Control"] = "no-store"
+            return {"outcome": "success", "file_count": prior.file_count}
+        event = ExportDeliveryEvent(
+            id=uuid4(),
+            case_id=case_id,
+            selection_id=selection_id,
+            user_id=user.id,
+            user_id_snapshot=user.id,
+            channel=payload.channel,
+            destination_digest=destination_digest,
+            request_sha256=request_hash,
+            outcome="pending",
+            file_count=0,
+            idempotency_key=payload.idempotency_key,
+        )
+        db.add(event)
+        db.commit()
+        try:
+            file_count = deliver_export_files(
+                db,
+                user,
+                payload.channel,
+                destination if payload.channel == "email" else "",
+                exports,
+            )
+        except ExportDeliveryError as error:
+            event.outcome = "partial" if error.delivered_files else "failed"
+            event.file_count = error.delivered_files
+            db.commit()
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        event.outcome = "success"
+        event.file_count = file_count
+        db.commit()
+        response.headers["Cache-Control"] = "no-store"
+        return {"outcome": event.outcome, "file_count": event.file_count}
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A delivery request with this key already exists.") from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Settlement proposal delivery could not be completed.")
+        raise HTTPException(
+            status_code=503,
+            detail="Delivery status could not be confirmed. Verify the destination before retrying.",
+        ) from error
