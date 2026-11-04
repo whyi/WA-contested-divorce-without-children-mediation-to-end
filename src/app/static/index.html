@@ -800,6 +800,21 @@
       .authenticated-view .demo-quick-section { display: none; }
       body[data-demo-page="documents"] main > section:not(#documents-demo),
       body[data-demo-page="wizard"] main > section:not(#wizard-demo) { display: none; }
+      body[data-demo-page="settlement-completion"] main > section:not(#settlement-completion-page),
+      body[data-settlement-completion-page="true"] main > section:not(#settlement-completion-page) { display: none; }
+      body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 34px auto; }
+      body[data-settlement-completion-page="true"] footer,
+      body[data-settlement-completion-page="true"] .theme-status { display: none; }
+      .settlement-completion-card { padding: clamp(22px, 5vw, 42px); border: 1px solid var(--line); border-radius: 18px; background:var(--surface-raised); box-shadow: 0 14px 40px rgba(20, 38, 29, .08); }
+      .settlement-completion-card > h1 { margin: 8px 0 12px; color:var(--green-dark); font-size: clamp(28px, 5vw, 42px); line-height: 1.12; }
+      .settlement-completion-card > p, .settlement-completion-card li { max-width: 75ch; color:var(--muted); line-height: 1.7; }
+      .settlement-completion-thanks { color:var(--text-primary) !important; font-size: 17px; font-weight: 700; }
+      .settlement-completion-section { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+      .settlement-completion-section h2 { color:var(--text-primary); font-size: 21px; }
+      .settlement-completion-status { min-height: 22px; color:var(--muted); font-size: 13px; }
+      .settlement-completion-status[data-kind="error"] { color:var(--theme-text-8d3026); }
+      .settlement-completion-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+      .settlement-completion-actions a { display: inline-flex; min-height: 42px; align-items: center; padding: 9px 16px; border: 1px solid var(--line); border-radius: 8px; color:var(--text-primary); text-decoration: none; }
       body[data-demo-page] .demo-entry { display: inline-flex !important; }
       .path-art { position: absolute; right: 22px; bottom: 20px; display: flex; align-items: end; gap: 5px; opacity: .48; }
       .file-tile { display: grid; width: 35px; height: 43px; place-items: center; border:1px solid var(--theme-border-d1dcd1); border-radius: 5px; color:var(--theme-text-587762); background:var(--theme-background-fff); font-size: 8px; font-weight: 800; }
@@ -1743,23 +1758,6 @@
                       <h4>Response recorded</h4>
                       <p>No next legal step is provided here. Continue the conversation or use another workflow when available.</p>
                     </section>
-                    <section class="settlement-response-checklist" id="settlement-response-checklist" hidden aria-labelledby="settlement-response-checklist-title">
-                      <h4 id="settlement-response-checklist-title">Accepted offer: final-document checklist</h4>
-                      <p>The accepted documents you supplied are not verified as signed, filed, or sufficient. Confirm the right forms, instructions, service, and filing steps for your case with qualified Washington counsel or the Superior Court Clerk.</p>
-                      <label for="settlement-response-accepted-file">Attach the document reflecting the offer the other party accepted (PDF, DOCX, or XLSX)
-                        <input id="settlement-response-accepted-file" type="file" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                      </label>
-                      <p id="settlement-response-accepted-status" class="settlement-status" role="status" aria-live="polite"></p>
-                      <ul>
-                        <li><a href="https://www.courts.wa.gov/forms/?fa=forms.contribute&amp;formID=13" target="_blank" rel="noopener noreferrer">Washington Courts Divorce (Dissolution) forms</a> — official state forms and instructions.</li>
-                        <li><a href="https://www.courts.wa.gov/forms/documents/FL%20Divorce%20231%20Findings-Conclusions-Marriage_2023%2007%2001.pdf" target="_blank" rel="noopener noreferrer">FL Divorce 231 — Findings and Conclusions About a Marriage (PDF)</a> — verify it is the right current form for your case.</li>
-                        <li><a href="https://kingcounty.gov/en/court/superior-court/courts-jails-legal-system/court-programs-children-families/divorce-custody-adoption/how-to-resources-family-law" target="_blank" rel="noopener noreferrer">King County Superior Court Family Law resources</a> — local information; other counties may differ.</li>
-                        <li><a href="https://app.leg.wa.gov/RCW/default.aspx?cite=4.64.080" target="_blank" rel="noopener noreferrer">RCW 4.64.080</a> — statutory judgment-satisfaction context; it is not itself a case-specific filing form.</li>
-                      </ul>
-                      <h4>Check any judgment and deadlines</h4>
-                      <p>The signed decree or order and case docket control whether money-judgment obligations or deadlines apply. Not every case has a judgment, and a certificate of dissolution does not resolve a money judgment.</p>
-                      <p>No statewide Superior Court family-law form titled “Satisfaction of Judgment” or “Stipulation and Order Regarding Final Payment of Judgment to Respondent” has been verified for this workflow. The similarly named WPF GARN 01.1200 form is for garnishment, not a generic divorce judgment. Ask the Superior Court Clerk or consult official local family-law resources about any applicable document and procedure after a judgment is fully satisfied. If a judgment deadline may be missed, seek advice promptly; any agreed stipulation or order may require court approval or acceptance.</p>
-                    </section>
                   </section>
                 </div>
               </section>
@@ -1997,17 +1995,6 @@
                         <h5>Response recorded</h5>
                         <p>No next legal step is provided here. Continue the conversation or use another workflow when available.</p>
                       </section>
-                      <section id="settlement-demo-response-checklist" hidden aria-labelledby="settlement-demo-checklist-title">
-                        <h5 id="settlement-demo-checklist-title">Congratulations. You’re nearly done.</h5>
-                        <p>Complete Findings and Conclusions About a Marriage (FL Divorce 231) and attach the document reflecting the other party’s accepted offer. Review the signed judgment/order and case docket for any payment obligations or deadlines.</p>
-                        <ul>
-                          <li><a href="https://www.courts.wa.gov/forms/?fa=forms.contribute&amp;formID=13" target="_blank" rel="noopener noreferrer">Washington Courts Divorce (Dissolution) forms</a></li>
-                          <li><a href="https://www.courts.wa.gov/forms/documents/FL%20Divorce%20231%20Findings-Conclusions-Marriage_2023%2007%2001.pdf" target="_blank" rel="noopener noreferrer">FL Divorce 231 — Findings and Conclusions About a Marriage (PDF)</a></li>
-                          <li><a href="https://kingcounty.gov/en/court/superior-court/courts-jails-legal-system/court-programs-children-families/divorce-custody-adoption/how-to-resources-family-law" target="_blank" rel="noopener noreferrer">King County Superior Court Family Law resources</a></li>
-                          <li><a href="https://app.leg.wa.gov/RCW/default.aspx?cite=4.64.080" target="_blank" rel="noopener noreferrer">RCW 4.64.080 — judgment satisfaction context</a></li>
-                        </ul>
-                        <p>No statewide Superior Court family-law form titled “Satisfaction of Judgment” or “Stipulation and Order Regarding Final Payment of Judgment to Respondent” has been verified here. WPF GARN 01.1200 is for garnishment, not a generic divorce judgment. Ask the Superior Court Clerk or qualified Washington counsel which document and process apply after a judgment is fully satisfied. If a payment deadline may be missed, seek advice promptly; any agreed stipulation/order may require court approval.</p>
-                      </section>
                     </div>
                   </section>
                   <p class="settlement-scenario-status" id="settlement-scenario-status" role="status" aria-live="polite"></p>
@@ -2040,6 +2027,49 @@
             <p>Account signup and sign-in are shown in preview. Secure case access is still gated, and this page does not accept or save case details.</p>
           </div>
           <a class="button button-primary" href="#account">Create an account <span class="arrow" aria-hidden="true">↑</span></a>
+        </section>
+        <section class="section" id="settlement-completion-page" hidden aria-labelledby="settlement-completion-title">
+          <div class="settlement-completion-card">
+            <p class="eyebrow">Offer accepted</p>
+            <h1 id="settlement-completion-title">Congratulations — you’re nearly done.</h1>
+            <p class="settlement-completion-thanks">Thanks for choosing Casework to help you organize your next steps.</p>
+            <p id="settlement-completion-status" class="settlement-completion-status" role="status" aria-live="polite"></p>
+            <div id="settlement-completion-auth-content" hidden>
+              <section class="settlement-response-checklist settlement-completion-section" id="settlement-response-checklist" hidden aria-labelledby="settlement-response-checklist-title">
+                <h2 id="settlement-response-checklist-title">Complete and review the remaining documents</h2>
+                <p>Complete Findings and Conclusions About a Marriage (FL Divorce 231), and attach the document reflecting the offer the other party accepted. The documents you attach are not verified as signed, filed, or sufficient. Confirm the right forms, instructions, service, and filing steps for your case with qualified Washington counsel or the Superior Court Clerk.</p>
+                <label for="settlement-response-accepted-file">Attach the document reflecting the offer the other party accepted (PDF, DOCX, or XLSX)
+                  <input id="settlement-response-accepted-file" type="file" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                </label>
+                <p id="settlement-response-accepted-status" class="settlement-status" role="status" aria-live="polite"></p>
+                <ul>
+                  <li><a href="https://www.courts.wa.gov/forms/?fa=forms.contribute&amp;formID=13" target="_blank" rel="noopener noreferrer">Washington Courts Divorce (Dissolution) forms</a> — official state forms and instructions.</li>
+                  <li><a href="https://www.courts.wa.gov/forms/documents/FL%20Divorce%20231%20Findings-Conclusions-Marriage_2023%2007%2001.pdf" target="_blank" rel="noopener noreferrer">FL Divorce 231 — Findings and Conclusions About a Marriage (PDF)</a> — verify it is the right current form for your case.</li>
+                  <li><a href="https://kingcounty.gov/en/court/superior-court/courts-jails-legal-system/court-programs-children-families/divorce-custody-adoption/how-to-resources-family-law" target="_blank" rel="noopener noreferrer">King County Superior Court Family Law resources</a> — local information; other counties may differ.</li>
+                  <li><a href="https://app.leg.wa.gov/RCW/default.aspx?cite=4.64.080" target="_blank" rel="noopener noreferrer">RCW 4.64.080</a> — statutory judgment-satisfaction context; it is not itself a case-specific filing form.</li>
+                </ul>
+                <h2>Check any judgment and deadlines</h2>
+                <p>The signed decree or order and case docket control whether money-judgment obligations or deadlines apply. Not every case has a judgment, and a certificate of dissolution does not resolve a money judgment.</p>
+                <p>No statewide Superior Court family-law form titled “Satisfaction of Judgment” or “Stipulation and Order Regarding Final Payment of Judgment to Respondent” has been verified for this workflow. The similarly named WPF GARN 01.1200 form is for garnishment, not a generic divorce judgment. Ask the Superior Court Clerk or consult official local family-law resources about any applicable document and procedure after a judgment is fully satisfied. If a judgment deadline may be missed, seek advice promptly; any agreed stipulation or order may require court approval or acceptance.</p>
+              </section>
+            </div>
+            <div id="settlement-completion-demo-content" class="settlement-completion-section" hidden>
+              <h2>Complete and review the remaining documents</h2>
+              <p>This fictional preview shows what may come next. In a real case, complete Findings and Conclusions About a Marriage (FL Divorce 231) and attach the document reflecting the accepted offer.</p>
+              <p><strong>Demo only:</strong> no real agreement is attached, uploaded, saved, or sent.</p>
+              <ul>
+                <li><a href="https://www.courts.wa.gov/forms/?fa=forms.contribute&amp;formID=13" target="_blank" rel="noopener noreferrer">Washington Courts Divorce (Dissolution) forms</a></li>
+                <li><a href="https://www.courts.wa.gov/forms/documents/FL%20Divorce%20231%20Findings-Conclusions-Marriage_2023%2007%2001.pdf" target="_blank" rel="noopener noreferrer">FL Divorce 231 — Findings and Conclusions About a Marriage (PDF)</a></li>
+                <li><a href="https://kingcounty.gov/en/court/superior-court/courts-jails-legal-system/court-programs-children-families/divorce-custody-adoption/how-to-resources-family-law" target="_blank" rel="noopener noreferrer">King County Superior Court Family Law resources</a></li>
+                <li><a href="https://app.leg.wa.gov/RCW/default.aspx?cite=4.64.080" target="_blank" rel="noopener noreferrer">RCW 4.64.080 — judgment-satisfaction context</a></li>
+              </ul>
+              <h2>Check any judgment and deadlines</h2>
+              <p>The signed decree or order and case docket determine whether payment obligations or deadlines apply. Not every case has a money judgment. Ask the Superior Court Clerk or qualified Washington counsel which process applies; any agreed stipulation or order may require court approval.</p>
+            </div>
+            <div class="settlement-completion-actions">
+              <a id="settlement-completion-back" href="/">Back to Casework</a>
+            </div>
+          </div>
         </section>
       </main>
 
@@ -2252,7 +2282,11 @@
         const settlementDemoResponseStatus = document.getElementById("settlement-demo-response-status");
         const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
         const settlementDemoResponsePlaceholder = document.getElementById("settlement-demo-response-placeholder");
-        const settlementDemoResponseChecklist = document.getElementById("settlement-demo-response-checklist");
+        const settlementCompletionPage = document.getElementById("settlement-completion-page");
+        const settlementCompletionStatus = document.getElementById("settlement-completion-status");
+        const settlementCompletionAuthContent = document.getElementById("settlement-completion-auth-content");
+        const settlementCompletionDemoContent = document.getElementById("settlement-completion-demo-content");
+        const settlementCompletionBack = document.getElementById("settlement-completion-back");
         const settlementDemoInheritedNotice = document.getElementById("settlement-demo-inherited-notice");
         const settlementDemoMilestoneInherited = document.getElementById("settlement-demo-milestone-inherited");
         const assetYearRangeInherited = document.getElementById("asset-year-range-inherited");
@@ -2420,6 +2454,8 @@
         let pendingAdoption = null;
         const reviewIdempotencyKeys = new Map();
         const demoMode = window.location.pathname === "/demo";
+        const demoSettlementCompletionMode = window.location.pathname === "/demo/settlement-completion";
+        const settlementCompletionMode = window.location.pathname === "/settlement-completion";
         const demoDocumentsMode = window.location.pathname === "/demo/documents";
         const demoWizardMode = window.location.pathname === "/demo/wizard";
         const demoOnlyMode = demoDocumentsMode || demoWizardMode;
@@ -4196,11 +4232,14 @@
               settlementCaseId !== caseId
               || settlementSelectedScenario?.selection_id !== selectionId
             ) return;
+            if (result.next_step === "final_checklist") {
+              window.location.assign(
+                `/settlement-completion?case_id=${encodeURIComponent(caseId)}&selection_id=${encodeURIComponent(selectionId)}`,
+              );
+              return;
+            }
             settlementResponsePlaceholder.hidden = result.next_step !== "future_placeholder";
-            settlementResponseChecklist.hidden = result.next_step !== "final_checklist";
-            settlementResponseStatus.textContent = result.next_step === "final_checklist"
-              ? "Acceptance recorded. Review the sourced checklist below."
-              : result.next_step === "next_attempt"
+            settlementResponseStatus.textContent = result.next_step === "next_attempt"
                 ? "The previous attempt is frozen. An editable copy was opened as the next attempt."
                 : "Response recorded. No legal outcome or next legal step has been inferred.";
             if (result.next_step === "next_attempt") {
@@ -4215,11 +4254,7 @@
               void loadSettlementOfferResponseHistory(caseId);
               return;
             }
-            if (result.next_step === "final_checklist") {
-              settlementResponseChecklist.scrollIntoView({ behavior: "smooth", block: "start" });
-            } else {
-              settlementResponsePlaceholder.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            }
+            settlementResponsePlaceholder.scrollIntoView({ behavior: "smooth", block: "nearest" });
           } catch (error) {
             if (
               settlementCaseId !== caseId
@@ -4230,6 +4265,53 @@
               : "The response cannot continue yet.";
             updateSettlementResponseControls();
           }
+        }
+
+        async function initializeSettlementCompletionPage() {
+          document.body.dataset.settlementCompletionPage = "true";
+          settlementCompletionPage.hidden = false;
+          if (demoSettlementCompletionMode) {
+            document.body.dataset.demoPage = "settlement-completion";
+            settlementCompletionBack.href = "/demo";
+            settlementCompletionAuthContent.hidden = true;
+            settlementCompletionDemoContent.hidden = false;
+            settlementCompletionStatus.textContent =
+              "Fictional demo only — no offer, attachment, or case data was saved.";
+            settlementCompletionPage.querySelector("h1").focus();
+            return;
+          }
+
+          settlementCompletionBack.href = "/";
+          settlementCompletionAuthContent.hidden = false;
+          settlementCompletionStatus.textContent = "Verifying the accepted offer…";
+          const query = new URLSearchParams(window.location.search);
+          const caseId = query.get("case_id");
+          const selectionId = query.get("selection_id");
+          if (!caseId || !selectionId) {
+            settlementCompletionStatus.dataset.kind = "error";
+            settlementCompletionStatus.textContent =
+              "The accepted offer could not be identified. Return to Casework and open the correct case.";
+            return;
+          }
+
+          settlementCaseId = caseId;
+          settlementSelectedScenario = { selection_id: selectionId };
+          const loaded = await loadSettlementOfferResponse({ showWorkflow: false });
+          if (!loaded
+            || settlementOfferResponseState?.outcome !== "accepted"
+            || !settlementOfferResponseState?.sent_confirmed) {
+            settlementResponseChecklist.hidden = true;
+            settlementCompletionStatus.dataset.kind = "error";
+            settlementCompletionStatus.textContent = loaded
+              ? "This completion page is only available for an accepted, confirmed offer."
+              : "The accepted offer could not be loaded. Check your access and try again.";
+            return;
+          }
+
+          settlementResponseChecklist.hidden = false;
+          settlementCompletionStatus.textContent =
+            "Your accepted offer is confirmed. Review the remaining document guidance below.";
+          settlementCompletionPage.querySelector("h1").focus();
         }
 
         async function chooseSettlementScenario(scenario) {
@@ -7256,7 +7338,6 @@
         settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
           input.addEventListener("change", () => {
             settlementResponsePlaceholder.hidden = true;
-            settlementResponseChecklist.hidden = true;
             void saveSettlementResponseOutcome(input.value);
           });
         });
@@ -7302,7 +7383,6 @@
             settlementDemoCounterofferAdded = false;
             settlementDemoAddCounteroffer.hidden = settlementDemoResponseOutcome !== "counteroffer";
             settlementDemoResponsePlaceholder.hidden = true;
-            settlementDemoResponseChecklist.hidden = true;
             settlementDemoResponseNext.disabled = settlementDemoResponseOutcome === "counteroffer";
             settlementDemoAttemptStatus.textContent =
               `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
@@ -7311,7 +7391,9 @@
               : "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
               ? "A counteroffer would require an attachment. Add a fictional example to preview Next; no real file upload is available in this demo."
-              : "Next is available for this preview outcome.";
+              : settlementDemoResponseOutcome === "accepted"
+                ? "The fictional offer was accepted. Select Next to open the completion page."
+                : "Next is available for this preview outcome.";
           });
         });
         settlementDemoAddCounteroffer.addEventListener("click", () => {
@@ -7346,7 +7428,6 @@
             settlementDemoResponseFiles.hidden = true;
             settlementDemoAddCounteroffer.hidden = true;
             settlementDemoResponsePlaceholder.hidden = true;
-            settlementDemoResponseChecklist.hidden = true;
             settlementDemoAttemptStatus.textContent =
               `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — active demo preview`;
             settlementDemoResponseNext.textContent = "Next";
@@ -7361,16 +7442,13 @@
             assetAnalysisView.scrollIntoView({ behavior: "smooth", block: "start" });
             return;
           }
-          settlementDemoResponseChecklist.hidden = settlementDemoResponseOutcome !== "accepted";
-          settlementDemoResponsePlaceholder.hidden = settlementDemoResponseOutcome === "accepted";
           if (settlementDemoResponseOutcome === "accepted") {
-            settlementDemoResponseStatus.textContent = "Previewing the accepted-offer checklist using fictional data only.";
-          } else {
-            settlementDemoResponseStatus.textContent = "Previewing the placeholder next step using fictional data only.";
+            window.location.assign("/demo/settlement-completion");
+            return;
           }
-          (settlementDemoResponseChecklist.hidden
-            ? settlementDemoResponsePlaceholder
-            : settlementDemoResponseChecklist).scrollIntoView({ behavior: "smooth", block: "nearest" });
+          settlementDemoResponsePlaceholder.hidden = false;
+          settlementDemoResponseStatus.textContent = "Previewing the placeholder next step using fictional data only.";
+          settlementDemoResponsePlaceholder.scrollIntoView({ behavior: "smooth", block: "nearest" });
         });
         settlementGoogleConnect.addEventListener("click", () => {
           void connectSettlementExportProvider("google_drive");
@@ -7681,7 +7759,7 @@
           window.location.assign("/api/auth/oidc/google/start");
         });
 
-        if (!demoMode && !demoOnlyMode) {
+        if (!demoMode && !demoOnlyMode && !settlementCompletionMode && !demoSettlementCompletionMode) {
           fetch("/api/auth/providers", { credentials: "same-origin" })
             .then(async (response) => {
               if (!response.ok) throw new Error("Could not check social sign-in availability.");
@@ -7792,7 +7870,9 @@
           }
         });
 
-        if (demoMode) {
+        if (demoSettlementCompletionMode || settlementCompletionMode) {
+          void initializeSettlementCompletionPage();
+        } else if (demoMode) {
           document.body.dataset.demoPage = "settlement";
           showDashboardShell();
           dashboardLoading.hidden = true;
