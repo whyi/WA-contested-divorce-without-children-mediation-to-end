@@ -1349,6 +1349,7 @@
               <label class="demo-radio-option"><input type="radio" name="wizard-role" value="petitioner" data-wizard-base="role"> Petitioner</label>
               <label class="demo-radio-option"><input type="radio" name="wizard-role" value="respondent" data-wizard-base="role"> Respondent</label>
             </fieldset>
+            <p class="demo-wizard-status" id="wizard-unlock-status" role="status" aria-live="polite">To open the intake sections, answer Yes to the filed-case question, then choose your role.</p>
             <div class="wizard-gated" id="wizard-gated-content" hidden>
               <nav aria-label="Wizard sections">
                 <ol class="wizard-progress">
@@ -2471,6 +2472,7 @@
         const wizardRoleQuestion = document.getElementById("wizard-role-question");
         const wizardFiledDialog = document.getElementById("wizard-filed-dialog");
         const wizardDialogAcknowledge = document.getElementById("wizard-dialog-acknowledge");
+        const wizardUnlockStatus = document.getElementById("wizard-unlock-status");
         const wizardGatedContent = document.getElementById("wizard-gated-content");
         const wizardProgress = wizardDemoPage.querySelector(".wizard-progress");
         const wizardFinish = document.getElementById("wizard-finish");
@@ -2985,7 +2987,18 @@
           wizardRoleQuestion.disabled = wizardDraft.filed !== "yes";
           wizardGatedContent.hidden = wizardDraft.filed !== "yes";
           wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          updateWizardUnlockStatus();
           renderWizardCollections();
+        }
+
+        function updateWizardUnlockStatus() {
+          wizardUnlockStatus.textContent = wizardDraft.filed === "no"
+            ? "This wizard preview is for mediation after a divorce case has been filed. The intake sections stay closed in this demo."
+            : wizardDraft.filed === "yes" && !wizardDraft.role
+              ? "Your case is marked as filed. Choose Petitioner or Respondent to open the intake sections."
+              : wizardDraft.role
+                ? "Your intake sections are open. Choose Dates, Finances, Issues, Agreements, or Review below."
+                : "To open the intake sections, answer Yes to the filed-case question, then choose your role.";
         }
 
         async function initializeWizardDraft() {
@@ -3020,6 +3033,7 @@
           wizardRoleQuestion.disabled = filedAnswer !== "yes";
           wizardGatedContent.hidden = filedAnswer !== "yes";
           wizardFinish.disabled = filedAnswer !== "yes" || !wizardDraft.role;
+          updateWizardUnlockStatus();
           refreshWizardReview();
           if (filedAnswer === "no" && showBlockedDialog && !wizardFiledDialog.open) {
             wizardFiledDialog.showModal();
@@ -3072,6 +3086,7 @@
           if (target.dataset.wizardBase === "role") {
             wizardDraft.role = target.value;
             wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+            updateWizardUnlockStatus();
             refreshWizardReview();
             scheduleWizardSave(true);
             return;
@@ -7760,6 +7775,7 @@
         wizardRoleQuestion.addEventListener("change", () => {
           wizardDraft.role = wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked')?.value || "";
           wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          updateWizardUnlockStatus();
           refreshWizardReview();
           scheduleWizardSave(true);
         });

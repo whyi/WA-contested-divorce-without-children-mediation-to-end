@@ -876,6 +876,12 @@ class MainWorkflowTests(unittest.TestCase):
         wizard_demo_page = responses[4][1].decode()
         self.assertIn('id="wizard-filed-question"', wizard_demo_page)
         self.assertIn('id="wizard-role-question" disabled', wizard_demo_page)
+        self.assertIn(
+            'id="wizard-unlock-status" role="status" aria-live="polite"',
+            wizard_demo_page,
+        )
+        self.assertIn("answer Yes to the filed-case question, then choose your role", wizard_demo_page)
+        self.assertIn("Your intake sections are open. Choose Dates, Finances, Issues, Agreements, or Review below.", wizard_demo_page)
         self.assertIn('<dialog class="demo-wizard-dialog"', wizard_demo_page)
         self.assertIn("wizardFiledDialog.addEventListener(\"cancel\", (event) => event.preventDefault())", wizard_demo_page)
         self.assertIn('id="wizard-gated-content" hidden', wizard_demo_page)
