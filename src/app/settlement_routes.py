@@ -32,6 +32,7 @@ from app.models import (
     SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
+    user_settlement_attempt_limit,
 )
 from app.export_delivery import (
     ExportDeliveryError,
@@ -166,6 +167,7 @@ class OfferResponseHistoryItem(BaseModel):
     selection_id: UUID
     scenario_id: str
     attempt_ordinal: int
+    attempt_limit: int
     frozen: bool
     outcome: Literal["counteroffer", "rejected", "accepted"] | None
     attachments: list[OfferResponseHistoryAttachment]
@@ -396,6 +398,88 @@ def _require_real_case_exports() -> None:
             status_code=503,
             detail="Case document exports are available only for authenticated real-case workflows.",
         )
+
+
+def _prepare_attempt_offer_export(
+    db: Session,
+    user: User,
+    case_id: UUID,
+    selection_id: UUID,
+    requested_terms: MediationOfferTerms,
+) -> tuple[
+    SettlementNegotiationAttempt,
+    MediationOfferTerms,
+    SettlementScenarioResult,
+    bool,
+]:
+    _authorize_case(db, user, case_id, write=True)
+    case = _lock_case(db, case_id)
+    selection = db.scalar(
+        select(SettlementScenarioSelection).where(
+            SettlementScenarioSelection.id == selection_id,
+            SettlementScenarioSelection.case_id == case_id,
+        )
+    )
+    if selection is None:
+        raise HTTPException(status_code=404, detail="Selected settlement scenario not found.")
+    attempt = db.scalar(
+        select(SettlementNegotiationAttempt).where(
+            SettlementNegotiationAttempt.selection_id == selection.id,
+            SettlementNegotiationAttempt.case_id == case_id,
+        )
+    )
+    if attempt is None:
+        raise HTTPException(status_code=409, detail="Negotiation attempt is unavailable.")
+    if (
+        attempt.proposal_issued_at is None
+        and attempt.attempt_ordinal > user_settlement_attempt_limit(user)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="This account has reached its negotiation attempt limit.",
+        )
+
+    requested_json = requested_terms.model_dump(mode="json")
+    if attempt.proposal_issued_at is not None:
+        if attempt.proposal_terms_json != requested_json:
+            raise HTTPException(
+                status_code=409,
+                detail="This attempt's proposal has already been issued. Its terms cannot be changed.",
+            )
+        if attempt.proposal_scenario_result_json is None:
+            raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
+        return (
+            attempt,
+            MediationOfferTerms.model_validate(attempt.proposal_terms_json),
+            SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json),
+            False,
+        )
+
+    _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+    result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
+    attempt.proposal_terms_json = requested_json
+    attempt.proposal_scenario_result_json = result.model_dump(mode="json")
+    attempt.proposal_issued_at = datetime.now(UTC)
+    return attempt, requested_terms, result, True
+
+
+def _commit_attempt_offer_issuance(
+    db: Session,
+    attempt: SettlementNegotiationAttempt,
+    first_issuance: bool,
+) -> None:
+    if not first_issuance:
+        return
+    try:
+        db.commit()
+        db.refresh(attempt)
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Issued proposal snapshot could not be saved.")
+        raise HTTPException(
+            status_code=503,
+            detail="The immutable proposal snapshot could not be saved.",
+        ) from error
 
 
 def _demo_export_files(payload: DemoExportRequest) -> tuple[MediationOfferTerms, SettlementScenarioResult]:
@@ -956,6 +1040,7 @@ def list_settlement_offer_responses(
                 selection_id=selection.id,
                 scenario_id=selection.scenario_id,
                 attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
+                attempt_limit=user_settlement_attempt_limit(user),
                 frozen=attempt.frozen_at is not None if attempt is not None else (
                     offer_response.outcome is not None
                 ),
@@ -1081,20 +1166,13 @@ def create_settlement_offer(
 ) -> Response:
     try:
         _require_real_case_exports()
-        case = _authorize_case(db, user, case_id, write=True)
-        selection = db.scalar(
-            select(SettlementScenarioSelection).where(
-                SettlementScenarioSelection.id == selection_id,
-                SettlementScenarioSelection.case_id == case_id,
-            )
+        attempt, terms, result, first_issuance = _prepare_attempt_offer_export(
+            db, user, case_id, selection_id, payload.terms
         )
-        if selection is None:
-            raise HTTPException(status_code=404, detail="Selected settlement scenario not found.")
-        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
-        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
-        docx = render_mediation_offer_docx(payload.terms, result)
+        docx = render_mediation_offer_docx(terms, result)
         if len(docx) > get_settings().max_upload_bytes:
             raise HTTPException(status_code=413, detail="Generated proposal exceeds the file size limit.")
+        _commit_attempt_offer_issuance(db, attempt, first_issuance)
         return Response(
             content=docx,
             media_type=DOCX_MEDIA_TYPE,
@@ -1105,10 +1183,13 @@ def create_settlement_offer(
             },
         )
     except HTTPException:
+        db.rollback()
         raise
     except ValueError as error:
+        db.rollback()
         raise HTTPException(status_code=422, detail="Saved scenario data is invalid.") from error
     except SQLAlchemyError as error:
+        db.rollback()
         logger.exception("Selected settlement scenario could not be loaded.")
         raise HTTPException(status_code=503, detail="Offer draft could not be generated.") from error
 
@@ -1123,20 +1204,13 @@ def create_settlement_property_schedule(
 ) -> Response:
     try:
         _require_real_case_exports()
-        case = _authorize_case(db, user, case_id, write=True)
-        selection = db.scalar(
-            select(SettlementScenarioSelection).where(
-                SettlementScenarioSelection.id == selection_id,
-                SettlementScenarioSelection.case_id == case_id,
-            )
+        attempt, terms, result, first_issuance = _prepare_attempt_offer_export(
+            db, user, case_id, selection_id, payload.terms
         )
-        if selection is None:
-            raise HTTPException(status_code=404, detail="Selected settlement scenario not found.")
-        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
-        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
-        workbook = render_property_schedule_xlsx(payload.terms, result)
+        workbook = render_property_schedule_xlsx(terms, result)
         if len(workbook) > get_settings().max_upload_bytes:
             raise HTTPException(status_code=413, detail="Generated proposal exceeds the file size limit.")
+        _commit_attempt_offer_issuance(db, attempt, first_issuance)
         return Response(
             content=workbook,
             media_type=XLSX_MEDIA_TYPE,
@@ -1147,10 +1221,13 @@ def create_settlement_property_schedule(
             },
         )
     except HTTPException:
+        db.rollback()
         raise
     except ValueError as error:
+        db.rollback()
         raise HTTPException(status_code=422, detail="Saved scenario data is invalid.") from error
     except SQLAlchemyError as error:
+        db.rollback()
         logger.exception("Selected settlement scenario could not be loaded for workbook export.")
         raise HTTPException(status_code=503, detail="Property schedule could not be generated.") from error
 
@@ -1195,18 +1272,11 @@ def deliver_settlement_offer(
 ) -> dict[str, int | str]:
     try:
         _require_real_case_exports()
-        case = _authorize_case(db, user, case_id, write=True)
-        selection = db.scalar(
-            select(SettlementScenarioSelection).where(
-                SettlementScenarioSelection.id == selection_id,
-                SettlementScenarioSelection.case_id == case_id,
-            )
+        attempt, terms, result, first_issuance = _prepare_attempt_offer_export(
+            db, user, case_id, selection_id, payload.terms
         )
-        if selection is None:
-            raise HTTPException(status_code=404, detail="Selected settlement scenario not found.")
-        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
-        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
-        exports = _offer_exports(payload.terms, result)
+        exports = _offer_exports(terms, result)
+        _commit_attempt_offer_issuance(db, attempt, first_issuance)
         settings = get_settings()
         if payload.channel == "email":
             if not settings.smtp_host or not settings.auth_email_from:

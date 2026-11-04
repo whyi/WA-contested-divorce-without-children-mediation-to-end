@@ -345,6 +345,9 @@ class SettlementNegotiationAttempt(Base):
     snapshot_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     frozen_snapshot_json: Mapped[dict | None] = mapped_column(JSONB)
     editable_state_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    proposal_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    proposal_terms_json: Mapped[dict | None] = mapped_column(JSONB)
+    proposal_scenario_result_json: Mapped[dict | None] = mapped_column(JSONB)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -739,12 +742,19 @@ class User(Base):
             "status IN ('pending_verification', 'active', 'locked', 'disabled')",
             name="ck_users_status",
         ),
+        CheckConstraint(
+            "settlement_attempt_limit IN (1, 3, 5, 10)",
+            name="ck_users_settlement_attempt_limit",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending_verification")
+    settlement_attempt_limit: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -760,6 +770,15 @@ class User(Base):
     )
     case_memberships: Mapped[list["CaseMembership"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+def user_settlement_attempt_limit(user: User) -> int:
+    limit = getattr(user, "settlement_attempt_limit", 1)
+    return (
+        limit
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit in {1, 3, 5, 10}
+        else 1
     )
 
 

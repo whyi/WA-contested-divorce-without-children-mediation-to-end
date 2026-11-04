@@ -8,6 +8,7 @@ from docx import Document as WordDocument
 from fastapi import HTTPException, Response
 from openpyxl import Workbook
 
+from app.models import SettlementOfferResponse, SettlementScenarioSelection
 from app.offer_response import (
     OfferSentConfirmation,
     _read_response,
@@ -232,10 +233,17 @@ class ModifiedOfferParsingTests(unittest.TestCase):
 
     def test_modified_document_pair_is_the_complete_sent_document_set(self) -> None:
         case_id = uuid4()
-        selection = SimpleNamespace(
+        selection = SettlementScenarioSelection(
             id=uuid4(),
             case_id=case_id,
+            user_id_snapshot=uuid4(),
+            idempotency_key=uuid4(),
+            request_sha256="test",
+            run_id=uuid4(),
+            scenario_id="scenario-1",
             scenario_result_json={"scenario": {}},
+            profile_revision=0,
+            settlement_revision=0,
         )
         attempt = SimpleNamespace(
             id=uuid4(),
@@ -258,7 +266,14 @@ class ModifiedOfferParsingTests(unittest.TestCase):
         db.execute.return_value.all.return_value = rows
         db.scalar.side_effect = [attempt, None]
 
-        result = _read_response(db, selection, SimpleNamespace(id=uuid4(), outcome=None))
+        response_record = SettlementOfferResponse(
+            id=uuid4(),
+            case_id=case_id,
+            selection_id=selection.id,
+            user_id_snapshot=uuid4(),
+            outcome=None,
+        )
+        result = _read_response(db, selection, response_record, 1)
 
         self.assertTrue(result.sent_documents_complete)
         self.assertEqual(
