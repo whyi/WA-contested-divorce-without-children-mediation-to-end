@@ -1,4 +1,5 @@
 from io import BytesIO
+from datetime import UTC, datetime
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -72,7 +73,7 @@ class SettlementExportRouteTests(unittest.TestCase):
             offer_to="Party B",
             terms=["Each party retains the property listed in their column."],
         )
-        self.user = SimpleNamespace(id=uuid4())
+        self.user = SimpleNamespace(id=uuid4(), settlement_attempt_limit=10)
         self.case_id = uuid4()
         self.selection_id = uuid4()
         self.case = SimpleNamespace(profile_revision=3, settlement_revision=5)
@@ -82,6 +83,12 @@ class SettlementExportRouteTests(unittest.TestCase):
             profile_revision=3,
             settlement_revision=5,
             scenario_result_json=self.result.model_dump(mode="json"),
+        )
+        self.attempt = SimpleNamespace(
+            attempt_ordinal=1,
+            proposal_issued_at=None,
+            proposal_terms_json=None,
+            proposal_scenario_result_json=None,
         )
         self.settings = SimpleNamespace(
             auth_enabled=True,
@@ -94,7 +101,7 @@ class SettlementExportRouteTests(unittest.TestCase):
         )
         self.membership = SimpleNamespace(role="owner")
         self.db = Mock()
-        self.db.scalar.side_effect = [self.membership, self.selection]
+        self.db.scalar.side_effect = [self.membership, self.case, self.selection, self.attempt]
         self.db.get.return_value = self.case
 
     def test_docx_and_workbook_downloads_validate_authorization_and_revisions(self) -> None:
@@ -110,7 +117,7 @@ class SettlementExportRouteTests(unittest.TestCase):
                 self.user,
                 self.db,
             )
-            self.db.scalar.side_effect = [self.membership, self.selection]
+            self.db.scalar.side_effect = [self.membership, self.case, self.selection, self.attempt]
             workbook = create_settlement_property_schedule(
                 self.case_id,
                 self.selection_id,
@@ -126,6 +133,84 @@ class SettlementExportRouteTests(unittest.TestCase):
 
     def test_stale_selection_is_rejected_before_render_or_delivery(self) -> None:
         self.case.profile_revision = 4
+        with (
+            patch("app.settlement_routes.get_settings", return_value=self.settings),
+            patch("app.settlement_routes.render_mediation_offer_docx") as render_docx,
+            self.assertRaises(HTTPException) as raised,
+        ):
+            create_settlement_offer(
+                self.case_id,
+                self.selection_id,
+                OfferCreate(terms=self.terms),
+                self.user,
+                self.db,
+            )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        render_docx.assert_not_called()
+
+    def test_issued_terms_are_immutable_across_download_formats_and_case_changes(self) -> None:
+        with (
+            patch("app.settlement_routes.get_settings", return_value=self.settings),
+            patch(
+                "app.settlement_routes.render_mediation_offer_docx",
+                return_value=b"docx",
+            ) as render_docx,
+            patch(
+                "app.settlement_routes.render_property_schedule_xlsx",
+                return_value=b"xlsx",
+            ) as render_xlsx,
+        ):
+            docx = create_settlement_offer(
+                self.case_id,
+                self.selection_id,
+                OfferCreate(terms=self.terms),
+                self.user,
+                self.db,
+            )
+            self.assertEqual(docx.body, b"docx")
+            self.assertIsNotNone(self.attempt.proposal_issued_at)
+            self.user.settlement_attempt_limit = 1
+            self.attempt.attempt_ordinal = 2
+            self.case.profile_revision += 1
+            self.db.scalar.side_effect = [
+                self.membership,
+                self.case,
+                self.selection,
+                self.attempt,
+            ]
+            workbook = create_settlement_property_schedule(
+                self.case_id,
+                self.selection_id,
+                OfferCreate(terms=self.terms),
+                self.user,
+                self.db,
+            )
+            self.assertEqual(workbook.body, b"xlsx")
+
+            changed_terms = self.terms.model_copy(update={"offer_to": "Different party"})
+            self.db.scalar.side_effect = [
+                self.membership,
+                self.case,
+                self.selection,
+                self.attempt,
+            ]
+            with self.assertRaises(HTTPException) as raised:
+                create_settlement_offer(
+                    self.case_id,
+                    self.selection_id,
+                    OfferCreate(terms=changed_terms),
+                    self.user,
+                    self.db,
+                )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        render_docx.assert_called_once()
+        render_xlsx.assert_called_once()
+
+    def test_export_rejects_an_attempt_above_the_server_managed_limit(self) -> None:
+        self.user.settlement_attempt_limit = 1
+        self.attempt.attempt_ordinal = 2
         with (
             patch("app.settlement_routes.get_settings", return_value=self.settings),
             patch("app.settlement_routes.render_mediation_offer_docx") as render_docx,
@@ -223,7 +308,16 @@ class SettlementExportRouteTests(unittest.TestCase):
         with patch("app.settlement_routes.get_settings", return_value=self.settings):
             prior.request_sha256 = _delivery_request_digest(payload)
             prior.destination_digest = _destination_digest("email:recipient@example.com")
-            self.db.scalar.side_effect = [self.membership, self.selection, prior]
+            self.attempt.proposal_issued_at = datetime.now(UTC)
+            self.attempt.proposal_terms_json = self.terms.model_dump(mode="json")
+            self.attempt.proposal_scenario_result_json = self.result.model_dump(mode="json")
+            self.db.scalar.side_effect = [
+                self.membership,
+                self.case,
+                self.selection,
+                self.attempt,
+                prior,
+            ]
             response = Response()
             with patch("app.settlement_routes.deliver_export_files") as send:
                 result = deliver_settlement_offer(
