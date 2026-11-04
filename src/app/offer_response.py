@@ -1,14 +1,16 @@
 import hashlib
 import logging
+from copy import deepcopy
+from datetime import UTC, date, datetime
 from pathlib import PurePath
 from typing import Literal
 from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
@@ -17,12 +19,16 @@ from app.database import get_db
 from app.models import (
     Case,
     Document,
+    SettlementLedgerEvent,
+    SettlementNegotiationAttempt,
     SettlementOfferResponse,
     SettlementOfferResponseAttachment,
+    SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
 )
-from app.settlement_routes import _authorize_case
+from app.settlement_planning import ScenarioAxes, calculate_scenario, generate_scenarios
+from app.settlement_routes import _active_profile_facts, _authorize_case, _lock_case
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
 
@@ -57,12 +63,215 @@ class OfferResponseRead(BaseModel):
     attachments: list[OfferResponseAttachmentRead]
     sent_documents_complete: bool
     counteroffer_attachment_present: bool
+    attempt_ordinal: int
+    frozen: bool
+    attempt_revision: int
+    editable_state: dict
+    snapshot: dict
+    scenario_result: dict
+    has_next_attempt: bool
 
 
 class OfferOutcomeUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     outcome: Literal["counteroffer", "rejected", "accepted"]
+    expected_attempt_revision: int = Field(default=0, ge=0)
+
+
+class NegotiationMilestone(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    date: date
+
+
+class NegotiationValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: UUID
+    proposed_amount_cents: int = Field(ge=-1_000_000_000_000, le=1_000_000_000_000)
+
+
+class OfferAttemptStateUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=0)
+    offer_from: str = Field(default="", max_length=160)
+    offer_to: str = Field(default="", max_length=160)
+    county: str = Field(default="", max_length=100)
+    cause_number: str = Field(default="", max_length=100)
+    proposed_effective_date: date | None = None
+    proposed_response_date: date | None = None
+    scenario_assumptions: ScenarioAxes | None = None
+    milestones: list[NegotiationMilestone] = Field(default_factory=list, max_length=100)
+    proposed_values: list[NegotiationValue] = Field(default_factory=list, max_length=500)
+    proposal_terms: list[str] = Field(default_factory=list, max_length=80)
+
+    @field_validator("proposal_terms")
+    @classmethod
+    def validate_proposal_terms(cls, terms: list[str]) -> list[str]:
+        cleaned = [term.strip() for term in terms]
+        if any(not term or len(term) > 2_000 for term in cleaned):
+            raise ValueError("Proposal terms must contain 1 to 2,000 characters.")
+        return cleaned
+
+
+class OfferAttemptStateRead(BaseModel):
+    selection_id: UUID
+    attempt_ordinal: int
+    revision: int
+    editable_state: dict
+    scenario_result: dict
+    scenario_recalculated: bool
+
+
+def _attempt_for_selection(
+    db: Session,
+    selection: SettlementScenarioSelection,
+) -> SettlementNegotiationAttempt | None:
+    return db.scalar(
+        select(SettlementNegotiationAttempt).where(
+            SettlementNegotiationAttempt.case_id == selection.case_id,
+            SettlementNegotiationAttempt.selection_id == selection.id,
+        )
+    )
+
+
+def _attempt_snapshot(
+    db: Session,
+    case: Case,
+    selection: SettlementScenarioSelection,
+) -> dict:
+    if (
+        selection.profile_revision != case.profile_revision
+        or selection.settlement_revision != case.settlement_revision
+    ):
+        raise HTTPException(status_code=409, detail="Selected scenario is stale. Recalculate before continuing.")
+    run = db.scalar(
+        select(SettlementScenarioRun).where(
+            SettlementScenarioRun.id == selection.run_id,
+            SettlementScenarioRun.case_id == case.id,
+        )
+    )
+    if run is None:
+        raise HTTPException(status_code=409, detail="Selected scenario run is unavailable.")
+
+    facts = _active_profile_facts(db, case.id)
+    profile_facts = [
+        {
+            "id": str(fact.id),
+            "field_key": fact.field_key,
+            "value": fact.value,
+            "source_document_id": str(fact.source_document_id),
+            "source_sha256": fact.source_sha256,
+            "source_page_number": fact.source_page_number,
+            "review_decision": fact.review_decision,
+            "profile_revision": fact.profile_revision,
+        }
+        for fact in facts
+    ]
+    ledger = db.scalars(
+        select(SettlementLedgerEvent)
+        .where(SettlementLedgerEvent.case_id == case.id)
+        .order_by(
+            SettlementLedgerEvent.asset_id,
+            SettlementLedgerEvent.effective_date,
+            SettlementLedgerEvent.sequence_number,
+            SettlementLedgerEvent.id,
+        )
+    ).all()
+    return {
+        "schema_version": 1,
+        "case_id": str(case.id),
+        "revisions": {
+            "profile": case.profile_revision,
+            "settlement": case.settlement_revision,
+        },
+        "scenario": {
+            "run_id": str(run.id),
+            "scenario_id": selection.scenario_id,
+            "objective": run.objective,
+            "axes": run.axes_json,
+            "result": selection.scenario_result_json,
+        },
+        "case_profile": {
+            "metadata": case.metadata_json,
+            "asset_liability_inventory": case.asset_liability_inventory,
+            "relationship_milestones": case.relationship_milestones,
+            "property_assets": case.property_assets,
+            "facts": profile_facts,
+        },
+        "settlement_ledger": [
+            {
+                "asset_id": str(row.asset_id),
+                "asset_name": row.asset_name,
+                "asset_kind": row.asset_kind,
+                "effective_date": row.effective_date.isoformat(),
+                "sequence_number": row.sequence_number,
+                "event": row.event_json,
+                "profile_revision": row.profile_revision,
+                "settlement_revision": row.settlement_revision,
+            }
+            for row in ledger
+        ],
+    }
+
+
+def _create_initial_attempt(
+    db: Session,
+    case: Case,
+    selection: SettlementScenarioSelection,
+    user: User,
+) -> SettlementNegotiationAttempt:
+    previous = db.scalar(
+        select(SettlementNegotiationAttempt)
+        .where(SettlementNegotiationAttempt.case_id == case.id)
+        .order_by(SettlementNegotiationAttempt.attempt_ordinal.desc())
+        .limit(1)
+    )
+    if previous is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Continue the saved negotiation attempt before selecting another scenario.",
+        )
+    snapshot = _attempt_snapshot(db, case, selection)
+    selected_scenario = snapshot["scenario"]["result"]["scenario"]
+    editable_axes = {
+        "relationship_windows": [selected_scenario["relationship_window"]],
+        "tracing_methods": [selected_scenario["tracing_method"]],
+        "community_share_bps": [selected_scenario["community_share_bps"]],
+    }
+    response_record = SettlementOfferResponse(
+        case_id=case.id,
+        selection_id=selection.id,
+        user_id=user.id,
+        user_id_snapshot=user.id,
+    )
+    db.add(response_record)
+    attempt = SettlementNegotiationAttempt(
+        case_id=case.id,
+        selection_id=selection.id,
+        attempt_ordinal=1,
+        snapshot_json=snapshot,
+        editable_state_json={
+            "scenario_assumptions": editable_axes,
+        },
+    )
+    db.add(attempt)
+    return attempt
+
+
+def _require_current_attempt_revisions(case: Case, attempt: SettlementNegotiationAttempt) -> None:
+    revisions = attempt.snapshot_json.get("revisions", {})
+    if (
+        revisions.get("profile") != case.profile_revision
+        or revisions.get("settlement") != case.settlement_revision
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Case facts or settlement ledger changed since this attempt began. Reload before continuing.",
+        )
 
 
 def _require_secure_case_storage() -> None:
@@ -133,12 +342,33 @@ def _read_response(
             for item, document in rows
         ]
     kinds = {item["kind"] for item in attachments}
+    attempt = _attempt_for_selection(db, selection)
+    has_next_attempt = False
+    if attempt is not None:
+        has_next_attempt = db.scalar(
+            select(SettlementNegotiationAttempt.id).where(
+                SettlementNegotiationAttempt.predecessor_id == attempt.id
+            )
+        ) is not None
     return OfferResponseRead(
         selection_id=selection.id,
         outcome=response_record.outcome if response_record is not None else None,
         attachments=attachments,
         sent_documents_complete={"sent_docx", "sent_xlsx"}.issubset(kinds),
         counteroffer_attachment_present="counteroffer" in kinds,
+        attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
+        frozen=attempt.frozen_at is not None if attempt is not None else bool(
+            response_record and response_record.outcome is not None
+        ),
+        attempt_revision=attempt.revision if attempt is not None else 0,
+        editable_state=attempt.editable_state_json if attempt is not None else {},
+        snapshot=(
+            attempt.frozen_snapshot_json or attempt.snapshot_json
+            if attempt is not None
+            else {}
+        ),
+        scenario_result=selection.scenario_result_json,
+        has_next_attempt=has_next_attempt,
     )
 
 
@@ -165,6 +395,137 @@ def read_offer_response(
     _, selection = _authorized_selection(case_id, selection_id, user, db, write=False)
     response.headers["Cache-Control"] = "no-store"
     return _read_response(db, selection, _response_record(db, selection))
+
+
+@router.put("/attempt", response_model=OfferAttemptStateRead)
+def update_offer_attempt_state(
+    case_id: UUID,
+    selection_id: UUID,
+    payload: OfferAttemptStateUpdate,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> OfferAttemptStateRead:
+    _authorized_selection(case_id, selection_id, user, db, write=True)
+    case = _lock_case(db, case_id)
+    selection = _selection(db, case_id, selection_id)
+    attempt = _attempt_for_selection(db, selection)
+    if attempt is None:
+        raise HTTPException(status_code=404, detail="Negotiation attempt not found.")
+    if attempt.frozen_at is not None:
+        raise HTTPException(status_code=409, detail="This negotiation attempt is frozen and read-only.")
+    current_response = _read_response(db, selection, _response_record(db, selection))
+    if current_response.sent_documents_complete:
+        raise HTTPException(
+            status_code=409,
+            detail="This attempt’s final sent files are recorded; its proposal inputs are read-only.",
+        )
+    if payload.expected_revision != attempt.revision:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Negotiation attempt changed. Reload and retry.",
+                "attempt_revision": attempt.revision,
+            },
+        )
+    _require_current_attempt_revisions(case, attempt)
+    if (
+        payload.proposed_effective_date is not None
+        and payload.proposed_response_date is not None
+        and payload.proposed_effective_date > payload.proposed_response_date
+    ):
+        raise HTTPException(status_code=422, detail="The proposed effective date must not follow the response date.")
+    known_asset_ids = {
+        item["asset_id"] for item in attempt.snapshot_json.get("settlement_ledger", [])
+    }
+    if any(str(value.asset_id) not in known_asset_ids for value in payload.proposed_values):
+        raise HTTPException(status_code=422, detail="Proposed values must reference an asset in this attempt snapshot.")
+    if payload.scenario_assumptions is not None:
+        known_fact_ids = {
+            item["id"] for item in attempt.snapshot_json.get("case_profile", {}).get("facts", [])
+        }
+        source_fact_ids = {
+            str(fact_id)
+            for window in payload.scenario_assumptions.relationship_windows
+            for fact_id in window.source_fact_ids
+        }
+        if not source_fact_ids.issubset(known_fact_ids):
+            raise HTTPException(
+                status_code=422,
+                detail="Scenario assumptions may cite only source facts in this attempt snapshot.",
+            )
+    scenario_result = selection.scenario_result_json
+    scenario_recalculated = False
+    if payload.scenario_assumptions is not None:
+        incoming_axes = payload.scenario_assumptions.model_dump(mode="json")
+        previous_axes = attempt.editable_state_json.get("scenario_assumptions")
+        if incoming_axes != previous_axes:
+            try:
+                scenarios = generate_scenarios(payload.scenario_assumptions)
+                if len(scenarios) != 1:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="A negotiation attempt must have exactly one selected scenario assumption set.",
+                    )
+                from app.settlement_routes import _asset_ledgers
+
+                ledgers = _asset_ledgers(db, case.id)
+                if not ledgers:
+                    raise HTTPException(status_code=409, detail="The saved settlement ledger is unavailable.")
+                calculated = calculate_scenario(scenarios[0], ledgers)
+                ledger_fact_ids = {
+                    str(fact_id)
+                    for item in attempt.snapshot_json.get("settlement_ledger", [])
+                    for fact_id in item.get("event", {}).get("source_fact_ids", [])
+                }
+            except HTTPException:
+                db.rollback()
+                raise
+            except ValueError as error:
+                db.rollback()
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            except SQLAlchemyError as error:
+                db.rollback()
+                logger.exception("Attempt-specific scenario could not be calculated.")
+                raise HTTPException(status_code=503, detail="Attempt scenario could not be recalculated.") from error
+            new_run = SettlementScenarioRun(
+                id=uuid4(),
+                case_id=case.id,
+                user_id=user.id,
+                user_id_snapshot=user.id,
+                profile_revision=case.profile_revision,
+                settlement_revision=case.settlement_revision,
+                objective=attempt.snapshot_json["scenario"]["objective"],
+                axes_json=incoming_axes,
+                scenario_results_json=[calculated.model_dump(mode="json")],
+                input_fact_ids=sorted(source_fact_ids | ledger_fact_ids),
+            )
+            db.add(new_run)
+            selection.run_id = new_run.id
+            selection.scenario_id = calculated.scenario.id
+            selection.scenario_result_json = calculated.model_dump(mode="json")
+            selection.profile_revision = case.profile_revision
+            selection.settlement_revision = case.settlement_revision
+            scenario_result = selection.scenario_result_json
+            scenario_recalculated = True
+    attempt.editable_state_json = payload.model_dump(mode="json", exclude={"expected_revision"})
+    attempt.revision += 1
+    try:
+        db.commit()
+        db.refresh(attempt)
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.error("Negotiation attempt changes could not be saved (%s).", type(error).__name__)
+        raise HTTPException(status_code=503, detail="Negotiation attempt changes could not be saved.") from error
+    response.headers["Cache-Control"] = "no-store"
+    return OfferAttemptStateRead(
+        selection_id=selection.id,
+        attempt_ordinal=attempt.attempt_ordinal,
+        revision=attempt.revision,
+        editable_state=attempt.editable_state_json,
+        scenario_result=scenario_result,
+        scenario_recalculated=scenario_recalculated,
+    )
 
 
 @router.post("/attachments/{kind}", response_model=OfferResponseRead, status_code=201)
@@ -207,7 +568,45 @@ async def upload_offer_response_attachment(
         await upload.close()
 
     _, selection = _authorized_selection(case_id, selection_id, user, db, write=True)
+    case = _lock_case(db, case_id)
     response_record = _response_record(db, selection)
+    attempt = _attempt_for_selection(db, selection)
+    if (
+        attempt is not None
+        and attempt.frozen_at is None
+        and kind in {"sent_docx", "sent_xlsx"}
+    ):
+        _require_current_attempt_revisions(case, attempt)
+    if kind == "counteroffer" and (
+        response_record is None or response_record.outcome != "counteroffer"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Select “Counteroffer received” before attaching the received counteroffer.",
+        )
+    if kind == "accepted_offer" and (
+        response_record is None or response_record.outcome != "accepted"
+    ):
+        raise HTTPException(status_code=409, detail="Record an accepted response before attaching its document.")
+    if attempt is not None and attempt.frozen_at is not None:
+        if kind in {"sent_docx", "sent_xlsx"}:
+            raise HTTPException(status_code=409, detail="This attempt is frozen; sent documents cannot be replaced.")
+        expected_outcome = "counteroffer" if kind == "counteroffer" else "accepted"
+        if response_record is None or response_record.outcome != expected_outcome:
+            raise HTTPException(status_code=409, detail="This attachment does not match the recorded response.")
+    if kind in {"counteroffer", "accepted_offer"} and response_record is not None:
+        existing_counteroffer = db.scalar(
+            select(SettlementOfferResponseAttachment.id).where(
+                SettlementOfferResponseAttachment.response_id == response_record.id,
+                SettlementOfferResponseAttachment.kind == kind,
+            )
+        )
+        if existing_counteroffer is not None:
+            if kind == "counteroffer":
+                detail = "A counteroffer file is already attached to this attempt."
+            else:
+                detail = "An accepted offer file is already attached to this attempt."
+            raise HTTPException(status_code=409, detail=detail)
     if response_record is None:
         response_record = SettlementOfferResponse(
             case_id=case_id,
@@ -237,7 +636,9 @@ async def upload_offer_response_attachment(
     db.add(document)
 
     old_objects: list[str] = []
-    if kind in {"sent_docx", "sent_xlsx"}:
+    if kind in {"sent_docx", "sent_xlsx"} and (
+        attempt is None or attempt.frozen_at is None
+    ):
         existing_rows = db.scalars(
             select(SettlementOfferResponseAttachment).where(
                 SettlementOfferResponseAttachment.response_id == response_record.id,
@@ -299,15 +700,50 @@ def update_offer_response(
     db: Session = Depends(get_db),
 ) -> OfferResponseRead:
     _, selection = _authorized_selection(case_id, selection_id, user, db, write=True)
+    case = _lock_case(db, case_id)
     response_record = _response_record(db, selection)
     current = _read_response(db, selection, response_record)
     if not current.sent_documents_complete:
         raise HTTPException(status_code=409, detail="Attach the final sent DOCX and XLSX before choosing an outcome.")
-    if response_record is None:
+    attempt = _attempt_for_selection(db, selection)
+    if response_record is None or attempt is None:
         raise HTTPException(status_code=409, detail="Offer response record is unavailable.")
+    if attempt.frozen_at is not None:
+        if response_record.outcome != payload.outcome:
+            raise HTTPException(status_code=409, detail="This negotiation attempt is frozen and cannot be changed.")
+        response.headers["Cache-Control"] = "no-store"
+        return current
+    if payload.expected_attempt_revision != attempt.revision:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Negotiation attempt changed. Reload and retry.",
+                "attempt_revision": attempt.revision,
+            },
+        )
+    _require_current_attempt_revisions(case, attempt)
     response_record.outcome = payload.outcome
+    frozen_snapshot = deepcopy(attempt.snapshot_json)
+    frozen_snapshot["scenario"] = {
+        "run_id": str(selection.run_id),
+        "scenario_id": selection.scenario_id,
+        "objective": attempt.snapshot_json["scenario"]["objective"],
+        "axes": deepcopy(attempt.editable_state_json.get("scenario_assumptions")),
+        "result": deepcopy(selection.scenario_result_json),
+    }
+    frozen_snapshot["negotiation"] = deepcopy(attempt.editable_state_json)
+    frozen_snapshot["sent_attachments"] = [
+        item.model_dump(mode="json")
+        for item in current.attachments
+        if item.kind in {"sent_docx", "sent_xlsx"}
+    ]
+    frozen_snapshot["outcome"] = payload.outcome
+    attempt.frozen_snapshot_json = frozen_snapshot
+    attempt.frozen_at = datetime.now(UTC)
+    attempt.revision += 1
     try:
         db.commit()
+        db.refresh(response_record)
     except SQLAlchemyError as error:
         db.rollback()
         logger.error("Offer-response outcome write failed (%s).", type(error).__name__)
@@ -323,15 +759,95 @@ def continue_offer_response(
     response: Response,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
-    _, selection = _authorized_selection(case_id, selection_id, user, db, write=False)
-    current = _read_response(db, selection, _response_record(db, selection))
+) -> dict[str, str | int]:
+    _authorized_selection(case_id, selection_id, user, db, write=True)
+    case = _lock_case(db, case_id)
+    selection = _selection(db, case_id, selection_id)
+    response_record = _response_record(db, selection)
+    current = _read_response(db, selection, response_record)
     if not current.sent_documents_complete:
         raise HTTPException(status_code=409, detail="Attach the final sent DOCX and XLSX before continuing.")
     if current.outcome is None:
         raise HTTPException(status_code=409, detail="Choose a response outcome before continuing.")
     if current.outcome == "counteroffer" and not current.counteroffer_attachment_present:
         raise HTTPException(status_code=409, detail="Attach the received counteroffer before continuing.")
+    attempt = _attempt_for_selection(db, selection)
+    if attempt is None or response_record is None or attempt.frozen_at is None:
+        raise HTTPException(status_code=409, detail="The negotiation attempt is not frozen and cannot continue.")
+    if current.outcome == "counteroffer":
+        _require_current_attempt_revisions(case, attempt)
+        next_attempt = db.scalar(
+            select(SettlementNegotiationAttempt).where(
+                SettlementNegotiationAttempt.predecessor_id == attempt.id
+            )
+        )
+        if next_attempt is None:
+            next_selection = SettlementScenarioSelection(
+                id=uuid4(),
+                case_id=case.id,
+                user_id=user.id,
+                user_id_snapshot=user.id,
+                idempotency_key=uuid4(),
+                request_sha256=hashlib.sha256(
+                    f"{attempt.id}:{attempt.attempt_ordinal + 1}".encode()
+                ).hexdigest(),
+                run_id=selection.run_id,
+                scenario_id=selection.scenario_id,
+                scenario_result_json=deepcopy(
+                    (attempt.frozen_snapshot_json or attempt.snapshot_json)["scenario"]["result"]
+                ),
+                profile_revision=attempt.snapshot_json["revisions"]["profile"],
+                settlement_revision=attempt.snapshot_json["revisions"]["settlement"],
+            )
+            db.add(next_selection)
+            db.flush()
+            next_attempt = SettlementNegotiationAttempt(
+                id=uuid4(),
+                case_id=case.id,
+                selection_id=next_selection.id,
+                predecessor_id=attempt.id,
+                attempt_ordinal=attempt.attempt_ordinal + 1,
+                snapshot_json=deepcopy(attempt.frozen_snapshot_json or attempt.snapshot_json),
+                editable_state_json=deepcopy(attempt.editable_state_json),
+            )
+            db.add(next_attempt)
+            db.add(
+                SettlementOfferResponse(
+                    case_id=case.id,
+                    selection_id=next_selection.id,
+                    user_id=user.id,
+                    user_id_snapshot=user.id,
+                )
+            )
+            try:
+                db.commit()
+                db.refresh(next_selection)
+                db.refresh(next_attempt)
+            except IntegrityError:
+                db.rollback()
+                next_attempt = db.scalar(
+                    select(SettlementNegotiationAttempt).where(
+                        SettlementNegotiationAttempt.predecessor_id == attempt.id
+                    )
+                )
+                if next_attempt is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="A next attempt could not be created from the current negotiation state.",
+                    )
+            except SQLAlchemyError as error:
+                db.rollback()
+                logger.error("Next negotiation attempt could not be created (%s).", type(error).__name__)
+                raise HTTPException(
+                    status_code=503,
+                    detail="The previous attempt remains saved, but the next attempt could not be created.",
+                ) from error
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "next_step": "next_attempt",
+            "selection_id": str(next_attempt.selection_id),
+            "attempt_ordinal": next_attempt.attempt_ordinal,
+        }
     response.headers["Cache-Control"] = "no-store"
     return {
         "next_step": "final_checklist" if current.outcome == "accepted" else "future_placeholder",

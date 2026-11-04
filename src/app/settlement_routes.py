@@ -25,6 +25,7 @@ from app.models import (
     Document,
     ExportDeliveryEvent,
     SettlementLedgerEvent,
+    SettlementNegotiationAttempt,
     SettlementOfferResponse,
     SettlementOfferResponseAttachment,
     SettlementPlanningConsentEvent,
@@ -144,6 +145,7 @@ class ScenarioSelectionRead(BaseModel):
     scenario_id: str
     profile_revision: int
     settlement_revision: int
+    attempt_ordinal: int = 1
 
 
 class OfferResponseHistoryAttachment(BaseModel):
@@ -154,6 +156,8 @@ class OfferResponseHistoryAttachment(BaseModel):
 class OfferResponseHistoryItem(BaseModel):
     selection_id: UUID
     scenario_id: str
+    attempt_ordinal: int
+    frozen: bool
     outcome: Literal["counteroffer", "rejected", "accepted"] | None
     attachments: list[OfferResponseHistoryAttachment]
 
@@ -896,22 +900,30 @@ def list_settlement_offer_responses(
     try:
         _authorize_case(db, user, case_id, write=False)
         rows = db.execute(
-            select(SettlementOfferResponse, SettlementScenarioSelection)
+            select(
+                SettlementOfferResponse,
+                SettlementScenarioSelection,
+                SettlementNegotiationAttempt,
+            )
             .join(
                 SettlementScenarioSelection,
                 SettlementScenarioSelection.id == SettlementOfferResponse.selection_id,
+            )
+            .outerjoin(
+                SettlementNegotiationAttempt,
+                SettlementNegotiationAttempt.selection_id == SettlementScenarioSelection.id,
             )
             .where(
                 SettlementOfferResponse.case_id == case_id,
                 SettlementScenarioSelection.case_id == case_id,
             )
             .order_by(
-                SettlementOfferResponse.updated_at.desc(),
-                SettlementOfferResponse.id.desc(),
+                SettlementNegotiationAttempt.attempt_ordinal.asc().nullsfirst(),
+                SettlementNegotiationAttempt.created_at.asc().nullsfirst(),
+                SettlementOfferResponse.id.asc(),
             )
-            .limit(50)
         ).all()
-        response_ids = [offer_response.id for offer_response, _ in rows]
+        response_ids = [offer_response.id for offer_response, _, _ in rows]
         attachments_by_response: dict[UUID, list[dict]] = {
             response_id: [] for response_id in response_ids
         }
@@ -934,10 +946,14 @@ def list_settlement_offer_responses(
             OfferResponseHistoryItem(
                 selection_id=selection.id,
                 scenario_id=selection.scenario_id,
+                attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
+                frozen=attempt.frozen_at is not None if attempt is not None else (
+                    offer_response.outcome is not None
+                ),
                 outcome=offer_response.outcome,
                 attachments=attachments_by_response[offer_response.id],
             )
-            for offer_response, selection in rows
+            for offer_response, selection, attempt in rows
         ]
     except HTTPException:
         raise
@@ -1016,6 +1032,10 @@ def select_settlement_scenario(
             settlement_revision=case.settlement_revision,
         )
         db.add(selection)
+        db.flush()
+        from app.offer_response import _create_initial_attempt
+
+        _create_initial_attempt(db, case, selection, user)
         db.commit()
         db.refresh(selection)
         response.headers["Cache-Control"] = "no-store"
@@ -1025,6 +1045,7 @@ def select_settlement_scenario(
             scenario_id=selection.scenario_id,
             profile_revision=selection.profile_revision,
             settlement_revision=selection.settlement_revision,
+            attempt_ordinal=1,
         )
     except HTTPException:
         db.rollback()
