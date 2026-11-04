@@ -23,15 +23,22 @@ from app.models import (
     SettlementLedgerEvent,
     SettlementNegotiationAttempt,
     SettlementOfferResponse,
+    SettlementProposalVersion,
     SettlementOfferResponseAttachment,
     SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
     user_settlement_attempt_limit,
 )
+from app.offer_documents import MediationOfferTerms
 from app.modified_offer import ModifiedOfferParseError, parse_modified_offer
 from app.settlement_planning import ScenarioAxes, calculate_scenario, generate_scenarios
-from app.settlement_routes import _active_profile_facts, _authorize_case, _lock_case
+from app.settlement_routes import (
+    _active_profile_facts,
+    _authorize_case,
+    _lock_case,
+    _prepare_attempt_offer_export,
+)
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
 
@@ -89,6 +96,8 @@ class OfferResponseRead(BaseModel):
     attempts_remaining: int
     frozen: bool
     proposal_issued: bool
+    proposal_draft_unlocked: bool
+    proposal_version_ordinal: int
     attempt_revision: int
     editable_state: dict
     snapshot: dict
@@ -380,6 +389,12 @@ def _read_response(
     proposal_issued_at = getattr(attempt, "proposal_issued_at", None)
     proposal_terms = getattr(attempt, "proposal_terms_json", None)
     proposal_scenario_result = getattr(attempt, "proposal_scenario_result_json", None)
+    if attempt is not None and getattr(attempt, "proposal_draft_unlocked", False):
+        scenario_result = selection.scenario_result_json
+    elif proposal_scenario_result is not None:
+        scenario_result = proposal_scenario_result
+    else:
+        scenario_result = selection.scenario_result_json
     kinds = {item["kind"] for item in attachments}
     sent_documents_complete = (
         {"modified_docx", "modified_xlsx"}.issubset(kinds)
@@ -411,6 +426,14 @@ def _read_response(
             response_record and response_record.outcome is not None
         ),
         proposal_issued=proposal_issued_at is not None,
+        proposal_draft_unlocked=(
+            bool(getattr(attempt, "proposal_draft_unlocked", False))
+            if attempt is not None
+            else False
+        ),
+        proposal_version_ordinal=(
+            getattr(attempt, "proposal_version_ordinal", 0) if attempt is not None else 0
+        ),
         attempt_revision=attempt.revision if attempt is not None else 0,
         editable_state=attempt.editable_state_json if attempt is not None else {},
         snapshot=(
@@ -418,11 +441,7 @@ def _read_response(
             if attempt is not None
             else {}
         ),
-        scenario_result=(
-            proposal_scenario_result
-            if proposal_scenario_result is not None
-            else selection.scenario_result_json
-        ),
+        scenario_result=scenario_result,
         proposal_terms=proposal_terms,
         has_next_attempt=has_next_attempt,
     )
@@ -651,6 +670,7 @@ def update_offer_attempt_state(
             detail="This account has reached its negotiation attempt limit.",
         )
     issued = attempt.proposal_issued_at is not None
+    draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False))
     if payload.expected_revision != attempt.revision:
         raise HTTPException(
             status_code=409,
@@ -659,7 +679,7 @@ def update_offer_attempt_state(
                 "attempt_revision": attempt.revision,
             },
         )
-    if issued:
+    if issued and not draft_unlocked:
         incoming_state = payload.model_dump(mode="json", exclude={"expected_revision"})
         workflow_fields = {"sent_offer_mode", "modified_offer_reviewed"}
         saved_content = {
@@ -797,6 +817,66 @@ def update_offer_attempt_state(
         scenario_result=scenario_result,
         scenario_recalculated=scenario_recalculated,
     )
+
+
+@router.post("/new-proposal-version")
+def start_new_proposal_version(
+    case_id: UUID,
+    selection_id: UUID,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, int | bool]:
+    _authorized_selection(case_id, selection_id, user, db, write=True)
+    _lock_case(db, case_id)
+    selection = _selection(db, case_id, selection_id)
+    attempt = _attempt_for_selection(db, selection)
+    if attempt is None or attempt.proposal_issued_at is None:
+        raise HTTPException(status_code=409, detail="Generate the initial proposal before starting a new version.")
+    if attempt.frozen_at is not None or attempt.sent_confirmed_at is not None:
+        raise HTTPException(status_code=409, detail="A sent or frozen proposal cannot be revised.")
+    response_record = _response_record(db, selection)
+    if response_record is not None and response_record.outcome is not None:
+        raise HTTPException(status_code=409, detail="A proposal with a recorded outcome cannot be revised.")
+    if not getattr(attempt, "proposal_draft_unlocked", False):
+        legacy_ordinal = max(1, getattr(attempt, "proposal_version_ordinal", 0))
+        existing_version = db.scalar(
+            select(SettlementProposalVersion).where(
+                SettlementProposalVersion.attempt_id == attempt.id,
+                SettlementProposalVersion.version_ordinal == legacy_ordinal,
+            )
+        )
+        if existing_version is None:
+            if attempt.proposal_terms_json is None:
+                raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
+            _prepare_attempt_offer_export(
+                db,
+                user,
+                case_id,
+                selection_id,
+                MediationOfferTerms.model_validate(attempt.proposal_terms_json),
+                confirm_credit_use=False,
+            )
+    if not getattr(attempt, "proposal_draft_unlocked", False):
+        attempt.proposal_version_ordinal = max(
+            1,
+            getattr(attempt, "proposal_version_ordinal", 0),
+        ) + 1
+        attempt.proposal_draft_unlocked = True
+        attempt.revision += 1
+        try:
+            db.commit()
+            db.refresh(attempt)
+        except SQLAlchemyError as error:
+            db.rollback()
+            logger.exception("A new proposal version could not be opened.")
+            raise HTTPException(status_code=503, detail="A new proposal version could not be opened.") from error
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "proposal_draft_unlocked": True,
+        "proposal_version_ordinal": attempt.proposal_version_ordinal,
+        "attempt_revision": attempt.revision,
+    }
 
 
 @router.post("/confirm-sent", response_model=OfferResponseRead)
