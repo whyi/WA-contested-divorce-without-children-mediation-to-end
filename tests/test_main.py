@@ -538,6 +538,20 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('setAttribute("aria-current", "step")', navigation)
         self.assertIn("focusTarget.focus({ preventScroll: true })", navigation)
 
+    def test_wizard_entry_ids_work_on_insecure_lan_http(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        id_generator = page.split("function createWizardId()", 1)[1].split(
+            "function normalizeWizardDraft", 1
+        )[0]
+        self.assertIn("globalThis.crypto", id_generator)
+        self.assertIn("webCrypto?.randomUUID", id_generator)
+        self.assertIn("webCrypto?.getRandomValues", id_generator)
+        self.assertIn("Math.random()", id_generator)
+        self.assertNotIn("return crypto.randomUUID()", id_generator)
+
     def test_wizard_supports_browser_local_optional_files_for_each_record(self) -> None:
         status, body = asyncio.run(request_app("/demo/wizard"))
 
