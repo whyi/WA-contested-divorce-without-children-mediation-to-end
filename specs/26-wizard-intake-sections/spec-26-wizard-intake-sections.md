@@ -26,6 +26,7 @@
 4. Each record type supports multiple optional attachments, displays filenames, supports removal, and restores files from local storage where supported.
 5. Browser storage errors are visible; no file is uploaded to the server.
 6. Existing filed-case gate and unrelated workflow behavior are unchanged.
+7. The Wizard clearly tells users how the filed-case and role selections unlock the intake sections.
 
 ## 4. Implementation Status
 
