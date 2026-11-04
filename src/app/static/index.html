@@ -988,11 +988,14 @@
       }
       .settlement-response-workflow[hidden], .settlement-response-counteroffer[hidden],
       .settlement-response-checklist[hidden], .settlement-response-placeholder[hidden],
-      .settlement-demo-response-files[hidden] { display: none; }
+      .settlement-demo-response-files[hidden], #settlement-response-modified[hidden],
+      #settlement-response-modified-review[hidden] { display: none; }
       .settlement-response-workflow p, .settlement-response-workflow li { color: var(--muted); font-size: 13px; line-height: 1.6; }
       .settlement-response-workflow fieldset { display: grid; gap: 10px; margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
       .settlement-response-workflow fieldset label { display: flex; align-items: flex-start; gap: 9px; color: var(--ink); }
+      .settlement-response-modified > label { display: grid !important; gap: 6px !important; }
       .settlement-response-files { display: grid; gap: 12px; margin: 14px 0; }
+      .settlement-response-files[hidden] { display: none; }
       .settlement-response-files label { display: grid; gap: 6px; }
       .settlement-response-list { padding-left: 20px; overflow-wrap: anywhere; }
       .settlement-response-note { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); }
@@ -1730,14 +1733,31 @@
                     <p>Draft downloads and attaching final files do not freeze this attempt. After you have actually sent both files, confirm below to freeze its dates, milestones, values, and scenario. Then record the response. This tracker does not send documents or call AI.</p>
                     <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> Attach the exact final DOCX and XLSX files you sent. Only the explicit confirmation below locks this attempt.</p>
                     <div class="settlement-response-files">
-                      <label for="settlement-response-sent-docx">Final DOCX you sent
+                      <label for="settlement-response-sent-docx"><span id="settlement-response-sent-docx-label">Final DOCX you sent</span>
                         <input id="settlement-response-sent-docx" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                       </label>
-                      <label for="settlement-response-sent-xlsx">Final XLSX you sent
+                      <label for="settlement-response-sent-xlsx"><span id="settlement-response-sent-xlsx-label">Final XLSX you sent</span>
                         <input id="settlement-response-sent-xlsx" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
                       </label>
                       <p class="settlement-response-note">Google Drive Picker is unavailable because this app has no configured, secure user-selected file picker. Your Drive files are not listed or downloaded. Use the local file upload below.</p>
                     </div>
+                    <fieldset class="settlement-response-modified" id="settlement-response-modified" hidden>
+                      <legend>Upload the modified offer here</legend>
+                      <p>Upload both modified documents. Supported fields will be read for your review; workbook formulas are never evaluated.</p>
+                      <label for="settlement-response-modified-docx">Modified offer DOCX
+                        <input id="settlement-response-modified-docx" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                      </label>
+                      <label for="settlement-response-modified-xlsx">Modified offer XLSX
+                        <input id="settlement-response-modified-xlsx" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                      </label>
+                      <button class="materials-import" id="settlement-response-modified-parse" type="button" disabled>Parse and review modified offer</button>
+                      <section id="settlement-response-modified-review" hidden aria-labelledby="settlement-response-modified-review-title">
+                        <h4 id="settlement-response-modified-review-title">Review imported fields</h4>
+                        <p>Review and correct the editable fields above. Values not imported are listed here.</p>
+                        <pre id="settlement-response-modified-preview"></pre>
+                        <label><input id="settlement-response-modified-accept" type="checkbox"> I reviewed and accept these imported fields for the next attempt.</label>
+                      </section>
+                    </fieldset>
                     <ul class="settlement-response-list" id="settlement-response-attachments" aria-label="Attached offer response files" aria-live="polite"></ul>
                     <details id="settlement-response-snapshot">
                       <summary>Inspect saved attempt snapshot</summary>
@@ -1745,7 +1765,9 @@
                     </details>
                     <p id="settlement-response-status" role="status" aria-live="polite"></p>
                     <button class="materials-import" id="settlement-response-confirm-sent" type="button" disabled>I reviewed and sent these final documents</button>
-                    <fieldset>
+                    <button class="materials-import" id="settlement-response-modified-choice" type="button" aria-pressed="false">I modified the offer</button>
+                    <p>The first choice is for the same proposal you downloaded above or the terms and values currently shown. Choose the second if you changed the offer documents.</p>
+                    <fieldset id="settlement-response-outcome-fieldset">
                       <legend>What response did you receive?</legend>
                       <label><input type="radio" name="settlement-response-outcome" value="counteroffer"> Counteroffer received</label>
                       <label><input type="radio" name="settlement-response-outcome" value="rejected"> Offer rejected</label>
@@ -2212,6 +2234,16 @@
         const settlementResponseWorkflow = document.getElementById("settlement-response-workflow");
         const settlementResponseSentDocx = document.getElementById("settlement-response-sent-docx");
         const settlementResponseSentXlsx = document.getElementById("settlement-response-sent-xlsx");
+        const settlementResponseSentDocxLabel = document.getElementById("settlement-response-sent-docx-label");
+        const settlementResponseSentXlsxLabel = document.getElementById("settlement-response-sent-xlsx-label");
+        const settlementResponseModified = document.getElementById("settlement-response-modified");
+        const settlementResponseModifiedDocx = document.getElementById("settlement-response-modified-docx");
+        const settlementResponseModifiedXlsx = document.getElementById("settlement-response-modified-xlsx");
+        const settlementResponseModifiedParse = document.getElementById("settlement-response-modified-parse");
+        const settlementResponseModifiedReview = document.getElementById("settlement-response-modified-review");
+        const settlementResponseModifiedPreview = document.getElementById("settlement-response-modified-preview");
+        const settlementResponseModifiedAccept = document.getElementById("settlement-response-modified-accept");
+        const settlementResponseModifiedChoice = document.getElementById("settlement-response-modified-choice");
         const settlementResponseAttachments = document.getElementById("settlement-response-attachments");
         const settlementResponseSnapshotData = document.getElementById("settlement-response-snapshot-data");
         const settlementResponseStatus = document.getElementById("settlement-response-status");
@@ -2363,6 +2395,7 @@
         let settlementAttemptStateSaving = false;
         let settlementGeneratedFormats = new Set();
         let settlementResponseUploading = false;
+        let settlementModifiedOfferParsed = false;
         let selectedAssetYearIndex = 0;
         let settlementDateRangeDragHandle = "";
         let settlementDateRangePointerId = null;
@@ -3871,24 +3904,101 @@
           )?.value || "";
         }
 
+        function renderModifiedOfferReview(fields, warnings) {
+          settlementResponseModifiedPreview.textContent = JSON.stringify({
+            imported_fields: fields,
+            not_imported_or_needing_attention: warnings,
+          }, null, 2);
+          settlementModifiedOfferParsed = true;
+          settlementResponseModifiedReview.hidden = false;
+        }
+
+        async function reloadModifiedOfferReview() {
+          if (!settlementSelectedScenario) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          try {
+            const result = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/parse-modified-offer`,
+              { method: "POST" },
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            const currentFields = readSettlementAttemptFormState();
+            renderModifiedOfferReview(
+              {
+                offer_from: currentFields.offer_from,
+                offer_to: currentFields.offer_to,
+                county: currentFields.county,
+                cause_number: currentFields.cause_number,
+                proposed_effective_date: currentFields.proposed_effective_date,
+                proposed_response_date: currentFields.proposed_response_date,
+                proposal_terms: currentFields.proposal_terms,
+                proposed_values: currentFields.proposed_values,
+              },
+              result.warnings || [],
+            );
+            updateSettlementResponseControls();
+          } catch (error) {
+            if (settlementCaseId !== caseId || settlementSelectedScenario?.selection_id !== selectionId) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? `Previously reviewed modified offer could not be reloaded: ${error.message}`
+              : "Previously reviewed modified offer could not be reloaded.";
+          }
+        }
+
         function updateSettlementResponseControls() {
           const current = settlementOfferResponseState;
           const selectedOutcome = selectedSettlementOutcome();
           const savedOutcome = current?.outcome || "";
           const frozen = Boolean(current?.frozen);
           const inputsLocked = frozen;
+          const modifiedMode = settlementAttemptEditableState.sent_offer_mode === "modified";
+          const modifiedReviewed = Boolean(settlementAttemptEditableState.modified_offer_reviewed);
+          const stateBusy = settlementAttemptStateDirty || settlementAttemptStateSaving;
           settlementGenerate.disabled = Boolean(current);
           const counterofferNeedsFile = savedOutcome === "counteroffer"
             && !current?.counteroffer_attachment_present;
-          settlementResponseWorkflow.querySelector("fieldset").disabled =
+          document.getElementById("settlement-response-outcome-fieldset").disabled =
             !current?.sent_confirmed || settlementResponseUploading || frozen;
           settlementResponseConfirmSent.disabled = settlementResponseUploading
             || !current?.sent_documents_complete
+            || (modifiedMode && !modifiedReviewed)
             || Boolean(current?.sent_confirmed)
             || frozen;
           settlementResponseConfirmSent.textContent = current?.sent_confirmed
             ? "Sent confirmed — this attempt is frozen"
-            : "I reviewed and sent these final documents";
+            : modifiedMode
+              ? "I reviewed and sent the modified offer"
+              : "I reviewed and sent these final documents";
+          settlementResponseModifiedChoice.disabled =
+            !settlementAttemptStateLoaded || frozen || Boolean(current?.sent_confirmed);
+          settlementResponseModifiedChoice.textContent = modifiedMode
+            ? "Modified-offer path selected"
+            : "I modified the offer";
+          settlementResponseModifiedChoice.setAttribute("aria-pressed", String(modifiedMode));
+          settlementResponseModified.hidden = !modifiedMode;
+          settlementResponseModifiedParse.disabled = settlementResponseUploading
+            || stateBusy
+            || frozen
+            || !current?.sent_documents_complete;
+          settlementResponseModifiedDocx.disabled = settlementResponseUploading || stateBusy || frozen;
+          settlementResponseModifiedXlsx.disabled = settlementResponseUploading || stateBusy || frozen;
+          settlementResponseModifiedAccept.disabled = settlementResponseUploading || frozen;
+          settlementResponseModifiedAccept.checked = modifiedReviewed;
+          settlementResponseModifiedReview.hidden =
+            !modifiedMode || (!settlementModifiedOfferParsed && !modifiedReviewed);
+          settlementResponseSentDocx.closest(".settlement-response-files").hidden = modifiedMode;
+          settlementResponseSentDocxLabel.textContent = modifiedMode
+            ? "Modified offer DOCX"
+            : "Final DOCX you sent";
+          settlementResponseSentXlsxLabel.textContent = modifiedMode
+            ? "Modified offer XLSX"
+            : "Final XLSX you sent";
+          settlementResponseSentDocx.disabled = settlementResponseUploading || frozen || modifiedMode;
+          settlementResponseSentXlsx.disabled = settlementResponseUploading || frozen || modifiedMode;
           settlementResponseCounteroffer.hidden =
             selectedOutcome !== "counteroffer" && savedOutcome !== "counteroffer";
           settlementResponseContinue.disabled = settlementResponseUploading
@@ -3897,8 +4007,6 @@
             || !savedOutcome
             || counterofferNeedsFile
             || (savedOutcome !== "counteroffer" && current?.has_next_attempt);
-          settlementResponseSentDocx.disabled = settlementResponseUploading || frozen;
-          settlementResponseSentXlsx.disabled = settlementResponseUploading || frozen;
           settlementResponseCounterofferFile.disabled = settlementResponseUploading
             || Boolean(current?.counteroffer_attachment_present);
           settlementResponseAcceptedFile.disabled = settlementResponseUploading
@@ -3938,12 +4046,24 @@
           for (const attachment of current?.attachments || []) {
             const item = document.createElement("li");
             const label = {
-              sent_docx: "Final DOCX sent",
-              sent_xlsx: "Final XLSX sent",
+              sent_docx: modifiedMode ? "Unchanged-path DOCX attachment" : "Final DOCX sent",
+              sent_xlsx: modifiedMode ? "Unchanged-path XLSX attachment" : "Final XLSX sent",
+              modified_docx: "Modified offer DOCX",
+              modified_xlsx: "Modified offer XLSX",
               counteroffer: "Counteroffer",
               accepted_offer: "Accepted offer document",
+              modified_source_docx: "Modified offer DOCX source",
+              modified_source_xlsx: "Modified offer XLSX source",
             }[attachment.kind] || "Attachment";
-            item.textContent = `${label}: ${attachment.filename} (${formatFileSize(attachment.size_bytes)})`;
+            const isSource = attachment.kind.startsWith("modified_source_");
+            if (isSource && settlementSelectedScenario) {
+              const link = document.createElement("a");
+              link.href = `/cases/${settlementCaseId}/settlement-planning/selections/${settlementSelectedScenario.selection_id}/offer-response/attachments/${attachment.id}`;
+              link.textContent = `${label}: ${attachment.filename}`;
+              item.append(link, document.createTextNode(` (${formatFileSize(attachment.size_bytes)})`));
+            } else {
+              item.textContent = `${label}: ${attachment.filename} (${formatFileSize(attachment.size_bytes)})`;
+            }
             settlementResponseAttachments.append(item);
           }
           settlementResponseSentDocx.setAttribute("aria-label", "Upload or replace the exact final DOCX you sent");
@@ -4034,12 +4154,15 @@
           settlementOfferResponseState = null;
           settlementAttemptStateLoaded = false;
           settlementAttemptStateDirty = false;
+          settlementModifiedOfferParsed = false;
+          settlementResponseModifiedPreview.textContent = "";
+          settlementResponseModifiedAccept.checked = false;
           settlementResponseWorkflow.hidden = !showWorkflow;
           settlementResponsePlaceholder.hidden = true;
           settlementResponseChecklist.hidden = true;
           settlementResponseContinue.disabled = true;
           settlementResponseConfirmSent.disabled = true;
-          settlementResponseWorkflow.querySelector("fieldset").disabled = true;
+          document.getElementById("settlement-response-outcome-fieldset").disabled = true;
           settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
             input.checked = false;
           });
@@ -4078,8 +4201,18 @@
             settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
               input.checked = input.value === outcome;
             });
-            settlementResponseStatus.textContent = "Attach the exact final documents you sent. Your files stay in this case and are not processed by AI.";
+            settlementResponseStatus.textContent =
+              settlementAttemptEditableState.sent_offer_mode === "modified"
+                ? "Upload both modified documents. They stay in this case and are not processed by AI."
+                : "Attach the exact final documents you sent. Your files stay in this case and are not processed by AI.";
             updateSettlementResponseControls();
+            if (
+              settlementAttemptEditableState.sent_offer_mode === "modified"
+              && settlementAttemptEditableState.modified_offer_reviewed
+              && loadedResponse.sent_documents_complete
+            ) {
+              void reloadModifiedOfferReview();
+            }
             return true;
           } catch (error) {
             if (
@@ -4167,6 +4300,13 @@
               || settlementSelectedScenario?.selection_id !== selectionId
             ) return;
             settlementOfferResponseState = uploadedState;
+            settlementAttemptEditableState = uploadedState.editable_state || settlementAttemptEditableState;
+            settlementAttemptStateDirty = false;
+            settlementModifiedOfferParsed = false;
+            settlementResponseModifiedAccept.checked =
+              Boolean(settlementAttemptEditableState.modified_offer_reviewed);
+            settlementResponseModifiedReview.hidden = true;
+            settlementResponseModifiedPreview.textContent = "";
             settlementResponseStatus.textContent = `${file.name} was securely attached to this case. It was not sent or analyzed.`;
             updateSettlementResponseControls();
             void loadSettlementOfferResponseHistory(caseId);
@@ -4180,6 +4320,74 @@
               : "The file could not be attached.";
           } finally {
             settlementResponseUploading = false;
+            updateSettlementResponseControls();
+          }
+        }
+
+        async function chooseModifiedOffer() {
+          if (!settlementAttemptStateLoaded || settlementOfferResponseState?.frozen) return;
+          settlementAttemptEditableState = {
+            ...settlementAttemptEditableState,
+            sent_offer_mode: "modified",
+            modified_offer_reviewed: false,
+          };
+          settlementResponseModifiedAccept.checked = false;
+          settlementModifiedOfferParsed = false;
+          settlementResponseModifiedReview.hidden = true;
+          settlementResponseModifiedPreview.textContent = "";
+          settlementAttemptStateDirty = true;
+          updateSettlementResponseControls();
+          if (await saveSettlementAttemptState()) {
+            settlementResponseStatus.textContent =
+              "Modified offer selected. Upload both modified DOCX and XLSX files below.";
+            updateSettlementResponseControls();
+          }
+        }
+
+        async function parseAndReviewModifiedOffer() {
+          if (!settlementSelectedScenario || settlementResponseUploading) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          settlementResponseModifiedParse.disabled = true;
+          settlementResponseStatus.textContent = "Reading supported fields from the uploaded DOCX and XLSX…";
+          try {
+            const result = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/parse-modified-offer`,
+              { method: "POST" },
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            const fields = result.editable_state || {};
+            settlementOfferFrom.value = fields.offer_from || "";
+            settlementOfferTo.value = fields.offer_to || "";
+            settlementOfferCounty.value = fields.county || "";
+            settlementOfferCauseNumber.value = fields.cause_number || "";
+            settlementOfferEffective.value = fields.proposed_effective_date || "";
+            settlementOfferResponse.value = fields.proposed_response_date || "";
+            settlementOfferTerms.value = (fields.proposal_terms || []).join("\n");
+            settlementOfferValues.value = JSON.stringify(fields.proposed_values || [], null, 2);
+            settlementAttemptEditableState = {
+              ...settlementAttemptEditableState,
+              ...fields,
+              sent_offer_mode: "modified",
+              modified_offer_reviewed: false,
+            };
+            settlementResponseModifiedAccept.checked = false;
+            renderModifiedOfferReview(fields, result.warnings || []);
+            settlementAttemptStateDirty = true;
+            updateSettlementResponseControls();
+            if (!(await saveSettlementAttemptState())) return;
+            settlementResponseStatus.textContent =
+              "Fields were imported for review. Correct any values above, read the notes, then explicitly accept them.";
+            updateSettlementResponseControls();
+          } catch (error) {
+            if (settlementCaseId !== caseId || settlementSelectedScenario?.selection_id !== selectionId) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? error.message
+              : "The modified offer could not be parsed.";
+          } finally {
             updateSettlementResponseControls();
           }
         }
@@ -7375,6 +7583,34 @@
             settlementResponseSentXlsx.value = "";
           });
         });
+        settlementResponseModifiedDocx.addEventListener("change", () => {
+          const file = settlementResponseModifiedDocx.files?.[0];
+          void uploadSettlementResponseFile("modified_docx", file).finally(() => {
+            settlementResponseModifiedDocx.value = "";
+          });
+        });
+        settlementResponseModifiedXlsx.addEventListener("change", () => {
+          const file = settlementResponseModifiedXlsx.files?.[0];
+          void uploadSettlementResponseFile("modified_xlsx", file).finally(() => {
+            settlementResponseModifiedXlsx.value = "";
+          });
+        });
+        settlementResponseModifiedChoice.addEventListener("click", () => {
+          void chooseModifiedOffer();
+        });
+        settlementResponseModifiedParse.addEventListener("click", () => {
+          void parseAndReviewModifiedOffer();
+        });
+        settlementResponseModifiedAccept.addEventListener("change", () => {
+          if (!settlementAttemptStateLoaded || settlementOfferResponseState?.frozen) return;
+          settlementAttemptEditableState = {
+            ...settlementAttemptEditableState,
+            modified_offer_reviewed: settlementResponseModifiedAccept.checked,
+          };
+          settlementAttemptStateDirty = true;
+          updateSettlementResponseControls();
+          void saveSettlementAttemptState().then(updateSettlementResponseControls);
+        });
         settlementResponseCounterofferFile.addEventListener("change", () => {
           const file = settlementResponseCounterofferFile.files?.[0];
           void uploadSettlementResponseFile("counteroffer", file).finally(() => {
@@ -7415,7 +7651,17 @@
         ].forEach((input) => {
           input.addEventListener("change", () => {
             if (!settlementAttemptStateLoaded || settlementOfferResponseState?.frozen) return;
+            if (settlementAttemptEditableState.sent_offer_mode === "modified") {
+              settlementAttemptEditableState = {
+                ...settlementAttemptEditableState,
+                modified_offer_reviewed: false,
+              };
+              settlementResponseModifiedAccept.checked = false;
+              settlementResponseModifiedPreview.textContent =
+                "Fields changed after parsing. Review the current editable fields above and accept them again.";
+            }
             settlementAttemptStateDirty = true;
+            updateSettlementResponseControls();
             void saveSettlementAttemptState();
           });
         });

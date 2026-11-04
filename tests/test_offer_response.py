@@ -130,6 +130,55 @@ class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
         rank.assert_not_called()
         deliver.assert_not_called()
 
+    async def test_replacing_modified_source_invalidates_prior_review(self) -> None:
+        case_id = uuid4()
+        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        user = SimpleNamespace(id=uuid4())
+        record = SimpleNamespace(id=uuid4(), outcome=None)
+        attempt = SimpleNamespace(
+            frozen_at=None,
+            revision=4,
+            snapshot_json={"revisions": {"profile": 2, "settlement": 5}},
+            editable_state_json={
+                "sent_offer_mode": "modified",
+                "modified_offer_reviewed": True,
+            },
+        )
+        upload = AsyncUpload("updated.docx", make_docx())
+        db = Mock()
+        db.scalars.return_value.all.return_value = []
+        expected = SimpleNamespace(sent_documents_complete=False)
+
+        with (
+            patch("app.offer_response._require_secure_case_storage"),
+            patch("app.offer_response._authorized_selection", return_value=(None, selection)),
+            patch(
+                "app.offer_response._lock_case",
+                return_value=SimpleNamespace(
+                    id=case_id,
+                    profile_revision=2,
+                    settlement_revision=5,
+                ),
+            ),
+            patch("app.offer_response._response_record", return_value=record),
+            patch("app.offer_response._attempt_for_selection", return_value=attempt),
+            patch("app.offer_response._read_response", return_value=expected),
+            patch("app.offer_response.storage.put"),
+        ):
+            result = await upload_offer_response_attachment(
+                case_id,
+                selection.id,
+                "modified_docx",
+                Response(),
+                upload,
+                user,
+                db,
+            )
+
+        self.assertIs(result, expected)
+        self.assertEqual(attempt.revision, 5)
+        self.assertFalse(attempt.editable_state_json["modified_offer_reviewed"])
+
     async def test_confirmed_attempt_rejects_replacing_sent_files(self) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(id=uuid4(), case_id=case_id)
@@ -416,6 +465,96 @@ class OfferResponseTransitionTests(unittest.TestCase):
 
         self.assertEqual([item.attempt_ordinal for item in attempts], [1, 2, 3, 4])
 
+    def test_modified_offer_values_and_sources_are_inherited_by_next_attempt(self) -> None:
+        case_id = uuid4()
+        user = SimpleNamespace(id=uuid4())
+        selection = SimpleNamespace(
+            id=uuid4(),
+            case_id=case_id,
+            run_id=uuid4(),
+            scenario_id="saved-scenario",
+        )
+        response_record = SimpleNamespace(id=uuid4())
+        case = SimpleNamespace(id=case_id, profile_revision=2, settlement_revision=5)
+        attempt = SimpleNamespace(
+            id=uuid4(),
+            frozen_at=object(),
+            sent_confirmed_at=object(),
+            attempt_ordinal=1,
+            selection_id=selection.id,
+            snapshot_json={
+                "revisions": {"profile": 2, "settlement": 5},
+                "scenario": {"result": {"scenario": {"id": "saved"}}},
+            },
+            frozen_snapshot_json={"scenario": {"result": {"scenario": {"id": "saved"}}}},
+            editable_state_json={
+                "sent_offer_mode": "modified",
+                "modified_offer_reviewed": True,
+                "offer_from": "Updated party name",
+                "proposal_terms": ["Updated term"],
+                "proposed_values": [{"asset_id": str(uuid4()), "proposed_amount_cents": 1234}],
+            },
+        )
+        current = SimpleNamespace(
+            sent_documents_complete=True,
+            sent_confirmed=True,
+            outcome="counteroffer",
+            counteroffer_attachment_present=True,
+        )
+        source_docx = SimpleNamespace(
+            kind="modified_docx",
+            document_id=uuid4(),
+            filename="modified.docx",
+        )
+        source_xlsx = SimpleNamespace(
+            kind="modified_xlsx",
+            document_id=uuid4(),
+            filename="modified.xlsx",
+        )
+        db = Mock()
+        db.scalar.return_value = None
+        db.execute.return_value.scalars.return_value.all.return_value = [
+            source_docx,
+            source_xlsx,
+        ]
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+            patch("app.offer_response._lock_case", return_value=case),
+            patch("app.offer_response._selection", return_value=selection),
+            patch("app.offer_response._response_record", return_value=response_record),
+            patch("app.offer_response._read_response", return_value=current),
+            patch("app.offer_response._attempt_for_selection", return_value=attempt),
+            patch("app.offer_response._require_current_attempt_revisions"),
+        ):
+            result = continue_offer_response(
+                case_id,
+                selection.id,
+                Response(),
+                user,
+                db,
+            )
+
+        self.assertEqual(result["next_step"], "next_attempt")
+        created = [call.args[0] for call in db.add.call_args_list]
+        next_attempt = next(
+            item for item in created if isinstance(item, SettlementNegotiationAttempt)
+        )
+        source_attachments = [
+            item for item in created if isinstance(item, SettlementOfferResponseAttachment)
+        ]
+        self.assertEqual(next_attempt.editable_state_json["offer_from"], "Updated party name")
+        self.assertEqual(next_attempt.editable_state_json["proposal_terms"], ["Updated term"])
+        self.assertEqual(next_attempt.editable_state_json["sent_offer_mode"], "unchanged")
+        self.assertFalse(next_attempt.editable_state_json["modified_offer_reviewed"])
+        self.assertEqual(
+            {item.kind for item in source_attachments},
+            {"modified_source_docx", "modified_source_xlsx"},
+        )
+        self.assertEqual(
+            {item.document_id for item in source_attachments},
+            {source_docx.document_id, source_xlsx.document_id},
+        )
+
     def test_counteroffer_outcome_requires_prior_sent_confirmation(self) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(
@@ -666,10 +805,15 @@ class OfferResponseTransitionTests(unittest.TestCase):
             kind="sent_docx",
             filename="final.docx",
         )
+        modified_source = SimpleNamespace(
+            response_id=response_id,
+            kind="modified_source_docx",
+            filename="modified.docx",
+        )
         query_result = Mock()
         query_result.all.return_value = [(offer_response, selection, attempt)]
         attachment_query = Mock()
-        attachment_query.all.return_value = [attachment]
+        attachment_query.all.return_value = [attachment, modified_source]
         db = Mock()
         db.execute.return_value = query_result
         db.scalars.return_value = attachment_query
@@ -684,7 +828,10 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertEqual(result[0].outcome, "accepted")
         self.assertEqual(
             [item.model_dump() for item in result[0].attachments],
-            [{"kind": "sent_docx", "filename": "final.docx"}],
+            [
+                {"kind": "sent_docx", "filename": "final.docx"},
+                {"kind": "modified_source_docx", "filename": "modified.docx"},
+            ],
         )
         self.assertEqual(response.headers["Cache-Control"], "no-store")
 
@@ -771,6 +918,12 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('id="settlement-response-confirm-sent"', html)
         self.assertIn("offer-response/confirm-sent", html)
         self.assertIn("I reviewed and sent these final documents", html)
+        self.assertIn("I modified the offer", html)
+        self.assertIn("Upload the modified offer here", html)
+        self.assertIn('id="settlement-response-modified-accept"', html)
+        self.assertIn('uploadSettlementResponseFile("modified_docx", file)', html)
+        self.assertIn('uploadSettlementResponseFile("modified_xlsx", file)', html)
+        self.assertIn("offer-response/parse-modified-offer", html)
         self.assertIn("current?.sent_confirmed", html)
         attempt_save = html.split("async function saveSettlementAttemptState()", 1)[1].split(
             "async function loadSettlementOfferResponse", 1
