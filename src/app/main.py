@@ -31,6 +31,7 @@ from app.documents import (
     extract_document,
     render_template,
 )
+from app.export_integrations import router as export_integrations_router
 from app.models import (
     AuthSession,
     Case,
@@ -50,7 +51,7 @@ from app.property_tracing import (
 )
 from app.materials import router as materials_router
 from app.review import router as review_router
-from app.settlement_routes import router as settlement_router
+from app.settlement_routes import demo_export_router, router as settlement_router
 from app.services import (
     Artifact,
     get_case_or_none,
@@ -63,6 +64,25 @@ from app.validation import UploadValidationError, validate_upload
 logger = logging.getLogger(__name__)
 settings = get_settings()
 storage = ObjectStorage(settings)
+
+
+class OAuthCallbackQueryFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        arguments = record.args
+        if (
+            isinstance(arguments, tuple)
+            and len(arguments) > 2
+            and isinstance(arguments[2], str)
+        ):
+            request_path = arguments[2]
+            path = request_path.split("?", 1)[0]
+            if path.startswith("/api/export-integrations/") and path.endswith("/callback"):
+                record.args = (*arguments[:2], path, *arguments[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(OAuthCallbackQueryFilter())
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -80,10 +100,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(export_integrations_router)
 app.include_router(materials_router)
 app.include_router(analysis_router)
 app.include_router(review_router)
 app.include_router(settlement_router)
+app.include_router(demo_export_router)
 
 DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
 LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"

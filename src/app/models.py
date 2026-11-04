@@ -188,6 +188,74 @@ class SettlementScenarioSelection(Base):
     )
 
 
+class ExportProviderConnection(Base):
+    __tablename__ = "export_provider_connections"
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('google_drive', 'dropbox')",
+            name="ck_export_provider_connections_provider",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "provider",
+            name="uq_export_provider_connection_user_provider",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    account_label: Mapped[str] = mapped_column(String(320), nullable=False)
+    encrypted_access_token: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_refresh_token: Mapped[bytes | None] = mapped_column(LargeBinary)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scopes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ExportDeliveryEvent(Base):
+    __tablename__ = "export_delivery_events"
+    __table_args__ = (
+        CheckConstraint(
+            "channel IN ('google_drive', 'dropbox', 'email')",
+            name="ck_export_delivery_events_channel",
+        ),
+        CheckConstraint(
+            "outcome IN ('pending', 'success', 'partial', 'failed')",
+            name="ck_export_delivery_events_outcome",
+        ),
+        CheckConstraint("file_count BETWEEN 0 AND 2", name="ck_export_delivery_events_file_count"),
+        UniqueConstraint(
+            "user_id_snapshot",
+            "idempotency_key",
+            name="uq_export_delivery_event_idempotency",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    selection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("settlement_scenario_selections.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    destination_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    idempotency_key: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Document(Base):
     __tablename__ = "documents"
 

@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     google_client_id: str | None = None
     google_client_secret: str | None = None
+    dropbox_app_key: str | None = None
+    dropbox_app_secret: str | None = None
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Casework"
     webauthn_origin: str = "http://localhost:8000"
@@ -81,6 +83,8 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_COOKIE_SECURE must be enabled when SameSite is none.")
         if bool(self.google_client_id) != bool(self.google_client_secret):
             raise ValueError("Google OIDC client ID and secret must be configured together.")
+        if bool(self.dropbox_app_key) != bool(self.dropbox_app_secret):
+            raise ValueError("Dropbox app key and secret must be configured together.")
         if bool(self.smtp_username) != bool(self.smtp_password):
             raise ValueError("SMTP username and password must be configured together.")
         if self.auth_idle_session_days > self.auth_absolute_session_days:
