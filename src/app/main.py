@@ -371,8 +371,14 @@ def home() -> HTMLResponse:
 
 
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
+@app.get(
+    "/demo/settlement-completion",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
 @app.get("/demo/documents", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/demo/wizard", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/settlement-completion", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/upload", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
 def onboarding_page() -> HTMLResponse:

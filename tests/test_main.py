@@ -200,6 +200,31 @@ class MainWorkflowTests(unittest.TestCase):
             4.5,
         )
 
+    def test_settlement_completion_routes_serve_the_dedicated_page(self) -> None:
+        for path in ("/settlement-completion", "/demo/settlement-completion"):
+            status, body = asyncio.run(request_app(path))
+            self.assertEqual(status, 200)
+            page = body.decode()
+            self.assertIn('id="settlement-completion-page"', page)
+            self.assertIn("Congratulations — you’re nearly done.", page)
+            self.assertIn("Thanks for choosing Casework", page)
+            self.assertIn("Findings and Conclusions About a Marriage", page)
+            self.assertIn('id="settlement-response-accepted-file"', page)
+            self.assertIn("initializeSettlementCompletionPage()", page)
+            self.assertIn("settlement-completion-auth-content", page)
+            self.assertIn("settlement-completion-demo-content", page)
+
+        page = body.decode()
+        self.assertIn(
+            (
+                "`/settlement-completion?case_id=${encodeURIComponent(caseId)}"
+                "&selection_id=${encodeURIComponent(selectionId)}`"
+            ),
+            page,
+        )
+        self.assertIn("loadSettlementOfferResponse({ showWorkflow: false })", page)
+        self.assertIn("settlementOfferResponseState?.sent_confirmed", page)
+
     def test_root_displays_mode_choices_and_authentication_gate(self) -> None:
         status, body = asyncio.run(request_app("/"))
 
@@ -304,7 +329,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('name="settlement-demo-response-outcome"', table_section)
         self.assertIn('id="settlement-demo-add-counteroffer"', table_section)
         self.assertIn('id="settlement-demo-response-next"', table_section)
-        self.assertIn('id="settlement-demo-response-checklist"', table_section)
+        self.assertNotIn("Congratulations", table_section)
+        self.assertIn('id="settlement-completion-demo-content"', page)
+        self.assertIn('window.location.assign("/demo/settlement-completion")', page)
         self.assertIn("fictional-final-cr2a-agreement.docx", table_section)
         self.assertIn("fictional-counteroffer.pdf", page)
         self.assertNotIn('type="file"', table_section)
