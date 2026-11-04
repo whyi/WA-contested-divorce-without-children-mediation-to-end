@@ -552,6 +552,21 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Math.random()", id_generator)
         self.assertNotIn("return crypto.randomUUID()", id_generator)
 
+    def test_wizard_finish_saves_then_shows_existing_demo_confirmation(self) -> None:
+        status, body = asyncio.run(request_app("/demo/wizard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="wizard-finish-notice" role="status" aria-live="polite"', page)
+        self.assertIn("Existing demo is a separate fictional preview and does not display or use your answers.", page)
+        finish_handler = page.split('wizardFinish.addEventListener("click"', 1)[1].split(
+            'wizardClearButton.addEventListener("click"', 1
+        )[0]
+        self.assertIn("await saveWizardDraft()", finish_handler)
+        self.assertIn('window.location.assign("/demo?wizard_saved=1")', finish_handler)
+        self.assertIn("if (saved)", finish_handler)
+        self.assertNotIn("URLSearchParams(window.location.search).set", finish_handler)
+
     def test_wizard_supports_browser_local_optional_files_for_each_record(self) -> None:
         status, body = asyncio.run(request_app("/demo/wizard"))
 

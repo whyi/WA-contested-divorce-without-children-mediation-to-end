@@ -27,10 +27,12 @@
 5. Browser storage errors are visible; no file is uploaded to the server.
 6. Existing filed-case gate and unrelated workflow behavior are unchanged.
 7. The Wizard clearly tells users how the filed-case and role selections unlock the intake sections.
+8. The finish action visibly confirms the browser-local save in Existing demo and clearly states that the separate fictional demo does not use Wizard answers.
 
 ## 4. Implementation Status
 
 - Section navigation now moves focus to each destination, marks the active step, and automatically creates the first editable finance, issue, or agreement entry when that collection is empty.
 - Existing multi-entry forms, optional attachments, filename/removal UI, browser-local IndexedDB persistence, and visible storage errors are retained.
 - Added route-level regression coverage for navigation behavior and local-only attachments.
+- The finish action now navigates only after a successful local save and displays an accessible notice in Existing demo so the separate demo's behavior is clear.
 - Full automated test suite passes.

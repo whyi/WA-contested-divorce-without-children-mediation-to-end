@@ -1769,6 +1769,7 @@
               <p class="eyebrow" id="preparation-eyebrow">Your next step</p>
               <h2 id="preparation-title"></h2>
               <p id="preparation-description"></p>
+              <p class="demo-wizard-status" id="wizard-finish-notice" role="status" aria-live="polite" tabindex="-1" hidden></p>
               <p class="preparation-note" id="preparation-note">This preview does not accept or save case details or documents. No case has been created. Do not enter real case information.</p>
               <div class="materials-workflow" id="materials-workflow" hidden>
                 <p class="materials-limits" id="materials-limits">Checking supported file types and the current upload limit…</p>
@@ -2476,6 +2477,7 @@
         const wizardGatedContent = document.getElementById("wizard-gated-content");
         const wizardProgress = wizardDemoPage.querySelector(".wizard-progress");
         const wizardFinish = document.getElementById("wizard-finish");
+        const wizardFinishNotice = document.getElementById("wizard-finish-notice");
         const wizardSaveStatus = document.getElementById("wizard-save-status");
         const wizardFinanceList = document.getElementById("wizard-finance-list");
         const wizardIssueList = document.getElementById("wizard-issue-list");
@@ -4682,6 +4684,14 @@
               "Explore fictional sample figures without signing in or opening a case.";
             assetAnalysisBackButton.textContent = "← Back to Casework";
             assetAnalysisView.hidden = false;
+            const wizardDraftSaved =
+              new URLSearchParams(window.location.search).get("wizard_saved") === "1";
+            wizardFinishNotice.hidden = !wizardDraftSaved;
+            if (wizardDraftSaved) {
+              wizardFinishNotice.textContent =
+                "Your wizard draft was saved in this browser. Existing demo is a separate fictional preview and does not display or use your answers.";
+              wizardFinishNotice.focus();
+            }
           }
         }
 
@@ -7800,8 +7810,22 @@
         wizardFinish.addEventListener("click", async () => {
           if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
           window.clearTimeout(wizardSaveTimer);
-          const saved = await saveWizardDraft();
-          if (saved) window.location.assign("/demo");
+          wizardFinish.disabled = true;
+          wizardFinish.textContent = "Saving your browser-only draft…";
+          try {
+            const saved = await saveWizardDraft();
+            if (saved) {
+              window.location.assign("/demo?wizard_saved=1");
+              return;
+            }
+          } catch (error) {
+            setWizardSaveStatus(
+              `Draft could not be saved: ${error instanceof Error ? error.message : "browser storage failed"}.`,
+              "error",
+            );
+          }
+          wizardFinish.disabled = false;
+          wizardFinish.textContent = "Save and view Existing demo";
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
         wizardClearCancel.addEventListener("click", () => wizardClearDialog.close());
