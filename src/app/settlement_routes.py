@@ -25,6 +25,8 @@ from app.models import (
     Document,
     ExportDeliveryEvent,
     SettlementLedgerEvent,
+    SettlementOfferResponse,
+    SettlementOfferResponseAttachment,
     SettlementPlanningConsentEvent,
     SettlementScenarioRun,
     SettlementScenarioSelection,
@@ -142,6 +144,18 @@ class ScenarioSelectionRead(BaseModel):
     scenario_id: str
     profile_revision: int
     settlement_revision: int
+
+
+class OfferResponseHistoryAttachment(BaseModel):
+    kind: Literal["sent_docx", "sent_xlsx", "counteroffer"]
+    filename: str
+
+
+class OfferResponseHistoryItem(BaseModel):
+    selection_id: UUID
+    scenario_id: str
+    outcome: Literal["counteroffer", "rejected", "accepted"] | None
+    attachments: list[OfferResponseHistoryAttachment]
 
 
 class OfferCreate(BaseModel):
@@ -870,6 +884,69 @@ def create_settlement_scenarios(
         db.rollback()
         logger.exception("Settlement scenarios could not be loaded.")
         raise HTTPException(status_code=503, detail="Settlement scenarios are unavailable.") from error
+
+
+@router.get("/offer-responses", response_model=list[OfferResponseHistoryItem])
+def list_settlement_offer_responses(
+    case_id: UUID,
+    response: Response,
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[OfferResponseHistoryItem]:
+    try:
+        _authorize_case(db, user, case_id, write=False)
+        rows = db.execute(
+            select(SettlementOfferResponse, SettlementScenarioSelection)
+            .join(
+                SettlementScenarioSelection,
+                SettlementScenarioSelection.id == SettlementOfferResponse.selection_id,
+            )
+            .where(
+                SettlementOfferResponse.case_id == case_id,
+                SettlementScenarioSelection.case_id == case_id,
+            )
+            .order_by(
+                SettlementOfferResponse.updated_at.desc(),
+                SettlementOfferResponse.id.desc(),
+            )
+            .limit(50)
+        ).all()
+        response_ids = [offer_response.id for offer_response, _ in rows]
+        attachments_by_response: dict[UUID, list[dict]] = {
+            response_id: [] for response_id in response_ids
+        }
+        if response_ids:
+            attachments = db.scalars(
+                select(SettlementOfferResponseAttachment)
+                .join(Document, Document.id == SettlementOfferResponseAttachment.document_id)
+                .where(
+                    SettlementOfferResponseAttachment.response_id.in_(response_ids),
+                    Document.case_id == case_id,
+                )
+                .order_by(SettlementOfferResponseAttachment.created_at)
+            ).all()
+            for attachment in attachments:
+                attachments_by_response[attachment.response_id].append(
+                    {"kind": attachment.kind, "filename": attachment.filename}
+                )
+        response.headers["Cache-Control"] = "no-store"
+        return [
+            OfferResponseHistoryItem(
+                selection_id=selection.id,
+                scenario_id=selection.scenario_id,
+                outcome=offer_response.outcome,
+                attachments=attachments_by_response[offer_response.id],
+            )
+            for offer_response, selection in rows
+        ]
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        logger.exception("Settlement offer-response history could not be loaded.")
+        raise HTTPException(
+            status_code=503,
+            detail="Settlement offer-response history is unavailable.",
+        ) from error
 
 
 @router.post("/selections", response_model=ScenarioSelectionRead, status_code=201)

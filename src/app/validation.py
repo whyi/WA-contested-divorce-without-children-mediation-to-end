@@ -43,6 +43,24 @@ def validate_upload(
             )
         return
 
+    if expected_type == "xlsx":
+        if extension != "xlsx":
+            raise UploadValidationError("Expected an .xlsx file.", "unsupported_file")
+        try:
+            with ZipFile(BytesIO(content)) as archive:
+                names = set(archive.namelist())
+        except BadZipFile as error:
+            raise UploadValidationError(
+                "The uploaded XLSX file is not a valid Office workbook.",
+                "unreadable_file",
+            ) from error
+        if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
+            raise UploadValidationError(
+                "The uploaded XLSX file is missing required workbook parts.",
+                "unreadable_file",
+            )
+        return
+
     if expected_type == "pdf":
         if extension != "pdf" or b"%PDF-" not in content[:1024]:
             raise UploadValidationError("Expected a valid .pdf file.", "unsupported_file")
