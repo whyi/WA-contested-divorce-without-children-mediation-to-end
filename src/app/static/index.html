@@ -1699,8 +1699,8 @@
                   <section class="settlement-response-workflow" id="settlement-response-workflow" hidden aria-labelledby="settlement-response-title">
                     <h3 id="settlement-response-title">After you send your final offer</h3>
                     <p id="settlement-response-attempt-status" role="status" aria-live="polite">First Attempt — active and editable</p>
-                    <p>Choosing “Counteroffer received” freezes this attempt’s saved dates, milestones, values, and attachments. Attach the received counteroffer here; Next opens an editable copy as the next attempt. This tracker does not send documents or call AI.</p>
-                    <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> After sending, attach the exact final DOCX and XLSX files you sent, then record the response.</p>
+                    <p>Draft downloads and attaching final files do not freeze this attempt. After you have actually sent both files, confirm below to freeze its dates, milestones, values, and scenario. Then record the response. This tracker does not send documents or call AI.</p>
+                    <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> Attach the exact final DOCX and XLSX files you sent. Only the explicit confirmation below locks this attempt.</p>
                     <div class="settlement-response-files">
                       <label for="settlement-response-sent-docx">Final DOCX you sent
                         <input id="settlement-response-sent-docx" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
@@ -1716,6 +1716,7 @@
                       <pre id="settlement-response-snapshot-data"></pre>
                     </details>
                     <p id="settlement-response-status" role="status" aria-live="polite"></p>
+                    <button class="materials-import" id="settlement-response-confirm-sent" type="button" disabled>I reviewed and sent these final documents</button>
                     <fieldset>
                       <legend>What response did you receive?</legend>
                       <label><input type="radio" name="settlement-response-outcome" value="counteroffer"> Counteroffer received</label>
@@ -2165,6 +2166,7 @@
         const settlementResponseAttachments = document.getElementById("settlement-response-attachments");
         const settlementResponseSnapshotData = document.getElementById("settlement-response-snapshot-data");
         const settlementResponseStatus = document.getElementById("settlement-response-status");
+        const settlementResponseConfirmSent = document.getElementById("settlement-response-confirm-sent");
         const settlementResponseAttemptStatus = document.getElementById("settlement-response-attempt-status");
         const settlementResponseCounteroffer = document.getElementById("settlement-response-counteroffer");
         const settlementResponseCounterofferFile = document.getElementById("settlement-response-counteroffer-file");
@@ -3604,16 +3606,24 @@
           const selectedOutcome = selectedSettlementOutcome();
           const savedOutcome = current?.outcome || "";
           const frozen = Boolean(current?.frozen);
-          const inputsLocked = frozen || Boolean(current?.sent_documents_complete);
+          const inputsLocked = frozen;
           settlementGenerate.disabled = Boolean(current);
           const counterofferNeedsFile = savedOutcome === "counteroffer"
             && !current?.counteroffer_attachment_present;
           settlementResponseWorkflow.querySelector("fieldset").disabled =
-            !current?.sent_documents_complete || settlementResponseUploading || frozen;
+            !current?.sent_confirmed || settlementResponseUploading || frozen;
+          settlementResponseConfirmSent.disabled = settlementResponseUploading
+            || !current?.sent_documents_complete
+            || Boolean(current?.sent_confirmed)
+            || frozen;
+          settlementResponseConfirmSent.textContent = current?.sent_confirmed
+            ? "Sent confirmed — this attempt is frozen"
+            : "I reviewed and sent these final documents";
           settlementResponseCounteroffer.hidden =
             selectedOutcome !== "counteroffer" && savedOutcome !== "counteroffer";
           settlementResponseContinue.disabled = settlementResponseUploading
             || !current?.sent_documents_complete
+            || !current?.sent_confirmed
             || !savedOutcome
             || counterofferNeedsFile
             || (savedOutcome !== "counteroffer" && current?.has_next_attempt);
@@ -3627,9 +3637,9 @@
           if (current) {
             const label = settlementAttemptOrdinalLabel(current.attempt_ordinal);
             const attemptStatus = frozen
-              ? "frozen and read-only"
+              ? "sent and frozen; read-only"
               : current.sent_documents_complete
-                ? "active; final sent files recorded and proposal inputs locked"
+                ? "final files attached; still editable until you confirm sending"
                 : "active and editable";
             settlementResponseAttemptStatus.textContent =
               `${label} Attempt — ${attemptStatus}`;
@@ -3761,6 +3771,7 @@
           settlementResponsePlaceholder.hidden = true;
           settlementResponseChecklist.hidden = true;
           settlementResponseContinue.disabled = true;
+          settlementResponseConfirmSent.disabled = true;
           settlementResponseWorkflow.querySelector("fieldset").disabled = true;
           settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
             input.checked = false;
@@ -3906,8 +3917,51 @@
           }
         }
 
+        async function confirmSettlementSentDocuments() {
+          if (
+            !settlementSelectedScenario
+            || !settlementOfferResponseState?.sent_documents_complete
+            || settlementOfferResponseState.sent_confirmed
+          ) return;
+          if (!(await saveSettlementAttemptState())) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          settlementResponseConfirmSent.disabled = true;
+          settlementResponseStatus.textContent =
+            "Recording your confirmation and freezing this attempt…";
+          try {
+            const confirmedState = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/confirm-sent`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  expected_attempt_revision: settlementOfferResponseState.attempt_revision,
+                }),
+              },
+            );
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementOfferResponseState = confirmedState;
+            settlementResponseStatus.textContent =
+              "Your sent documents are confirmed. This attempt is now frozen; choose the response you received.";
+            updateSettlementResponseControls();
+            void loadSettlementOfferResponseHistory(caseId);
+          } catch (error) {
+            if (
+              settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId
+            ) return;
+            settlementResponseStatus.textContent = error instanceof Error
+              ? error.message
+              : "The sent-document confirmation could not be saved.";
+            updateSettlementResponseControls();
+          }
+        }
+
         async function saveSettlementResponseOutcome(outcome) {
-          if (!settlementSelectedScenario) return;
+          if (!settlementSelectedScenario || !settlementOfferResponseState?.sent_confirmed) return;
           if (!(await saveSettlementAttemptState())) {
             settlementResponseWorkflow.querySelectorAll('input[name="settlement-response-outcome"]').forEach((input) => {
               input.checked = input.value === (settlementOfferResponseState?.outcome || "");
@@ -6951,6 +7005,9 @@
         });
         settlementResponseContinue.addEventListener("click", () => {
           void continueSettlementOfferResponse();
+        });
+        settlementResponseConfirmSent.addEventListener("click", () => {
+          void confirmSettlementSentDocuments();
         });
         [
           settlementOfferFrom,
