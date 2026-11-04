@@ -4596,6 +4596,7 @@
             const dateInput = document.createElement("input");
             dateInput.type = "date";
             dateInput.value = milestoneActiveDate(milestone);
+            dateInput.disabled = settlementDemoAttemptFrozen;
             dateInput.dataset.field = "date";
             dateInput.setAttribute("aria-label", `${milestone.label} date`);
             field.append(dateInput);
@@ -4608,14 +4609,15 @@
             const save = document.createElement("button");
             save.className = "asset-milestone-button primary";
             save.type = "button";
+            save.disabled = settlementDemoAttemptFrozen;
             save.dataset.action = "save-standard";
             save.textContent = milestone.overrideDate ? "Save override" : "Set date";
             const reset = document.createElement("button");
             reset.className = "asset-milestone-button";
             reset.type = "button";
+            reset.disabled = settlementDemoAttemptFrozen || !milestone.overrideDate;
             reset.dataset.action = "reset-standard";
             reset.textContent = "Reset";
-            reset.disabled = !milestone.overrideDate;
             actions.append(provenance, save, reset);
             const error = document.createElement("p");
             error.className = "asset-milestone-error";
@@ -4640,11 +4642,13 @@
               const confirm = document.createElement("button");
               confirm.className = "asset-milestone-button danger";
               confirm.type = "button";
+              confirm.disabled = settlementDemoAttemptFrozen;
               confirm.dataset.action = "confirm-delete";
               confirm.textContent = "Confirm delete";
               const cancel = document.createElement("button");
               cancel.className = "asset-milestone-button";
               cancel.type = "button";
+              cancel.disabled = settlementDemoAttemptFrozen;
               cancel.dataset.action = "cancel-delete";
               cancel.textContent = "Cancel";
               confirmationActions.append(confirm, cancel);
@@ -4661,6 +4665,7 @@
             labelInput.type = "text";
             labelInput.maxLength = 80;
             labelInput.value = milestone.label;
+            labelInput.disabled = settlementDemoAttemptFrozen;
             labelInput.dataset.field = "label";
             labelInput.setAttribute("aria-label", `Label for ${milestone.label}`);
             label.append(labelInput);
@@ -4670,6 +4675,7 @@
             const dateInput = document.createElement("input");
             dateInput.type = "date";
             dateInput.value = milestone.date;
+            dateInput.disabled = settlementDemoAttemptFrozen;
             dateInput.dataset.field = "date";
             dateInput.setAttribute("aria-label", `Date for ${milestone.label}`);
             date.append(dateInput);
@@ -4679,11 +4685,13 @@
             const save = document.createElement("button");
             save.className = "asset-milestone-button";
             save.type = "button";
+            save.disabled = settlementDemoAttemptFrozen;
             save.dataset.action = "save";
             save.textContent = "Save changes";
             const remove = document.createElement("button");
             remove.className = "asset-milestone-button danger";
             remove.type = "button";
+            remove.disabled = settlementDemoAttemptFrozen;
             remove.dataset.action = "delete";
             remove.textContent = "Delete";
             actions.append(save, remove);
@@ -4753,10 +4761,11 @@
             const group = createChartElement(assetChartMilestones, "g", {
               class: "asset-milestone-marker",
               transform: `translate(${x} ${y})`,
-              tabindex: 0,
+              tabindex: settlementDemoAttemptFrozen ? -1 : 0,
               role: "button",
               "aria-label": `${milestone.label}, ${formatMilestoneDate(date)}${milestone.overrideDate ? ", user-overridden" : milestone.source === "user" ? ", user-entered" : ""}`,
               "aria-pressed": String(selectedAssetMilestoneId === milestone.id),
+              "aria-disabled": String(settlementDemoAttemptFrozen),
               "data-milestone-id": milestone.id,
             });
             createChartElement(group, "title", {}, `${milestone.label}: ${formatMilestoneDate(date)}. ${milestoneProvenance(milestone)}`);
@@ -4948,6 +4957,7 @@
         }
 
         function selectAssetMilestone(id) {
+          if (settlementDemoAttemptFrozen) return;
           const milestone = allAssetMilestones().find((item) => item.id === id);
           if (id && (!milestone || !milestoneActiveDate(milestone))) return;
           selectedAssetMilestoneId = id;
@@ -4964,9 +4974,9 @@
 
         function updateAssetEditControls() {
           const editing = assetEditDraft !== null;
-          assetEditStart.hidden = editing;
-          assetEditSave.hidden = !editing;
-          assetEditCancel.hidden = !editing;
+          assetEditStart.hidden = editing || settlementDemoAttemptFrozen;
+          assetEditSave.hidden = !editing || settlementDemoAttemptFrozen;
+          assetEditCancel.hidden = !editing || settlementDemoAttemptFrozen;
         }
 
         function parseAssetEditValue(input) {
@@ -5033,6 +5043,7 @@
         }
 
         function startAssetEdit() {
+          if (settlementDemoAttemptFrozen) return;
           const stop = assetTimelineStops[selectedAssetYearIndex];
           if (!stop) return;
           const snapshot = assetSnapshotAtDate(stop.date);
@@ -5067,6 +5078,8 @@
 
         function saveAssetEdit() {
           if (
+            settlementDemoAttemptFrozen
+            ||
             !assetEditDraft
             || assetEditStopIndex !== selectedAssetYearIndex
             || assetEditStopDate !== assetTimelineStops[selectedAssetYearIndex]?.date
@@ -5118,6 +5131,7 @@
           assetYearRange.min = "0";
           assetYearRange.max = String(assetTimelineStops.length - 1);
           assetYearRange.value = String(index);
+          assetYearRange.disabled = settlementDemoAttemptFrozen;
           const snapshot = assetSnapshotAtDate(stop.date);
           const yearLabel = stop.yearIndex === null
             ? ""
@@ -5130,8 +5144,9 @@
           assetYearSelected.textContent = selectedLabel;
           assetYearFirst.textContent = `Year 1 · ${firstYear.year}`;
           assetYearLast.textContent = `Year ${sampleAssetYears.length} · ${lastYear.year}`;
-          assetYearPrevious.disabled = index === 0;
-          assetYearNext.disabled = index === assetTimelineStops.length - 1;
+          assetYearPrevious.disabled = settlementDemoAttemptFrozen || index === 0;
+          assetYearNext.disabled = settlementDemoAttemptFrozen
+            || index === assetTimelineStops.length - 1;
           assetYearCaption.textContent = stop.yearIndex === null
             ? `Fictional sample snapshot — ${milestoneLabel} (${formatMilestoneDate(stop.date)})`
             : `Fictional sample snapshot — Year ${stop.yearIndex + 1} (${sampleAssetYears[stop.yearIndex].year})`;
@@ -5521,8 +5536,29 @@
           assetTimelineChart.dataset.settlementFrozen = String(frozen);
           settlementStartDate.disabled = frozen;
           settlementEndDate.disabled = frozen;
+          assetYearRange.disabled = frozen;
+          assetYearPrevious.disabled = frozen || selectedAssetYearIndex === 0;
+          assetYearNext.disabled = frozen
+            || selectedAssetYearIndex === assetTimelineStops.length - 1;
+          assetMilestoneSelector.disabled = frozen;
           settlementDemoDocxDownload.disabled = frozen || !settlementDemoScenarioAvailable;
           settlementDemoXlsxDownload.disabled = frozen || !settlementDemoScenarioAvailable;
+          for (const control of customMilestoneForm.querySelectorAll("input, button")) {
+            control.disabled = frozen;
+          }
+          for (const control of standardMilestoneList.querySelectorAll("input, button")) {
+            const milestoneId = control.closest(".asset-milestone-item")?.dataset.milestoneId;
+            const milestone = standardMilestones.find((item) => item.id === milestoneId);
+            control.disabled = frozen
+              || (control.dataset.action === "reset-standard" && !milestone?.overrideDate);
+          }
+          for (const control of customMilestoneList.querySelectorAll("input, button")) {
+            control.disabled = frozen;
+          }
+          for (const marker of assetChartMilestones.querySelectorAll("[data-milestone-id]")) {
+            marker.setAttribute("tabindex", frozen ? "-1" : "0");
+            marker.setAttribute("aria-disabled", String(frozen));
+          }
           if (frozen && settlementDateRangePointerId !== null) {
             if (assetTimelineChart.hasPointerCapture(settlementDateRangePointerId)) {
               assetTimelineChart.releasePointerCapture(settlementDateRangePointerId);
@@ -5530,6 +5566,16 @@
             settlementDateRangePointerId = null;
             settlementDateRangeDragHandle = "";
           }
+          if (frozen && assetEditDraft) {
+            assetEditDraft = null;
+            assetEditStopIndex = null;
+            assetEditStopDate = null;
+            assetEditError.hidden = true;
+            assetEditError.textContent = "";
+            assetEditStatus.textContent = "Unsaved sample-value edits were discarded when this attempt was frozen.";
+            renderAssetSnapshot(selectedAssetYearIndex);
+          }
+          updateAssetEditControls();
           for (const radio of settlementScenarioResults.querySelectorAll(
             'input[name="settlement-demo-scenario"]',
           )) {
@@ -7153,6 +7199,7 @@
         analysisPreviewStartButton.addEventListener("click", openAssetAnalysis);
         assetAnalysisBackButton.addEventListener("click", closeAssetAnalysis);
         assetYearRange.addEventListener("input", () => {
+          if (settlementDemoAttemptFrozen) return;
           renderAssetSnapshot(Number(assetYearRange.value));
         });
         for (const dateInput of [settlementStartDate, settlementEndDate]) {
@@ -7215,12 +7262,15 @@
           updateAssetEditDerivedValues();
         });
         assetYearPrevious.addEventListener("click", () => {
+          if (settlementDemoAttemptFrozen) return;
           renderAssetSnapshot(selectedAssetYearIndex - 1);
         });
         assetYearNext.addEventListener("click", () => {
+          if (settlementDemoAttemptFrozen) return;
           renderAssetSnapshot(selectedAssetYearIndex + 1);
         });
         standardMilestoneList.addEventListener("click", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const target = event.target instanceof Element ? event.target : null;
           const actionButton = target?.closest("[data-action]");
           const item = target?.closest(".asset-milestone-item");
@@ -7249,6 +7299,7 @@
         });
         customMilestoneForm.addEventListener("submit", (event) => {
           event.preventDefault();
+          if (settlementDemoAttemptFrozen) return;
           const label = customMilestoneLabel.value.trim();
           const date = customMilestoneDate.value;
           const duplicate = customMilestones.some(
@@ -7276,6 +7327,7 @@
           assetMilestoneStatus.textContent = `${label}, ${formatMilestoneDate(date)}, added to this preview only. Nothing was sent or saved.`;
         });
         customMilestoneList.addEventListener("click", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const target = event.target instanceof Element ? event.target : null;
           const actionButton = target?.closest("[data-action]");
           const item = target?.closest(".asset-milestone-item");
@@ -7335,15 +7387,18 @@
           assetMilestoneStatus.textContent = `${label}, ${formatMilestoneDate(date)}, updated in this preview only. Nothing was sent or saved.`;
         });
         assetMilestoneSelector.addEventListener("change", () => {
+          if (settlementDemoAttemptFrozen) return;
           selectAssetMilestone(assetMilestoneSelector.value);
         });
         assetChartMilestones.addEventListener("click", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           const marker = event.target instanceof Element
             ? event.target.closest("[data-milestone-id]")
             : null;
           if (marker) selectAssetMilestone(marker.dataset.milestoneId);
         });
         assetChartMilestones.addEventListener("keydown", (event) => {
+          if (settlementDemoAttemptFrozen) return;
           if (event.key !== "Enter" && event.key !== " ") return;
           const marker = event.target instanceof Element
             ? event.target.closest("[data-milestone-id]")
