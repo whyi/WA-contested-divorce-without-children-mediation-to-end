@@ -825,6 +825,44 @@ class OfferResponseTransitionTests(unittest.TestCase):
             'customMilestoneForm.addEventListener("submit"', 1
         )[1].split('customMilestoneList.addEventListener("click"', 1)[0])
 
+    def test_demo_counteroffer_opens_next_attempt_with_inherited_highlights(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        for marker in (
+            'id="settlement-demo-inherited-notice"',
+            'id="settlement-start-date-inherited"',
+            'id="settlement-end-date-inherited"',
+            'id="asset-year-range-inherited"',
+            'id="asset-table-inherited"',
+            'id="settlement-demo-milestone-inherited"',
+            '.asset-table-scroll[data-inherited="true"] .asset-comparison-table tbody td',
+            'card.dataset.inherited = String(Boolean(selectedAndUnchanged));',
+        ):
+            self.assertIn(marker, html)
+        capture = html.split("function captureSettlementDemoAttempt()", 1)[1].split(
+            "function restoreSettlementDemoAttempt", 1
+        )[0]
+        for state_field in (
+            "startDate:",
+            "endDate:",
+            "selectedShareBps:",
+            "timelineDate:",
+            "sampleAssetYears:",
+            "interpolatedAssetOverrides:",
+            "standardMilestones:",
+            "customMilestones:",
+        ):
+            self.assertIn(state_field, capture)
+        transition = html.split(
+            'settlementDemoResponseNext.addEventListener("click"',
+            1,
+        )[1].split("for (const dateInput of [settlementStartDate", 1)[0]
+        self.assertIn("settlementDemoAttemptSnapshots.push(completedAttempt);", transition)
+        self.assertIn("restoreSettlementDemoAttempt(nextAttemptCopy);", transition)
+        self.assertIn("assetAnalysisView.scrollIntoView", transition)
+        self.assertIn("previous attempt remains unchanged", html)
+
 
 if __name__ == "__main__":
     unittest.main()
