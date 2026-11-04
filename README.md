@@ -142,9 +142,10 @@ container starts. The Compose demo signing key and `demo` / `demo` account are
 public development credentials, not secrets; never copy them to any shared or
 public deployment. `DEMO_MODE_ENABLED` is localhost-only and incompatible with
 case-data access. Enable `CASE_DATA_ENABLED` only after deciding how to handle
-existing records; unassigned existing cases remain inaccessible. The compose
-configuration binds the API and local S3 endpoint to localhost and uses
-development-only S3 mock credentials.
+existing records; unassigned existing cases remain inaccessible. Compose
+publishes the API at `http://192.168.1.17:8001` for the requested LAN preview;
+the local S3 endpoint remains bound to localhost. Compose uses development-only
+S3 mock credentials.
 
 Authentication requires deployment-managed values for `AUTH_ENABLED`,
 `AUTH_JWT_SECRET` (at least 32 bytes), and email delivery
