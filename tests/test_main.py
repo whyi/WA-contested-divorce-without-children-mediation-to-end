@@ -982,11 +982,12 @@ class MainWorkflowTests(unittest.TestCase):
             asyncio.run(request_app("/onboarding/upload")),
             asyncio.run(request_app("/onboarding/wizard")),
             asyncio.run(request_app("/demo")),
+            asyncio.run(request_app("/demo/files")),
             asyncio.run(request_app("/demo/documents")),
             asyncio.run(request_app("/demo/wizard")),
         )
 
-        self.assertEqual([status for status, _ in responses], [200, 200, 200, 200, 200])
+        self.assertEqual([status for status, _ in responses], [200, 200, 200, 200, 200, 200])
         for _, body in responses[:2]:
             page = body.decode()
             self.assertIn('id="account-dashboard"', page)
@@ -1001,7 +1002,28 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('const demoMode = window.location.pathname === "/demo";', demo_page)
         self.assertIn("Explore fictional sample figures without signing in or opening a case.", demo_page)
         self.assertIn('showPreparation("demo");', demo_page)
-        document_demo_page = responses[3][1].decode()
+        file_manager_page = responses[3][1].decode()
+        self.assertIn('const demoFileManagerMode = window.location.pathname === "/demo/files";', file_manager_page)
+        self.assertIn('id="demo-case-navigation"', file_manager_page)
+        self.assertIn('id="demo-my-cases-link" class="demo-case-nav-link" href="/demo/2/dashboard">My cases</a>', file_manager_page)
+        self.assertIn('id="demo-file-management-link" class="demo-case-nav-link" href="/demo/files">Case file management</a>', file_manager_page)
+        self.assertEqual(len(re.findall(r'class="demo-case-nav-link"', file_manager_page)), 2)
+        self.assertIn('id="demo-file-manager"', file_manager_page)
+        self.assertIn('id="demo-case-files-input" type="file" accept=".pdf,.docx" multiple', file_manager_page)
+        self.assertIn("File contents stay in this browser only and are not uploaded.", file_manager_page)
+        self.assertIn('indexedDB.open("casework-demo-file-manager", 1)', file_manager_page)
+        self.assertIn('store.index("caseId").getAll(demoCaseFilesCaseId)', file_manager_page)
+        self.assertIn('store.add({', file_manager_page)
+        self.assertIn('store.put({', file_manager_page)
+        self.assertIn('store.delete(fileId)', file_manager_page)
+        self.assertIn('download.dataset.demoFileAction = "download"', file_manager_page)
+        self.assertIn('replace.dataset.demoFileAction = "replace"', file_manager_page)
+        self.assertIn('remove.dataset.demoFileAction = "delete"', file_manager_page)
+        self.assertIn('body[data-demo-page="files"] #account-dashboard > .dashboard-panel', file_manager_page)
+        self.assertIn('@media (max-width: 600px)', file_manager_page)
+        self.assertIn('body[data-demo-page="settlement"] #demo-back-to-account', file_manager_page)
+        self.assertIn('class="back-to-account" id="demo-back-to-account"', file_manager_page)
+        document_demo_page = responses[4][1].decode()
         self.assertIn('const demoDocumentsMode = window.location.pathname === "/demo/documents";', document_demo_page)
         self.assertIn('id="demo-file-input" type="file"', document_demo_page)
         self.assertIn('id="demo-files-next" type="button" disabled', document_demo_page)
@@ -1009,7 +1031,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('document.querySelectorAll("[data-demo-case-return]")', document_demo_page)
         self.assertIn("Only PDF and DOCX files are supported.", document_demo_page)
         self.assertIn('window.location.assign("/demo")', document_demo_page)
-        wizard_demo_page = responses[4][1].decode()
+        wizard_demo_page = responses[5][1].decode()
         self.assertIn('id="demo-wizard-back" data-demo-case-return href="/demo/dashboard">Back to dashboard</a>', wizard_demo_page)
         self.assertLess(wizard_demo_page.index('id="demo-wizard-back"'), wizard_demo_page.index('id="wizard-gated-content"'))
         self.assertIn('demoSource === "demo1"', wizard_demo_page)
