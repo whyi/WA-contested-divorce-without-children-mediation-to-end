@@ -373,7 +373,7 @@ class MainWorkflowTests(unittest.TestCase):
         )[1].split("} else if (demoMode)", 1)[0]
         self.assertIn("demoFreeDashboardMode || demoCaseCompleted ? []", demo_dashboard)
         self.assertIn("demoFreeDashboardMode || demoCaseCompleted ? 0 : 1", demo_dashboard)
-        self.assertIn('id="demo-completed-case"', demo_dashboard)
+        self.assertIn('id="demo-completed-case"', page)
         self.assertIn('planName = demoFreeDashboardMode ? "Free" : "Essential"', demo_dashboard)
 
         essential_dashboard = responses[1][1].decode()
@@ -937,11 +937,12 @@ class MainWorkflowTests(unittest.TestCase):
         ):
             with self.subTest(method=method, role=role):
                 db = Mock()
+                case = SimpleNamespace(status="finalized" if method == "CLOSED" else "draft")
                 db.get.side_effect = lambda model, key: {
                     AuthSession: auth_session,
                     User: user,
+                    Case: case,
                     Document: document,
-                case = SimpleNamespace(status="finalized" if method == "CLOSED" else "draft")
                 }.get(model)
                 membership = (
                     SimpleNamespace(role=role)
