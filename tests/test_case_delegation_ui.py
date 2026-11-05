@@ -37,6 +37,33 @@ class CaseDelegationUiTests(unittest.TestCase):
         loader = PAGE[PAGE.index("async function loadCaseDelegation") :][:600]
         self.assertRegex(loader, r"catch \(error\) \{\s*caseDelegation\.hidden = true;")
 
+    def test_dashboard_shows_delegated_case_with_confirmed_accessible_revoke(self) -> None:
+        tile = PAGE[PAGE.index("function renderDelegatedCase") :][:2600]
+        self.assertIn('setAttribute("role", "status")', tile)
+        self.assertIn('setAttribute("aria-live", "polite")', tile)
+        self.assertIn("You cannot use this case until you revoke their access", tile)
+        revoke = tile[tile.index("async function revokeDelegatedCase") :]
+        self.assertIn("window.confirm(", revoke)
+        self.assertIn('method: "DELETE"', revoke)
+        self.assertIn("loadDashboardStatus()", revoke)
+        self.assertIn("button.disabled = false", revoke)
+        self.assertIn("if (item.delegated_to)", PAGE)
+
+    def test_dashboard_has_no_plan_tier_case_allowance_copy(self) -> None:
+        for phrase in (
+            "Your plan determines how many active cases",
+            "Compare plans to create more active cases",
+            "case slots",
+            "Case limit reached",
+            "More active cases",
+            "includes ${activeCaseLimit}",
+            "case-upgrade-link",
+        ):
+            self.assertNotIn(phrase, PAGE)
+        self.assertNotIn('["Active cases"', PAGE)
+        self.assertIn("Your account owns one divorce case for one side only", PAGE)
+        self.assertIn('accountType === "professional"', PAGE)
+
 
 if __name__ == "__main__":
     unittest.main()

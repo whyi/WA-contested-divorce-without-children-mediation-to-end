@@ -1007,8 +1007,6 @@
       .case-tile-demo-add .case-tile-icon { width:82px; height:82px; border-radius:26px; font-size:64px; }
       .case-tile-locked { border-color:var(--border-color); color:var(--text-secondary); background:var(--theme-background-f5f6f5); cursor:not-allowed; }
       .case-tile-locked .case-tile-icon { color:var(--text-secondary); background:var(--theme-background-e7ebe7); }
-      .case-upgrade-link { display:inline-flex; margin-top:14px; color:var(--green-dark); font-size:13px; font-weight:750; text-underline-offset:3px; }
-      .case-upgrade-link[hidden] { display:none; }
       .case-create-dialog { width:min(560px, calc(100% - 32px)); padding:0; border:1px solid var(--border-color); border-radius:18px; color:var(--text-primary); background:var(--surface-background); box-shadow:0 24px 80px rgba(20, 35, 25, .28); }
       .case-create-dialog::backdrop { background:rgba(20, 35, 27, .58); }
       .case-create-content { padding:clamp(22px, 5vw, 34px); }
@@ -2032,7 +2030,7 @@
               <div>
                 <p class="eyebrow">Your account</p>
                 <h1 id="dashboard-title">Your case workspace</h1>
-                <p id="dashboard-intro">Open an active case or start a new one. Your plan determines how many active cases you can keep.</p>
+                <p id="dashboard-intro">Your account owns one divorce case for one side only. Professionals operate cases their clients invite them to.</p>
               </div>
             </header>
             <p class="dashboard-state" id="dashboard-loading" role="status">Loading your account status…</p>
@@ -2055,7 +2053,6 @@
                 <p id="existing-case-count">Loading your active cases…</p>
               </div>
               <div class="case-grid" id="case-list" aria-live="polite"></div>
-              <a class="case-upgrade-link" id="case-upgrade-link" href="#subscription-pricing" hidden>Compare plans to create more active cases</a>
               <section class="delegation-accept" id="delegation-accept" aria-labelledby="delegation-accept-title">
                 <h3 id="delegation-accept-title">Accept a client's case invitation</h3>
                 <p>For attorney or paralegal accounts. Enter the one-time code from the invitation email sent to this account's address. Accepting is your explicit choice and does not verify your identity or legal authority.</p>
@@ -2786,7 +2783,6 @@
         const existingCases = document.getElementById("existing-cases");
         const existingCaseCount = document.getElementById("existing-case-count");
         const caseList = document.getElementById("case-list");
-        const caseUpgradeLink = document.getElementById("case-upgrade-link");
         const demoCaseChoiceDialog = document.getElementById("demo-case-choice-dialog");
         const demoCaseDocumentsLink = document.getElementById("demo-case-documents-link");
         const demoCaseWizardLink = document.getElementById("demo-case-wizard-link");
@@ -4379,9 +4375,53 @@
           }
         }
 
-        function renderCases(cases, { activeCaseCount, activeCaseLimit, planName }) {
+        function renderDelegatedCase(item) {
+          const wrap = document.createElement("div");
+          wrap.className = "case-tile case-tile-delegated";
+          const copy = document.createElement("span");
+          copy.className = "case-tile-copy";
+          const title = document.createElement("span");
+          title.className = "case-tile-title";
+          title.textContent = item.title;
+          const meta = document.createElement("span");
+          meta.className = "case-tile-meta";
+          meta.id = `delegated-status-${item.id}`;
+          meta.setAttribute("role", "status");
+          meta.setAttribute("aria-live", "polite");
+          meta.textContent = `Operated by ${item.delegated_to}. You cannot use this case until you revoke their access.`;
+          const revoke = document.createElement("button");
+          revoke.type = "button";
+          revoke.className = "dashboard-retry";
+          revoke.textContent = `Revoke delegate access for ${item.title}`;
+          revoke.addEventListener("click", () => revokeDelegatedCase(item, revoke, meta));
+          copy.append(title, meta, revoke);
+          wrap.append(copy);
+          return wrap;
+        }
+
+        async function revokeDelegatedCase(item, button, statusElement) {
+          const confirmed = window.confirm(
+            `Revoke ${item.delegated_to}'s access? They lose access immediately and you resume operating this case. Nothing is deleted.`,
+          );
+          if (!confirmed) return;
+          button.disabled = true;
+          statusElement.textContent = "Revoking access…";
+          try {
+            await settlementApi(`/cases/${encodeURIComponent(item.id)}/delegation`, { method: "DELETE" });
+            await loadDashboardStatus();
+          } catch (error) {
+            statusElement.textContent = error instanceof Error ? error.message : "Access could not be revoked. Please try again.";
+            button.disabled = false;
+          }
+        }
+
+        function renderCases(cases, { activeCaseCount, accountType }) {
           caseList.replaceChildren();
           for (const item of cases) {
+            if (item.delegated_to) {
+              caseList.append(renderDelegatedCase(item));
+              continue;
+            }
             const tile = document.createElement("button");
             tile.className = "case-tile";
             tile.type = "button";
@@ -4416,9 +4456,12 @@
             caseList.append(tile);
           }
 
-          existingCaseCount.textContent = activeCaseLimit === null
-            ? `${activeCaseCount} active ${activeCaseCount === 1 ? "case" : "cases"} · ${planName} plan`
-            : `${activeCaseCount} of ${activeCaseLimit} active ${activeCaseLimit === 1 ? "case slot" : "case slots"} used · ${planName} plan`;
+          existingCaseCount.textContent = accountType === "professional"
+            ? `${cases.length} client ${cases.length === 1 ? "case" : "cases"} you operate`
+            : activeCaseCount > 0
+              ? "Your account's divorce case"
+              : "No active case yet";
+          if (!dashboardDemoMode && (accountType === "professional" || activeCaseCount > 0)) return;
 
           const createTile = document.createElement("button");
           createTile.type = "button";
@@ -4438,21 +4481,11 @@
             addIcon.textContent = "+";
             createTile.append(addIcon);
             createTile.addEventListener("click", openDemoCaseChoiceDialog);
-            caseUpgradeLink.hidden = true;
-          } else if (activeCaseLimit !== null && activeCaseCount >= activeCaseLimit) {
-            createTile.className = "case-tile case-tile-locked";
-            createTile.disabled = true;
-            createTile.setAttribute("aria-label", "Case limit reached. Upgrade your plan to create another case.");
-            addIcon.textContent = "🔒";
-            title.textContent = "More active cases";
-            meta.textContent = `Your ${planName} plan includes ${activeCaseLimit} active ${activeCaseLimit === 1 ? "case" : "cases"}. Upgrade to create another.`;
-            caseUpgradeLink.hidden = false;
           } else {
             createTile.setAttribute("aria-label", "Start a new case");
             addIcon.textContent = "+";
             title.textContent = "Start a new case";
             meta.textContent = "Choose documents or a guided wizard";
-            caseUpgradeLink.hidden = true;
             createTile.addEventListener("click", openCaseCreationDialog);
           }
           if (!dashboardDemoMode) {
@@ -9382,7 +9415,6 @@
           const table = document.getElementById("billing-plans-table");
           table.insertBefore(head, billingPlansBody);
           const rows = [
-            ["Active cases", (plan) => plan.active_case_limit === null ? "Unlimited" : String(plan.active_case_limit)],
             ["Attempts per case", (plan) => String(plan.attempt_limit)],
             ["Proposal credits / month", (plan) => String(plan.monthly_document_credits)],
           ];
@@ -9590,8 +9622,7 @@
             } else {
               renderCases(account.cases, {
                 activeCaseCount: account.active_case_count,
-                activeCaseLimit: account.active_case_limit,
-                planName: account.plan_name,
+                accountType: account.account_type,
               });
               existingCases.hidden = false;
               void loadClosedCases();
@@ -10284,7 +10315,6 @@
           document.body.dataset.demoPage = "dashboard";
           showDashboardShell();
           dashboardLoading.hidden = true;
-          const planName = demoFreeDashboardMode ? "Free" : "Essential";
           demoInactiveCases.hidden = demoFreeDashboardMode;
           const demoCases = demoFreeDashboardMode ? [] : [{
               id: "sample-case",
@@ -10295,8 +10325,7 @@
             }];
           renderCases(demoCases, {
             activeCaseCount: demoFreeDashboardMode ? 0 : 1,
-            activeCaseLimit: demoFreeDashboardMode ? 1 : 3,
-            planName,
+            accountType: "party",
           });
           existingCases.hidden = false;
         } else if (demoMode) {
