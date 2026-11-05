@@ -278,6 +278,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
         self.assertIn('id="demo-entry" href="/demo">Existing demo</a>', page)
+        self.assertIn('id="dashboard-demo-entry" href="/demo/dashboard">Dashboard demo</a>', page)
+        self.assertIn('<strong>Dashboard demo</strong>', page)
+        self.assertIn("See the case dashboard after signing in", page)
         self.assertIn('href="/demo">Existing demo</a>', page)
         self.assertIn('class="demo-quick-section" id="demo-choices"', page)
         self.assertIn('class="demo-quick-link" href="/demo/documents"', page)
@@ -322,6 +325,19 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Previously adopted case-profile facts are shown below.", page)
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
+
+    def test_dashboard_demo_route_renders_a_fictional_post_login_preview(self) -> None:
+        status, body = asyncio.run(request_app("/demo/dashboard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="dashboard-demo-banner"', page)
+        self.assertIn("fictional preview of the case dashboard", page)
+        self.assertIn('href="/#account">Sign up / Sign in</a>', page)
+        self.assertIn('const dashboardDemoMode = window.location.pathname === "/demo/dashboard";', page)
+        self.assertIn('id: "sample-case"', page)
+        self.assertIn('title: "XYZ vs ABC"', page)
+        self.assertIn('window.location.assign("/demo/wizard")', page)
 
     def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
         status, body = asyncio.run(request_app("/"))

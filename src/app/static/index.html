@@ -802,6 +802,10 @@
       .authenticated-view .demo-quick-section { display: none; }
       body[data-demo-page="documents"] main > section:not(#documents-demo),
       body[data-demo-page="wizard"] main > section:not(#wizard-demo) { display: none; }
+      body[data-demo-page="dashboard"] main > section:not(#account-dashboard) { display: none; }
+      body[data-demo-page="dashboard"] .topbar .nav a[href="#account"] { display: inline-flex !important; }
+      body[data-demo-page="dashboard"] footer,
+      body[data-demo-page="dashboard"] .theme-status { display: none; }
       body[data-demo-page="settlement-completion"] main > section:not(#settlement-completion-page),
       body[data-settlement-completion-page="true"] main > section:not(#settlement-completion-page) { display: none; }
       body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 34px auto; }
@@ -862,6 +866,13 @@
       .dashboard-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
       .dashboard-header h1 { margin-bottom: 10px; font-size: clamp(34px, 5vw, 48px); }
       .dashboard-header p:last-child { max-width: 620px; margin: 0; color:var(--muted); font-size: 14px; line-height: 1.65; }
+      .dashboard-demo-banner { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 24px; padding: 16px 18px; border:1px solid var(--theme-border-e8dcc0); border-radius: 10px; background:var(--theme-background-fbf5e8); }
+      .dashboard-demo-banner[hidden] { display: none; }
+      .dashboard-demo-banner p { margin: 0; color:var(--theme-text-59451f); font-size: 13px; line-height: 1.55; }
+      .dashboard-demo-banner strong { display: block; margin-bottom: 3px; }
+      .dashboard-demo-signin { flex: 0 0 auto; display: inline-flex; min-height: 40px; align-items: center; padding: 0 13px; border-radius: 7px; color:var(--theme-text-fff); background:var(--green-dark); text-decoration: none; font-size: 12px; font-weight: 750; }
+      .dashboard-demo-signin:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      @media (max-width: 600px) { .dashboard-demo-banner { align-items: flex-start; flex-direction: column; } }
       .dashboard-state { color:var(--muted); font-size: 14px; line-height: 1.6; }
       .dashboard-state[hidden] { display: none; }
       .dashboard-error { padding: 18px; border:1px solid var(--theme-border-e5c7c1); border-radius: 10px; background:var(--theme-background-fff8f6); }
@@ -1341,6 +1352,7 @@
         </a>
         <nav class="nav" aria-label="Main navigation">
           <a class="nav-cta demo-entry" id="demo-entry" href="/demo">Existing demo</a>
+          <a class="nav-cta demo-entry" id="dashboard-demo-entry" href="/demo/dashboard">Dashboard demo</a>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
@@ -1360,6 +1372,10 @@
         <section class="demo-quick-section" id="demo-choices" aria-label="Choose a demo">
           <p class="demo-quick-intro">Choose a preview. New demos stay on this device; Existing demo opens fictional sample analysis.</p>
           <nav class="demo-quick-actions" aria-label="Demo options">
+            <a class="demo-quick-link" href="/demo/dashboard">
+              <strong>Dashboard demo</strong>
+              <span>See the case dashboard after signing in</span>
+            </a>
             <a class="demo-quick-link" href="/demo">
               <strong>Existing demo</strong>
               <span>Explore fictional sample analysis</span>
@@ -1657,6 +1673,10 @@
 
         <section class="dashboard-section" id="account-dashboard" aria-labelledby="dashboard-title" hidden>
           <div class="dashboard-panel">
+            <aside class="dashboard-demo-banner" id="dashboard-demo-banner" role="note" hidden>
+              <p><strong>Dashboard demo</strong>This is a fictional preview of the case dashboard you will see after signing in. No account data is shown or changed.</p>
+              <a class="dashboard-demo-signin" href="/#account">Sign up / Sign in</a>
+            </aside>
             <header class="dashboard-header">
               <div>
                 <p class="eyebrow">Your account</p>
@@ -2270,6 +2290,7 @@
         const googleStatus = document.getElementById("google-status");
         const accountSection = document.getElementById("account");
         const dashboard = document.getElementById("account-dashboard");
+        const dashboardDemoBanner = document.getElementById("dashboard-demo-banner");
         const dashboardLoading = document.getElementById("dashboard-loading");
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
@@ -2598,6 +2619,7 @@
         let pendingAdoption = null;
         const reviewIdempotencyKeys = new Map();
         const demoMode = window.location.pathname === "/demo";
+        const dashboardDemoMode = window.location.pathname === "/demo/dashboard";
         const demoSettlementCompletionMode = window.location.pathname === "/demo/settlement-completion";
         const settlementCompletionMode = window.location.pathname === "/settlement-completion";
         const demoDocumentsMode = window.location.pathname === "/demo/documents";
@@ -3505,6 +3527,10 @@
             tile.append(icon, copy);
             tile.setAttribute("aria-label", `Open ${item.title}, ${caseAttemptLabel(item.attempt_ordinal)}`);
             tile.addEventListener("click", () => {
+              if (dashboardDemoMode) {
+                window.location.assign("/demo/wizard");
+                return;
+              }
               if (item.workflow_mode) {
                 window.location.assign(
                   `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`,
@@ -3532,7 +3558,15 @@
           title.className = "case-tile-title";
           const meta = document.createElement("span");
           meta.className = "case-tile-meta";
-          if (activeCaseLimit !== null && activeCaseCount >= activeCaseLimit) {
+          if (dashboardDemoMode) {
+            createTile.className = "case-tile case-tile-locked";
+            createTile.disabled = true;
+            createTile.setAttribute("aria-label", "Sign in to manage your active case limit.");
+            addIcon.textContent = "🔒";
+            title.textContent = "More active cases";
+            meta.textContent = "The Free plan includes 1 active case. Sign in to manage your plan.";
+            caseUpgradeLink.hidden = true;
+          } else if (activeCaseLimit !== null && activeCaseCount >= activeCaseLimit) {
             createTile.className = "case-tile case-tile-locked";
             createTile.disabled = true;
             createTile.setAttribute("aria-label", "Case limit reached. Upgrade your plan to create another case.");
@@ -8795,6 +8829,22 @@
 
         if (demoSettlementCompletionMode || settlementCompletionMode) {
           void initializeSettlementCompletionPage();
+        } else if (dashboardDemoMode) {
+          document.body.dataset.demoPage = "dashboard";
+          showDashboardShell();
+          dashboardLoading.hidden = true;
+          dashboardDemoBanner.hidden = false;
+          renderCases(
+            [{
+              id: "sample-case",
+              title: "XYZ vs ABC",
+              status: "in progress",
+              workflow_mode: "wizard",
+              attempt_ordinal: 2,
+            }],
+            { activeCaseCount: 1, activeCaseLimit: 1, planName: "Free" },
+          );
+          existingCases.hidden = false;
         } else if (demoMode) {
           document.body.dataset.demoPage = "settlement";
           showDashboardShell();
