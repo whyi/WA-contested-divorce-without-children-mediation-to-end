@@ -802,6 +802,10 @@
       .authenticated-view .demo-quick-section { display: none; }
       body[data-demo-page="documents"] main > section:not(#documents-demo),
       body[data-demo-page="wizard"] main > section:not(#wizard-demo) { display: none; }
+      body[data-demo-page="dashboard"] main > section:not(#account-dashboard) { display: none; }
+      body[data-demo-page="dashboard"] .topbar .nav a[href="#account"] { display: inline-flex !important; }
+      body[data-demo-page="dashboard"] footer,
+      body[data-demo-page="dashboard"] .theme-status { display: none; }
       body[data-demo-page="settlement-completion"] main > section:not(#settlement-completion-page),
       body[data-settlement-completion-page="true"] main > section:not(#settlement-completion-page) { display: none; }
       body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 34px auto; }
@@ -862,6 +866,13 @@
       .dashboard-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
       .dashboard-header h1 { margin-bottom: 10px; font-size: clamp(34px, 5vw, 48px); }
       .dashboard-header p:last-child { max-width: 620px; margin: 0; color:var(--muted); font-size: 14px; line-height: 1.65; }
+      .dashboard-demo-banner { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 24px; padding: 16px 18px; border:1px solid var(--theme-border-e8dcc0); border-radius: 10px; background:var(--theme-background-fbf5e8); }
+      .dashboard-demo-banner[hidden] { display: none; }
+      .dashboard-demo-banner p { margin: 0; color:var(--theme-text-59451f); font-size: 13px; line-height: 1.55; }
+      .dashboard-demo-banner strong { display: block; margin-bottom: 3px; }
+      .dashboard-demo-signin { flex: 0 0 auto; display: inline-flex; min-height: 40px; align-items: center; padding: 0 13px; border-radius: 7px; color:var(--theme-text-fff); background:var(--green-dark); text-decoration: none; font-size: 12px; font-weight: 750; }
+      .dashboard-demo-signin:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      @media (max-width: 600px) { .dashboard-demo-banner { align-items: flex-start; flex-direction: column; } }
       .dashboard-state { color:var(--muted); font-size: 14px; line-height: 1.6; }
       .dashboard-state[hidden] { display: none; }
       .dashboard-error { padding: 18px; border:1px solid var(--theme-border-e5c7c1); border-radius: 10px; background:var(--theme-background-fff8f6); }
@@ -906,9 +917,52 @@
       .onboarding-action:focus-visible, .dashboard-retry:focus-visible, .back-to-account:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset: 3px; }
       .onboarding-action span { color:var(--green); font-size: 13px; font-weight: 700; }
       .existing-cases { margin-top: 12px; }
-      .case-list { display: grid; gap: 10px; padding: 0; list-style: none; }
-      .case-list li { padding: 16px; border:1px solid var(--line); border-radius: 8px; color:var(--theme-text-34443a); background:var(--theme-background-fbfcfb); font-size: 14px; }
-      .case-list strong { color:var(--green-dark); }
+      .case-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:18px; margin-top:22px; }
+      .case-tile {
+        display:flex;
+        min-width:0;
+        min-height:210px;
+        aspect-ratio:1;
+        flex-direction:column;
+        align-items:flex-start;
+        justify-content:space-between;
+        padding:20px;
+        border:1px solid var(--theme-border-cbd9ce);
+        border-radius:18px;
+        color:var(--ink);
+        background:var(--surface-raised);
+        text-align:left;
+      }
+      button.case-tile { cursor:pointer; font:inherit; transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+      button.case-tile:hover { transform:translateY(-3px); border-color:var(--green); box-shadow:0 12px 28px rgba(34, 55, 43, .1); }
+      button.case-tile:focus-visible, .case-create-dialog button:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      .case-tile-icon { display:grid; width:48px; height:48px; place-items:center; border-radius:15px; color:var(--green-dark); background:var(--mint); font-size:32px; line-height:1; }
+      .case-tile-copy { display:grid; gap:8px; }
+      .case-tile-title { overflow-wrap:anywhere; color:var(--text-primary); font-size:17px; font-weight:750; line-height:1.35; }
+      .case-tile-meta { color:var(--text-secondary); font-size:12px; line-height:1.5; }
+      .case-tile-new { border:1px dashed var(--theme-border-9ab5a2); background:var(--theme-background-f7faf7); }
+      .case-tile-demo-add { align-items:center; justify-content:center; }
+      .case-tile-demo-add .case-tile-icon { width:82px; height:82px; border-radius:26px; font-size:64px; }
+      .case-tile-locked { border-color:var(--border-color); color:var(--text-secondary); background:var(--theme-background-f5f6f5); cursor:not-allowed; }
+      .case-tile-locked .case-tile-icon { color:var(--text-secondary); background:var(--theme-background-e7ebe7); }
+      .case-upgrade-link { display:inline-flex; margin-top:14px; color:var(--green-dark); font-size:13px; font-weight:750; text-underline-offset:3px; }
+      .case-upgrade-link[hidden] { display:none; }
+      .case-create-dialog { width:min(560px, calc(100% - 32px)); padding:0; border:1px solid var(--border-color); border-radius:18px; color:var(--text-primary); background:var(--surface-background); box-shadow:0 24px 80px rgba(20, 35, 25, .28); }
+      .case-create-dialog::backdrop { background:rgba(20, 35, 27, .58); }
+      .case-create-content { padding:clamp(22px, 5vw, 34px); }
+      .case-create-content h2 { margin:0 0 8px; font-family:Georgia, "Times New Roman", serif; font-size:30px; font-weight:500; }
+      .case-create-content > p:not(.eyebrow) { color:var(--text-secondary); font-size:14px; line-height:1.6; }
+      .case-create-content label { display:block; margin:18px 0 7px; color:var(--text-primary); font-size:13px; font-weight:700; }
+      .case-create-content input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--surface-background); font:inherit; }
+      .case-mode-options { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:18px; }
+      .case-mode-choice { display:grid; min-height:112px; align-content:start; gap:7px; padding:15px; border:1px solid var(--border-color); border-radius:11px; color:var(--text-primary); background:var(--surface-raised); text-align:left; cursor:pointer; font:inherit; }
+      .case-mode-choice:hover { border-color:var(--green); }
+      .case-mode-choice strong { font-size:14px; }
+      .case-mode-choice span { color:var(--text-secondary); font-size:12px; line-height:1.5; }
+      .case-create-status { min-height:22px; margin:14px 0 8px !important; color:var(--text-secondary) !important; font-size:13px !important; }
+      .case-create-status[data-kind="error"] { color:var(--theme-text-9c3228) !important; }
+      .case-create-actions { display:flex; justify-content:flex-end; margin-top:10px; }
+      .case-create-actions button { min-height:40px; padding:0 14px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--surface-background); cursor:pointer; font:inherit; font-weight:700; }
       .settlement-planner { margin-top: 28px; padding-top: 28px; border-top:1px solid var(--line); }
       .settlement-planner[hidden] { display: none; }
       .settlement-planner h3 { margin: 22px 0 8px; color:var(--green-dark); font-size: 17px; }
@@ -1216,6 +1270,7 @@
       [hidden].asset-analysis, [hidden].analysis-preview-launch { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
+      .authenticated-view main > #subscription-pricing:target { display: block; }
 
       @media (max-width: 850px) {
         .hero { grid-template-columns: 1fr; gap: 32px; padding: 62px 0 68px; }
@@ -1253,6 +1308,9 @@
         .dashboard-panel { padding: 25px 20px; }
         .dashboard-header { flex-direction: column; gap: 12px; }
         .onboarding-actions { grid-template-columns: 1fr; }
+        .case-grid { grid-template-columns:repeat(auto-fill, minmax(145px, 1fr)); gap:12px; }
+        .case-tile { min-height:170px; padding:15px; border-radius:15px; }
+        .case-mode-options { grid-template-columns:1fr; }
         .materials-sources { grid-template-columns: 1fr; }
         .materials-source { min-height: 78px; }
         .materials-item { align-items: flex-start; }
@@ -1296,6 +1354,7 @@
         </a>
         <nav class="nav" aria-label="Main navigation">
           <a class="nav-cta demo-entry" id="demo-entry" href="/demo">Existing demo</a>
+          <a class="nav-cta demo-entry" id="dashboard-demo-entry" href="/demo/dashboard">Dashboard demo</a>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
@@ -1315,6 +1374,10 @@
         <section class="demo-quick-section" id="demo-choices" aria-label="Choose a demo">
           <p class="demo-quick-intro">Choose a preview. New demos stay on this device; Existing demo opens fictional sample analysis.</p>
           <nav class="demo-quick-actions" aria-label="Demo options">
+            <a class="demo-quick-link" href="/demo/dashboard">
+              <strong>Dashboard demo</strong>
+              <span>See the case dashboard after signing in</span>
+            </a>
             <a class="demo-quick-link" href="/demo">
               <strong>Existing demo</strong>
               <span>Explore fictional sample analysis</span>
@@ -1612,11 +1675,15 @@
 
         <section class="dashboard-section" id="account-dashboard" aria-labelledby="dashboard-title" hidden>
           <div class="dashboard-panel">
+            <aside class="dashboard-demo-banner" id="dashboard-demo-banner" role="note" hidden>
+              <p><strong>Dashboard demo</strong>This is a fictional preview of the case dashboard you will see after signing in. No account data is shown or changed.</p>
+              <a class="dashboard-demo-signin" href="/#account">Sign up / Sign in</a>
+            </aside>
             <header class="dashboard-header">
               <div>
                 <p class="eyebrow">Your account</p>
                 <h1 id="dashboard-title">Your case workspace</h1>
-                <p id="dashboard-intro">Your account is signed in. Case access is limited to workspaces explicitly authorized for you.</p>
+                <p id="dashboard-intro">Open an active case or start a new one. Your plan determines how many active cases you can keep.</p>
               </div>
             </header>
             <p class="dashboard-state" id="dashboard-loading" role="status">Loading your account status…</p>
@@ -1632,27 +1699,37 @@
               <p id="dashboard-error-message">Your account status could not be loaded.</p>
               <button class="dashboard-retry" id="dashboard-retry" type="button">Try again</button>
             </div>
-            <section id="empty-account-state" aria-labelledby="empty-account-title" hidden>
-              <div class="onboarding-heading">
-                <p class="eyebrow">A place to begin</p>
-                <h2 id="empty-account-title">How would you like to get started?</h2>
-                <p>Choose the path that fits what you have today. Both options lead into your case-information workflow.</p>
-              </div>
-              <div class="onboarding-actions">
-                <a class="onboarding-action" href="/onboarding/upload">
-                  I already have case materials, so I'll upload them
-                  <span>Start with documents <span aria-hidden="true">→</span></span>
-                </a>
-                <a class="onboarding-action" href="/onboarding/wizard">
-                  Guide me through the wizard step by step
-                  <span>Start with guided entry <span aria-hidden="true">→</span></span>
-                </a>
-              </div>
-            </section>
             <section class="existing-cases" id="existing-cases" aria-labelledby="existing-cases-title" hidden>
-              <h2 id="existing-cases-title">Your cases</h2>
-              <p id="existing-case-count"></p>
-              <ul class="case-list" id="case-list"></ul>
+              <div class="onboarding-heading">
+                <p class="eyebrow">Your workspace</p>
+                <h2 id="existing-cases-title">Active cases</h2>
+                <p id="existing-case-count">Loading your active cases…</p>
+              </div>
+              <div class="case-grid" id="case-list" aria-live="polite"></div>
+              <a class="case-upgrade-link" id="case-upgrade-link" href="#subscription-pricing" hidden>Compare plans to create more active cases</a>
+              <dialog class="case-create-dialog" id="case-create-dialog" aria-labelledby="case-create-title">
+                <div class="case-create-content">
+                  <p class="eyebrow">New active case</p>
+                  <h2 id="case-create-title">How would you like to start?</h2>
+                  <p>Your new case will be saved to your account. Choose the starting point that fits what you have today.</p>
+                  <label for="case-title-input">Case label <span>(optional)</span></label>
+                  <input id="case-title-input" type="text" maxlength="120" autocomplete="off" placeholder="For example, XYZ vs ABC">
+                  <div class="case-mode-options">
+                    <button class="case-mode-choice" type="button" data-case-mode="upload">
+                      <strong>I have documents</strong>
+                      <span>Start with case materials and upload documents.</span>
+                    </button>
+                    <button class="case-mode-choice" type="button" data-case-mode="wizard">
+                      <strong>Guide me step by step</strong>
+                      <span>Start with the guided case-information wizard.</span>
+                    </button>
+                  </div>
+                  <p class="case-create-status" id="case-create-status" role="status" aria-live="polite"></p>
+                  <div class="case-create-actions">
+                    <button id="case-create-cancel" type="button">Cancel</button>
+                  </div>
+                </div>
+              </dialog>
               <section class="settlement-planner" id="settlement-planner" aria-labelledby="settlement-planner-title" hidden>
                 <h2 id="settlement-planner-title">Evidence-grounded settlement planning</h2>
                 <p>Washington-only decision support. The calculations use your entered assumptions; they are not legal classifications, a predicted result, or legal advice. A Washington attorney or mediator should review the draft.</p>
@@ -2215,6 +2292,7 @@
         const googleStatus = document.getElementById("google-status");
         const accountSection = document.getElementById("account");
         const dashboard = document.getElementById("account-dashboard");
+        const dashboardDemoBanner = document.getElementById("dashboard-demo-banner");
         const dashboardLoading = document.getElementById("dashboard-loading");
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
@@ -2224,10 +2302,13 @@
         const billingAccountStatus = document.getElementById("billing-account-status");
         const billingManageButton = document.getElementById("billing-manage-button");
         const billingRefreshButton = document.getElementById("billing-refresh-button");
-        const emptyAccountState = document.getElementById("empty-account-state");
         const existingCases = document.getElementById("existing-cases");
         const existingCaseCount = document.getElementById("existing-case-count");
         const caseList = document.getElementById("case-list");
+        const caseUpgradeLink = document.getElementById("case-upgrade-link");
+        const caseCreateDialog = document.getElementById("case-create-dialog");
+        const caseTitleInput = document.getElementById("case-title-input");
+        const caseCreateStatus = document.getElementById("case-create-status");
         const settlementPlanner = document.getElementById("settlement-planner");
         const settlementPlannerStatus = document.getElementById("settlement-planner-status");
         const settlementPlannerContent = document.getElementById("settlement-planner-content");
@@ -2540,6 +2621,7 @@
         let pendingAdoption = null;
         const reviewIdempotencyKeys = new Map();
         const demoMode = window.location.pathname === "/demo";
+        const dashboardDemoMode = window.location.pathname === "/demo/dashboard";
         const demoSettlementCompletionMode = window.location.pathname === "/demo/settlement-completion";
         const settlementCompletionMode = window.location.pathname === "/settlement-completion";
         const demoDocumentsMode = window.location.pathname === "/demo/documents";
@@ -2571,7 +2653,11 @@
         const wizardNoChoice = wizardFiledQuestion.querySelector('input[value="no"]');
         const wizardDatabaseName = "casework-wizard-intake";
         const wizardDatabaseVersion = 1;
-        const wizardDraftKey = "active";
+        const preparationCaseId = new URLSearchParams(window.location.search).get("case_id");
+        const wizardDraftKey = preparationCaseId ? `case:${preparationCaseId}` : "active";
+        const materialsBatchStorageKey = preparationCaseId
+          ? `materials-import-batch:${preparationCaseId}`
+          : "materials-import-batch";
         const wizardDateKeys = ["cohabitation", "marriage", "separation", "petition"];
         let wizardDatabase = null;
         let wizardSaveTimer = null;
@@ -2626,7 +2712,6 @@
 
         function showDashboardError(message) {
           dashboardLoading.hidden = true;
-          emptyAccountState.hidden = true;
           existingCases.hidden = true;
           preparationView.hidden = true;
           dashboardErrorMessage.textContent = message;
@@ -3367,20 +3452,147 @@
           }
         }
 
-        function renderCases(cases) {
+        function caseAttemptLabel(ordinal) {
+          const suffix = ordinal % 100 >= 11 && ordinal % 100 <= 13
+            ? "th"
+            : ({ 1: "st", 2: "nd", 3: "rd" }[ordinal % 10] || "th");
+          return `${ordinal}${suffix} Attempt`;
+        }
+
+        function openCaseCreationDialog() {
+          caseCreateStatus.textContent = "";
+          caseCreateStatus.removeAttribute("data-kind");
+          caseTitleInput.value = "";
+          caseCreateDialog.showModal();
+          caseTitleInput.focus();
+        }
+
+        async function createCaseFromDashboard(mode, button) {
+          if (!["upload", "wizard"].includes(mode)) {
+            caseCreateStatus.textContent = "Choose one of the available case-start options.";
+            caseCreateStatus.dataset.kind = "error";
+            return;
+          }
+          button.disabled = true;
+          document.getElementById("case-create-cancel").disabled = true;
+          caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((choice) => {
+            choice.disabled = true;
+          });
+          caseCreateStatus.textContent = "Creating your case…";
+          caseCreateStatus.removeAttribute("data-kind");
+          try {
+            const result = await settlementApi("/cases", {
+              method: "POST",
+              body: JSON.stringify({
+                case_title: caseTitleInput.value.trim() || null,
+                workflow_mode: mode,
+              }),
+            });
+            if (typeof result?.id !== "string") {
+              throw new Error("The new case could not be verified. Please try again.");
+            }
+            window.location.assign(
+              `/onboarding/${mode}?case_id=${encodeURIComponent(result.id)}`,
+            );
+          } catch (error) {
+            caseCreateStatus.textContent = error instanceof Error
+              ? error.message
+              : "The case could not be created. Please try again.";
+            caseCreateStatus.dataset.kind = "error";
+            button.disabled = false;
+            document.getElementById("case-create-cancel").disabled = false;
+            caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((choice) => {
+              choice.disabled = false;
+            });
+          }
+        }
+
+        function renderCases(cases, { activeCaseCount, activeCaseLimit, planName }) {
           caseList.replaceChildren();
           for (const item of cases) {
-            const row = document.createElement("li");
-            const label = document.createElement("strong");
-            label.textContent = `Case ${item.id.slice(0, 8)}`;
-            const openButton = document.createElement("button");
-            openButton.className = "dashboard-retry";
-            openButton.type = "button";
-            openButton.textContent = "Open settlement planner";
-            openButton.addEventListener("click", () => openSettlementPlanner(item.id));
-            row.append(label, document.createTextNode(` — ${item.status} `), openButton);
-            caseList.append(row);
+            const tile = document.createElement("button");
+            tile.className = "case-tile";
+            tile.type = "button";
+            const icon = document.createElement("span");
+            icon.className = "case-tile-icon";
+            icon.setAttribute("aria-hidden", "true");
+            icon.textContent = "▣";
+            const copy = document.createElement("span");
+            copy.className = "case-tile-copy";
+            const title = document.createElement("span");
+            title.className = "case-tile-title";
+            title.textContent = item.title;
+            const meta = document.createElement("span");
+            meta.className = "case-tile-meta";
+            meta.textContent = `${caseAttemptLabel(item.attempt_ordinal)} · ${item.status}`;
+            copy.append(title, meta);
+            tile.append(icon, copy);
+            tile.setAttribute("aria-label", `Open ${item.title}, ${caseAttemptLabel(item.attempt_ordinal)}`);
+            tile.addEventListener("click", () => {
+              if (dashboardDemoMode) {
+                window.location.assign("/demo");
+                return;
+              }
+              if (item.workflow_mode) {
+                window.location.assign(
+                  `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`,
+                );
+              } else {
+                openSettlementPlanner(item.id);
+              }
+            });
+            caseList.append(tile);
           }
+
+          existingCaseCount.textContent = activeCaseLimit === null
+            ? `${activeCaseCount} active ${activeCaseCount === 1 ? "case" : "cases"} · ${planName} plan`
+            : `${activeCaseCount} of ${activeCaseLimit} active ${activeCaseLimit === 1 ? "case slot" : "case slots"} used · ${planName} plan`;
+
+          const createTile = document.createElement("button");
+          createTile.type = "button";
+          createTile.className = "case-tile case-tile-new";
+          const addIcon = document.createElement("span");
+          addIcon.className = "case-tile-icon";
+          addIcon.setAttribute("aria-hidden", "true");
+          const copy = document.createElement("span");
+          copy.className = "case-tile-copy";
+          const title = document.createElement("span");
+          title.className = "case-tile-title";
+          const meta = document.createElement("span");
+          meta.className = "case-tile-meta";
+          if (dashboardDemoMode) {
+            createTile.className = "case-tile case-tile-new case-tile-demo-add";
+            createTile.setAttribute("aria-label", "Upgrade your plan to create another active case.");
+            addIcon.textContent = "+";
+            createTile.append(addIcon);
+            createTile.addEventListener("click", () => {
+              window.location.assign("/#subscription-pricing");
+            });
+            caseUpgradeLink.href = "/#subscription-pricing";
+            caseUpgradeLink.textContent =
+              "The Free plan includes 1 active case. Upgrade your plan to create another.";
+            caseUpgradeLink.hidden = false;
+          } else if (activeCaseLimit !== null && activeCaseCount >= activeCaseLimit) {
+            createTile.className = "case-tile case-tile-locked";
+            createTile.disabled = true;
+            createTile.setAttribute("aria-label", "Case limit reached. Upgrade your plan to create another case.");
+            addIcon.textContent = "🔒";
+            title.textContent = "More active cases";
+            meta.textContent = `Your ${planName} plan includes ${activeCaseLimit} active ${activeCaseLimit === 1 ? "case" : "cases"}. Upgrade to create another.`;
+            caseUpgradeLink.hidden = false;
+          } else {
+            createTile.setAttribute("aria-label", "Start a new case");
+            addIcon.textContent = "+";
+            title.textContent = "Start a new case";
+            meta.textContent = "Choose documents or a guided wizard";
+            caseUpgradeLink.hidden = true;
+            createTile.addEventListener("click", openCaseCreationDialog);
+          }
+          if (!dashboardDemoMode) {
+            copy.append(title, meta);
+            createTile.append(addIcon, copy);
+          }
+          caseList.append(createTile);
         }
 
         function setSettlementStatus(message, kind = "") {
@@ -5079,6 +5291,19 @@
         function showPreparation(mode) {
           const isUpload = mode === "upload";
           const isDemo = mode === "demo";
+          if (preparationCaseId && mode === "wizard") {
+            wizardFinish.textContent = "Save draft and return to cases";
+            preparationNote.textContent =
+              "Your case record is saved to your account. Wizard answers and attachments are saved in this browser only and are not uploaded or backed up. Keep your own secure copy.";
+            document.getElementById("preparation-description").textContent =
+              "Use the guided sections below to prepare information for this case. Your answers stay in this browser.";
+            document.getElementById("wizard-demo-title").textContent = "Guided case wizard";
+            wizardDemoPage.querySelector(".demo-flow-intro").textContent =
+              "Work through the sections at your own pace. Answers and optional evidence are saved only in this browser and are not uploaded, analyzed, or used to change your case record.";
+            preparationView.append(wizardDemoPage);
+            wizardDemoPage.hidden = false;
+            void initializeWizardDraft();
+          }
           document.getElementById("preparation-title").textContent = isUpload
             ? "Start with your case materials"
             : isDemo
@@ -5088,10 +5313,15 @@
             ? "Choose files from your device, review your selection, and confirm before anything is imported."
             : isDemo
               ? "Explore fictional sample assets and compare marriage-only, earlier CIR, and intermediate-date settlement assumptions. No sign-in or case data is needed."
-              : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
+              : preparationCaseId
+                ? "Use the guided sections below to prepare information for this case. Your answers stay in this browser."
+                : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
           materialsWorkflow.hidden = !isUpload;
           preparationNote.hidden = isUpload || isDemo;
           preparationView.hidden = false;
+          if (preparationCaseId && mode === "wizard") {
+            preparationNote.hidden = false;
+          }
           if (isUpload) loadMaterialsConfig();
           if (isDemo) {
             document.getElementById("dashboard-title").textContent = "Casework demo";
@@ -7567,10 +7797,10 @@
         }
 
         async function restoreMaterialsBatch() {
-          const savedBatchId = sessionStorage.getItem("materials-import-batch");
+          const savedBatchId = sessionStorage.getItem(materialsBatchStorageKey);
           if (!savedBatchId) return;
           if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(savedBatchId)) {
-            sessionStorage.removeItem("materials-import-batch");
+            sessionStorage.removeItem(materialsBatchStorageKey);
             return;
           }
           materialsBatchId = savedBatchId;
@@ -7586,7 +7816,7 @@
               return;
             }
             if (response.status === 404) {
-              sessionStorage.removeItem("materials-import-batch");
+              sessionStorage.removeItem(materialsBatchStorageKey);
               materialsBatchId = null;
               materialsBatchVerified = true;
               return;
@@ -7634,7 +7864,7 @@
           if (!materialsBatchId) {
             materialsBatchId = crypto.randomUUID();
             try {
-              sessionStorage.setItem("materials-import-batch", materialsBatchId);
+              sessionStorage.setItem(materialsBatchStorageKey, materialsBatchId);
             } catch {
               materialsBatchId = null;
               materialsStatus.textContent = "Secure retry tracking is unavailable. Check your browser settings before importing.";
@@ -7655,6 +7885,7 @@
               try {
                 const body = new FormData();
                 body.append("upload", item.file, item.file.name);
+                if (preparationCaseId) body.append("case_id", preparationCaseId);
                 const response = await fetch(
                   `/api/v1/materials/imports/${materialsBatchId}/files/${item.id}`,
                   {
@@ -7934,7 +8165,6 @@
           if (!isStartup || preparationMode) showDashboardShell();
           dashboardLoading.hidden = false;
           dashboardError.hidden = true;
-          emptyAccountState.hidden = true;
           existingCases.hidden = true;
           preparationView.hidden = true;
           try {
@@ -7966,6 +8196,9 @@
               !account ||
               !Number.isInteger(account.case_count) ||
               !Array.isArray(account.cases) ||
+              !Number.isInteger(account.active_case_count) ||
+              !(account.active_case_limit === null || Number.isInteger(account.active_case_limit)) ||
+              typeof account.plan_name !== "string" ||
               account.has_cases !== (account.case_count > 0) ||
               account.cases.length !== account.case_count
             ) {
@@ -7976,11 +8209,12 @@
             await refreshBillingStatus();
             if (preparationMode) {
               showPreparation(preparationMode);
-            } else if (account.case_count === 0) {
-              emptyAccountState.hidden = false;
             } else {
-              existingCaseCount.textContent = `You have ${account.case_count} ${account.case_count === 1 ? "case" : "cases"} available to you.`;
-              renderCases(account.cases);
+              renderCases(account.cases, {
+                activeCaseCount: account.active_case_count,
+                activeCaseLimit: account.active_case_limit,
+                planName: account.plan_name,
+              });
               existingCases.hidden = false;
             }
           } catch (error) {
@@ -8004,6 +8238,15 @@
         });
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
+        });
+        document.getElementById("case-create-cancel").addEventListener("click", () => {
+          if (document.getElementById("case-create-cancel").disabled) return;
+          caseCreateDialog.close();
+        });
+        caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((button) => {
+          button.addEventListener("click", () => {
+            void createCaseFromDashboard(button.dataset.caseMode, button);
+          });
         });
         billingRefreshButton.addEventListener("click", () => {
           void refreshBillingStatus();
@@ -8465,7 +8708,9 @@
           if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
-          if (saved) window.location.assign("/demo");
+          if (saved) {
+            window.location.assign(preparationCaseId ? "/#account" : "/demo");
+          }
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
         wizardClearCancel.addEventListener("click", () => wizardClearDialog.close());
@@ -8592,6 +8837,22 @@
 
         if (demoSettlementCompletionMode || settlementCompletionMode) {
           void initializeSettlementCompletionPage();
+        } else if (dashboardDemoMode) {
+          document.body.dataset.demoPage = "dashboard";
+          showDashboardShell();
+          dashboardLoading.hidden = true;
+          dashboardDemoBanner.hidden = false;
+          renderCases(
+            [{
+              id: "sample-case",
+              title: "XYZ vs ABC",
+              status: "in progress",
+              workflow_mode: "wizard",
+              attempt_ordinal: 2,
+            }],
+            { activeCaseCount: 1, activeCaseLimit: 1, planName: "Free" },
+          );
+          existingCases.hidden = false;
         } else if (demoMode) {
           document.body.dataset.demoPage = "settlement";
           showDashboardShell();
