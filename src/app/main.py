@@ -9,7 +9,7 @@ from uuid import UUID
 
 from botocore.exceptions import BotoCoreError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -32,6 +32,12 @@ from app.documents import (
     convert_pdf_to_docx,
     extract_document,
     render_template,
+)
+from app.existing_offer import (
+    METADATA_KEY as EXISTING_OFFER_METADATA_KEY,
+    ExistingOfferCreate,
+    build_offer_record,
+    router as existing_offer_router,
 )
 from app.export_integrations import router as export_integrations_router
 from app.models import (
@@ -108,6 +114,7 @@ app.include_router(auth_router)
 app.include_router(billing_router)
 app.include_router(export_integrations_router)
 app.include_router(materials_router)
+app.include_router(existing_offer_router)
 app.include_router(offer_response_router)
 app.include_router(analysis_router)
 app.include_router(review_router)
@@ -237,6 +244,14 @@ class CaseCreate(BaseModel):
         default_factory=RelationshipMilestones
     )
     property_assets: list[PropertyAsset] = Field(default_factory=list, max_length=250)
+    existing_offer: ExistingOfferCreate | None = None
+
+    @field_validator("metadata")
+    @classmethod
+    def metadata_cannot_set_existing_offer(cls, value: dict) -> dict:
+        if EXISTING_OFFER_METADATA_KEY in value:
+            raise ValueError("Use existing_offer to record an existing offer.")
+        return value
 
 
 class CaseRead(BaseModel):
@@ -509,6 +524,10 @@ def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
         case_metadata["case_title"] = payload.case_title.strip()
     if payload.workflow_mode:
         case_metadata["workflow_mode"] = payload.workflow_mode
+    if payload.existing_offer is not None:
+        case_metadata[EXISTING_OFFER_METADATA_KEY] = build_offer_record(
+            payload.existing_offer.exists, payload.existing_offer.notes, []
+        )
     case = Case(
         status=payload.status,
         metadata_json=case_metadata,
