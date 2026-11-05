@@ -518,6 +518,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
             sent_confirmed=True,
             outcome="counteroffer",
             counteroffer_attachment_present=False,
+            counteroffer=None,
         )
         with (
             patch("app.offer_response._authorized_selection", return_value=(None, selection)),
