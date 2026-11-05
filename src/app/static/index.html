@@ -1424,7 +1424,7 @@
             <p class="demo-file-status" id="demo-file-status" role="status" aria-live="polite"></p>
             <div class="demo-flow-actions">
               <button class="button button-primary demo-next" id="demo-files-next" type="button" disabled>Next <span class="arrow" aria-hidden="true">→</span></button>
-              <a class="button button-secondary" href="/">Back to home</a>
+              <a class="button button-secondary" id="demo-documents-back" data-demo-case-return href="/demo/dashboard">Back to case page</a>
             </div>
           </div>
         </section>
@@ -1513,7 +1513,7 @@
               <div class="wizard-bottom-actions">
                 <button class="button button-primary" id="wizard-finish" type="button" disabled>Save and view Existing demo</button>
                 <button class="wizard-clear" id="wizard-clear" type="button">Clear saved draft</button>
-                <a class="button button-secondary" href="/">Back to home</a>
+                <a class="button button-secondary" id="demo-wizard-back" data-demo-case-return href="/demo/dashboard">Back to case page</a>
               </div>
             </div>
           </div>
@@ -2775,6 +2775,18 @@
           const closingAccountCta = document.getElementById("closing-account-cta");
           closingAccountCta.href = dashboardUrl;
           closingAccountCta.textContent = continueLabel;
+        }
+
+        function initializeDemoCaseReturnLinks() {
+          const demoSource = new URLSearchParams(window.location.search).get("source");
+          const dashboardPath = demoSource === "demo1"
+            ? "/demo/1/dashboard"
+            : demoSource === "demo2"
+              ? "/demo/2/dashboard"
+              : "/demo/dashboard";
+          document.querySelectorAll("[data-demo-case-return]").forEach((link) => {
+            link.href = dashboardPath;
+          });
         }
 
         function showSignIn(message = "") {
@@ -8927,6 +8939,8 @@
             resendButton.disabled = false;
           }
         });
+
+        if (demoOnlyMode) initializeDemoCaseReturnLinks();
 
         if (demoSettlementCompletionMode || settlementCompletionMode) {
           void initializeSettlementCompletionPage();
