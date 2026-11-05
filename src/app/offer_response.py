@@ -30,6 +30,7 @@ from app.models import (
     SettlementScenarioSelection,
     User,
 )
+from app.offer_comparison import build_offer_comparison
 from app.counteroffer import (
     DELIVERY_BOUNDARY,
     CounterofferValuesUpdate,
@@ -121,6 +122,7 @@ class OfferResponseRead(BaseModel):
     counteroffer: dict | None
     prior_attempt: dict | None
     outcome_choices: list[str]
+    comparison: dict
 
 
 class OfferOutcomeUpdate(BaseModel):
@@ -446,6 +448,31 @@ def _read_response(
                 getattr(prior_response, "counteroffer_json", None),
             )
     outcome = response_record.outcome if response_record is not None else None
+    origin = offer_origin(attempt_ordinal, snapshot)
+    editable_state = attempt.editable_state_json if attempt is not None else {}
+    counteroffer = getattr(response_record, "counteroffer_json", None)
+    finalized = is_finalized(attempt)
+    proposal_version_ordinal = (
+        getattr(attempt, "proposal_version_ordinal", 0) if attempt is not None else 0
+    )
+    comparison_snapshot = snapshot
+    comparison_scenario_result = scenario_result
+    comparison_editable_state = editable_state
+    comparison_version_ordinal = proposal_version_ordinal
+    finalized_snapshot = getattr(attempt, "finalized_snapshot_json", None)
+    if finalized and isinstance(finalized_snapshot, dict):
+        comparison_snapshot = finalized_snapshot
+        finalized_state = finalized_snapshot.get("negotiation")
+        if isinstance(finalized_state, dict):
+            comparison_editable_state = finalized_state
+        finalized_scenario = finalized_snapshot.get("scenario")
+        if isinstance(finalized_scenario, dict) and isinstance(
+            finalized_scenario.get("result"), dict
+        ):
+            comparison_scenario_result = finalized_scenario["result"]
+        finalized_version = (finalized_snapshot.get("proposal_version") or {}).get("ordinal")
+        if isinstance(finalized_version, int):
+            comparison_version_ordinal = finalized_version
     return OfferResponseRead(
         selection_id=selection.id,
         outcome=response_record.outcome if response_record is not None else None,
@@ -454,7 +481,7 @@ def _read_response(
         sent_confirmed=attempt.sent_confirmed_at is not None if attempt is not None else False,
         counteroffer_attachment_present="counteroffer" in kinds,
         attempt_ordinal=attempt_ordinal,
-        offer_origin=offer_origin(attempt_ordinal, snapshot),
+        offer_origin=origin,
         attempt_limit=attempt_limit,
         attempts_remaining=(
             max(0, attempt_limit - (attempt.attempt_ordinal if attempt is not None else 1))
@@ -464,7 +491,7 @@ def _read_response(
         frozen=attempt.frozen_at is not None if attempt is not None else bool(
             response_record and response_record.outcome is not None
         ),
-        finalized=is_finalized(attempt),
+        finalized=finalized,
         finalized_at=getattr(attempt, "finalized_at", None),
         finalized_version_ordinal=getattr(attempt, "finalized_version_ordinal", None),
         proposal_issued=proposal_issued_at is not None,
@@ -473,19 +500,32 @@ def _read_response(
             if attempt is not None
             else False
         ),
-        proposal_version_ordinal=(
-            getattr(attempt, "proposal_version_ordinal", 0) if attempt is not None else 0
-        ),
+        proposal_version_ordinal=proposal_version_ordinal,
         attempt_revision=attempt.revision if attempt is not None else 0,
-        editable_state=attempt.editable_state_json if attempt is not None else {},
+        editable_state=editable_state,
         snapshot=snapshot,
         scenario_result=scenario_result,
         proposal_terms=proposal_terms,
         has_next_attempt=has_next_attempt,
         delivery=dict(DELIVERY_BOUNDARY),
-        counteroffer=getattr(response_record, "counteroffer_json", None),
+        counteroffer=counteroffer,
         prior_attempt=prior_attempt,
         outcome_choices=["next_attempt", "stop_case"] if outcome == "rejected" else [],
+        comparison=build_offer_comparison(
+            attempt_ordinal=attempt_ordinal,
+            proposal_version_ordinal=comparison_version_ordinal,
+            finalized=finalized,
+            offer_origin=origin,
+            snapshot=comparison_snapshot,
+            scenario_result=(
+                comparison_scenario_result
+                if isinstance(comparison_scenario_result, dict)
+                else {}
+            ),
+            editable_state=comparison_editable_state,
+            prior_attempt=prior_attempt,
+            current_counteroffer=counteroffer,
+        ),
     )
 
 
