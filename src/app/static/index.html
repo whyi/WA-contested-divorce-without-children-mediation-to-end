@@ -3530,7 +3530,7 @@
             tile.setAttribute("aria-label", `Open ${item.title}, ${caseAttemptLabel(item.attempt_ordinal)}`);
             tile.addEventListener("click", () => {
               if (dashboardDemoMode) {
-                window.location.assign("/demo/wizard");
+                window.location.assign("/demo");
                 return;
               }
               if (item.workflow_mode) {
