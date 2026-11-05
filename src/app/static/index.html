@@ -988,6 +988,15 @@
       .case-tile-meta { color:var(--text-secondary); font-size:12px; line-height:1.5; }
       .case-tile-inactive { cursor:not-allowed; opacity:.78; }
       .case-tile-inactive:disabled { cursor:not-allowed; }
+      .closed-cases { margin-top:30px; padding-top:24px; border-top:1px solid var(--border-color); }
+      .closed-cases h3 { margin:0 0 6px; color:var(--text-primary); font-size:18px; }
+      .closed-cases p { margin:0 0 8px; color:var(--text-secondary); font-size:13px; line-height:1.5; }
+      .closed-case-list { list-style:none; margin:14px 0 0; padding:0; display:grid; gap:12px; }
+      .closed-case-item { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px; border:1px solid var(--border-color); border-radius:12px; }
+      .closed-case-item .case-tile-title { display:block; color:var(--text-primary); font-weight:600; }
+      .closed-case-item .case-tile-meta { color:var(--text-secondary); font-size:13px; }
+      .closed-case-actions { display:flex; flex-wrap:wrap; gap:8px; }
+      .settlement-case-actions { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
       .inactive-cases { margin-top:30px; padding-top:24px; border-top:1px solid var(--border-color); }
       .inactive-cases h3 { margin:0 0 6px; color:var(--text-primary); font-size:18px; }
       .inactive-cases > p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.5; }
@@ -2025,6 +2034,12 @@
               </div>
               <div class="case-grid" id="case-list" aria-live="polite"></div>
               <a class="case-upgrade-link" id="case-upgrade-link" href="#subscription-pricing" hidden>Compare plans to create more active cases</a>
+              <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
+                <h3 id="closed-cases-title">Closed cases</h3>
+                <p>Closing a case does not delete it. Your materials, attempts and remaining document credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
+                <p id="closed-cases-status" role="status" aria-live="polite"></p>
+                <ul class="closed-case-list" id="closed-case-list"></ul>
+              </section>
               <section class="inactive-cases" id="demo-inactive-cases" aria-labelledby="demo-inactive-cases-title" hidden>
                 <h3 id="demo-inactive-cases-title">Inactive cases</h3>
                 <p>Archived case previews are not open yet.</p>
@@ -2096,6 +2111,11 @@
                 <h2 id="settlement-planner-title">Evidence-grounded settlement planning</h2>
                 <p>Washington-only decision support. The calculations use your entered assumptions; they are not legal classifications, a predicted result, or legal advice. A Washington attorney or mediator should review the draft.</p>
                 <p class="settlement-status" id="settlement-planner-status" role="status" aria-live="polite"></p>
+                <div class="settlement-case-actions" role="group" aria-label="Case actions">
+                  <button class="dashboard-retry" id="settlement-case-export" type="button">Export all case data</button>
+                  <button class="dashboard-retry" id="settlement-case-close" type="button">Close case</button>
+                </div>
+                <p id="settlement-case-action-status" role="status" aria-live="polite"></p>
                 <section class="settlement-attempt-progress" aria-labelledby="settlement-attempt-progress-title">
                   <div class="settlement-attempt-progress-heading">
                     <h3 id="settlement-attempt-progress-title">Negotiation progress</h3>
@@ -2687,6 +2707,12 @@
         const caseTitleInput = document.getElementById("case-title-input");
         const caseCreateStatus = document.getElementById("case-create-status");
         const settlementPlanner = document.getElementById("settlement-planner");
+        const closedCases = document.getElementById("closed-cases");
+        const closedCaseList = document.getElementById("closed-case-list");
+        const closedCasesStatus = document.getElementById("closed-cases-status");
+        const settlementCaseExport = document.getElementById("settlement-case-export");
+        const settlementCaseClose = document.getElementById("settlement-case-close");
+        const settlementCaseActionStatus = document.getElementById("settlement-case-action-status");
         const settlementPlannerStatus = document.getElementById("settlement-planner-status");
         const settlementPlannerContent = document.getElementById("settlement-planner-content");
         const settlementConsent = document.getElementById("settlement-consent");
@@ -4253,6 +4279,121 @@
             createTile.append(addIcon, copy);
           }
           caseList.append(createTile);
+        }
+
+        async function downloadCaseExport(caseId, statusElement, button) {
+          statusElement.textContent = "Preparing your complete case export…";
+          button.disabled = true;
+          try {
+            const response = await fetch(`/cases/${encodeURIComponent(caseId)}/export`, {
+              credentials: "same-origin",
+              headers: { Accept: "application/zip" },
+            });
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            if (!response.ok) {
+              const detail = (await response.json().catch(() => null))?.detail;
+              throw new Error(typeof detail === "string" ? detail : "The export could not be created. Please try again.");
+            }
+            const url = URL.createObjectURL(await response.blob());
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `case-${caseId}-export.zip`;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            statusElement.textContent = "Your complete case export was downloaded. You can export again at any time.";
+          } catch (error) {
+            statusElement.textContent = error instanceof Error ? error.message : "The export could not be created. Please try again.";
+          } finally {
+            button.disabled = false;
+          }
+        }
+
+        async function closeCaseFromWorkspace() {
+          if (!settlementCaseId) return;
+          const confirmed = window.confirm(
+            "Close this case? Nothing is deleted, your document credits do not expire, and you can reopen it from Closed cases at any time.",
+          );
+          if (!confirmed) return;
+          settlementCaseClose.disabled = true;
+          try {
+            await settlementApi(`/cases/${encodeURIComponent(settlementCaseId)}/close`, {
+              method: "POST",
+              body: JSON.stringify({ reason: "stopped" }),
+            });
+            settlementPlanner.hidden = true;
+            settlementCaseId = null;
+            await loadDashboardStatus();
+          } catch (error) {
+            settlementCaseActionStatus.textContent = error instanceof Error ? error.message : "The case could not be closed. Please try again.";
+          } finally {
+            settlementCaseClose.disabled = false;
+          }
+        }
+
+        async function reopenClosedCase(item, button) {
+          button.disabled = true;
+          closedCasesStatus.textContent = `Reopening ${item.title}…`;
+          try {
+            await settlementApi(`/cases/${encodeURIComponent(item.id)}/reopen`, { method: "POST" });
+            await loadDashboardStatus();
+          } catch (error) {
+            closedCasesStatus.textContent = error instanceof Error ? error.message : "The case could not be reopened. Please try again.";
+            button.disabled = false;
+          }
+        }
+
+        async function loadClosedCases() {
+          closedCases.hidden = true;
+          if (dashboardDemoMode) return;
+          try {
+            const response = await fetch("/api/v1/closed-cases", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (!response.ok) throw new Error("unavailable");
+            const { cases } = await response.json();
+            closedCaseList.replaceChildren();
+            closedCasesStatus.textContent = "";
+            for (const item of cases) {
+              const row = document.createElement("li");
+              row.className = "closed-case-item";
+              const copy = document.createElement("span");
+              const title = document.createElement("span");
+              title.className = "case-tile-title";
+              title.textContent = item.title;
+              const meta = document.createElement("span");
+              meta.className = "case-tile-meta";
+              meta.textContent = `Closed ${new Date(item.closed_at).toLocaleDateString()} · ${item.closed_reason === "accepted" ? "offer accepted" : "stopped"}`;
+              copy.append(title, meta);
+              const actions = document.createElement("span");
+              actions.className = "closed-case-actions";
+              const reopen = document.createElement("button");
+              reopen.type = "button";
+              reopen.className = "dashboard-retry";
+              reopen.textContent = "Reopen";
+              reopen.setAttribute("aria-label", `Reopen ${item.title}`);
+              reopen.addEventListener("click", () => void reopenClosedCase(item, reopen));
+              const exportButton = document.createElement("button");
+              exportButton.type = "button";
+              exportButton.className = "dashboard-retry";
+              exportButton.textContent = "Export data";
+              exportButton.setAttribute("aria-label", `Export all data for ${item.title}`);
+              exportButton.addEventListener("click", () => void downloadCaseExport(item.id, closedCasesStatus, exportButton));
+              actions.append(reopen, exportButton);
+              row.append(copy, actions);
+              closedCaseList.append(row);
+            }
+            closedCases.hidden = cases.length === 0;
+          } catch {
+            closedCases.hidden = false;
+            closedCaseList.replaceChildren();
+            closedCasesStatus.textContent = "Closed cases could not be loaded. Try again from Refresh.";
+          }
         }
 
         function setSettlementStatus(message, kind = "") {
@@ -9016,6 +9157,7 @@
                 planName: account.plan_name,
               });
               existingCases.hidden = false;
+              void loadClosedCases();
             }
           } catch (error) {
             showDashboardShell();
@@ -9050,6 +9192,12 @@
           button.addEventListener("click", () => {
             void createCaseFromDashboard(button.dataset.caseMode, button);
           });
+        });
+        settlementCaseExport.addEventListener("click", () => {
+          if (settlementCaseId) void downloadCaseExport(settlementCaseId, settlementCaseActionStatus, settlementCaseExport);
+        });
+        settlementCaseClose.addEventListener("click", () => {
+          void closeCaseFromWorkspace();
         });
         billingRefreshButton.addEventListener("click", () => {
           void refreshBillingStatus();
