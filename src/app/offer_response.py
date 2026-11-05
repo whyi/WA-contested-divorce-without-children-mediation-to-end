@@ -574,6 +574,46 @@ def read_offer_response(
     )
 
 
+@router.post("/complete")
+def complete_accepted_case(
+    case_id: UUID,
+    selection_id: UUID,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    _, selection = _authorized_selection(case_id, selection_id, user, db, write=True)
+    case = _lock_case(db, case_id)
+    current = _read_response(
+        db,
+        selection,
+        _response_record(db, selection),
+        user_settlement_attempt_limit(user),
+    )
+    if (
+        current.outcome != "accepted"
+        or not current.sent_documents_complete
+        or not current.sent_confirmed
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Only a confirmed, accepted offer can complete this case.",
+        )
+    if case.status == "finalized":
+        return {"status": "finalized"}
+
+    case.status = "finalized"
+    try:
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.error("Case finalization failed (%s).", type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="The case could not be marked as completed. Please try again.",
+        ) from error
+    return {"status": "finalized"}
+
+
 @router.post("/parse-modified-offer", response_model=ModifiedOfferParseRead)
 def parse_uploaded_modified_offer(
     case_id: UUID,
