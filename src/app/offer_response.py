@@ -39,6 +39,7 @@ from app.settlement_routes import (
     _lock_case,
     _prepare_attempt_offer_export,
 )
+from app.case_lifecycle import close_case_record
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
 
@@ -574,6 +575,11 @@ def read_offer_response(
     )
 
 
+def _finalize_case_record(case, user_id: UUID, db: Session) -> None:
+    close_case_record(db, case, user_id, "accepted")
+    case.status = "finalized"
+
+
 @router.post("/complete")
 def complete_accepted_case(
     case_id: UUID,
@@ -601,7 +607,7 @@ def complete_accepted_case(
     if case.status == "finalized":
         return {"status": "finalized"}
 
-    case.status = "finalized"
+    _finalize_case_record(case, user.id, db)
     try:
         db.commit()
     except SQLAlchemyError as error:

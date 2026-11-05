@@ -29,6 +29,10 @@ class Case(Base):
             "status IN ('draft', 'mediation', 'settlement', 'finalized')",
             name="ck_cases_status",
         ),
+        CheckConstraint(
+            "closed_reason IS NULL OR closed_reason IN ('accepted', 'stopped', 'closed')",
+            name="ck_cases_closed_reason",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -49,6 +53,9 @@ class Case(Base):
     )
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_reason: Mapped[str | None] = mapped_column(String(20))
+    status_before_close: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -56,6 +63,25 @@ class Case(Base):
 
     negotiations: Mapped[list["NegotiationEvent"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"
+    )
+
+
+class CaseLifecycleEvent(Base):
+    __tablename__ = "case_lifecycle_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('closed', 'reopened')",
+            name="ck_case_lifecycle_events_type",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

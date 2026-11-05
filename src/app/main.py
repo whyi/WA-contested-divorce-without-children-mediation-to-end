@@ -21,6 +21,7 @@ from app.analysis import router as analysis_router
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.billing_routes import router as billing_router
+from app.case_lifecycle import lifecycle_write_allowed, router as case_lifecycle_router
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import SessionLocal, get_db
@@ -106,6 +107,7 @@ app = FastAPI(
 )
 app.include_router(auth_router)
 app.include_router(billing_router)
+app.include_router(case_lifecycle_router)
 app.include_router(export_integrations_router)
 app.include_router(materials_router)
 app.include_router(offer_response_router)
@@ -210,10 +212,10 @@ async def authenticate_and_authorize_case_data(
                         return JSONResponse(status_code=403, content={"detail": "Case is read-only."})
                     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
                         case = db.get(Case, case_id)
-                        if case is not None and case.status == "finalized":
+                        if case is not None and not lifecycle_write_allowed(case, path):
                             return JSONResponse(
                                 status_code=409,
-                                content={"detail": "This case is completed and read-only."},
+                                content={"detail": "This case is closed and read-only. Reopen it to make changes."},
                             )
                 db.commit()
         except ValueError:
@@ -443,6 +445,7 @@ def dashboard_status(
                 CaseMembership.user_id == user.id,
                 CaseMembership.revoked_at.is_(None),
                 Case.status != "finalized",
+                Case.closed_at.is_(None),
             )
             .group_by(Case.id, CaseMembership.role)
             .order_by(Case.created_at.desc(), Case.id)
