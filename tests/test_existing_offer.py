@@ -286,6 +286,36 @@ class ExistingOfferUiTests(unittest.TestCase):
         self.assertIn("/existing-offer", self.page)
         self.assertIn("offer_origin", self.page)
 
+    def test_yes_without_any_source_never_creates_or_advances(self) -> None:
+        create = self.page.split("async function createCaseFromDashboard", 1)[1].split(
+            "function renderCases", 1
+        )[0]
+        self.assertNotIn("offer=pending", self.page)
+        self.assertIn('id="case-offer-file"', self.page)
+        guard = create.index('offerAnswer === "yes" && !offerNotes && !offerFile')
+        self.assertLess(guard, create.index('settlementApi("/cases"'))
+        self.assertLess(guard, create.index("window.location.assign"))
+        # A file-only answer is persisted only after the upload, and only then may onboarding advance.
+        self.assertLess(
+            create.index("/existing-offer"), create.index("window.location.assign")
+        )
+        self.assertIn("document_ids: [progress.documentId]", create)
+        self.assertIn("caseCreateProgress ||=", create)
+
+    def test_onboarding_stays_closed_until_offer_answer_is_saved(self) -> None:
+        gate = self.page.split("function applyExistingOfferGate", 1)[1].split(
+            "function renderExistingOffer", 1
+        )[0]
+        self.assertIn("existingOfferState.exists !== null", gate)
+        self.assertIn("materialsWorkflow.hidden = !open", gate)
+        self.assertIn("wizardDemoPage.hidden = !open", gate)
+        self.assertIn("materialsWorkflow.hidden = !isUpload || Boolean(preparationCaseId)", self.page)
+        panel_save = self.page.split("async function saveExistingOffer()", 1)[1].split(
+            "async function saveExistingOfferTerms", 1
+        )[0]
+        self.assertIn("!notes && documentIds.length === 0 && !offerFile", panel_save)
+        self.assertIn('id="existing-offer-file"', self.page)
+
 
 if __name__ == "__main__":
     unittest.main()
