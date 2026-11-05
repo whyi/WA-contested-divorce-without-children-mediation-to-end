@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -862,6 +863,10 @@ class User(Base):
             name="ck_users_settlement_attempt_limit",
         ),
         CheckConstraint(
+            "account_type IN ('party', 'professional')",
+            name="ck_users_account_type",
+        ),
+        CheckConstraint(
             "document_credit_balance >= 0",
             name="ck_users_document_credit_balance",
         ),
@@ -884,6 +889,9 @@ class User(Base):
     )
     document_credit_balance: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
+    )
+    account_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="party", server_default=text("'party'")
     )
     subscription_plan: Mapped[str] = mapped_column(
         String(20), nullable=False, default="free", server_default=text("'free'")
@@ -1070,8 +1078,18 @@ class AuthAuditEvent(Base):
 class CaseMembership(Base):
     __tablename__ = "case_memberships"
     __table_args__ = (
-        CheckConstraint("role IN ('owner', 'editor', 'viewer')", name="ck_case_memberships_role"),
+        CheckConstraint(
+            "role IN ('owner', 'editor', 'viewer', 'delegate')",
+            name="ck_case_memberships_role",
+        ),
         UniqueConstraint("case_id", "user_id", name="uq_case_membership_user_case"),
+        Index(
+            "uq_case_membership_single_operator",
+            "case_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL AND suspended_at IS NULL AND role IN ('owner', 'delegate')"),
+            sqlite_where=text("revoked_at IS NULL AND suspended_at IS NULL AND role IN ('owner', 'delegate')"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -1080,5 +1098,35 @@ class CaseMembership(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="owner")
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="case_memberships")
+
+
+class CaseDelegationInvitation(Base):
+    __tablename__ = "case_delegation_invitations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'revoked', 'expired')",
+            name="ck_case_delegation_invitations_status",
+        ),
+        Index(
+            "uq_case_delegation_open_invitation",
+            "case_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'accepted')"),
+            sqlite_where=text("status IN ('pending', 'accepted')"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    owner_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    invitee_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    delegate_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
