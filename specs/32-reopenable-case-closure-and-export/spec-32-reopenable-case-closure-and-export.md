@@ -10,7 +10,7 @@
 ## Functional requirements
 
 - **FR-32-01 — Reversible closure:** An owner can close a case with reason `stopped` or `closed`. Completing an accepted offer (Spec 25) closes it with reason `accepted`. Closing records `closed_at`, the reason and the pre-close status; it never deletes or alters case data, files, attempts, snapshots, generated artifacts, or credits. Closing is idempotent.
-- **FR-32-02 — Reopen:** An owner can reopen a closed case at any time, including one closed by mistake. Reopening restores the saved pre-close status on the same case; it does not create a case or reset attempts. It is subject to the plan's active-case limit, which closed cases do not consume.
+- **FR-32-02 — Reopen:** An owner can reopen a closed case at any time, including one closed by mistake. Reopening restores the saved pre-close status on the same case; it does not create a case or reset attempts. Reopening is not gated by subscription tier, plan quota or any other case; this spec introduces no second-case or active-case-limit policy.
 - **FR-32-03 — No expiry:** No calendar-based retention countdown, purge, or credit expiration is created or implied by closing. Remaining document credits are user-level and unchanged by close/reopen.
 - **FR-32-04 — Closed is read-only, not final:** While closed, case writes are rejected except reopen/close; reads and export remain available. Closed cases are excluded from the active dashboard and listed by `GET /api/v1/closed-cases`.
 - **FR-32-05 — Lifecycle history:** Each close and reopen is appended to a case lifecycle event record included in the export.
@@ -26,7 +26,7 @@
 2. Closing creates no deletion, expiry or retention countdown.
 3. A member can export repeatedly without limit; the archive includes JSON data and files and excludes the listed sensitive fields.
 4. Accepted-offer completion and `stopped` closure are both reopenable.
-5. Non-owners cannot close/reopen; closed cases reject other writes.
+5. Reopen succeeds for any plan tier. Non-owners cannot close/reopen; closed cases reject other writes.
 6. From the dashboard a user can see closed cases, reopen one, and download a complete export of a closed or open case without using the API directly.
 
 ## Implementation status

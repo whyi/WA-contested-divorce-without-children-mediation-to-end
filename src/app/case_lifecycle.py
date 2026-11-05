@@ -15,7 +15,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
-from app.case_limits import require_active_case_slot
 from app.database import Base, get_db
 from app.models import Case, CaseLifecycleEvent, CaseMembership, Document, User
 from app.storage import ObjectStorage
@@ -190,8 +189,7 @@ def reopen_case(
     case = _owned_case(db, case_id, user)
     if case.closed_at is None and case.status != "finalized":
         raise HTTPException(status_code=409, detail="This case is already open.")
-    # Closed and finalized cases do not count as active, so this checks the plan limit.
-    require_active_case_slot(db, user.id)
+    # Reopening restores an existing case; it is never gated by plan or other cases.
     restored = case.status_before_close
     case.status = restored if restored and restored != "finalized" else "settlement"
     case.closed_at = None
