@@ -58,7 +58,7 @@ case is protected by an explicit case-membership grant, and signup or social
 login never grants case access. Do not submit real case information.
 
 Case setup asks whether the other party has already made an offer
-([Spec 32](specs/32-existing-offer-intake/spec-32-existing-offer-intake.md)).
+([Spec 33](specs/33-existing-offer-intake/spec-33-existing-offer-intake.md)).
 A "yes" requires an uploaded offer document or non-empty notes, enforced by
 the API; notes can later be related to individual assets, and the first
 attempt of such a case is labelled an initial incoming offer.
