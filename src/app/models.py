@@ -388,6 +388,10 @@ class SettlementNegotiationAttempt(Base):
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finalized_snapshot_json: Mapped[dict | None] = mapped_column(JSONB)
+    finalized_version_ordinal: Mapped[int | None] = mapped_column(Integer)
+    finalized_by_user_id_snapshot: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

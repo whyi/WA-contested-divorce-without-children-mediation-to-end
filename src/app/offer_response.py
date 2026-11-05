@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.attempt_finalization import is_finalized
 from app.auth_routes import require_current_user
 from app.config import get_settings
 from app.database import get_db
@@ -98,6 +99,9 @@ class OfferResponseRead(BaseModel):
     attempt_limit: int
     attempts_remaining: int
     frozen: bool
+    finalized: bool
+    finalized_at: datetime | None
+    finalized_version_ordinal: int | None
     proposal_issued: bool
     proposal_draft_unlocked: bool
     proposal_version_ordinal: int
@@ -433,6 +437,9 @@ def _read_response(
         frozen=attempt.frozen_at is not None if attempt is not None else bool(
             response_record and response_record.outcome is not None
         ),
+        finalized=is_finalized(attempt),
+        finalized_at=getattr(attempt, "finalized_at", None),
+        finalized_version_ordinal=getattr(attempt, "finalized_version_ordinal", None),
         proposal_issued=proposal_issued_at is not None,
         proposal_draft_unlocked=(
             bool(getattr(attempt, "proposal_draft_unlocked", False))
@@ -484,6 +491,12 @@ def _frozen_attempt_snapshot(
             else {"sent_docx", "sent_xlsx"}
         )
     ]
+    if is_finalized(attempt):
+        snapshot["finalization"] = {
+            "finalized_at": attempt.finalized_at.isoformat(),
+            "version_ordinal": attempt.finalized_version_ordinal,
+            "snapshot_sha256": (attempt.finalized_snapshot_json or {}).get("snapshot_sha256"),
+        }
     snapshot["sent_confirmation"] = {
         "confirmed_at": confirmed_at.isoformat(),
         "user_id_snapshot": str(user_id),
@@ -719,7 +732,8 @@ def update_offer_attempt_state(
             detail="This account has reached its negotiation attempt limit.",
         )
     issued = attempt.proposal_issued_at is not None
-    draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False))
+    finalized = is_finalized(attempt)
+    draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False)) and not finalized
     if payload.expected_revision != attempt.revision:
         raise HTTPException(
             status_code=409,
@@ -742,7 +756,11 @@ def update_offer_attempt_state(
         if saved_content != requested_content:
             raise HTTPException(
                 status_code=409,
-                detail="This attempt's proposal has been issued. Its terms and scenario are locked.",
+                detail=(
+                    "This attempt is finalized and read-only. Continue to the next attempt to change terms."
+                    if finalized
+                    else "This attempt's proposal has been issued. Its terms and scenario are locked."
+                ),
             )
         if (
             attempt.editable_state_json.get("sent_offer_mode") == "modified"
@@ -882,6 +900,11 @@ def start_new_proposal_version(
     attempt = _attempt_for_selection(db, selection)
     if attempt is None or attempt.proposal_issued_at is None:
         raise HTTPException(status_code=409, detail="Generate the initial proposal before starting a new version.")
+    if is_finalized(attempt):
+        raise HTTPException(
+            status_code=409,
+            detail="A finalized attempt cannot be revised. Continue to the next attempt to change terms.",
+        )
     if attempt.frozen_at is not None or attempt.sent_confirmed_at is not None:
         raise HTTPException(status_code=409, detail="A sent or frozen proposal cannot be revised.")
     response_record = _response_record(db, selection)
