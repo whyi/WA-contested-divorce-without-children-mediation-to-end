@@ -64,9 +64,29 @@ def build_counteroffer_record(
 
 def prior_attempt_context(predecessor: object, outcome: str | None, counteroffer: dict | None) -> dict:
     """Read-only view of the earlier round; the user's and the counteroffer's values stay separate."""
-    state = getattr(predecessor, "editable_state_json", None) or {}
+    final_snapshot = getattr(predecessor, "finalized_snapshot_json", None)
+    frozen_snapshot = getattr(predecessor, "frozen_snapshot_json", None)
+    final_state = final_snapshot.get("negotiation") if isinstance(final_snapshot, dict) else None
+    frozen_state = frozen_snapshot.get("negotiation") if isinstance(frozen_snapshot, dict) else None
+    state = (
+        final_state
+        if isinstance(final_state, dict)
+        else frozen_state
+        if isinstance(frozen_state, dict)
+        else (getattr(predecessor, "editable_state_json", None) or {})
+    )
+    final_version = (
+        final_snapshot.get("proposal_version", {}).get("ordinal")
+        if isinstance(final_snapshot, dict)
+        else None
+    )
     return {
         "attempt_ordinal": predecessor.attempt_ordinal,
+        "proposal_version_ordinal": (
+            final_version
+            if isinstance(final_version, int)
+            else getattr(predecessor, "proposal_version_ordinal", 0)
+        ),
         "outcome": outcome,
         "user_proposed_values": list(state.get("proposed_values", [])),
         "counteroffer": counteroffer,

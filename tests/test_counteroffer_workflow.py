@@ -93,14 +93,34 @@ class CounterofferRecordTests(unittest.TestCase):
     def test_prior_attempt_context_keeps_sides_distinct(self) -> None:
         predecessor = SimpleNamespace(
             attempt_ordinal=1,
+            proposal_version_ordinal=3,
             editable_state_json={"proposed_values": [{"asset_id": ASSET, "proposed_amount_cents": 5}]},
         )
         record = {"source": "mediator_reported", "values": [{"asset_id": ASSET, "amount_cents": 9}]}
         context = prior_attempt_context(predecessor, "counteroffer", record)
         self.assertEqual(context["attempt_ordinal"], 1)
+        self.assertEqual(context["proposal_version_ordinal"], 3)
         self.assertEqual(context["user_proposed_values"][0]["proposed_amount_cents"], 5)
         self.assertEqual(context["counteroffer"]["values"][0]["amount_cents"], 9)
         self.assertEqual(context["outcome"], "counteroffer")
+
+    def test_prior_attempt_context_prefers_immutable_finalized_snapshot(self) -> None:
+        predecessor = SimpleNamespace(
+            attempt_ordinal=1,
+            proposal_version_ordinal=2,
+            editable_state_json={"proposed_values": [{"asset_id": ASSET, "proposed_amount_cents": 99}]},
+            finalized_snapshot_json={
+                "negotiation": {
+                    "proposed_values": [{"asset_id": ASSET, "proposed_amount_cents": 5}],
+                },
+                "proposal_version": {"ordinal": 1},
+            },
+        )
+
+        context = prior_attempt_context(predecessor, "counteroffer", None)
+
+        self.assertEqual(context["proposal_version_ordinal"], 1)
+        self.assertEqual(context["user_proposed_values"][0]["proposed_amount_cents"], 5)
 
 
 class RecordRouteTests(unittest.TestCase):
@@ -232,6 +252,9 @@ class ReadResponseTests(unittest.TestCase):
         self.assertIsNone(result.counteroffer)
         self.assertIsNone(result.prior_attempt)
         self.assertEqual(result.outcome_choices, ["next_attempt", "stop_case"])
+        self.assertEqual(result.comparison["attempt"]["ordinal"], 1)
+        comparison_series = {item["id"]: item for item in result.comparison["series"]}
+        self.assertFalse(comparison_series["prior_proposal"]["available"])
 
 
 class SuggestionTests(unittest.TestCase):
