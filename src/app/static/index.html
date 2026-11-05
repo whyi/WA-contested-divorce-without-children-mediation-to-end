@@ -2305,7 +2305,25 @@
                       <label for="settlement-response-counteroffer-file">Attach the received counteroffer (PDF, DOCX, or XLSX)
                         <input id="settlement-response-counteroffer-file" type="file" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
                       </label>
+                      <section id="settlement-counteroffer-values" aria-labelledby="settlement-counteroffer-values-title">
+                        <h4 id="settlement-counteroffer-values-title">Counteroffer values (optional)</h4>
+                        <p>Enter what the mediator told you, or review values from the document. These are the values you report; the app has not verified them with anyone, and your own proposal values are kept separately.</p>
+                        <label>Source
+                          <select id="settlement-counteroffer-source">
+                            <option value="mediator_reported">Relayed by the mediator (verbal or manual)</option>
+                            <option value="document_reviewed">Taken from the uploaded document after my review</option>
+                          </select>
+                        </label>
+                        <div id="settlement-counteroffer-rows"></div>
+                        <label>Note (optional)<textarea id="settlement-counteroffer-note" maxlength="1000"></textarea></label>
+                        <label id="settlement-counteroffer-reviewed-label" hidden><input id="settlement-counteroffer-reviewed" type="checkbox"> I reviewed these document-derived values and confirm them</label>
+                        <button class="materials-import" id="settlement-counteroffer-suggest" type="button" disabled>Analyze uploaded document (suggestions only)</button>
+                        <button class="materials-import" id="settlement-counteroffer-save" type="button" disabled>Save counteroffer values</button>
+                        <p id="settlement-counteroffer-status" role="status" aria-live="polite"></p>
+                      </section>
+                      <p id="settlement-response-delivery-note">You deliver proposals to the mediator yourself. This app never sends anything to the other party and cannot confirm delivery or the response; what you record here is your own report.</p>
                     </div>
+                    <p id="settlement-response-stop-choice" hidden>Offer rejected. You may use Next to prepare another attempt, or stop here. To stop, close the case from your dashboard; a dedicated neutral stop page is planned in a follow-up.</p>
                     <button class="materials-import" id="settlement-response-continue" type="button" disabled>Next</button>
                     <section class="settlement-response-placeholder" id="settlement-response-placeholder" hidden>
                       <h4>Response recorded</h4>
@@ -5483,7 +5501,8 @@
           const stateBusy = settlementAttemptStateDirty || settlementAttemptStateSaving;
           settlementGenerate.disabled = Boolean(current);
           const counterofferNeedsFile = savedOutcome === "counteroffer"
-            && !current?.counteroffer_attachment_present;
+            && !current?.counteroffer_attachment_present
+            && !current?.counteroffer;
           document.getElementById("settlement-response-outcome-fieldset").disabled =
             !current?.sent_confirmed || settlementResponseUploading || frozen;
           settlementResponseConfirmSent.disabled = settlementResponseUploading
@@ -5531,6 +5550,9 @@
             || counterofferNeedsFile
             || (["counteroffer", "rejected"].includes(savedOutcome)
               && current?.attempts_remaining <= 0);
+          renderSettlementCounterofferPanel();
+          document.getElementById("settlement-response-stop-choice").hidden =
+            !(current?.outcome_choices || []).includes("stop_case");
           settlementResponseCounterofferFile.disabled = settlementResponseUploading
             || Boolean(current?.counteroffer_attachment_present);
           settlementResponseAcceptedFile.disabled = settlementResponseUploading
@@ -6048,6 +6070,120 @@
             updateSettlementResponseControls();
           }
         }
+
+        function counterofferAssets() {
+          const seen = new Map();
+          for (const item of settlementOfferResponseState?.snapshot?.settlement_ledger || []) {
+            if (!seen.has(item.asset_id)) seen.set(item.asset_id, item.asset_name);
+          }
+          return [...seen];
+        }
+
+        function renderSettlementCounterofferPanel() {
+          const current = settlementOfferResponseState;
+          const panel = document.getElementById("settlement-counteroffer-values");
+          const active = current?.outcome === "counteroffer" && !current?.has_next_attempt;
+          panel.hidden = current?.outcome !== "counteroffer";
+          const rows = document.getElementById("settlement-counteroffer-rows");
+          const saved = new Map((current?.counteroffer?.values || []).map((v) => [v.asset_id, v.amount_cents]));
+          if (rows.dataset.rendered !== `${current?.selection_id}:${current?.counteroffer?.recorded_at || ""}`) {
+            rows.replaceChildren();
+            for (const [assetId, name] of counterofferAssets()) {
+              const label = document.createElement("label");
+              label.textContent = `${name} (dollars to you)`;
+              const input = document.createElement("input");
+              input.type = "number";
+              input.step = "0.01";
+              input.dataset.assetId = assetId;
+              if (saved.has(assetId)) input.value = (saved.get(assetId) / 100).toFixed(2);
+              label.append(input);
+              rows.append(label);
+            }
+            rows.dataset.rendered = `${current?.selection_id}:${current?.counteroffer?.recorded_at || ""}`;
+          }
+          rows.querySelectorAll("input").forEach((input) => { input.disabled = !active; });
+          const source = document.getElementById("settlement-counteroffer-source");
+          source.disabled = !active;
+          document.getElementById("settlement-counteroffer-reviewed-label").hidden =
+            source.value !== "document_reviewed";
+          document.getElementById("settlement-counteroffer-save").disabled = !active;
+          document.getElementById("settlement-counteroffer-suggest").disabled =
+            !active || !current?.counteroffer_attachment_present;
+        }
+
+        async function saveSettlementCounterofferValues() {
+          if (!settlementSelectedScenario || !settlementOfferResponseState) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          const status = document.getElementById("settlement-counteroffer-status");
+          const values = [...document.querySelectorAll("#settlement-counteroffer-rows input")]
+            .filter((input) => input.value !== "")
+            .map((input) => ({
+              asset_id: input.dataset.assetId,
+              amount_cents: Math.round(Number(input.value) * 100),
+            }));
+          const source = document.getElementById("settlement-counteroffer-source").value;
+          status.textContent = "Saving…";
+          try {
+            const savedState = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/counteroffer-values`,
+              {
+                method: "PUT",
+                body: JSON.stringify({
+                  expected_attempt_revision: settlementOfferResponseState.attempt_revision,
+                  source,
+                  values,
+                  note: document.getElementById("settlement-counteroffer-note").value,
+                  reviewed: document.getElementById("settlement-counteroffer-reviewed").checked,
+                }),
+              },
+            );
+            if (settlementCaseId !== caseId || settlementSelectedScenario?.selection_id !== selectionId) return;
+            settlementOfferResponseState = savedState;
+            status.textContent = "Saved as the values you reported. They were not verified by this app.";
+            updateSettlementResponseControls();
+          } catch (error) {
+            status.textContent = error instanceof Error ? error.message : "The values could not be saved.";
+          }
+        }
+
+        async function suggestSettlementCounterofferValues() {
+          if (!settlementSelectedScenario) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          const status = document.getElementById("settlement-counteroffer-status");
+          status.textContent = "Analyzing the uploaded document…";
+          try {
+            const result = await settlementApi(
+              `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/counteroffer-values/suggestions`,
+              { method: "POST" },
+            );
+            if (settlementCaseId !== caseId || settlementSelectedScenario?.selection_id !== selectionId) return;
+            for (const suggestion of result.suggestions) {
+              const input = document.querySelector(
+                `#settlement-counteroffer-rows input[data-asset-id="${CSS.escape(suggestion.asset_id)}"]`,
+              );
+              if (input) input.value = (suggestion.amount_cents / 100).toFixed(2);
+            }
+            if (result.suggestions.length) {
+              document.getElementById("settlement-counteroffer-source").value = "document_reviewed";
+            }
+            status.textContent = `Suggestions only; nothing is saved until you review and save. ${result.warnings.join(" ")}`;
+            updateSettlementResponseControls();
+          } catch (error) {
+            status.textContent = error instanceof Error ? error.message : "The document could not be analyzed.";
+          }
+        }
+
+        document.getElementById("settlement-counteroffer-save").addEventListener("click", () => {
+          void saveSettlementCounterofferValues();
+        });
+        document.getElementById("settlement-counteroffer-suggest").addEventListener("click", () => {
+          void suggestSettlementCounterofferValues();
+        });
+        document.getElementById("settlement-counteroffer-source").addEventListener("change", () => {
+          updateSettlementResponseControls();
+        });
 
         async function continueSettlementOfferResponse() {
           if (!settlementSelectedScenario) return;
