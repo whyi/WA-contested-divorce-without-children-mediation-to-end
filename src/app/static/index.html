@@ -700,10 +700,10 @@
       }
       .section-heading > p:last-child { margin-bottom: 0; color:var(--muted); font-size: 15px; line-height: 1.65; }
       .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-      .demo-mode-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .demo-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .demo-quick-section { padding: 18px 0 8px; }
       .demo-quick-intro { margin: 0 0 10px; color:var(--muted); font-size: 12px; line-height: 1.5; }
-      .demo-quick-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+      .demo-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .demo-quick-link { display: flex; min-height: 54px; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 13px; border:1px solid var(--theme-border-cbd8cc); border-radius: 8px; color:var(--green-dark); background:var(--theme-background-fff); text-decoration: none; }
       .demo-quick-link:hover { border-color:var(--theme-border-8ca993); background:var(--theme-background-f5f8f5); }
       .demo-quick-link strong { font-size: 12px; line-height: 1.25; }
@@ -805,14 +805,6 @@
       body[data-demo-page="dashboard"] main > section:not(#account-dashboard) { display: none; }
       body[data-demo-page="dashboard"] footer,
       body[data-demo-page="dashboard"] .theme-status { display: none; }
-      body.demo-landing #account { display: none; }
-      .demo-landing-banner { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 18px 0 8px; padding: 18px 20px; border:1px solid var(--theme-border-cbd8cc); border-radius: 12px; background:var(--theme-background-f5f8f5); }
-      .demo-landing-banner[hidden] { display: none; }
-      .demo-landing-banner p { margin: 0; color:var(--muted); font-size: 13px; line-height: 1.55; }
-      .demo-landing-banner strong { display: block; margin-bottom: 4px; color:var(--ink); font-size: 15px; }
-      .demo-landing-continue { flex:0 0 auto; display:inline-flex; min-height:44px; align-items:center; padding:0 15px; border-radius:7px; color:var(--theme-text-fff); background:var(--green-dark); text-decoration:none; font-size:13px; font-weight:750; }
-      .demo-landing-continue:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
-      @media (max-width: 600px) { .demo-landing-banner { align-items:flex-start; flex-direction:column; } }
       body[data-demo-page="settlement-completion"] main > section:not(#settlement-completion-page),
       body[data-settlement-completion-page="true"] main > section:not(#settlement-completion-page) { display: none; }
       body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 34px auto; }
@@ -1314,7 +1306,6 @@
         .account-section { padding-bottom: 62px; }
         .account-panel { gap: 22px; padding: 25px 20px; }
         .dashboard-panel { padding: 25px 20px; }
-        .demo-landing-banner { padding:15px; }
         .dashboard-header { flex-direction: column; gap: 12px; }
         .onboarding-actions { grid-template-columns: 1fr; }
         .case-grid { grid-template-columns:repeat(auto-fill, minmax(145px, 1fr)); gap:12px; }
@@ -1362,8 +1353,8 @@
           <span class="brand-name">Casework</span>
         </a>
         <nav class="nav" aria-label="Main navigation">
-          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/1">Demo 1</a>
-          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/2">Demo 2</a>
+          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/1/dashboard">Demo 1</a>
+          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/2/dashboard">Demo 2</a>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
@@ -1380,32 +1371,16 @@
       <p class="theme-status" id="theme-status" role="status" aria-live="polite"></p>
 
       <main>
-        <aside class="demo-landing-banner" id="demo-landing-banner" role="note" hidden>
-          <p><strong id="demo-landing-title">Demo account</strong><span id="demo-landing-description"></span></p>
-          <a class="demo-landing-continue" id="demo-landing-continue" href="/demo/1/dashboard">Continue to dashboard</a>
-        </aside>
         <section class="demo-quick-section" id="demo-choices" aria-label="Choose a demo">
-          <p class="demo-quick-intro">Choose a preview. Demo 1 and Demo 2 show different account dashboards; the other demos explore fictional sample workflows.</p>
+          <p class="demo-quick-intro">Choose a dashboard preview.</p>
           <nav class="demo-quick-actions" aria-label="Demo options">
-            <a class="demo-quick-link" href="/demo/1">
+            <a class="demo-quick-link" href="/demo/1/dashboard">
               <strong>Demo 1 · Free</strong>
-              <span>Preview a new Free account and empty dashboard</span>
+              <span>Open the Free dashboard</span>
             </a>
-            <a class="demo-quick-link" href="/demo/2">
+            <a class="demo-quick-link" href="/demo/2/dashboard">
               <strong>Demo 2 · Essential</strong>
-              <span>Preview a paid account with an active case</span>
-            </a>
-            <a class="demo-quick-link" href="/demo">
-              <strong>Existing demo</strong>
-              <span>Explore fictional sample analysis</span>
-            </a>
-            <a class="demo-quick-link" href="/demo/documents">
-              <strong>I have all documents demo</strong>
-              <span>Select local files without uploading them</span>
-            </a>
-            <a class="demo-quick-link" href="/demo/wizard">
-              <strong>Wizard demo</strong>
-              <span>Preview guided mediation intake</span>
+              <span>Open the Essential dashboard</span>
             </a>
           </nav>
         </section>
@@ -1694,7 +1669,7 @@
           <div class="dashboard-panel">
             <aside class="dashboard-demo-banner" id="dashboard-demo-banner" role="note" hidden>
               <p><strong id="dashboard-demo-title">Dashboard demo</strong><span id="dashboard-demo-description">This is a fictional preview. No account data is shown or changed.</span></p>
-              <a class="dashboard-demo-signin" id="dashboard-demo-signin" href="/demo/1">Back to Demo 1</a>
+              <a class="dashboard-demo-signin" id="dashboard-demo-signin" href="/">Back to home</a>
             </aside>
             <header class="dashboard-header">
               <div>
@@ -2333,7 +2308,6 @@
         const dashboardDemoTitle = document.getElementById("dashboard-demo-title");
         const dashboardDemoDescription = document.getElementById("dashboard-demo-description");
         const dashboardDemoBackLink = document.getElementById("dashboard-demo-signin");
-        const demoLandingBanner = document.getElementById("demo-landing-banner");
         const dashboardLoading = document.getElementById("dashboard-loading");
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
@@ -2665,17 +2639,13 @@
         let pendingAdoption = null;
         const reviewIdempotencyKeys = new Map();
         const demoMode = window.location.pathname === "/demo";
-        const demoLandingPlan = ({
-          "/demo/1": "Free",
-          "/demo/2": "Essential",
-        })[window.location.pathname];
         const demoFreeDashboardMode = window.location.pathname === "/demo/1/dashboard";
         const demoPaidDashboardMode = [
           "/demo/2/dashboard",
           "/demo/dashboard",
         ].includes(window.location.pathname);
         const dashboardDemoMode = demoFreeDashboardMode || demoPaidDashboardMode;
-        const demoExperienceMode = Boolean(demoLandingPlan || dashboardDemoMode);
+        const demoExperienceMode = dashboardDemoMode;
         const demoSettlementCompletionMode = window.location.pathname === "/demo/settlement-completion";
         const settlementCompletionMode = window.location.pathname === "/settlement-completion";
         const demoDocumentsMode = window.location.pathname === "/demo/documents";
@@ -2748,33 +2718,6 @@
         function showDashboardShell() {
           dashboard.hidden = false;
           document.body.classList.add("authenticated-view");
-        }
-
-        function initializeDemoLanding(planName) {
-          const demoNumber = planName === "Free" ? 1 : 2;
-          const dashboardUrl = `/demo/${demoNumber}/dashboard`;
-          const continueLabel = `Continue as ${planName} account`;
-          document.body.classList.add("demo-landing");
-          document.body.dataset.demoPlan = planName.toLowerCase();
-          demoLandingBanner.hidden = false;
-          document.getElementById("demo-landing-title").textContent =
-            `Demo ${demoNumber} · ${planName} account`;
-          document.getElementById("demo-landing-description").textContent =
-            planName === "Free"
-              ? "Preview the public landing page, then continue as a new Free member to an empty dashboard."
-              : "Preview the same landing journey as an Essential member, then continue to a dashboard with an active case.";
-          const landingContinue = document.getElementById("demo-landing-continue");
-          landingContinue.href = dashboardUrl;
-          landingContinue.textContent = continueLabel;
-          const accountEntry = document.getElementById("account-entry");
-          accountEntry.href = dashboardUrl;
-          accountEntry.textContent = continueLabel;
-          const heroPrimaryAction = document.getElementById("hero-primary-action");
-          heroPrimaryAction.href = dashboardUrl;
-          heroPrimaryAction.textContent = `Continue as ${planName} account`;
-          const closingAccountCta = document.getElementById("closing-account-cta");
-          closingAccountCta.href = dashboardUrl;
-          closingAccountCta.textContent = continueLabel;
         }
 
         function initializeDemoCaseReturnLinks() {
@@ -8054,7 +7997,7 @@
             action.type = "button";
             action.className = plan.code === "free" ? "dashboard-retry" : "materials-import";
             if (demoExperienceMode) {
-              action.textContent = plan.code.toLowerCase() === demoLandingPlan?.toLowerCase()
+              action.textContent = plan.code.toLowerCase() === (demoFreeDashboardMode ? "free" : "essential")
                 ? "Demo plan"
                 : "Preview only";
               action.disabled = true;
@@ -8944,8 +8887,6 @@
 
         if (demoSettlementCompletionMode || settlementCompletionMode) {
           void initializeSettlementCompletionPage();
-        } else if (demoLandingPlan) {
-          initializeDemoLanding(demoLandingPlan);
         } else if (dashboardDemoMode) {
           document.body.dataset.demoPage = "dashboard";
           showDashboardShell();
@@ -8957,8 +8898,8 @@
           dashboardDemoDescription.textContent = demoFreeDashboardMode
             ? "Fictional empty dashboard after a Free signup. No account data is shown or changed."
             : "Fictional Essential dashboard with a sample active case. No account data is shown or changed.";
-          dashboardDemoBackLink.href = `/demo/${demoNumber}`;
-          dashboardDemoBackLink.textContent = `Back to Demo ${demoNumber} landing`;
+          dashboardDemoBackLink.href = "/";
+          dashboardDemoBackLink.textContent = "Back to home";
           const demoCases = demoFreeDashboardMode ? [] : [{
               id: "sample-case",
               title: "XYZ vs ABC",

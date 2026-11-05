@@ -15,7 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.analysis import router as analysis_router
 from app.auth import verify_token
@@ -385,9 +385,7 @@ def home() -> HTMLResponse:
 
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/demo/dashboard", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/1", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/demo/1/dashboard", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/2", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/demo/2/dashboard", response_class=HTMLResponse, include_in_schema=False)
 @app.get(
     "/demo/settlement-completion",
@@ -401,6 +399,16 @@ def home() -> HTMLResponse:
 @app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
 def onboarding_page() -> HTMLResponse:
     return home()
+
+
+@app.get("/demo/1", include_in_schema=False)
+def demo_one_entry() -> RedirectResponse:
+    return RedirectResponse("/demo/1/dashboard")
+
+
+@app.get("/demo/2", include_in_schema=False)
+def demo_two_entry() -> RedirectResponse:
+    return RedirectResponse("/demo/2/dashboard")
 
 
 @app.get("/api/v1/dashboard/status", response_model=DashboardStatus)
