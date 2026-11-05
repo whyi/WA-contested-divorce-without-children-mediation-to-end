@@ -180,6 +180,7 @@ async def import_material_file(
                     CaseMembership.case_id == batch.case_id,
                     CaseMembership.user_id == user.id,
                     CaseMembership.revoked_at.is_(None),
+                    CaseMembership.suspended_at.is_(None),
                 )
             )
         except SQLAlchemyError as error:
@@ -208,6 +209,7 @@ async def import_material_file(
                         CaseMembership.case_id == case_id,
                         CaseMembership.user_id == user.id,
                         CaseMembership.revoked_at.is_(None),
+                        CaseMembership.suspended_at.is_(None),
                     )
                 )
                 case_exists = db.get(Case, case_id) is not None

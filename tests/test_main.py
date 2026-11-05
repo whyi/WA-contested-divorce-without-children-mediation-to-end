@@ -360,7 +360,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('const demoFreeDashboardMode = window.location.pathname === "/demo/1/dashboard";', page)
         self.assertIn('"/demo/2/dashboard"', page)
         self.assertIn('"/demo/dashboard"', page)
-        self.assertIn('activeCaseLimit: demoFreeDashboardMode ? 1 : 3', page)
+        self.assertNotIn("activeCaseLimit", page.split("} else if (dashboardDemoMode) {", 1)[1])
         self.assertIn('title: "XYZ vs ABC"', page)
         self.assertIn('window.location.assign("/demo")', page)
         self.assertIn('function openDemoCaseChoiceDialog()', page)
@@ -377,7 +377,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("demoCaseCompleted", demo_dashboard)
         self.assertNotIn("casework-demo-case-completed", page)
         self.assertNotIn('id="demo-completed-case"', page)
-        self.assertIn('planName = demoFreeDashboardMode ? "Free" : "Essential"', demo_dashboard)
+        self.assertNotIn("planName", demo_dashboard)
 
         essential_dashboard = responses[1][1].decode()
         inactive_cases = essential_dashboard.split(
@@ -951,7 +951,7 @@ class MainWorkflowTests(unittest.TestCase):
                     Document: document,
                 }.get(model)
                 membership = (
-                    SimpleNamespace(role=role)
+                    SimpleNamespace(role=role, suspended_at=None)
                     if role is not None
                     else None
                 )

@@ -145,6 +145,7 @@ def process_analysis_job(
                 CaseMembership.case_id == request.case_id,
                 CaseMembership.user_id == request.user_id,
                 CaseMembership.revoked_at.is_(None),
+                CaseMembership.suspended_at.is_(None),
             )
             .with_for_update()
         )

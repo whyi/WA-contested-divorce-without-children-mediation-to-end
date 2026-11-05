@@ -10,7 +10,7 @@ from uuid import UUID
 from botocore.exceptions import BotoCoreError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
@@ -21,6 +21,7 @@ from app.analysis import router as analysis_router
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.billing_routes import router as billing_router
+from app.case_delegation import resolve_case_access, router as case_delegation_router
 from app.case_lifecycle import lifecycle_write_allowed, router as case_lifecycle_router
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
@@ -44,6 +45,7 @@ from app.export_integrations import router as export_integrations_router
 from app.models import (
     AuthSession,
     Case,
+    CaseDelegationInvitation,
     CaseMembership,
     Document,
     DocumentExtraction,
@@ -114,6 +116,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(billing_router)
 app.include_router(case_lifecycle_router)
+app.include_router(case_delegation_router)
 app.include_router(export_integrations_router)
 app.include_router(materials_router)
 app.include_router(existing_offer_router)
@@ -206,15 +209,9 @@ async def authenticate_and_authorize_case_data(
                 else:
                     case_id = None
                 if case_id is not None:
-                    membership = db.scalar(
-                        select(CaseMembership).where(
-                            CaseMembership.case_id == case_id,
-                            CaseMembership.user_id == user_id,
-                            CaseMembership.revoked_at.is_(None),
-                        )
-                    )
-                    if membership is None:
-                        return JSONResponse(status_code=404, content={"detail": "Case not found."})
+                    membership, denial = resolve_case_access(db, case_id, user_id, path)
+                    if denial is not None:
+                        return JSONResponse(status_code=denial[0], content={"detail": denial[1]})
                     if request.method != "GET" and membership.role == "viewer":
                         return JSONResponse(status_code=403, content={"detail": "Case is read-only."})
                     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
@@ -342,6 +339,7 @@ class DashboardCaseStatus(BaseModel):
     title: str
     workflow_mode: Literal["upload", "wizard"] | None
     attempt_ordinal: int
+    delegated_to: str | None = None
 
 
 class DashboardData(BaseModel):
@@ -350,6 +348,7 @@ class DashboardData(BaseModel):
     active_case_count: int
     active_case_limit: int | None
     plan_name: str
+    account_type: Literal["party", "professional"] = "party"
     cases: list[DashboardCaseStatus]
 
 
@@ -450,6 +449,7 @@ def dashboard_status(
                 Case.metadata_json,
                 func.coalesce(func.max(SettlementNegotiationAttempt.attempt_ordinal), 1),
                 CaseMembership.role,
+                CaseMembership.suspended_at,
             )
             .join(CaseMembership, CaseMembership.case_id == Case.id)
             .outerjoin(
@@ -459,10 +459,12 @@ def dashboard_status(
             .where(
                 CaseMembership.user_id == user.id,
                 CaseMembership.revoked_at.is_(None),
-                Case.status != "finalized",
-                Case.closed_at.is_(None),
+                or_(
+                    CaseMembership.suspended_at.is_not(None),
+                    and_(Case.status != "finalized", Case.closed_at.is_(None)),
+                ),
             )
-            .group_by(Case.id, CaseMembership.role)
+            .group_by(Case.id, CaseMembership.role, CaseMembership.suspended_at)
             .order_by(Case.created_at.desc(), Case.id)
         ).all()
     except SQLAlchemyError as error:
@@ -472,9 +474,31 @@ def dashboard_status(
             detail="Dashboard status is unavailable. Please try again.",
         ) from error
 
+    delegates: dict[UUID, str] = {}
+    suspended_ids = [row[0] for row in rows if row[5] is not None]
+    if suspended_ids:
+        try:
+            delegates = dict(
+                db.execute(
+                    select(
+                        CaseDelegationInvitation.case_id,
+                        CaseDelegationInvitation.invitee_email,
+                    ).where(
+                        CaseDelegationInvitation.case_id.in_(suspended_ids),
+                        CaseDelegationInvitation.status == "accepted",
+                    )
+                ).all()
+            )
+        except SQLAlchemyError as error:
+            logger.exception("Dashboard delegation lookup failed.")
+            raise HTTPException(
+                status_code=503,
+                detail="Dashboard status is unavailable. Please try again.",
+            ) from error
+
     cases = []
     active_case_count = 0
-    for case_id, case_status, metadata, attempt_ordinal, role in rows:
+    for case_id, case_status, metadata, attempt_ordinal, role, suspended_at in rows:
         metadata = metadata if isinstance(metadata, dict) else {}
         case_title = metadata.get("case_title")
         if not isinstance(case_title, str) or not case_title.strip():
@@ -487,6 +511,9 @@ def dashboard_status(
                 title=case_title.strip(),
                 workflow_mode=workflow_mode if workflow_mode in {"upload", "wizard"} else None,
                 attempt_ordinal=attempt_ordinal,
+                delegated_to=(
+                    delegates.get(case_id, "your delegate") if suspended_at is not None else None
+                ),
             )
         )
         if role == "owner":
@@ -498,6 +525,7 @@ def dashboard_status(
             active_case_count=active_case_count,
             active_case_limit=plan.active_case_limit,
             plan_name=plan.name,
+            account_type="professional" if getattr(user, "account_type", None) == "professional" else "party",
             cases=cases,
         )
     )
