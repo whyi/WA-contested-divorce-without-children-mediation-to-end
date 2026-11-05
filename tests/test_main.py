@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from botocore.exceptions import BotoCoreError
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
@@ -277,25 +278,23 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('name="email" type="text" autocomplete="username"', page)
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
-        self.assertIn('id="demo1-entry" href="/demo/1">Demo 1</a>', page)
-        self.assertIn('id="demo2-entry" href="/demo/2">Demo 2</a>', page)
-        self.assertIn('<strong>Demo 1 · Free</strong>', page)
-        self.assertIn('<strong>Demo 2 · Essential</strong>', page)
-        self.assertIn('href="/demo">Existing demo</a>', page)
+        self.assertIn('id="demo1-entry" href="/demo/1/dashboard">Demo 1</a>', page)
+        self.assertIn('id="demo2-entry" href="/demo/2/dashboard">Demo 2</a>', page)
         self.assertIn('class="demo-quick-section" id="demo-choices"', page)
-        self.assertIn('class="demo-quick-link" href="/demo/1"', page)
-        self.assertIn('class="demo-quick-link" href="/demo/2"', page)
-        self.assertIn('class="demo-quick-link" href="/demo/documents"', page)
-        self.assertIn("<strong>I have all documents demo</strong>", page)
-        self.assertIn('class="demo-quick-link" href="/demo/wizard"', page)
-        self.assertIn("<strong>Wizard demo</strong>", page)
+        demo_choices = page.split('id="demo-choices"', 1)[1].split("</nav>", 1)[0]
+        self.assertIn('class="demo-quick-link" href="/demo/1/dashboard"', demo_choices)
+        self.assertIn('class="demo-quick-link" href="/demo/2/dashboard"', demo_choices)
+        self.assertEqual(demo_choices.count('class="demo-quick-link"'), 2)
+        self.assertNotIn("/demo/documents", demo_choices)
+        self.assertNotIn("/demo/wizard", demo_choices)
+        self.assertNotIn("/demo\"", demo_choices)
+        self.assertNotIn("demo-landing-banner", page)
+        self.assertNotIn("Continue as Free account", page)
         self.assertLess(page.index('id="demo-choices"'), page.index('class="hero"'))
         self.assertIn('id="documents-demo"', page)
         self.assertIn('id="wizard-demo"', page)
         self.assertIn('.authenticated-view .nav a:not(.demo-entry)', page)
         self.assertIn('const demoMode = window.location.pathname === "/demo";', page)
-        self.assertIn('"/demo/1": "Free"', page)
-        self.assertIn('"/demo/2": "Essential"', page)
         self.assertIn('"/api/auth/signup"', page)
         self.assertIn('"/api/auth/login"', page)
         self.assertIn('"/api/auth/verify-email"', page)
@@ -333,11 +332,19 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 
-    def test_demo_landing_and_dashboard_routes_cover_free_and_paid_journeys(self) -> None:
+    def test_demo_entry_routes_open_free_and_paid_dashboards_directly(self) -> None:
+        legacy_entry_paths = (
+            ("/demo/1", "/demo/1/dashboard"),
+            ("/demo/2", "/demo/2/dashboard"),
+        )
+        with TestClient(app, follow_redirects=False) as client:
+            for path, target in legacy_entry_paths:
+                response = client.get(path)
+                self.assertEqual(response.status_code, 307)
+                self.assertEqual(response.headers["location"], target)
+
         paths = (
-            "/demo/1",
             "/demo/1/dashboard",
-            "/demo/2",
             "/demo/2/dashboard",
             "/demo/dashboard",
         )
@@ -345,8 +352,7 @@ class MainWorkflowTests(unittest.TestCase):
 
         self.assertEqual([status for status, _ in responses], [200] * len(paths))
         page = responses[0][1].decode()
-        self.assertIn('id="demo-landing-banner"', page)
-        self.assertIn('id="demo-landing-continue" href="/demo/1/dashboard"', page)
+        self.assertNotIn('id="demo-landing-banner"', page)
         self.assertIn('id="dashboard-demo-banner"', page)
         self.assertIn('id="dashboard-demo-title"', page)
         self.assertIn('const demoFreeDashboardMode = window.location.pathname === "/demo/1/dashboard";', page)
@@ -361,7 +367,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn(".case-tile-demo-add .case-tile-icon", page)
         self.assertIn('if (!demoMode && !demoOnlyMode && !demoExperienceMode', page)
 
-        demo_dashboard = responses[1][1].decode().rsplit(
+        demo_dashboard = responses[0][1].decode().rsplit(
             "} else if (dashboardDemoMode) {", 1
         )[1].split("} else if (demoMode)", 1)[0]
         self.assertIn("demoFreeDashboardMode ? []", demo_dashboard)
