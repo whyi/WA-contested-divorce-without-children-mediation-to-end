@@ -941,6 +941,8 @@
       .case-tile-title { overflow-wrap:anywhere; color:var(--text-primary); font-size:17px; font-weight:750; line-height:1.35; }
       .case-tile-meta { color:var(--text-secondary); font-size:12px; line-height:1.5; }
       .case-tile-new { border:1px dashed var(--theme-border-9ab5a2); background:var(--theme-background-f7faf7); }
+      .case-tile-demo-add { align-items:center; justify-content:center; }
+      .case-tile-demo-add .case-tile-icon { width:82px; height:82px; border-radius:26px; font-size:64px; }
       .case-tile-locked { border-color:var(--border-color); color:var(--text-secondary); background:var(--theme-background-f5f6f5); cursor:not-allowed; }
       .case-tile-locked .case-tile-icon { color:var(--text-secondary); background:var(--theme-background-e7ebe7); }
       .case-upgrade-link { display:inline-flex; margin-top:14px; color:var(--green-dark); font-size:13px; font-weight:750; text-underline-offset:3px; }
@@ -3559,13 +3561,17 @@
           const meta = document.createElement("span");
           meta.className = "case-tile-meta";
           if (dashboardDemoMode) {
-            createTile.className = "case-tile case-tile-locked";
-            createTile.disabled = true;
-            createTile.setAttribute("aria-label", "Sign in to manage your active case limit.");
-            addIcon.textContent = "🔒";
-            title.textContent = "More active cases";
-            meta.textContent = "The Free plan includes 1 active case. Sign in to manage your plan.";
-            caseUpgradeLink.hidden = true;
+            createTile.className = "case-tile case-tile-new case-tile-demo-add";
+            createTile.setAttribute("aria-label", "Upgrade your plan to create another active case.");
+            addIcon.textContent = "+";
+            createTile.append(addIcon);
+            createTile.addEventListener("click", () => {
+              window.location.assign("/#subscription-pricing");
+            });
+            caseUpgradeLink.href = "/#subscription-pricing";
+            caseUpgradeLink.textContent =
+              "The Free plan includes 1 active case. Upgrade your plan to create another.";
+            caseUpgradeLink.hidden = false;
           } else if (activeCaseLimit !== null && activeCaseCount >= activeCaseLimit) {
             createTile.className = "case-tile case-tile-locked";
             createTile.disabled = true;
@@ -3582,8 +3588,10 @@
             caseUpgradeLink.hidden = true;
             createTile.addEventListener("click", openCaseCreationDialog);
           }
-          copy.append(title, meta);
-          createTile.append(addIcon, copy);
+          if (!dashboardDemoMode) {
+            copy.append(title, meta);
+            createTile.append(addIcon, copy);
+          }
           caseList.append(createTile);
         }
 
