@@ -7,9 +7,6 @@ from uuid import UUID
 from app.models import SettlementNegotiationAttempt, SettlementProposalVersion
 
 SNAPSHOT_SCHEMA_VERSION = 1
-# Names the policy that produced the debit recorded with the finalized version. It is
-# descriptive only: replacing the entitlement policy must not change snapshot semantics.
-CHARGE_POLICY_DOCUMENT_CREDIT_PER_VERSION = "document_credit_per_version"
 
 
 def is_finalized(attempt: object) -> bool:
@@ -28,6 +25,7 @@ def build_finalization_snapshot(
     *,
     finalized_at: datetime,
     user_id: UUID,
+    entitlement_charge: dict | None = None,
 ) -> dict:
     snapshot = deepcopy(attempt.snapshot_json)
     snapshot["scenario"] = {
@@ -47,10 +45,14 @@ def build_finalization_snapshot(
         "docx_sha256": hashlib.sha256(version.docx_content).hexdigest(),
         "xlsx_sha256": hashlib.sha256(version.xlsx_content).hexdigest(),
     }
-    snapshot["entitlement_charge"] = {
-        "policy": CHARGE_POLICY_DOCUMENT_CREDIT_PER_VERSION,
-        "credit_cost": version.credit_cost,
-    }
+    snapshot["entitlement_charge"] = deepcopy(
+        entitlement_charge
+        or {
+            "policy": "unspecified_legacy_finalization",
+            "credit_cost": 0,
+            "ledger_entry_id": None,
+        }
+    )
     snapshot["attempt_ordinal"] = attempt.attempt_ordinal
     snapshot["finalized_at"] = finalized_at.isoformat()
     snapshot["finalized_by_user_id_snapshot"] = str(user_id)
@@ -65,10 +67,16 @@ def finalize_attempt(
     version: SettlementProposalVersion,
     *,
     user_id: UUID,
+    entitlement_charge: dict | None = None,
 ) -> None:
     finalized_at = datetime.now(UTC)
     attempt.finalized_snapshot_json = build_finalization_snapshot(
-        attempt, selection, version, finalized_at=finalized_at, user_id=user_id
+        attempt,
+        selection,
+        version,
+        finalized_at=finalized_at,
+        user_id=user_id,
+        entitlement_charge=entitlement_charge,
     )
     attempt.finalized_version_ordinal = version.version_ordinal
     attempt.finalized_by_user_id_snapshot = user_id

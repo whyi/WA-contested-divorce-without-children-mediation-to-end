@@ -49,9 +49,8 @@ class Settings(BaseSettings):
     dropbox_app_secret: str | None = None
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
-    stripe_price_id_essential: str | None = None
-    stripe_price_id_plus: str | None = None
-    stripe_price_id_pro: str | None = None
+    stripe_price_id_attempt_credits_5: str | None = None
+    stripe_price_id_attempt_credits_10: str | None = None
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Casework"
     webauthn_origin: str = "http://localhost:8000"

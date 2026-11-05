@@ -316,7 +316,6 @@ class AuditTests(DelegationFixture):
 
 class PartyCaseLimitTests(DelegationFixture):
     def test_party_cannot_create_a_second_case_regardless_of_status_or_plan(self) -> None:
-        self.party.subscription_plan = "pro"
         self.case.status = "finalized"
         self.case.closed_at = datetime.now(UTC)
         self.db.commit()

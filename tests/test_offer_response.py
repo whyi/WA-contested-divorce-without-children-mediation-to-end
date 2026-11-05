@@ -17,7 +17,6 @@ from app.models import (
     SettlementNegotiationAttempt,
     SettlementOfferResponseAttachment,
     SettlementScenarioSelection,
-    user_settlement_attempt_limit,
 )
 from app.offer_response import (
     OfferOutcomeUpdate,
@@ -81,24 +80,6 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 403)
         selection_lookup.assert_not_called()
-
-    def test_only_server_provisioned_attempt_limits_are_used(self) -> None:
-        for limit in (1, 3, 5, 10):
-            self.assertEqual(
-                user_settlement_attempt_limit(
-                    SimpleNamespace(settlement_attempt_limit=limit)
-                ),
-                limit,
-            )
-        self.assertEqual(user_settlement_attempt_limit(SimpleNamespace()), 1)
-        self.assertEqual(
-            user_settlement_attempt_limit(SimpleNamespace(settlement_attempt_limit=2)),
-            1,
-        )
-        self.assertEqual(
-            user_settlement_attempt_limit(SimpleNamespace(settlement_attempt_limit=True)),
-            1,
-        )
 
     def test_confirmed_accepted_offer_can_finalize_case(self) -> None:
         case_id = uuid4()
@@ -186,7 +167,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 503)
         db.rollback.assert_called_once()
 
-    def test_response_reports_attempt_limit_and_pinned_proposal(self) -> None:
+    def test_response_reports_unlimited_attempts_and_pinned_proposal(self) -> None:
         selection = SettlementScenarioSelection(
             id=uuid4(),
             case_id=uuid4(),
@@ -215,11 +196,11 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
         db = Mock()
         db.scalar.side_effect = [attempt, None]
 
-        result = _read_response(db, selection, None, 5)
+        result = _read_response(db, selection, None)
 
         self.assertEqual(result.attempt_ordinal, 2)
-        self.assertEqual(result.attempt_limit, 5)
-        self.assertEqual(result.attempts_remaining, 3)
+        self.assertIsNone(result.attempt_limit)
+        self.assertIsNone(result.attempts_remaining)
         self.assertTrue(result.proposal_issued)
         self.assertEqual(result.proposal_terms["terms"], ["Pinned"])
         self.assertEqual(result.scenario_result, {"scenario": {"id": "pinned"}})
@@ -228,7 +209,9 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
 class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
     async def test_uploaded_final_file_is_stored_without_extraction_or_delivery(self) -> None:
         case_id = uuid4()
-        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        selection = SimpleNamespace(
+            id=uuid4(), case_id=case_id, run_id=uuid4(), scenario_id="saved"
+        )
         user = SimpleNamespace(id=uuid4())
         record = SimpleNamespace(id=uuid4(), outcome=None)
         upload = AsyncUpload("final-property-schedule.xlsx", make_xlsx())
@@ -594,12 +577,27 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertEqual(result["next_step"], "next_attempt")
         self.assertEqual(result["selection_id"], str(next_attempt.selection_id))
 
-    def test_rejection_cannot_create_an_attempt_past_the_account_limit(self) -> None:
+    def test_rejection_and_counteroffer_continue_without_plan_attempt_limits(self) -> None:
         case_id = uuid4()
-        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        selection = SimpleNamespace(
+            id=uuid4(), case_id=case_id, run_id=uuid4(), scenario_id="saved"
+        )
         case = SimpleNamespace(id=case_id, profile_revision=2, settlement_revision=5)
-        user = SimpleNamespace(id=uuid4(), settlement_attempt_limit=1)
-        attempt = SimpleNamespace(id=uuid4(), frozen_at=object(), attempt_ordinal=1)
+        user = SimpleNamespace(id=uuid4())
+        attempt = SimpleNamespace(
+            id=uuid4(),
+            frozen_at=object(),
+            attempt_ordinal=7,
+            snapshot_json={
+                "revisions": {"profile": 2, "settlement": 5},
+                "scenario": {"result": {"scenario": {"id": "saved"}}},
+            },
+            frozen_snapshot_json={
+                "revisions": {"profile": 2, "settlement": 5},
+                "scenario": {"result": {"scenario": {"id": "saved"}}},
+            },
+            editable_state_json={},
+        )
         for outcome, has_counteroffer in (("rejected", False), ("counteroffer", True)):
             current = SimpleNamespace(
                 sent_documents_complete=True,
@@ -608,6 +606,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
                 counteroffer_attachment_present=has_counteroffer,
             )
             db = Mock()
+            db.scalar.return_value = None
             with (
                 patch("app.offer_response._authorized_selection", return_value=(case, selection)),
                 patch("app.offer_response._selection", return_value=selection),
@@ -616,18 +615,22 @@ class OfferResponseTransitionTests(unittest.TestCase):
                 patch("app.offer_response._attempt_for_selection", return_value=attempt),
                 patch("app.offer_response._lock_case", return_value=case),
             ):
-                with self.assertRaises(HTTPException) as raised:
-                    continue_offer_response(
-                        case_id,
-                        selection.id,
-                        Response(),
-                        user,
-                        db,
-                    )
+                result = continue_offer_response(
+                    case_id,
+                    selection.id,
+                    Response(),
+                    user,
+                    db,
+                )
 
-            self.assertEqual(raised.exception.status_code, 409)
-            db.add.assert_not_called()
-            db.commit.assert_not_called()
+            self.assertEqual(result["next_step"], "next_attempt")
+            self.assertEqual(result["attempt_ordinal"], 8)
+            self.assertTrue(any(
+                isinstance(call.args[0], SettlementNegotiationAttempt)
+                and call.args[0].attempt_ordinal == 8
+                for call in db.add.call_args_list
+            ))
+            db.commit.assert_called_once()
 
     def test_acceptance_leads_only_to_checklist(self) -> None:
         selection = SimpleNamespace(id=uuid4(), case_id=uuid4())
@@ -1220,12 +1223,12 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('uploadSettlementResponseFile("accepted_offer", file)', html)
         self.assertIn("First Attempt — active and editable", html)
         self.assertIn('id="settlement-demo-attempt-status"', html)
-        self.assertIn("Free plan — First Attempt of 1", html)
+        self.assertIn("First sample attempt", html)
         self.assertIn('body[data-demo-page="settlement"] .settlement-attempt-banner', html)
         self.assertIn("position: fixed", html)
         self.assertIn("min-height: 86px", html)
         self.assertIn('document.body.dataset.demoPage = "settlement"', html)
-        self.assertIn("Free plan (1 attempt per case)", html)
+        self.assertIn("This sample ends after one attempt.", html)
         self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn("counterofferNeedsFile", html)
@@ -1298,7 +1301,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         )
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn(
-            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            "This sample does not include a second attempt.",
             html,
         )
         self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached;", html)
