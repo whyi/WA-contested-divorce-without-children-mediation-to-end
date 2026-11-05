@@ -384,6 +384,7 @@ def home() -> HTMLResponse:
 
 
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/demo/dashboard", response_class=HTMLResponse, include_in_schema=False)
 @app.get(
     "/demo/settlement-completion",
     response_class=HTMLResponse,
