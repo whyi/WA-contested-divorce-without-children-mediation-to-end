@@ -63,6 +63,12 @@ A "yes" requires an uploaded offer document or non-empty notes, enforced by
 the API; notes can later be related to individual assets, and the first
 attempt of such a case is labelled an initial incoming offer.
 
+A confirmed final proposal download finalizes the attempt: it saves a snapshot
+of both sides' values and the generated files and makes the attempt read-only,
+without charging beyond the existing per-version document credit and without
+recording the files as sent
+([Spec 35](specs/35-attempt-finalization-snapshot/spec-35-attempt-finalization-snapshot.md)).
+
 Stored materials are not extracted on upload or status polling. A separate
 PostgreSQL-backed extraction worker and per-document status API are available
 for the later consent-authorized analysis flow; no job is enqueued until that

@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.attempt_finalization import finalize_attempt, is_finalized
 from app.auth_routes import require_current_user
 from app.config import Settings, get_settings
 from app.database import get_db
@@ -171,6 +172,7 @@ class OfferResponseHistoryItem(BaseModel):
     attempt_ordinal: int
     attempt_limit: int
     frozen: bool
+    finalized: bool = False
     outcome: Literal["counteroffer", "rejected", "accepted"] | None
     attachments: list[OfferResponseHistoryAttachment]
 
@@ -180,6 +182,14 @@ class OfferCreate(BaseModel):
 
     terms: MediationOfferTerms
     confirm_credit_use: bool = False
+    finalize: bool = False
+    confirm_finalization: bool = False
+
+    @model_validator(mode="after")
+    def require_finalize_for_finalization_confirmation(self) -> "OfferCreate":
+        if self.confirm_finalization and not self.finalize:
+            raise ValueError("Finalization can be confirmed only for a final download.")
+        return self
 
 
 class DemoExportRequest(BaseModel):
@@ -420,6 +430,18 @@ def read_document_credit_balance(
     return {"remaining": balance, "cost_per_version": 1}
 
 
+def _commit_proposal_state(db: Session) -> None:
+    try:
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Proposal version, document credit and finalization could not be saved.")
+        raise HTTPException(
+            status_code=503,
+            detail="The proposal version could not be confirmed as saved. Reload before retrying.",
+        ) from error
+
+
 def _prepare_attempt_offer_export(
     db: Session,
     user: User,
@@ -428,6 +450,8 @@ def _prepare_attempt_offer_export(
     requested_terms: MediationOfferTerms,
     *,
     confirm_credit_use: bool,
+    finalize: bool = False,
+    confirm_finalization: bool = False,
 ) -> tuple[SettlementNegotiationAttempt, SettlementProposalVersion]:
     _authorize_case(db, user, case_id, write=True)
     case = _lock_case(db, case_id)
@@ -456,6 +480,15 @@ def _prepare_attempt_offer_export(
             detail="This account has reached its negotiation attempt limit.",
         )
 
+    finalized = is_finalized(attempt)
+    if finalize and not finalized:
+        if not confirm_finalization:
+            raise HTTPException(
+                status_code=428,
+                detail="Confirm that finalizing locks this attempt and saves its final proposal snapshot.",
+            )
+        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+
     requested_json = requested_terms.model_dump(mode="json")
     draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False))
     version_ordinal = getattr(attempt, "proposal_version_ordinal", 0) or 1
@@ -470,9 +503,18 @@ def _prepare_attempt_offer_export(
         if existing_version.terms_json != requested_json:
             raise HTTPException(
                 status_code=409,
-                detail="This proposal version is immutable. Start a new version before changing its terms.",
+                detail=(
+                    "This attempt is finalized and its proposal cannot change. Continue to the next attempt to prepare changed terms."
+                    if finalized
+                    else "This proposal version is immutable. Start a new version before changing its terms."
+                ),
             )
+        if finalize and not finalized:
+            finalize_attempt(attempt, selection, existing_version, user_id=user.id)
+            _commit_proposal_state(db)
         return attempt, existing_version
+    if finalized:
+        raise HTTPException(status_code=409, detail="The finalized proposal snapshot is unavailable.")
 
     legacy_version = locked_version
     if legacy_version:
@@ -555,15 +597,9 @@ def _prepare_attempt_offer_export(
         attempt.proposal_issued_at = datetime.now(UTC)
     attempt.proposal_version_ordinal = version_ordinal
     attempt.proposal_draft_unlocked = False
-    try:
-        db.commit()
-    except SQLAlchemyError as error:
-        db.rollback()
-        logger.exception("Proposal version and document credit could not be saved.")
-        raise HTTPException(
-            status_code=503,
-            detail="The proposal version could not be confirmed as saved. Reload before retrying.",
-        ) from error
+    if finalize:
+        finalize_attempt(attempt, selection, version, user_id=user.id)
+    _commit_proposal_state(db)
     return attempt, version
 
 
@@ -1129,6 +1165,7 @@ def list_settlement_offer_responses(
                 frozen=attempt.frozen_at is not None if attempt is not None else (
                     offer_response.outcome is not None
                 ),
+                finalized=is_finalized(attempt),
                 outcome=offer_response.outcome,
                 attachments=attachments_by_response[offer_response.id],
             )
@@ -1258,6 +1295,8 @@ def create_settlement_offer(
             selection_id,
             payload.terms,
             confirm_credit_use=payload.confirm_credit_use,
+            finalize=payload.finalize,
+            confirm_finalization=payload.confirm_finalization,
         )
         return Response(
             content=version.docx_content,
@@ -1297,6 +1336,8 @@ def create_settlement_property_schedule(
             selection_id,
             payload.terms,
             confirm_credit_use=payload.confirm_credit_use,
+            finalize=payload.finalize,
+            confirm_finalization=payload.confirm_finalization,
         )
         return Response(
             content=version.xlsx_content,
