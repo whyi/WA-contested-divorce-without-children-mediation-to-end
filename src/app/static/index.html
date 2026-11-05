@@ -2248,6 +2248,10 @@
                       <button class="materials-import" id="settlement-schedule-download" type="button">Download XLSX (uses 1 credit for a new version)</button>
                       <button class="dashboard-retry" id="settlement-new-proposal-version" type="button" hidden>Start a new proposal version</button>
                     </div>
+                    <div class="settlement-export-actions" role="group" aria-label="Finalize this attempt">
+                      <button class="materials-import" id="settlement-finalize-download" type="button">Finalize attempt and download final proposal</button>
+                    </div>
+                    <p id="settlement-finalize-note" role="status" aria-live="polite">Draft downloads above keep this attempt editable. Finalizing downloads the mediator-facing DOCX and XLSX, saves a snapshot of both sides' values and makes this attempt read-only; changes then require the next attempt. Finalizing does not mean you sent the files to anyone — attach and confirm what you actually sent separately below.</p>
                     <section class="settlement-export-destinations" aria-labelledby="settlement-export-destinations-title">
                       <h4 id="settlement-export-destinations-title">Optional: save or send generated drafts</h4>
                       <p>These controls are separate from the response tracker. A delivery action explicitly sends the generated drafts only after confirmation; it does not send your later edits. To track the actual final offer, review and edit the files, send those final versions yourself, and attach the exact files below. The files are never sent to AI.</p>
@@ -2848,6 +2852,8 @@
         const settlementScheduleDownload = document.getElementById("settlement-schedule-download");
         const settlementDocumentCreditStatus = document.getElementById("settlement-document-credit-status");
         const settlementNewProposalVersion = document.getElementById("settlement-new-proposal-version");
+        const settlementFinalizeDownload = document.getElementById("settlement-finalize-download");
+        const settlementFinalizeNote = document.getElementById("settlement-finalize-note");
         const settlementExportStatus = document.getElementById("settlement-export-status");
         const settlementGoogleStatus = document.getElementById("settlement-google-status");
         const settlementDropboxStatus = document.getElementById("settlement-dropbox-status");
@@ -5406,10 +5412,19 @@
             settlementDocumentCreditStatus.removeAttribute("data-kind");
           }
           const blocked = needsCredit && (remaining === null || remaining < 1);
+          const finalized = Boolean(current?.finalized);
           settlementOfferDownload.disabled = blocked;
           settlementScheduleDownload.disabled = blocked;
+          settlementFinalizeDownload.disabled = blocked || finalized || !current;
+          settlementFinalizeDownload.textContent = finalized
+            ? "Attempt finalized — snapshot saved"
+            : "Finalize attempt and download final proposal";
+          if (finalized) {
+            settlementFinalizeNote.textContent = "This attempt is finalized and read-only. Re-downloading this finalized snapshot is free. Finalizing does not mean you sent the files; attach and confirm what you sent separately below.";
+          }
           const canStartNewVersion = Boolean(
-            current?.proposal_issued
+            !finalized
+            && current?.proposal_issued
             && !current?.proposal_draft_unlocked
             && !current?.frozen
             && !current?.sent_confirmed
@@ -5434,7 +5449,8 @@
           const frozen = Boolean(current?.frozen);
           const proposalIssued = Boolean(current?.proposal_issued);
           const proposalDraftUnlocked = Boolean(current?.proposal_draft_unlocked);
-          const inputsLocked = frozen || (proposalIssued && !proposalDraftUnlocked);
+          const inputsLocked = frozen || Boolean(current?.finalized)
+            || (proposalIssued && !proposalDraftUnlocked);
           const modifiedMode = settlementAttemptEditableState.sent_offer_mode === "modified";
           const modifiedReviewed = Boolean(settlementAttemptEditableState.modified_offer_reviewed);
           const stateBusy = settlementAttemptStateDirty || settlementAttemptStateSaving;
@@ -5502,7 +5518,9 @@
             const label = originLabel
               ? `${settlementAttemptOrdinalLabel(current.attempt_ordinal)} (${originLabel})`
               : settlementAttemptOrdinalLabel(current.attempt_ordinal);
-            const attemptStatus = proposalIssued && !frozen
+            const attemptStatus = current.finalized && !frozen
+              ? "finalized; snapshot saved and read-only (not yet recorded as sent)"
+              : proposalIssued && !frozen
               ? proposalDraftUnlocked
                 ? "new proposal version open; generation uses 1 document credit"
                 : "proposal issued; terms and scenario are locked"
@@ -6200,19 +6218,19 @@
           }
         }
 
-        async function downloadSettlementDocument(format) {
+        async function downloadSettlementDocument(format, { finalize = false, confirmed = false } = {}) {
           if (!settlementSelectedScenario) {
             setSettlementStatus("Choose a scenario before creating the proposal documents.", "error");
-            return;
+            return false;
           }
           const validationError = validateSettlementOfferTerms();
           if (validationError) {
             setSettlementStatus(validationError, "error");
-            return;
+            return false;
           }
           if (!(await saveSettlementAttemptState())) {
             setSettlementStatus("Attempt changes must be saved before generating documents.", "error");
-            return;
+            return false;
           }
           const isDocx = format === "docx";
           const button = isDocx ? settlementOfferDownload : settlementScheduleDownload;
@@ -6224,11 +6242,18 @@
               "Your preview and edits are saved for free. Generating a new version requires 1 document credit, and your balance is unavailable or insufficient.",
               "error",
             );
-            return;
+            return false;
           }
-          if (needsCredit && !window.confirm(
+          if (finalize && !confirmed) {
+            const charge = needsCredit
+              ? `Under the current policy this generates the final proposal version and uses 1 document credit (remaining after: ${settlementDocumentCreditsRemaining - 1}).`
+              : "This proposal version is already generated and paid, so no further credit is used.";
+            if (!window.confirm(
+              `Finalize this attempt and download the final proposal? ${charge} Both sides' values are saved as a snapshot and this attempt becomes read-only; later changes require the next attempt. Re-downloading the same snapshot is free. If generation fails, nothing is charged or locked. This does not send anything to the other party.`,
+            )) return false;
+          } else if (!finalize && needsCredit && !window.confirm(
             `Generate this proposal version? This creates both DOCX and XLSX and uses 1 document credit. Remaining after generation: ${settlementDocumentCreditsRemaining - 1}.`,
-          )) return;
+          )) return false;
           button.disabled = true;
           try {
             const response = await fetch(
@@ -6246,6 +6271,7 @@
                 body: JSON.stringify({
                   terms: collectSettlementOfferTerms(),
                   confirm_credit_use: needsCredit,
+                  ...(finalize ? { finalize: true, confirm_finalization: true } : {}),
                 }),
               },
             );
@@ -6278,10 +6304,22 @@
             );
             await loadSettlementOfferResponse();
             void loadSettlementOfferResponseHistory(settlementCaseId);
+            return true;
           } catch (error) {
             setSettlementStatus(error instanceof Error ? error.message : "Proposal document could not be created.", "error");
+            return false;
           } finally {
             updateSettlementDocumentCreditControls();
+          }
+        }
+
+        async function finalizeSettlementAttempt() {
+          if (!(await downloadSettlementDocument("docx", { finalize: true }))) return;
+          if (await downloadSettlementDocument("xlsx", { finalize: true, confirmed: true })) {
+            setSettlementStatus(
+              "Attempt finalized: both files downloaded and a snapshot was saved. This attempt is read-only. Finalizing does not mean you sent the files; attach and confirm what you actually sent below.",
+              "success",
+            );
           }
         }
 
@@ -9704,6 +9742,7 @@
         settlementGenerate.addEventListener("click", generateSettlementScenarios);
         settlementOfferDownload.addEventListener("click", () => downloadSettlementDocument("docx"));
         settlementScheduleDownload.addEventListener("click", () => downloadSettlementDocument("xlsx"));
+        settlementFinalizeDownload.addEventListener("click", () => void finalizeSettlementAttempt());
         settlementNewProposalVersion.addEventListener("click", () => {
           void startSettlementProposalVersion();
         });
