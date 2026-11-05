@@ -277,12 +277,14 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('name="email" type="text" autocomplete="username"', page)
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
-        self.assertIn('id="demo-entry" href="/demo">Existing demo</a>', page)
-        self.assertIn('id="dashboard-demo-entry" href="/demo/dashboard">Dashboard demo</a>', page)
-        self.assertIn('<strong>Dashboard demo</strong>', page)
-        self.assertIn("See the case dashboard after signing in", page)
+        self.assertIn('id="demo1-entry" href="/demo/1">Demo 1</a>', page)
+        self.assertIn('id="demo2-entry" href="/demo/2">Demo 2</a>', page)
+        self.assertIn('<strong>Demo 1 · Free</strong>', page)
+        self.assertIn('<strong>Demo 2 · Essential</strong>', page)
         self.assertIn('href="/demo">Existing demo</a>', page)
         self.assertIn('class="demo-quick-section" id="demo-choices"', page)
+        self.assertIn('class="demo-quick-link" href="/demo/1"', page)
+        self.assertIn('class="demo-quick-link" href="/demo/2"', page)
         self.assertIn('class="demo-quick-link" href="/demo/documents"', page)
         self.assertIn("<strong>I have all documents demo</strong>", page)
         self.assertIn('class="demo-quick-link" href="/demo/wizard"', page)
@@ -292,6 +294,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="wizard-demo"', page)
         self.assertIn('.authenticated-view .nav a:not(.demo-entry)', page)
         self.assertIn('const demoMode = window.location.pathname === "/demo";', page)
+        self.assertIn('"/demo/1": "Free"', page)
+        self.assertIn('"/demo/2": "Essential"', page)
         self.assertIn('"/api/auth/signup"', page)
         self.assertIn('"/api/auth/login"', page)
         self.assertIn('"/api/auth/verify-email"', page)
@@ -303,6 +307,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="account-dashboard"', page)
         self.assertIn('id="dashboard-loading" role="status"', page)
         self.assertIn('id="case-create-dialog"', page)
+        self.assertIn('id="demo-case-choice-dialog"', page)
+        self.assertIn('id="demo-case-documents-link" href="/demo/documents"', page)
+        self.assertIn('id="demo-case-wizard-link" href="/demo/wizard"', page)
         self.assertIn("I have documents", page)
         self.assertIn("Guide me step by step", page)
         self.assertIn('data-case-mode="upload"', page)
@@ -326,22 +333,40 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 
-    def test_dashboard_demo_route_renders_a_fictional_post_login_preview(self) -> None:
-        status, body = asyncio.run(request_app("/demo/dashboard"))
+    def test_demo_landing_and_dashboard_routes_cover_free_and_paid_journeys(self) -> None:
+        paths = (
+            "/demo/1",
+            "/demo/1/dashboard",
+            "/demo/2",
+            "/demo/2/dashboard",
+            "/demo/dashboard",
+        )
+        responses = [asyncio.run(request_app(path)) for path in paths]
 
-        self.assertEqual(status, 200)
-        page = body.decode()
+        self.assertEqual([status for status, _ in responses], [200] * len(paths))
+        page = responses[0][1].decode()
+        self.assertIn('id="demo-landing-banner"', page)
+        self.assertIn('id="demo-landing-continue" href="/demo/1/dashboard"', page)
         self.assertIn('id="dashboard-demo-banner"', page)
-        self.assertIn("fictional preview of the case dashboard", page)
-        self.assertIn('href="/#account">Sign up / Sign in</a>', page)
-        self.assertIn('const dashboardDemoMode = window.location.pathname === "/demo/dashboard";', page)
-        self.assertIn('id: "sample-case"', page)
+        self.assertIn('id="dashboard-demo-title"', page)
+        self.assertIn('const demoFreeDashboardMode = window.location.pathname === "/demo/1/dashboard";', page)
+        self.assertIn('"/demo/2/dashboard"', page)
+        self.assertIn('"/demo/dashboard"', page)
+        self.assertIn('activeCaseLimit: demoFreeDashboardMode ? 1 : 3', page)
         self.assertIn('title: "XYZ vs ABC"', page)
         self.assertIn('window.location.assign("/demo")', page)
+        self.assertIn('function openDemoCaseChoiceDialog()', page)
+        self.assertIn('demoCaseDocumentsLink.href = `/demo/documents?source=${source}`', page)
+        self.assertIn('demoCaseWizardLink.href = `/demo/wizard?source=${source}`', page)
         self.assertIn(".case-tile-demo-add .case-tile-icon", page)
-        self.assertIn('aria-label", "Upgrade your plan to create another active case."', page)
-        self.assertIn("The Free plan includes 1 active case. Upgrade your plan to create another.", page)
-        self.assertIn('window.location.assign("/#subscription-pricing")', page)
+        self.assertIn('if (!demoMode && !demoOnlyMode && !demoExperienceMode', page)
+
+        demo_dashboard = responses[1][1].decode().rsplit(
+            "} else if (dashboardDemoMode) {", 1
+        )[1].split("} else if (demoMode)", 1)[0]
+        self.assertIn("demoFreeDashboardMode ? []", demo_dashboard)
+        self.assertIn('activeCaseCount: demoFreeDashboardMode ? 0 : 1', demo_dashboard)
+        self.assertIn('planName = demoFreeDashboardMode ? "Free" : "Essential"', demo_dashboard)
 
     def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
         status, body = asyncio.run(request_app("/"))
