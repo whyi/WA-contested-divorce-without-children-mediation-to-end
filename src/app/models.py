@@ -308,6 +308,7 @@ class SettlementOfferResponse(Base):
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     outcome: Mapped[str | None] = mapped_column(String(20))
+    counteroffer_json: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

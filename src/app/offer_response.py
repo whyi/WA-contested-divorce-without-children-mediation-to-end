@@ -30,6 +30,13 @@ from app.models import (
     SettlementScenarioSelection,
     User,
 )
+from app.counteroffer import (
+    DELIVERY_BOUNDARY,
+    CounterofferValuesUpdate,
+    build_counteroffer_record,
+    prior_attempt_context,
+    suggest_counteroffer_values,
+)
 from app.existing_offer import OfferOrigin, offer_origin
 from app.offer_documents import MediationOfferTerms
 from app.modified_offer import ModifiedOfferParseError, parse_modified_offer
@@ -110,6 +117,10 @@ class OfferResponseRead(BaseModel):
     scenario_result: dict
     proposal_terms: dict | None
     has_next_attempt: bool
+    delivery: dict
+    counteroffer: dict | None
+    prior_attempt: dict | None
+    outcome_choices: list[str]
 
 
 class OfferOutcomeUpdate(BaseModel):
@@ -419,6 +430,22 @@ def _read_response(
         attempt.frozen_snapshot_json or attempt.snapshot_json if attempt is not None else {}
     )
     attempt_ordinal = attempt.attempt_ordinal if attempt is not None else 1
+    prior_attempt = None
+    predecessor_id = getattr(attempt, "predecessor_id", None)
+    if predecessor_id is not None:
+        predecessor = db.get(SettlementNegotiationAttempt, predecessor_id)
+        if predecessor is not None:
+            prior_response = db.scalar(
+                select(SettlementOfferResponse).where(
+                    SettlementOfferResponse.selection_id == predecessor.selection_id
+                )
+            )
+            prior_attempt = prior_attempt_context(
+                predecessor,
+                getattr(prior_response, "outcome", None),
+                getattr(prior_response, "counteroffer_json", None),
+            )
+    outcome = response_record.outcome if response_record is not None else None
     return OfferResponseRead(
         selection_id=selection.id,
         outcome=response_record.outcome if response_record is not None else None,
@@ -455,6 +482,10 @@ def _read_response(
         scenario_result=scenario_result,
         proposal_terms=proposal_terms,
         has_next_attempt=has_next_attempt,
+        delivery=dict(DELIVERY_BOUNDARY),
+        counteroffer=getattr(response_record, "counteroffer_json", None),
+        prior_attempt=prior_attempt,
+        outcome_choices=["next_attempt", "stop_case"] if outcome == "rejected" else [],
     )
 
 
@@ -1242,6 +1273,95 @@ def update_offer_response(
     )
 
 
+@router.put("/counteroffer-values", response_model=OfferResponseRead)
+def record_counteroffer_values(
+    case_id: UUID,
+    selection_id: UUID,
+    payload: CounterofferValuesUpdate,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> OfferResponseRead:
+    _authorized_selection(case_id, selection_id, user, db, write=True)
+    _lock_case(db, case_id)
+    selection = _selection(db, case_id, selection_id)
+    response_record = _response_record(db, selection)
+    attempt = _attempt_for_selection(db, selection)
+    current = _read_response(db, selection, response_record)
+    if response_record is None or attempt is None or current.outcome != "counteroffer":
+        raise HTTPException(
+            status_code=409, detail="Record a counteroffer outcome before entering its values."
+        )
+    if current.has_next_attempt:
+        raise HTTPException(
+            status_code=409,
+            detail="The next attempt has started; this counteroffer record is read-only.",
+        )
+    if payload.expected_attempt_revision != attempt.revision:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Negotiation attempt changed. Reload and retry.",
+                "attempt_revision": attempt.revision,
+            },
+        )
+    known_asset_ids = {
+        item["asset_id"] for item in attempt.snapshot_json.get("settlement_ledger", [])
+    }
+    response_record.counteroffer_json = build_counteroffer_record(
+        payload, known_asset_ids, datetime.now(UTC)
+    )
+    try:
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.error("Counteroffer values write failed (%s).", type(error).__name__)
+        raise HTTPException(status_code=503, detail="The counteroffer could not be saved.") from error
+    response.headers["Cache-Control"] = "no-store"
+    return _read_response(db, selection, response_record)
+
+
+@router.post("/counteroffer-values/suggestions")
+def suggest_counteroffer_values_route(
+    case_id: UUID,
+    selection_id: UUID,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    _authorized_selection(case_id, selection_id, user, db, write=True)
+    selection = _selection(db, case_id, selection_id)
+    response_record = _response_record(db, selection)
+    attempt = _attempt_for_selection(db, selection)
+    if response_record is None or attempt is None or response_record.outcome != "counteroffer":
+        raise HTTPException(status_code=409, detail="Record a counteroffer outcome first.")
+    row = db.execute(
+        select(SettlementOfferResponseAttachment, Document)
+        .join(Document, Document.id == SettlementOfferResponseAttachment.document_id)
+        .where(
+            SettlementOfferResponseAttachment.response_id == response_record.id,
+            SettlementOfferResponseAttachment.kind == "counteroffer",
+            Document.case_id == selection.case_id,
+        )
+    ).all()
+    if not row:
+        raise HTTPException(status_code=409, detail="Upload the received counteroffer first.")
+    attachment, document = row[0]
+    try:
+        content = storage.get(document.object_key)
+    except (BotoCoreError, RuntimeError) as error:
+        logger.error("Counteroffer could not be read from storage (%s).", type(error).__name__)
+        raise HTTPException(status_code=503, detail="The counteroffer could not be read. Please retry.") from error
+    try:
+        validate_upload(attachment.filename, content, document.extension, get_settings().max_upload_bytes)
+    except UploadValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    response.headers["Cache-Control"] = "no-store"
+    return suggest_counteroffer_values(
+        document.extension, content, attempt.snapshot_json.get("settlement_ledger", [])
+    )
+
+
 @router.post("/continue")
 def continue_offer_response(
     case_id: UUID,
@@ -1266,8 +1386,15 @@ def continue_offer_response(
         )
     if current.outcome is None:
         raise HTTPException(status_code=409, detail="Choose a response outcome before continuing.")
-    if current.outcome == "counteroffer" and not current.counteroffer_attachment_present:
-        raise HTTPException(status_code=409, detail="Attach the received counteroffer before continuing.")
+    if (
+        current.outcome == "counteroffer"
+        and not current.counteroffer_attachment_present
+        and current.counteroffer is None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Attach the received counteroffer or record its values before continuing.",
+        )
     attempt = _attempt_for_selection(db, selection)
     if attempt is None or response_record is None or attempt.frozen_at is None:
         raise HTTPException(status_code=409, detail="The negotiation attempt is not frozen and cannot continue.")
