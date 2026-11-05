@@ -9,6 +9,7 @@ from zipfile import ZipFile
 
 from fastapi import HTTPException, Response
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import (
     Document,
@@ -25,6 +26,7 @@ from app.offer_response import (
     _authorized_selection,
     _create_initial_attempt,
     _read_response,
+    complete_accepted_case,
     confirm_offer_sent,
     continue_offer_response,
     start_new_proposal_version,
@@ -97,6 +99,92 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
             user_settlement_attempt_limit(SimpleNamespace(settlement_attempt_limit=True)),
             1,
         )
+
+    def test_confirmed_accepted_offer_can_finalize_case(self) -> None:
+        case_id = uuid4()
+        selection_id = uuid4()
+        case = SimpleNamespace(status="settlement")
+        selection = SimpleNamespace(id=selection_id, case_id=case_id)
+        current = SimpleNamespace(
+            outcome="accepted",
+            sent_documents_complete=True,
+            sent_confirmed=True,
+        )
+        db = Mock()
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+            patch("app.offer_response._lock_case", return_value=case),
+            patch("app.offer_response._response_record", return_value=SimpleNamespace()),
+            patch("app.offer_response._read_response", return_value=current),
+        ):
+            result = complete_accepted_case(
+                case_id,
+                selection_id,
+                SimpleNamespace(settlement_attempt_limit=1),
+                db,
+            )
+
+        self.assertEqual(result, {"status": "finalized"})
+        self.assertEqual(case.status, "finalized")
+        db.commit.assert_called_once()
+
+    def test_unconfirmed_offer_cannot_finalize_case(self) -> None:
+        case_id = uuid4()
+        selection_id = uuid4()
+        case = SimpleNamespace(status="settlement")
+        selection = SimpleNamespace(id=selection_id, case_id=case_id)
+        current = SimpleNamespace(
+            outcome="accepted",
+            sent_documents_complete=True,
+            sent_confirmed=False,
+        )
+        db = Mock()
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+            patch("app.offer_response._lock_case", return_value=case),
+            patch("app.offer_response._response_record", return_value=SimpleNamespace()),
+            patch("app.offer_response._read_response", return_value=current),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                complete_accepted_case(
+                    case_id,
+                    selection_id,
+                    SimpleNamespace(settlement_attempt_limit=1),
+                    db,
+                )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(case.status, "settlement")
+        db.commit.assert_not_called()
+
+    def test_case_finalization_database_failure_is_reported(self) -> None:
+        case_id = uuid4()
+        selection_id = uuid4()
+        case = SimpleNamespace(status="settlement")
+        selection = SimpleNamespace(id=selection_id, case_id=case_id)
+        current = SimpleNamespace(
+            outcome="accepted",
+            sent_documents_complete=True,
+            sent_confirmed=True,
+        )
+        db = Mock()
+        db.commit.side_effect = SQLAlchemyError("write failed")
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+            patch("app.offer_response._lock_case", return_value=case),
+            patch("app.offer_response._response_record", return_value=SimpleNamespace()),
+            patch("app.offer_response._read_response", return_value=current),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                complete_accepted_case(
+                    case_id,
+                    selection_id,
+                    SimpleNamespace(settlement_attempt_limit=1),
+                    db,
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+        db.rollback.assert_called_once()
 
     def test_response_reports_attempt_limit_and_pinned_proposal(self) -> None:
         selection = SettlementScenarioSelection(

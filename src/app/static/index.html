@@ -821,7 +821,9 @@
       .settlement-completion-status { min-height: 22px; color:var(--muted); font-size: 13px; }
       .settlement-completion-status[data-kind="error"] { color:var(--theme-text-8d3026); }
       .settlement-completion-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-      .settlement-completion-actions a { display: inline-flex; min-height: 42px; align-items: center; padding: 9px 16px; border: 1px solid var(--line); border-radius: 8px; color:var(--text-primary); text-decoration: none; }
+      .settlement-completion-actions a, .settlement-completion-actions button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid var(--line); border-radius: 8px; color:var(--text-primary); background: transparent; font: inherit; text-decoration: none; cursor: pointer; }
+      .settlement-completion-actions .completion-primary { border-color:var(--green-dark); color:var(--theme-text-fff); background:var(--green-dark); }
+      .settlement-completion-actions button:disabled { cursor: wait; opacity: .7; }
       body[data-demo-page] .demo-entry { display: inline-flex !important; }
       .path-art { position: absolute; right: 22px; bottom: 20px; display: flex; align-items: end; gap: 5px; opacity: .48; }
       .file-tile { display: grid; width: 35px; height: 43px; place-items: center; border:1px solid var(--theme-border-d1dcd1); border-radius: 5px; color:var(--theme-text-587762); background:var(--theme-background-fff); font-size: 8px; font-weight: 800; }
@@ -2019,6 +2021,12 @@
                 <ul class="materials-list" id="materials-list" aria-label="Selected case materials"></ul>
                 <div class="materials-actions">
                   <button class="materials-import" id="materials-import" type="button" disabled>Import selected files</button>
+                  <button class="case-tile case-tile-inactive" id="demo-completed-case" type="button" hidden aria-label="XYZ vs ABC, completed case">
+                    <span class="case-tile-copy">
+                      <span class="case-tile-title">XYZ vs ABC</span>
+                      <span class="case-tile-meta">Completed · Settlement accepted</span>
+                    </span>
+                  </button>
                   <p class="materials-status" id="materials-status" role="status" aria-live="polite"></p>
                 </div>
                 <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
@@ -2298,7 +2306,9 @@
               <p>The signed decree or order and case docket determine whether payment obligations or deadlines apply. Not every case has a money judgment. Ask the Superior Court Clerk or qualified Washington counsel which process applies; any agreed stipulation or order may require court approval.</p>
             </div>
             <div class="settlement-completion-actions">
-              <a id="settlement-completion-back" href="/">Back to Casework</a>
+              <a id="settlement-completion-back-to-mediation" href="/">Back to mediation</a>
+              <a id="settlement-completion-back-to-cases" href="/#account">Back to my cases</a>
+              <button id="settlement-completion-finalize" class="completion-primary" type="button" disabled>Mark as completed and back to my cases</button>
             </div>
           </div>
         </section>
@@ -2541,7 +2551,9 @@
         const settlementCompletionStatus = document.getElementById("settlement-completion-status");
         const settlementCompletionAuthContent = document.getElementById("settlement-completion-auth-content");
         const settlementCompletionDemoContent = document.getElementById("settlement-completion-demo-content");
-        const settlementCompletionBack = document.getElementById("settlement-completion-back");
+        const settlementCompletionBackToMediation = document.getElementById("settlement-completion-back-to-mediation");
+        const settlementCompletionBackToCases = document.getElementById("settlement-completion-back-to-cases");
+        const settlementCompletionFinalize = document.getElementById("settlement-completion-finalize");
         const settlementDemoInheritedNotice = document.getElementById("settlement-demo-inherited-notice");
         const settlementDemoMilestoneInherited = document.getElementById("settlement-demo-milestone-inherited");
         const assetYearRangeInherited = document.getElementById("asset-year-range-inherited");
@@ -2990,6 +3002,8 @@
               replaceInput.accept = ".pdf,.docx";
               replaceInput.tabIndex = -1;
               replaceInput.dataset.demoReplaceFile = "";
+        const demoCaseCompletionStorageKey = "casework-demo-case-completed";
+        const demoCompletedCase = document.getElementById("demo-completed-case");
               replaceInput.dataset.fileId = String(record.id);
               replaceInput.setAttribute("aria-label", `Choose a replacement for ${record.name}`);
               const remove = document.createElement("button");
@@ -5514,9 +5528,65 @@
           }
         }
 
+        async function completeSettlementCase() {
+          settlementCompletionFinalize.disabled = true;
+          settlementCompletionStatus.dataset.kind = "";
+          settlementCompletionStatus.textContent = "Marking this case as completed…";
+          try {
+            if (demoSettlementCompletionMode) {
+              window.localStorage.setItem(demoCaseCompletionStorageKey, "true");
+            } else {
+              const query = new URLSearchParams(window.location.search);
+              const caseId = query.get("case_id");
+              const selectionId = query.get("selection_id");
+              if (!caseId || !selectionId) {
+                throw new Error("The accepted offer could not be identified. Reopen the case and try again.");
+              }
+              const response = await fetch(
+                `/cases/${encodeURIComponent(caseId)}/settlement-planning/selections/${encodeURIComponent(selectionId)}/offer-response/complete`,
+                {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { ...csrfHeaders(), Accept: "application/json" },
+                },
+              );
+              const result = await response.json();
+              if (!response.ok) {
+                throw new Error(result.detail || "The case could not be marked as completed.");
+              }
+              if (result.status !== "finalized") {
+                throw new Error("The case completion status could not be verified.");
+              }
+            }
+            window.location.assign(settlementCompletionBackToCases.href);
+          } catch (error) {
+            settlementCompletionStatus.dataset.kind = "error";
+            settlementCompletionStatus.textContent = error instanceof Error
+              ? error.message
+              : "The case could not be marked as completed.";
+            settlementCompletionFinalize.disabled = false;
+          }
+        }
+
+        settlementCompletionBackToMediation.addEventListener("click", (event) => {
+          if (!document.referrer) return;
+          const previousPage = new URL(document.referrer);
+          const completionPaths = ["/settlement-completion", "/demo/settlement-completion"];
+          if (previousPage.origin === window.location.origin
+            && !completionPaths.includes(previousPage.pathname)) {
+            event.preventDefault();
+            window.history.back();
+          }
+        });
+        settlementCompletionFinalize.addEventListener("click", () => {
+          void completeSettlementCase();
+        });
+
         async function connectSettlementExportProvider(provider) {
           const popup = window.open("about:blank", "_blank", "popup,width=560,height=720");
           if (!popup) {
+          settlementCompletionBackToMediation.href = demoSettlementCompletionMode ? "/demo" : "/#account";
+          settlementCompletionBackToCases.href = demoSettlementCompletionMode ? "/demo/2/dashboard" : "/#account";
             settlementExportStatus.textContent = "Allow pop-ups for this site to connect the provider.";
             settlementExportStatus.dataset.kind = "error";
             return;
@@ -9250,7 +9320,18 @@
           dashboardLoading.hidden = true;
           const planName = demoFreeDashboardMode ? "Free" : "Essential";
           demoInactiveCases.hidden = demoFreeDashboardMode;
-          const demoCases = demoFreeDashboardMode ? [] : [{
+          let demoCaseCompleted = false;
+          try {
+            demoCaseCompleted = !demoFreeDashboardMode
+              && window.localStorage.getItem(demoCaseCompletionStorageKey) === "true";
+          } catch (error) {
+            showDashboardError(error instanceof Error
+              ? `Could not read the completed demo case status: ${error.message}`
+              : "Could not read the completed demo case status.");
+            return;
+          }
+          demoCompletedCase.hidden = !demoCaseCompleted;
+          const demoCases = demoFreeDashboardMode || demoCaseCompleted ? [] : [{
               id: "sample-case",
               title: "XYZ vs ABC",
               status: "in progress",
@@ -9258,7 +9339,7 @@
               attempt_ordinal: 2,
             }];
           renderCases(demoCases, {
-            activeCaseCount: demoFreeDashboardMode ? 0 : 1,
+            activeCaseCount: demoFreeDashboardMode || demoCaseCompleted ? 0 : 1,
             activeCaseLimit: demoFreeDashboardMode ? 1 : 3,
             planName,
           });

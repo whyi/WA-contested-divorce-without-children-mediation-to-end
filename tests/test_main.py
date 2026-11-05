@@ -23,7 +23,7 @@ from app.main import (
     read_property_tracing,
     update_property_tracing,
 )
-from app.models import AuthSession, CaseMembership, Document, User
+from app.models import AuthSession, Case, CaseMembership, Document, User
 from app.property_tracing import PropertyTracingUpdate
 
 
@@ -254,6 +254,15 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn("initializeSettlementCompletionPage()", page)
             self.assertIn("settlement-completion-auth-content", page)
             self.assertIn("settlement-completion-demo-content", page)
+            self.assertIn('id="settlement-completion-back-to-mediation"', page)
+            self.assertIn('id="settlement-completion-back-to-cases"', page)
+            self.assertIn(
+                'id="settlement-completion-finalize" class="completion-primary" type="button" disabled',
+                page,
+            )
+            self.assertIn('window.history.back()', page)
+            self.assertIn("/offer-response/complete", page)
+            self.assertIn('localStorage.setItem(demoCaseCompletionStorageKey, "true")', page)
 
         page = body.decode()
         self.assertIn(
@@ -362,8 +371,9 @@ class MainWorkflowTests(unittest.TestCase):
         demo_dashboard = responses[0][1].decode().rsplit(
             "} else if (dashboardDemoMode) {", 1
         )[1].split("} else if (demoMode)", 1)[0]
-        self.assertIn("demoFreeDashboardMode ? []", demo_dashboard)
-        self.assertIn('activeCaseCount: demoFreeDashboardMode ? 0 : 1', demo_dashboard)
+        self.assertIn("demoFreeDashboardMode || demoCaseCompleted ? []", demo_dashboard)
+        self.assertIn("demoFreeDashboardMode || demoCaseCompleted ? 0 : 1", demo_dashboard)
+        self.assertIn('id="demo-completed-case"', demo_dashboard)
         self.assertIn('planName = demoFreeDashboardMode ? "Free" : "Essential"', demo_dashboard)
 
         essential_dashboard = responses[1][1].decode()
@@ -923,6 +933,7 @@ class MainWorkflowTests(unittest.TestCase):
             ("DELETE", None, 404),
             ("GET", None, 404),
             ("STATUS", None, 404),
+            ("CLOSED", "owner", 409),
         ):
             with self.subTest(method=method, role=role):
                 db = Mock()
@@ -930,6 +941,7 @@ class MainWorkflowTests(unittest.TestCase):
                     AuthSession: auth_session,
                     User: user,
                     Document: document,
+                case = SimpleNamespace(status="finalized" if method == "CLOSED" else "draft")
                 }.get(model)
                 membership = (
                     SimpleNamespace(role=role)
@@ -958,7 +970,7 @@ class MainWorkflowTests(unittest.TestCase):
                         "GET": f"/documents/{document_id}/download",
                         "STATUS": f"/cases/{case_id}/documents/{document_id}/extraction-status",
                     }.get(method, f"/documents/{document_id}")
-                    request_method = "GET" if method == "STATUS" else method
+                    request_method = {"STATUS": "GET", "CLOSED": "POST"}.get(method, method)
                     status, _ = asyncio.run(
                         request_app(
                             path,
