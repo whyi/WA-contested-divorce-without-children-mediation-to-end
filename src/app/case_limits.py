@@ -26,6 +26,7 @@ def require_active_case_slot(db: Session, user_id: UUID) -> User:
                 CaseMembership.role == "owner",
                 CaseMembership.revoked_at.is_(None),
                 Case.status != "finalized",
+                Case.closed_at.is_(None),
             )
         ) or 0
     except SQLAlchemyError as error:
