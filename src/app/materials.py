@@ -192,6 +192,11 @@ async def import_material_file(
         if membership is None:
             raise HTTPException(status_code=404, detail="Import batch not found.")
         if document is not None:
+            if hashlib.sha256(content).hexdigest() != document.sha256:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This import item was already used for different file contents.",
+                )
             return _document_response(item_id, batch.case_id, document)
         case_id = batch.case_id
     else:

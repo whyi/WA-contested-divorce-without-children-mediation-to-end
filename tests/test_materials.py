@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -216,6 +217,7 @@ class MaterialsImportTests(unittest.TestCase):
             extension="pdf",
             media_type="application/pdf",
             size_bytes=20,
+            sha256=hashlib.sha256(b"%PDF-1.7\ncontent").hexdigest(),
         )
         db = Mock()
         db.get.side_effect = lambda model, key: batch if model is MaterialImportBatch else document
@@ -240,6 +242,47 @@ class MaterialsImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()["document"]["id"], str(document_id))
+        object_storage.put.assert_not_called()
+        db.commit.assert_not_called()
+
+    def test_retry_rejects_reusing_an_item_key_for_different_file_contents(self) -> None:
+        user_id, case_id, batch_id, item_id, document_id = (uuid4() for _ in range(5))
+        user = SimpleNamespace(id=user_id)
+        batch = SimpleNamespace(user_id=user_id, case_id=case_id)
+        item = SimpleNamespace(id=uuid4(), document_id=document_id)
+        original = b"%PDF-1.7\noriginal source"
+        document = SimpleNamespace(
+            id=document_id,
+            extension="pdf",
+            media_type="application/pdf",
+            size_bytes=len(original),
+            sha256=hashlib.sha256(original).hexdigest(),
+        )
+        db = Mock()
+        db.get.side_effect = lambda model, key, **kwargs: (
+            user if model is User else batch if model is MaterialImportBatch else document
+        )
+        db.scalar.side_effect = [item, SimpleNamespace(role="owner")]
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="materials-test-signing-secret-long-enough",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
+            demo_mode_enabled=False,
+        )
+        client, _ = self._client(user_id=user_id, db=db)
+        with (
+            patch("app.materials.get_settings", return_value=settings),
+            patch("app.materials.storage") as object_storage,
+        ):
+            response = client.post(
+                f"/api/v1/materials/imports/{batch_id}/files/{item_id}",
+                files={"upload": ("evidence.pdf", b"%PDF-1.7\ndifferent source", "application/pdf")},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("different file contents", response.json()["detail"])
         object_storage.put.assert_not_called()
         db.commit.assert_not_called()
 
