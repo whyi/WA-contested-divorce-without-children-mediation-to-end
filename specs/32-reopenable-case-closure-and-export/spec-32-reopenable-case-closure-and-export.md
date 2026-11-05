@@ -18,6 +18,8 @@
 - **FR-32-07 — Authorization and minimization:** Close/reopen require the owner role; export requires active membership of that case. Export contains only that case and the requester's own credit data, and omits other accounts, memberships, credentials, tokens, provider connections, storage keys, job lease tokens and destination digests. Responses are `Cache-Control: no-store`.
 - **FR-32-08 — No legal claim:** Closed means the workspace is inactive, not that the legal matter is resolved or that any agreement is legally effective.
 
+- **FR-32-09 — User-facing controls:** The authenticated dashboard shows a "Closed cases" section (owner cases only) listing each closed case with Reopen and Export data actions, copy stating that closing does not delete data or expire credits and does not mean the legal matter is resolved, and polite live status/error messages. The case workspace offers "Export all case data" and "Close case" (with confirmation). Requests use the existing session, CSRF and sign-in-expired handling; failures are announced without losing page state. Demo dashboards do not call these APIs.
+
 ## Acceptance criteria
 
 1. Close then reopen retains the same case id, status, attempts, files and the user's credit balance.
@@ -25,8 +27,10 @@
 3. A member can export repeatedly without limit; the archive includes JSON data and files and excludes the listed sensitive fields.
 4. Accepted-offer completion and `stopped` closure are both reopenable.
 5. Non-owners cannot close/reopen; closed cases reject other writes.
+6. From the dashboard a user can see closed cases, reopen one, and download a complete export of a closed or open case without using the API directly.
 
 ## Implementation status
 
 - Implemented in `app/case_lifecycle.py`, `Case` closure columns, `CaseLifecycleEvent`, migration `0017_case_closure_and_events`, and changes in `app/main.py`, `app/case_limits.py` and `app/offer_response.py`.
-- Limitation: close/reopen/export are API-only (no UI). Permanent deletion remains undecided.
+- Dashboard closed-case list, reopen, export, and workspace close/export controls are implemented in `src/app/static/index.html` (tests: `tests/test_case_lifecycle_ui.py`).
+- Limitation: UI is covered by static contract tests, not a browser run. Permanent deletion remains undecided.
