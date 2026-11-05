@@ -223,6 +223,7 @@ def _authorize_case(db: Session, user: User, case_id: UUID, *, write: bool) -> C
             CaseMembership.case_id == case_id,
             CaseMembership.user_id == user.id,
             CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
         )
     )
     if membership is None:
