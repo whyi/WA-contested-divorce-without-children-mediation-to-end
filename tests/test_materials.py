@@ -12,7 +12,7 @@ from app.config import Settings
 from app.database import get_db
 from app.main import app
 from app.materials import _delete_uploaded_object
-from app.models import Case, CaseMembership, DocumentExtractionJob, MaterialImportBatch
+from app.models import Case, CaseMembership, DocumentExtractionJob, MaterialImportBatch, User
 
 
 class MaterialsImportTests(unittest.TestCase):
@@ -102,7 +102,13 @@ class MaterialsImportTests(unittest.TestCase):
             demo_mode_enabled=False,
         )
         db = Mock()
-        db.get.return_value = None
+        user = SimpleNamespace(
+            id=user_id,
+            subscription_plan="free",
+            subscription_status="free",
+        )
+        db.get.side_effect = lambda model, key, **kwargs: user if model is User else None
+        db.scalar.return_value = 0
         client, _ = self._client(user_id=user_id, db=db)
         batch_id = uuid4()
         item_id = uuid4()
@@ -122,15 +128,92 @@ class MaterialsImportTests(unittest.TestCase):
         object_storage.put.assert_called_once()
         db.commit.assert_called_once()
         added = db.add_all.call_args.args[0]
-        self.assertIsInstance(added[0], Case)
-        self.assertEqual(added[0].status, "draft")
-        self.assertIsInstance(added[1], CaseMembership)
-        self.assertEqual(added[1].user_id, user_id)
-        self.assertEqual(added[1].role, "owner")
-        self.assertIsInstance(added[2], MaterialImportBatch)
-        self.assertEqual(added[2].user_id, user_id)
-        self.assertEqual(added[2].id, batch_id)
+        created_case = db.add.call_args_list[0].args[0]
+        self.assertIsInstance(created_case, Case)
+        self.assertEqual(created_case.status, "draft")
+        memberships = [
+            call.args[0] for call in db.add.call_args_list
+            if isinstance(call.args[0], CaseMembership)
+        ]
+        self.assertEqual(len(memberships), 1)
+        self.assertEqual(memberships[0].user_id, user_id)
+        self.assertEqual(memberships[0].role, "owner")
+        self.assertIsInstance(added[0], MaterialImportBatch)
+        self.assertEqual(added[0].user_id, user_id)
+        self.assertEqual(added[0].id, batch_id)
         self.assertFalse(any(isinstance(record, DocumentExtractionJob) for record in added))
+
+    def test_import_uses_the_dashboard_case_instead_of_creating_another(self) -> None:
+        user_id = uuid4()
+        case_id = uuid4()
+        user = SimpleNamespace(
+            id=user_id,
+            subscription_plan="free",
+            subscription_status="free",
+        )
+        case = Case(id=case_id, status="draft")
+        db = Mock()
+        db.get.side_effect = lambda model, key, **kwargs: (
+            user if model is User else case if model is Case and key == case_id else None
+        )
+        db.scalar.return_value = SimpleNamespace(role="owner")
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="materials-test-signing-secret-long-enough",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
+            demo_mode_enabled=False,
+        )
+        client, _ = self._client(user_id=user_id, db=db)
+        with (
+            patch("app.materials.get_settings", return_value=settings),
+            patch("app.materials.storage") as object_storage,
+        ):
+            response = client.post(
+                f"/api/v1/materials/imports/{uuid4()}/files/{uuid4()}",
+                data={"case_id": str(case_id)},
+                files={"upload": ("evidence.pdf", b"%PDF-1.7\ncontent", "application/pdf")},
+            )
+
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()["case_id"], str(case_id))
+        self.assertFalse(any(isinstance(call.args[0], Case) for call in db.add.call_args_list))
+        self.assertEqual(db.scalar.call_count, 1)
+        object_storage.put.assert_called_once()
+
+    def test_import_cannot_create_a_case_over_the_plan_limit(self) -> None:
+        user_id = uuid4()
+        user = SimpleNamespace(
+            id=user_id,
+            subscription_plan="free",
+            subscription_status="free",
+        )
+        db = Mock()
+        db.get.side_effect = lambda model, key, **kwargs: user if model is User else None
+        db.scalar.return_value = 1
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="materials-test-signing-secret-long-enough",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
+            demo_mode_enabled=False,
+        )
+        client, _ = self._client(user_id=user_id, db=db)
+        with (
+            patch("app.materials.get_settings", return_value=settings),
+            patch("app.materials.storage") as object_storage,
+        ):
+            response = client.post(
+                f"/api/v1/materials/imports/{uuid4()}/files/{uuid4()}",
+                files={"upload": ("evidence.pdf", b"%PDF-1.7\ncontent", "application/pdf")},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("allows 1 active case", response.json()["detail"])
+        object_storage.put.assert_not_called()
+        db.commit.assert_not_called()
 
     def test_retry_returns_existing_document_without_uploading_again(self) -> None:
         user_id = uuid4()
@@ -182,7 +265,13 @@ class MaterialsImportTests(unittest.TestCase):
             demo_mode_enabled=False,
         )
         db = Mock()
-        db.get.return_value = None
+        user = SimpleNamespace(
+            id=uuid4(),
+            subscription_plan="free",
+            subscription_status="free",
+        )
+        db.get.side_effect = lambda model, key, **kwargs: user if model is User else None
+        db.scalar.return_value = 0
         db.commit.side_effect = SQLAlchemyError("database unavailable")
         client, _ = self._client(db=db)
         with (

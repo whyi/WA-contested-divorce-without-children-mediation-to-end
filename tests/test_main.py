@@ -88,6 +88,29 @@ class MainWorkflowTests(unittest.TestCase):
         db.get.assert_called_once_with(User, user_id, with_for_update=True)
         db.add.assert_not_called()
 
+    def test_create_case_saves_dashboard_title_and_starting_workflow(self) -> None:
+        user_id = uuid4()
+        db = Mock()
+        db.get.return_value = SimpleNamespace(
+            subscription_plan="free",
+            subscription_status="free",
+        )
+        db.scalar.return_value = 0
+        request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
+
+        case = create_case(
+            CaseCreate(case_title="  XYZ vs ABC  ", workflow_mode="wizard"),
+            request,
+            db,
+        )
+
+        self.assertEqual(case.metadata_json, {
+            "case_title": "XYZ vs ABC",
+            "workflow_mode": "wizard",
+        })
+        self.assertEqual(case.status, "draft")
+        db.commit.assert_called_once()
+
     def test_oauth_callback_access_logs_redact_query_credentials(self) -> None:
         import logging
 
@@ -255,6 +278,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
         self.assertIn('id="demo-entry" href="/demo">Existing demo</a>', page)
+        self.assertIn('id="dashboard-demo-entry" href="/demo/dashboard">Dashboard demo</a>', page)
+        self.assertIn('<strong>Dashboard demo</strong>', page)
+        self.assertIn("See the case dashboard after signing in", page)
         self.assertIn('href="/demo">Existing demo</a>', page)
         self.assertIn('class="demo-quick-section" id="demo-choices"', page)
         self.assertIn('class="demo-quick-link" href="/demo/documents"', page)
@@ -276,8 +302,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Illustrative interface — not an active case", page)
         self.assertIn('id="account-dashboard"', page)
         self.assertIn('id="dashboard-loading" role="status"', page)
-        self.assertIn("I already have case materials, so I'll upload them", page)
-        self.assertIn("Guide me through the wizard step by step", page)
+        self.assertIn('id="case-create-dialog"', page)
+        self.assertIn("I have documents", page)
+        self.assertIn("Guide me step by step", page)
+        self.assertIn('data-case-mode="upload"', page)
+        self.assertIn('data-case-mode="wizard"', page)
         self.assertIn('id="materials-workflow"', page)
         self.assertIn('id="materials-file-input"', page)
         self.assertIn('id="google-drive-picker"', page)
@@ -296,6 +325,23 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Previously adopted case-profile facts are shown below.", page)
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
+
+    def test_dashboard_demo_route_renders_a_fictional_post_login_preview(self) -> None:
+        status, body = asyncio.run(request_app("/demo/dashboard"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="dashboard-demo-banner"', page)
+        self.assertIn("fictional preview of the case dashboard", page)
+        self.assertIn('href="/#account">Sign up / Sign in</a>', page)
+        self.assertIn('const dashboardDemoMode = window.location.pathname === "/demo/dashboard";', page)
+        self.assertIn('id: "sample-case"', page)
+        self.assertIn('title: "XYZ vs ABC"', page)
+        self.assertIn('window.location.assign("/demo")', page)
+        self.assertIn(".case-tile-demo-add .case-tile-icon", page)
+        self.assertIn('aria-label", "Upgrade your plan to create another active case."', page)
+        self.assertIn("The Free plan includes 1 active case. Upgrade your plan to create another.", page)
+        self.assertIn('window.location.assign("/#subscription-pricing")', page)
 
     def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
         status, body = asyncio.run(request_app("/"))
@@ -908,6 +954,11 @@ class MainWorkflowTests(unittest.TestCase):
             page = body.decode()
             self.assertIn('id="account-dashboard"', page)
             self.assertIn('"/api/v1/dashboard/status"', page)
+            self.assertIn('id="case-create-dialog"', page)
+            self.assertIn('data-case-mode="upload"', page)
+            self.assertIn('data-case-mode="wizard"', page)
+            self.assertIn("Start a new case", page)
+            self.assertIn("active_case_limit", page)
             self.assertIn("This preview does not accept or save case details or documents.", page)
         demo_page = responses[2][1].decode()
         self.assertIn('const demoMode = window.location.pathname === "/demo";', demo_page)
