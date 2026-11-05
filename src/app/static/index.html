@@ -1016,6 +1016,21 @@
       .case-create-content > p:not(.eyebrow) { color:var(--text-secondary); font-size:14px; line-height:1.6; }
       .case-create-content label { display:block; margin:18px 0 7px; color:var(--text-primary); font-size:13px; font-weight:700; }
       .case-create-content input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--surface-background); font:inherit; }
+      .offer-intake { margin:18px 0 0; padding:12px 14px; border:1px solid var(--border-color); border-radius:8px; }
+      .offer-intake legend { padding:0 6px; color:var(--text-primary); font-size:13px; font-weight:700; }
+      .offer-intake .offer-choice { display:flex; align-items:center; gap:8px; margin:6px 0; font-weight:400; }
+      .case-create-content .offer-intake input[type="radio"], .case-create-content .offer-intake input[type="checkbox"], .existing-offer-panel input[type="radio"], .existing-offer-panel input[type="checkbox"] { width:auto; min-height:0; }
+      .offer-intake textarea, .existing-offer-panel textarea, .existing-offer-panel input[type="text"] { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--surface-background); font:inherit; }
+      .offer-intake textarea:focus-visible, .existing-offer-panel textarea:focus-visible, .existing-offer-panel input:focus-visible, .existing-offer-panel button:focus-visible { outline:3px solid var(--green); outline-offset:2px; }
+      .offer-intake [aria-invalid="true"], .existing-offer-panel [aria-invalid="true"] { border-color:var(--theme-text-9c3228); }
+      .offer-intake-help { margin:6px 0 0; color:var(--text-secondary); font-size:12px; line-height:1.5; }
+      .existing-offer-panel { display:grid; gap:12px; margin:0 0 22px; padding:16px; border:1px solid var(--border-color); border-radius:11px; background:var(--surface-raised); }
+      .existing-offer-panel h3 { margin:0; font-size:17px; }
+      .existing-offer-panel fieldset { margin:0; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; }
+      .existing-offer-panel label { display:block; margin:8px 0 4px; font-size:13px; font-weight:700; }
+      .existing-offer-panel .offer-choice { display:flex; align-items:center; gap:8px; font-weight:400; }
+      .existing-offer-status[data-kind="error"] { color:var(--theme-text-9c3228); }
+      @media (max-width: 640px) { .existing-offer-panel { padding:12px; } }
       .case-mode-options { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:18px; }
       .case-mode-choice { display:grid; min-height:112px; align-content:start; gap:7px; padding:15px; border:1px solid var(--border-color); border-radius:11px; color:var(--text-primary); background:var(--surface-raised); text-align:left; cursor:pointer; font:inherit; }
       a.case-mode-choice { text-decoration:none; }
@@ -2091,6 +2106,18 @@
                   <p>Your new case will be saved to your account. Choose the starting point that fits what you have today.</p>
                   <label for="case-title-input">Case label <span>(optional)</span></label>
                   <input id="case-title-input" type="text" maxlength="120" autocomplete="off" placeholder="For example, XYZ vs ABC">
+                  <fieldset class="offer-intake" id="case-offer-question" aria-describedby="case-offer-help">
+                    <legend>Has the other party already made an offer?</legend>
+                    <label class="offer-choice"><input type="radio" name="case-existing-offer" value="yes"> Yes</label>
+                    <label class="offer-choice"><input type="radio" name="case-existing-offer" value="no"> No</label>
+                    <div id="case-offer-notes-wrap" hidden>
+                      <label for="case-offer-notes">Describe the offer</label>
+                      <textarea id="case-offer-notes" rows="4" maxlength="20000" aria-describedby="case-offer-help" placeholder="For example: house to me, car to them, split the 401k 60/40"></textarea>
+                      <label for="case-offer-file">Offer document (PDF or DOCX)</label>
+                      <input id="case-offer-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-describedby="case-offer-help">
+                    </div>
+                    <p class="offer-intake-help" id="case-offer-help">Required. If yes, add notes (informal is fine), choose the offer document, or both. Your case cannot continue until at least one is provided.</p>
+                  </fieldset>
                   <div class="case-mode-options">
                     <button class="case-mode-choice" type="button" data-case-mode="upload">
                       <strong>I have documents</strong>
@@ -2300,6 +2327,36 @@
               <h2 id="preparation-title"></h2>
               <p id="preparation-description"></p>
               <p class="preparation-note" id="preparation-note">This preview does not accept or save case details or documents. No case has been created. Do not enter real case information.</p>
+              <section class="existing-offer-panel" id="existing-offer-panel" aria-labelledby="existing-offer-title" hidden>
+                <h3 id="existing-offer-title">Offer from the other party</h3>
+                <fieldset id="existing-offer-question">
+                  <legend>Has the other party already made an offer?</legend>
+                  <label class="offer-choice"><input type="radio" name="existing-offer" value="yes"> Yes</label>
+                  <label class="offer-choice"><input type="radio" name="existing-offer" value="no"> No</label>
+                </fieldset>
+                <div id="existing-offer-details" hidden>
+                  <label for="existing-offer-notes">Notes about the offer</label>
+                  <textarea id="existing-offer-notes" rows="5" maxlength="20000" aria-describedby="existing-offer-help existing-offer-status" placeholder="Conversational or shorthand notes are fine"></textarea>
+                  <fieldset id="existing-offer-documents">
+                    <legend>Offer documents (optional if you add notes)</legend>
+                    <div id="existing-offer-document-list"></div>
+                    <p class="offer-intake-help" id="existing-offer-help">Add notes, choose or select an offer document, or both. The rest of onboarding opens after this is saved.</p>
+                    <label for="existing-offer-file">Upload an offer document (PDF or DOCX)</label>
+                    <input id="existing-offer-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-describedby="existing-offer-help">
+                    <button class="materials-import" id="existing-offer-refresh" type="button">Refresh uploaded documents</button>
+                  </fieldset>
+                </div>
+                <div class="materials-actions">
+                  <button class="materials-import" id="existing-offer-save" type="button">Save offer details</button>
+                  <p class="existing-offer-status" id="existing-offer-status" role="status" aria-live="polite"></p>
+                </div>
+                <section id="existing-offer-asset-terms" aria-labelledby="existing-offer-terms-title" hidden>
+                  <h4 id="existing-offer-terms-title">Relate the offer to your assets</h4>
+                  <p class="offer-intake-help">Your original notes stay unchanged. Add the offered term for any asset.</p>
+                  <div id="existing-offer-terms-list"></div>
+                  <button class="materials-import" id="existing-offer-terms-save" type="button">Save asset terms</button>
+                </section>
+              </section>
               <div class="materials-workflow" id="materials-workflow" hidden>
                 <p class="materials-limits" id="materials-limits">Checking supported file types and the current upload limit…</p>
                 <div class="materials-sources" aria-label="Choose where to add case materials">
@@ -2705,6 +2762,24 @@
         const demoCaseWizardLink = document.getElementById("demo-case-wizard-link");
         const caseCreateDialog = document.getElementById("case-create-dialog");
         const caseTitleInput = document.getElementById("case-title-input");
+        const caseOfferQuestion = document.getElementById("case-offer-question");
+        const caseOfferNotesWrap = document.getElementById("case-offer-notes-wrap");
+        const caseOfferNotes = document.getElementById("case-offer-notes");
+        const caseOfferFile = document.getElementById("case-offer-file");
+        let caseCreateProgress = null;
+        const existingOfferPanel = document.getElementById("existing-offer-panel");
+        const existingOfferDetails = document.getElementById("existing-offer-details");
+        const existingOfferNotes = document.getElementById("existing-offer-notes");
+        const existingOfferDocumentList = document.getElementById("existing-offer-document-list");
+        const existingOfferStatus = document.getElementById("existing-offer-status");
+        const existingOfferSave = document.getElementById("existing-offer-save");
+        const existingOfferAssetTerms = document.getElementById("existing-offer-asset-terms");
+        const existingOfferTermsList = document.getElementById("existing-offer-terms-list");
+        const existingOfferTermsSave = document.getElementById("existing-offer-terms-save");
+        let existingOfferState = null;
+        let offerGateMode = null;
+        let existingOfferUpload = null;
+        const existingOfferFile = document.getElementById("existing-offer-file");
         const caseCreateStatus = document.getElementById("case-create-status");
         const settlementPlanner = document.getElementById("settlement-planner");
         const closedCases = document.getElementById("closed-cases");
@@ -4146,6 +4221,14 @@
           caseCreateStatus.textContent = "";
           caseCreateStatus.removeAttribute("data-kind");
           caseTitleInput.value = "";
+          caseCreateDialog.querySelectorAll('input[name="case-existing-offer"]').forEach((radio) => {
+            radio.checked = false;
+          });
+          caseOfferNotes.value = "";
+          caseOfferFile.value = "";
+          caseCreateProgress = null;
+          caseOfferNotes.removeAttribute("aria-invalid");
+          caseOfferNotesWrap.hidden = true;
           caseCreateDialog.showModal();
           caseTitleInput.focus();
         }
@@ -4164,6 +4247,29 @@
             caseCreateStatus.dataset.kind = "error";
             return;
           }
+          const offerAnswer = caseOfferQuestion.querySelector('input[name="case-existing-offer"]:checked')?.value;
+          const offerNotes = caseOfferNotes.value.trim();
+          caseOfferNotes.removeAttribute("aria-invalid");
+          if (!offerAnswer) {
+            caseCreateStatus.textContent = "Answer whether the other party has already made an offer.";
+            caseCreateStatus.dataset.kind = "error";
+            caseOfferQuestion.querySelector("input").focus();
+            return;
+          }
+          const offerFile = caseOfferFile.files[0] || null;
+          if (offerAnswer === "yes" && !offerNotes && !offerFile) {
+            caseCreateStatus.textContent = "Add notes describing the offer or choose the offer document.";
+            caseCreateStatus.dataset.kind = "error";
+            caseOfferNotes.setAttribute("aria-invalid", "true");
+            caseOfferNotes.focus();
+            return;
+          }
+          if (offerFile && !/\.(pdf|docx)$/i.test(offerFile.name)) {
+            caseCreateStatus.textContent = "The offer document must be a PDF or DOCX file.";
+            caseCreateStatus.dataset.kind = "error";
+            caseOfferFile.focus();
+            return;
+          }
           button.disabled = true;
           document.getElementById("case-create-cancel").disabled = true;
           caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((choice) => {
@@ -4172,23 +4278,68 @@
           caseCreateStatus.textContent = "Creating your case…";
           caseCreateStatus.removeAttribute("data-kind");
           try {
-            const result = await settlementApi("/cases", {
-              method: "POST",
-              body: JSON.stringify({
-                case_title: caseTitleInput.value.trim() || null,
-                workflow_mode: mode,
-              }),
-            });
-            if (typeof result?.id !== "string") {
-              throw new Error("The new case could not be verified. Please try again.");
+            // Progress is kept so a retry resumes the same case and upload instead of duplicating them.
+            const progress = caseCreateProgress ||= {
+              caseId: null,
+              batchId: crypto.randomUUID(),
+              itemId: crypto.randomUUID(),
+              documentId: null,
+              saved: false,
+            };
+            if (!progress.caseId) {
+              const result = await settlementApi("/cases", {
+                method: "POST",
+                body: JSON.stringify({
+                  case_title: caseTitleInput.value.trim() || null,
+                  workflow_mode: mode,
+                  ...(offerAnswer === "no" || offerNotes
+                    ? { existing_offer: { exists: offerAnswer === "yes", notes: offerAnswer === "yes" ? offerNotes : null } }
+                    : {}),
+                }),
+              });
+              if (typeof result?.id !== "string") {
+                throw new Error("The new case could not be verified. Please try again.");
+              }
+              progress.caseId = result.id;
+              progress.saved = !(offerAnswer === "yes" && offerFile);
+            }
+            if (offerAnswer === "yes" && offerFile && !progress.saved) {
+              if (!progress.documentId) {
+                caseCreateStatus.textContent = "Uploading the offer document…";
+                const body = new FormData();
+                body.append("upload", offerFile, offerFile.name);
+                body.append("case_id", progress.caseId);
+                const response = await fetch(
+                  `/api/v1/materials/imports/${progress.batchId}/files/${progress.itemId}`,
+                  { method: "POST", credentials: "same-origin", headers: csrfHeaders(), body },
+                );
+                const uploaded = await response.json();
+                if (response.status === 401) {
+                  showSignIn("Your session has expired. Please sign in again.");
+                  throw new Error("Please sign in again to continue.");
+                }
+                if (!response.ok) throw new Error(uploaded.detail || "The offer document could not be uploaded.");
+                progress.documentId = uploaded.document.id;
+              }
+              caseCreateStatus.textContent = "Saving offer details…";
+              await settlementApi(`/cases/${progress.caseId}/existing-offer`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  exists: true,
+                  notes: offerNotes || null,
+                  document_ids: [progress.documentId],
+                }),
+              });
+              progress.saved = true;
             }
             window.location.assign(
-              `/onboarding/${mode}?case_id=${encodeURIComponent(result.id)}`,
+              `/onboarding/${mode}?case_id=${encodeURIComponent(progress.caseId)}`,
             );
           } catch (error) {
-            caseCreateStatus.textContent = error instanceof Error
+            caseCreateStatus.textContent = (error instanceof Error
               ? error.message
-              : "The case could not be created. Please try again.";
+              : "The case could not be created. Please try again.")
+              + (caseCreateProgress?.caseId ? " Your case and entries are kept; select an option to retry." : "");
             caseCreateStatus.dataset.kind = "error";
             button.disabled = false;
             document.getElementById("case-create-cancel").disabled = false;
@@ -5208,7 +5359,14 @@
             || (frozen && (savedOutcome !== "accepted"
               || current?.attachments.some((item) => item.kind === "accepted_offer")));
           if (current) {
-            const label = settlementAttemptOrdinalLabel(current.attempt_ordinal);
+            const originLabel = {
+              initial_incoming_offer: "initial incoming offer",
+              counteroffer_response: "response to a counteroffer",
+              initial_user_proposal: "your initial proposal",
+            }[current.offer_origin];
+            const label = originLabel
+              ? `${settlementAttemptOrdinalLabel(current.attempt_ordinal)} (${originLabel})`
+              : settlementAttemptOrdinalLabel(current.attempt_ordinal);
             const attemptStatus = proposalIssued && !frozen
               ? proposalDraftUnlocked
                 ? "new proposal version open; generation uses 1 document credit"
@@ -6225,7 +6383,180 @@
           settlementExportStatus.dataset.kind = event.data.connected ? "success" : "error";
         });
 
+        function setExistingOfferStatus(message, kind = "") {
+          existingOfferStatus.textContent = message;
+          if (kind) existingOfferStatus.dataset.kind = kind;
+          else existingOfferStatus.removeAttribute("data-kind");
+        }
+
+        function selectedExistingOfferAnswer() {
+          return document.querySelector('input[name="existing-offer"]:checked')?.value;
+        }
+
+        // Onboarding stays closed until the offer answer (with a source when "yes") is saved on the server.
+        function applyExistingOfferGate() {
+          const open = existingOfferState !== null && existingOfferState.exists !== null;
+          if (offerGateMode === "upload") materialsWorkflow.hidden = !open;
+          if (offerGateMode === "wizard") wizardDemoPage.hidden = !open;
+        }
+
+        function renderExistingOffer() {
+          const state = existingOfferState;
+          const answer = state.exists === true ? "yes" : state.exists === false ? "no" : "";
+          document.querySelectorAll('input[name="existing-offer"]').forEach((radio) => {
+            radio.checked = radio.value === answer;
+          });
+          existingOfferDetails.hidden = answer !== "yes";
+          existingOfferNotes.value = state.notes || "";
+          existingOfferDocumentList.replaceChildren();
+          if (state.documents.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "offer-intake-help";
+            empty.textContent = "No uploaded documents yet.";
+            existingOfferDocumentList.append(empty);
+          }
+          for (const [position, document_] of state.documents.entries()) {
+            const label = document.createElement("label");
+            label.className = "offer-choice";
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.value = document_.id;
+            box.checked = state.document_ids.includes(document_.id);
+            label.append(
+              box,
+              ` ${document_.extension.toUpperCase()} · ${formatFileSize(document_.size_bytes)} · added ${new Date(document_.created_at).toLocaleDateString()} (document ${position + 1})`,
+            );
+            existingOfferDocumentList.append(label);
+          }
+          existingOfferTermsList.replaceChildren();
+          const termsByAsset = new Map(state.asset_terms.map((item) => [item.asset_index, item.term]));
+          for (const asset of state.assets) {
+            const label = document.createElement("label");
+            const inputId = `existing-offer-term-${asset.index}`;
+            label.htmlFor = inputId;
+            label.textContent = asset.name;
+            const input = document.createElement("input");
+            input.type = "text";
+            input.id = inputId;
+            input.maxLength = 2000;
+            input.dataset.assetIndex = String(asset.index);
+            input.dataset.assetName = asset.name;
+            input.value = termsByAsset.get(asset.index) || "";
+            existingOfferTermsList.append(label, input);
+          }
+          existingOfferAssetTerms.hidden = !(state.exists === true && state.assets.length > 0);
+          applyExistingOfferGate();
+        }
+
+        async function loadExistingOffer() {
+          setExistingOfferStatus("Loading offer details…");
+          try {
+            existingOfferState = await settlementApi(`/cases/${preparationCaseId}/existing-offer`);
+            renderExistingOffer();
+            setExistingOfferStatus(
+              existingOfferState.exists === null ? "Answer the offer question to continue." : "",
+            );
+          } catch (error) {
+            setExistingOfferStatus(
+              error instanceof Error ? error.message : "Offer details could not be loaded. Please try again.",
+              "error",
+            );
+          }
+        }
+
+        async function saveExistingOffer() {
+          const answer = selectedExistingOfferAnswer();
+          existingOfferNotes.removeAttribute("aria-invalid");
+          if (!answer) {
+            setExistingOfferStatus("Answer whether the other party has already made an offer.", "error");
+            document.querySelector('input[name="existing-offer"]').focus();
+            return;
+          }
+          const notes = existingOfferNotes.value.trim();
+          const documentIds = answer === "yes"
+            ? [...existingOfferDocumentList.querySelectorAll("input:checked")].map((box) => box.value)
+            : [];
+          const offerFile = answer === "yes" ? existingOfferFile.files[0] || null : null;
+          if (answer === "yes" && !notes && documentIds.length === 0 && !offerFile) {
+            setExistingOfferStatus("Add notes about the offer or provide an offer document.", "error");
+            existingOfferNotes.setAttribute("aria-invalid", "true");
+            existingOfferNotes.focus();
+            return;
+          }
+          existingOfferSave.disabled = true;
+          setExistingOfferStatus("Saving offer details…");
+          try {
+            if (offerFile) {
+              const body = new FormData();
+              body.append("upload", offerFile, offerFile.name);
+              body.append("case_id", preparationCaseId);
+              existingOfferUpload ||= { batchId: crypto.randomUUID(), itemId: crypto.randomUUID(), documentId: null };
+              if (!existingOfferUpload.documentId) {
+                const response = await fetch(
+                  `/api/v1/materials/imports/${existingOfferUpload.batchId}/files/${existingOfferUpload.itemId}`,
+                  { method: "POST", credentials: "same-origin", headers: csrfHeaders(), body },
+                );
+                const uploaded = await response.json();
+                if (response.status === 401) {
+                  showSignIn("Your session has expired. Please sign in again.");
+                  throw new Error("Please sign in again to continue.");
+                }
+                if (!response.ok) throw new Error(uploaded.detail || "The offer document could not be uploaded.");
+                existingOfferUpload.documentId = uploaded.document.id;
+              }
+              documentIds.push(existingOfferUpload.documentId);
+            }
+            existingOfferState = await settlementApi(`/cases/${preparationCaseId}/existing-offer`, {
+              method: "PUT",
+              body: JSON.stringify({
+                exists: answer === "yes",
+                notes: answer === "yes" ? notes || null : null,
+                document_ids: documentIds,
+              }),
+            });
+            existingOfferUpload = null;
+            existingOfferFile.value = "";
+            renderExistingOffer();
+            setExistingOfferStatus("Offer details saved.", "success");
+          } catch (error) {
+            setExistingOfferStatus(
+              error instanceof Error ? error.message : "Offer details could not be saved. Please try again.",
+              "error",
+            );
+          } finally {
+            existingOfferSave.disabled = false;
+          }
+        }
+
+        async function saveExistingOfferTerms() {
+          const terms = [...existingOfferTermsList.querySelectorAll("input")]
+            .filter((input) => input.value.trim())
+            .map((input) => ({
+              asset_index: Number(input.dataset.assetIndex),
+              asset_name: input.dataset.assetName,
+              term: input.value.trim(),
+            }));
+          existingOfferTermsSave.disabled = true;
+          setExistingOfferStatus("Saving asset terms…");
+          try {
+            existingOfferState = await settlementApi(`/cases/${preparationCaseId}/existing-offer/asset-terms`, {
+              method: "PUT",
+              body: JSON.stringify({ terms }),
+            });
+            renderExistingOffer();
+            setExistingOfferStatus("Asset terms saved. Your original notes were not changed.", "success");
+          } catch (error) {
+            setExistingOfferStatus(
+              error instanceof Error ? error.message : "Asset terms could not be saved. Please try again.",
+              "error",
+            );
+          } finally {
+            existingOfferTermsSave.disabled = false;
+          }
+        }
+
         function showPreparation(mode) {
+          offerGateMode = preparationCaseId ? mode : null;
           const isUpload = mode === "upload";
           const isDemo = mode === "demo";
           if (preparationCaseId && mode === "wizard") {
@@ -6238,7 +6569,7 @@
             wizardDemoPage.querySelector(".demo-flow-intro").textContent =
               "Work through the sections at your own pace. Answers and optional evidence are saved only in this browser and are not uploaded, analyzed, or used to change your case record.";
             preparationView.append(wizardDemoPage);
-            wizardDemoPage.hidden = false;
+            wizardDemoPage.hidden = true;
             void initializeWizardDraft();
           }
           document.getElementById("preparation-title").textContent = isUpload
@@ -6253,13 +6584,17 @@
               : preparationCaseId
                 ? "Use the guided sections below to prepare information for this case. Your answers stay in this browser."
                 : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
-          materialsWorkflow.hidden = !isUpload;
+          materialsWorkflow.hidden = !isUpload || Boolean(preparationCaseId);
           preparationNote.hidden = isUpload || isDemo;
           preparationView.hidden = false;
           if (preparationCaseId && mode === "wizard") {
             preparationNote.hidden = false;
           }
           if (isUpload) loadMaterialsConfig();
+          if (preparationCaseId && (isUpload || mode === "wizard")) {
+            existingOfferPanel.hidden = false;
+            void loadExistingOffer();
+          }
           if (isDemo) {
             document.getElementById("dashboard-title").textContent = "XYZ vs ABC";
             document.getElementById("dashboard-intro").textContent =
@@ -9180,6 +9515,19 @@
         });
         document.getElementById("dashboard-retry").addEventListener("click", () => {
           loadDashboardStatus();
+        });
+        caseOfferQuestion.addEventListener("change", () => {
+          caseOfferNotesWrap.hidden = caseOfferQuestion.querySelector(
+            'input[name="case-existing-offer"]:checked',
+          )?.value !== "yes";
+        });
+        document.getElementById("existing-offer-question").addEventListener("change", () => {
+          existingOfferDetails.hidden = selectedExistingOfferAnswer() !== "yes";
+        });
+        existingOfferSave.addEventListener("click", () => { void saveExistingOffer(); });
+        existingOfferTermsSave.addEventListener("click", () => { void saveExistingOfferTerms(); });
+        document.getElementById("existing-offer-refresh").addEventListener("click", () => {
+          void loadExistingOffer();
         });
         document.getElementById("case-create-cancel").addEventListener("click", () => {
           if (document.getElementById("case-create-cancel").disabled) return;
