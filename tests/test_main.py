@@ -941,7 +941,9 @@ class MainWorkflowTests(unittest.TestCase):
         ):
             with self.subTest(method=method, role=role):
                 db = Mock()
-                case = SimpleNamespace(status="finalized" if method == "CLOSED" else "draft")
+                case = SimpleNamespace(
+                    status="finalized" if method == "CLOSED" else "draft", closed_at=None
+                )
                 db.get.side_effect = lambda model, key: {
                     AuthSession: auth_session,
                     User: user,

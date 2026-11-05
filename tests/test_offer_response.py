@@ -103,7 +103,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
     def test_confirmed_accepted_offer_can_finalize_case(self) -> None:
         case_id = uuid4()
         selection_id = uuid4()
-        case = SimpleNamespace(status="settlement")
+        case = SimpleNamespace(id=case_id, status="settlement", closed_at=None)
         selection = SimpleNamespace(id=selection_id, case_id=case_id)
         current = SimpleNamespace(
             outcome="accepted",
@@ -120,7 +120,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
             result = complete_accepted_case(
                 case_id,
                 selection_id,
-                SimpleNamespace(settlement_attempt_limit=1),
+                SimpleNamespace(id=uuid4(), settlement_attempt_limit=1),
                 db,
             )
 
@@ -131,7 +131,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
     def test_unconfirmed_offer_cannot_finalize_case(self) -> None:
         case_id = uuid4()
         selection_id = uuid4()
-        case = SimpleNamespace(status="settlement")
+        case = SimpleNamespace(id=case_id, status="settlement", closed_at=None)
         selection = SimpleNamespace(id=selection_id, case_id=case_id)
         current = SimpleNamespace(
             outcome="accepted",
@@ -149,7 +149,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
                 complete_accepted_case(
                     case_id,
                     selection_id,
-                    SimpleNamespace(settlement_attempt_limit=1),
+                    SimpleNamespace(id=uuid4(), settlement_attempt_limit=1),
                     db,
                 )
 
@@ -160,7 +160,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
     def test_case_finalization_database_failure_is_reported(self) -> None:
         case_id = uuid4()
         selection_id = uuid4()
-        case = SimpleNamespace(status="settlement")
+        case = SimpleNamespace(id=case_id, status="settlement", closed_at=None)
         selection = SimpleNamespace(id=selection_id, case_id=case_id)
         current = SimpleNamespace(
             outcome="accepted",
@@ -179,7 +179,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
                 complete_accepted_case(
                     case_id,
                     selection_id,
-                    SimpleNamespace(settlement_attempt_limit=1),
+                    SimpleNamespace(id=uuid4(), settlement_attempt_limit=1),
                     db,
                 )
 
