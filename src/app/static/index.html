@@ -2302,12 +2302,6 @@
                 <ul class="materials-list" id="materials-list" aria-label="Selected case materials"></ul>
                 <div class="materials-actions">
                   <button class="materials-import" id="materials-import" type="button" disabled>Import selected files</button>
-                  <button class="case-tile case-tile-inactive" id="demo-completed-case" type="button" hidden aria-label="XYZ vs ABC, completed case">
-                    <span class="case-tile-copy">
-                      <span class="case-tile-title">XYZ vs ABC</span>
-                      <span class="case-tile-meta">Completed · Settlement accepted</span>
-                    </span>
-                  </button>
                   <p class="materials-status" id="materials-status" role="status" aria-live="polite"></p>
                 </div>
                 <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
@@ -3287,8 +3281,6 @@
               replaceInput.accept = ".pdf,.docx";
               replaceInput.tabIndex = -1;
               replaceInput.dataset.demoReplaceFile = "";
-        const demoCaseCompletionStorageKey = "casework-demo-case-completed";
-        const demoCompletedCase = document.getElementById("demo-completed-case");
               replaceInput.dataset.fileId = String(record.id);
               replaceInput.setAttribute("aria-label", `Choose a replacement for ${record.name}`);
               const remove = document.createElement("button");
@@ -5634,6 +5626,7 @@
           if (demoSettlementCompletionMode) {
             document.body.dataset.demoPage = "settlement-completion";
             settlementCompletionBack.href = "/demo";
+            settlementCompletionFinalize.textContent = "Return to active demo case";
             settlementCompletionAuthContent.hidden = true;
             settlementCompletionDemoContent.hidden = false;
             settlementCompletionStatus.textContent =
@@ -5895,11 +5888,11 @@
         async function completeSettlementCase() {
           settlementCompletionFinalize.disabled = true;
           settlementCompletionStatus.dataset.kind = "";
-          settlementCompletionStatus.textContent = "Marking this case as completed…";
+          settlementCompletionStatus.textContent = demoSettlementCompletionMode
+            ? "Returning to the active demo case…"
+            : "Marking this case as completed…";
           try {
-            if (demoSettlementCompletionMode) {
-              window.localStorage.setItem(demoCaseCompletionStorageKey, "true");
-            } else {
+            if (!demoSettlementCompletionMode) {
               const query = new URLSearchParams(window.location.search);
               const caseId = query.get("case_id");
               const selectionId = query.get("selection_id");
@@ -9684,18 +9677,7 @@
           dashboardLoading.hidden = true;
           const planName = demoFreeDashboardMode ? "Free" : "Essential";
           demoInactiveCases.hidden = demoFreeDashboardMode;
-          let demoCaseCompleted = false;
-          try {
-            demoCaseCompleted = !demoFreeDashboardMode
-              && window.localStorage.getItem(demoCaseCompletionStorageKey) === "true";
-          } catch (error) {
-            showDashboardError(error instanceof Error
-              ? `Could not read the completed demo case status: ${error.message}`
-              : "Could not read the completed demo case status.");
-            return;
-          }
-          demoCompletedCase.hidden = !demoCaseCompleted;
-          const demoCases = demoFreeDashboardMode || demoCaseCompleted ? [] : [{
+          const demoCases = demoFreeDashboardMode ? [] : [{
               id: "sample-case",
               title: "XYZ vs ABC",
               status: "in progress",
@@ -9703,7 +9685,7 @@
               attempt_ordinal: 2,
             }];
           renderCases(demoCases, {
-            activeCaseCount: demoFreeDashboardMode || demoCaseCompleted ? 0 : 1,
+            activeCaseCount: demoFreeDashboardMode ? 0 : 1,
             activeCaseLimit: demoFreeDashboardMode ? 1 : 3,
             planName,
           });

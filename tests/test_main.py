@@ -262,7 +262,8 @@ class MainWorkflowTests(unittest.TestCase):
             )
             self.assertIn('window.history.back()', page)
             self.assertIn("/offer-response/complete", page)
-            self.assertIn('localStorage.setItem(demoCaseCompletionStorageKey, "true")', page)
+            self.assertNotIn("casework-demo-case-completed", page)
+            self.assertIn('settlementCompletionFinalize.textContent = "Return to active demo case"', page)
 
         page = body.decode()
         self.assertIn(
@@ -371,9 +372,11 @@ class MainWorkflowTests(unittest.TestCase):
         demo_dashboard = responses[0][1].decode().rsplit(
             "} else if (dashboardDemoMode) {", 1
         )[1].split("} else if (demoMode)", 1)[0]
-        self.assertIn("demoFreeDashboardMode || demoCaseCompleted ? []", demo_dashboard)
-        self.assertIn("demoFreeDashboardMode || demoCaseCompleted ? 0 : 1", demo_dashboard)
-        self.assertIn('id="demo-completed-case"', page)
+        self.assertIn("const demoCases = demoFreeDashboardMode ? [] : [{", demo_dashboard)
+        self.assertIn("activeCaseCount: demoFreeDashboardMode ? 0 : 1", demo_dashboard)
+        self.assertNotIn("demoCaseCompleted", demo_dashboard)
+        self.assertNotIn("casework-demo-case-completed", page)
+        self.assertNotIn('id="demo-completed-case"', page)
         self.assertIn('planName = demoFreeDashboardMode ? "Free" : "Essential"', demo_dashboard)
 
         essential_dashboard = responses[1][1].decode()
@@ -385,6 +388,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Jordan vs Taylor", inactive_cases)
         self.assertIn("Morgan vs Lee", inactive_cases)
         self.assertIn("Casey vs Rivera", inactive_cases)
+        self.assertNotIn("XYZ vs ABC", inactive_cases)
         self.assertIn('datetime="2025-08-14"', inactive_cases)
         self.assertIn('datetime="2025-04-03"', inactive_cases)
         self.assertIn('datetime="2024-12-19"', inactive_cases)
