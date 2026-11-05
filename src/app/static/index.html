@@ -700,14 +700,6 @@
       }
       .section-heading > p:last-child { margin-bottom: 0; color:var(--muted); font-size: 15px; line-height: 1.65; }
       .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-      .demo-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .demo-quick-section { padding: 18px 0 8px; }
-      .demo-quick-intro { margin: 0 0 10px; color:var(--muted); font-size: 12px; line-height: 1.5; }
-      .demo-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-      .demo-quick-link { display: flex; min-height: 54px; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 13px; border:1px solid var(--theme-border-cbd8cc); border-radius: 8px; color:var(--green-dark); background:var(--theme-background-fff); text-decoration: none; }
-      .demo-quick-link:hover { border-color:var(--theme-border-8ca993); background:var(--theme-background-f5f8f5); }
-      .demo-quick-link strong { font-size: 12px; line-height: 1.25; }
-      .demo-quick-link span { color:var(--muted); font-size: 10px; line-height: 1.3; }
       .mode-card {
         position: relative;
         min-height: 300px;
@@ -798,8 +790,6 @@
         .wizard-progress a { min-height: 32px; padding: 0 8px; font-size: 10px; }
       }
       body[data-demo-page] .topbar .nav a:not(.demo-entry) { display: none; }
-      body[data-demo-page] .demo-quick-section,
-      .authenticated-view .demo-quick-section { display: none; }
       body[data-demo-page="documents"] main > section:not(#documents-demo),
       body[data-demo-page="wizard"] main > section:not(#wizard-demo) { display: none; }
       body[data-demo-page="dashboard"] main > section:not(#account-dashboard) { display: none; }
@@ -939,6 +929,13 @@
       .case-tile-copy { display:grid; gap:8px; }
       .case-tile-title { overflow-wrap:anywhere; color:var(--text-primary); font-size:17px; font-weight:750; line-height:1.35; }
       .case-tile-meta { color:var(--text-secondary); font-size:12px; line-height:1.5; }
+      .case-tile-inactive { cursor:not-allowed; opacity:.78; }
+      .case-tile-inactive:disabled { cursor:not-allowed; }
+      .inactive-cases { margin-top:30px; padding-top:24px; border-top:1px solid var(--border-color); }
+      .inactive-cases h3 { margin:0 0 6px; color:var(--text-primary); font-size:18px; }
+      .inactive-cases > p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.5; }
+      .inactive-case-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:14px; margin-top:16px; }
+      .inactive-case-grid .case-tile { min-height:150px; aspect-ratio:auto; }
       .case-tile-new { border:1px dashed var(--theme-border-9ab5a2); background:var(--theme-background-f7faf7); }
       .case-tile-demo-add { align-items:center; justify-content:center; }
       .case-tile-demo-add .case-tile-icon { width:82px; height:82px; border-radius:26px; font-size:64px; }
@@ -1274,7 +1271,6 @@
 
       @media (max-width: 850px) {
         .hero { grid-template-columns: 1fr; gap: 32px; padding: 62px 0 68px; }
-        .demo-mode-grid { grid-template-columns: 1fr; }
         .account-panel { grid-template-columns: 1fr; gap: 27px; }
         .account-form-wrap { max-width: none; }
         .hero-copy { max-width: 620px; }
@@ -1297,11 +1293,6 @@
         .theme-control span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .nav a:not(.nav-cta) { display: none; }
         .nav-cta { padding: 9px 11px; }
-        .demo-quick-section { padding: 10px 0 4px; }
-        .demo-quick-intro { margin-bottom: 7px; font-size: 10px; }
-        .demo-quick-actions { grid-template-columns: 1fr; gap: 6px; }
-        .demo-quick-link { min-height: 42px; padding: 6px 11px; }
-        .demo-quick-link span { display: none; }
         .hero { padding: 52px 0 58px; }
         .account-section { padding-bottom: 62px; }
         .account-panel { gap: 22px; padding: 25px 20px; }
@@ -1353,8 +1344,8 @@
           <span class="brand-name">Casework</span>
         </a>
         <nav class="nav" aria-label="Main navigation">
-          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/1/dashboard">Demo 1</a>
-          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/2/dashboard">Demo 2</a>
+          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/1/dashboard">Demo 1 Free</a>
+          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/2/dashboard">Demo 2 Essential</a>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
@@ -1371,20 +1362,6 @@
       <p class="theme-status" id="theme-status" role="status" aria-live="polite"></p>
 
       <main>
-        <section class="demo-quick-section" id="demo-choices" aria-label="Choose a demo">
-          <p class="demo-quick-intro">Choose a dashboard preview.</p>
-          <nav class="demo-quick-actions" aria-label="Demo options">
-            <a class="demo-quick-link" href="/demo/1/dashboard">
-              <strong>Demo 1 · Free</strong>
-              <span>Open the Free dashboard</span>
-            </a>
-            <a class="demo-quick-link" href="/demo/2/dashboard">
-              <strong>Demo 2 · Essential</strong>
-              <span>Open the Essential dashboard</span>
-            </a>
-          </nav>
-        </section>
-
         <section class="demo-flow-page" id="documents-demo" aria-labelledby="documents-demo-title" hidden>
           <p class="eyebrow">Materials path preview</p>
           <h1 id="documents-demo-title">I have all documents demo</h1>
@@ -1407,6 +1384,9 @@
         <section class="demo-flow-page" id="wizard-demo" aria-labelledby="wizard-demo-title" hidden>
           <p class="eyebrow">Guided intake preview</p>
           <h1 id="wizard-demo-title">Wizard demo</h1>
+          <p class="demo-flow-actions">
+            <a class="button button-secondary" id="demo-wizard-back" data-demo-case-return href="/demo/dashboard">Back to dashboard</a>
+          </p>
           <p class="demo-flow-intro">Build a mediation-preparation draft at your pace. Your answers and optional evidence are saved only in this browser and are never uploaded, analyzed, or used to change the fictional Existing demo.</p>
           <div class="demo-flow-panel">
             <p class="wizard-save-status" id="wizard-save-status" role="status" aria-live="polite">Opening local draft storage…</p>
@@ -1488,7 +1468,6 @@
               <div class="wizard-bottom-actions">
                 <button class="button button-primary" id="wizard-finish" type="button" disabled>Save and view Existing demo</button>
                 <button class="wizard-clear" id="wizard-clear" type="button">Clear saved draft</button>
-                <a class="button button-secondary" id="demo-wizard-back" data-demo-case-return href="/demo/dashboard">Back to case page</a>
               </div>
             </div>
           </div>
@@ -1520,7 +1499,7 @@
               thoughtful workspace. Move at your pace, with guidance along the way.
             </p>
             <div class="hero-actions">
-              <a class="button button-primary" id="hero-primary-action" href="#demo-choices">Choose a demo <span class="arrow" aria-hidden="true">↑</span></a>
+              <a class="button button-primary" id="hero-primary-action" href="#account">Get started <span class="arrow" aria-hidden="true">↑</span></a>
               <a class="button button-secondary" href="#how-it-works">See how it works</a>
             </div>
             <p class="hero-note">
@@ -1699,6 +1678,30 @@
               </div>
               <div class="case-grid" id="case-list" aria-live="polite"></div>
               <a class="case-upgrade-link" id="case-upgrade-link" href="#subscription-pricing" hidden>Compare plans to create more active cases</a>
+              <section class="inactive-cases" id="demo-inactive-cases" aria-labelledby="demo-inactive-cases-title" hidden>
+                <h3 id="demo-inactive-cases-title">Inactive cases</h3>
+                <p>Archived case previews are not open yet.</p>
+                <div class="inactive-case-grid">
+                  <button class="case-tile case-tile-inactive" type="button" disabled>
+                    <span class="case-tile-copy">
+                      <span class="case-tile-title">Jordan vs Taylor</span>
+                      <span class="case-tile-meta">Archived · <time datetime="2025-08-14">Aug 14, 2025</time></span>
+                    </span>
+                  </button>
+                  <button class="case-tile case-tile-inactive" type="button" disabled>
+                    <span class="case-tile-copy">
+                      <span class="case-tile-title">Morgan vs Lee</span>
+                      <span class="case-tile-meta">Archived · <time datetime="2025-04-03">Apr 3, 2025</time></span>
+                    </span>
+                  </button>
+                  <button class="case-tile case-tile-inactive" type="button" disabled>
+                    <span class="case-tile-copy">
+                      <span class="case-tile-title">Casey vs Rivera</span>
+                      <span class="case-tile-meta">Last active · <time datetime="2024-12-19">Dec 19, 2024</time></span>
+                    </span>
+                  </button>
+                </div>
+              </section>
               <dialog class="case-create-dialog" id="demo-case-choice-dialog" aria-labelledby="demo-case-choice-title">
                 <div class="case-create-content">
                   <p class="eyebrow">New demo case</p>
@@ -2308,6 +2311,7 @@
         const dashboardDemoTitle = document.getElementById("dashboard-demo-title");
         const dashboardDemoDescription = document.getElementById("dashboard-demo-description");
         const dashboardDemoBackLink = document.getElementById("dashboard-demo-signin");
+        const demoInactiveCases = document.getElementById("demo-inactive-cases");
         const dashboardLoading = document.getElementById("dashboard-loading");
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
@@ -8894,6 +8898,7 @@
           dashboardDemoBanner.hidden = false;
           const planName = demoFreeDashboardMode ? "Free" : "Essential";
           const demoNumber = demoFreeDashboardMode ? 1 : 2;
+          demoInactiveCases.hidden = demoFreeDashboardMode;
           dashboardDemoTitle.textContent = `Demo ${demoNumber} · ${planName} account`;
           dashboardDemoDescription.textContent = demoFreeDashboardMode
             ? "Fictional empty dashboard after a Free signup. No account data is shown or changed."
