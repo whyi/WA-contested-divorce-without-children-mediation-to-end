@@ -30,6 +30,7 @@ from app.models import (
     User,
     user_settlement_attempt_limit,
 )
+from app.existing_offer import OfferOrigin, offer_origin
 from app.offer_documents import MediationOfferTerms
 from app.modified_offer import ModifiedOfferParseError, parse_modified_offer
 from app.settlement_planning import ScenarioAxes, calculate_scenario, generate_scenarios
@@ -93,6 +94,7 @@ class OfferResponseRead(BaseModel):
     sent_confirmed: bool
     counteroffer_attachment_present: bool
     attempt_ordinal: int
+    offer_origin: OfferOrigin
     attempt_limit: int
     attempts_remaining: int
     frozen: bool
@@ -410,6 +412,10 @@ def _read_response(
                 SettlementNegotiationAttempt.predecessor_id == attempt.id
             )
         ) is not None
+    snapshot = (
+        attempt.frozen_snapshot_json or attempt.snapshot_json if attempt is not None else {}
+    )
+    attempt_ordinal = attempt.attempt_ordinal if attempt is not None else 1
     return OfferResponseRead(
         selection_id=selection.id,
         outcome=response_record.outcome if response_record is not None else None,
@@ -417,7 +423,8 @@ def _read_response(
         sent_documents_complete=sent_documents_complete,
         sent_confirmed=attempt.sent_confirmed_at is not None if attempt is not None else False,
         counteroffer_attachment_present="counteroffer" in kinds,
-        attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
+        attempt_ordinal=attempt_ordinal,
+        offer_origin=offer_origin(attempt_ordinal, snapshot),
         attempt_limit=attempt_limit,
         attempts_remaining=max(
             0,
@@ -437,11 +444,7 @@ def _read_response(
         ),
         attempt_revision=attempt.revision if attempt is not None else 0,
         editable_state=attempt.editable_state_json if attempt is not None else {},
-        snapshot=(
-            attempt.frozen_snapshot_json or attempt.snapshot_json
-            if attempt is not None
-            else {}
-        ),
+        snapshot=snapshot,
         scenario_result=scenario_result,
         proposal_terms=proposal_terms,
         has_next_attempt=has_next_attempt,

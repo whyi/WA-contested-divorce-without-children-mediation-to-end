@@ -57,6 +57,12 @@ APIs require explicit authentication and case-membership configuration. Every
 case is protected by an explicit case-membership grant, and signup or social
 login never grants case access. Do not submit real case information.
 
+Case setup asks whether the other party has already made an offer
+([Spec 33](specs/33-existing-offer-intake/spec-33-existing-offer-intake.md)).
+A "yes" requires an uploaded offer document or non-empty notes, enforced by
+the API; notes can later be related to individual assets, and the first
+attempt of such a case is labelled an initial incoming offer.
+
 Stored materials are not extracted on upload or status polling. A separate
 PostgreSQL-backed extraction worker and per-document status API are available
 for the later consent-authorized analysis flow; no job is enqueued until that
