@@ -1021,6 +1021,62 @@
       .settlement-planner[hidden] { display: none; }
       .settlement-planner h3 { margin: 22px 0 8px; color:var(--green-dark); font-size: 17px; }
       .settlement-planner p, .settlement-planner label { color:var(--muted); font-size: 13px; line-height: 1.6; }
+      .settlement-attempt-progress {
+        position: sticky;
+        top: 8px;
+        z-index: 20;
+        margin: 16px 0 24px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface-raised);
+        box-shadow: 0 8px 24px rgba(20, 38, 29, .08);
+      }
+      .settlement-attempt-progress-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .settlement-attempt-progress-heading h3 { margin:0; }
+      .settlement-attempt-progress-heading p { margin:0; text-align:right; }
+      .settlement-attempt-progress-empty { margin:8px 0 0; }
+      .settlement-attempt-progress-empty[data-kind="error"] { color:var(--theme-text-9c3228); }
+      .settlement-attempt-progress-list {
+        display:flex;
+        gap:10px;
+        overflow-x:auto;
+        margin:10px 0 0;
+        padding:2px 2px 6px;
+        list-style:none;
+      }
+      .settlement-attempt-progress-list li { flex:1 0 145px; min-width:0; }
+      .settlement-attempt-progress-step {
+        display:grid;
+        width:100%;
+        min-height:58px;
+        gap:3px;
+        padding:9px 11px;
+        border:1px solid var(--theme-border-d9e1d9);
+        border-radius:9px;
+        color:var(--text-primary);
+        background:var(--theme-background-f7faf7);
+        text-align:left;
+        cursor:pointer;
+        font:inherit;
+      }
+      .settlement-attempt-progress-step:hover { border-color:var(--green); }
+      .settlement-attempt-progress-step[aria-current="step"] {
+        border:2px solid var(--green);
+        background:var(--theme-background-edf4ee);
+        box-shadow:0 0 0 2px rgba(47, 102, 82, .12);
+      }
+      .settlement-attempt-progress-step[data-state="pending"] { background:var(--theme-background-fcf8ee); }
+      .settlement-attempt-progress-step[data-state="accepted"] { color:var(--green-dark); }
+      .settlement-attempt-progress-step-label { color:var(--muted); font-size:11px; }
+      .settlement-attempt-progress-step-status { font-size:13px; font-weight:750; }
+      .settlement-attempt-progress-step:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      @media (max-width: 620px) {
+        .settlement-attempt-progress { top:4px; padding:11px; }
+        .settlement-attempt-progress-heading { align-items:flex-start; flex-direction:column; gap:4px; }
+        .settlement-attempt-progress-heading p { text-align:left; }
+        .settlement-attempt-progress-list li { flex-basis:132px; }
+      }
       .settlement-planner textarea, .settlement-planner input[type="text"], .settlement-planner input[type="date"] { width: 100%; padding: 10px 12px; border:1px solid var(--theme-border-d9e1d9); border-radius: 7px; color:var(--ink); background:var(--theme-background-fff); font: inherit; font-size: 12px; }
       .settlement-planner textarea { min-height: 140px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
       .settlement-planner .materials-actions { margin: 10px 0 20px; }
@@ -1825,6 +1881,16 @@
                 <h2 id="settlement-planner-title">Evidence-grounded settlement planning</h2>
                 <p>Washington-only decision support. The calculations use your entered assumptions; they are not legal classifications, a predicted result, or legal advice. A Washington attorney or mediator should review the draft.</p>
                 <p class="settlement-status" id="settlement-planner-status" role="status" aria-live="polite"></p>
+                <section class="settlement-attempt-progress" aria-labelledby="settlement-attempt-progress-title">
+                  <div class="settlement-attempt-progress-heading">
+                    <h3 id="settlement-attempt-progress-title">Negotiation progress</h3>
+                    <p id="settlement-attempt-progress-status" role="status" aria-live="polite">Loading saved attempts…</p>
+                  </div>
+                  <p class="settlement-attempt-progress-empty" id="settlement-attempt-progress-empty" hidden>
+                    Your first attempt will appear after you select a scenario.
+                  </p>
+                  <ol class="settlement-attempt-progress-list" id="settlement-attempt-progress-list" aria-label="Negotiation attempts" hidden></ol>
+                </section>
                 <div id="settlement-planner-content">
                   <section id="settlement-offer-response-history" hidden aria-labelledby="settlement-offer-response-history-title">
                     <h3 id="settlement-offer-response-history-title">Saved offer responses</h3>
@@ -2489,6 +2555,9 @@
         const settlementResponseChecklist = document.getElementById("settlement-response-checklist");
         const settlementOfferResponseHistory = document.getElementById("settlement-offer-response-history");
         const settlementOfferResponseHistoryList = document.getElementById("settlement-offer-response-history-list");
+        const settlementAttemptProgressStatus = document.getElementById("settlement-attempt-progress-status");
+        const settlementAttemptProgressEmpty = document.getElementById("settlement-attempt-progress-empty");
+        const settlementAttemptProgressList = document.getElementById("settlement-attempt-progress-list");
         const preparationView = document.getElementById("preparation-view");
         const preparationNote = document.getElementById("preparation-note");
         const materialsWorkflow = document.getElementById("materials-workflow");
@@ -2620,6 +2689,7 @@
         let settlementDisclosureAvailable = false;
         let settlementRunId = null;
         let settlementOfferResponseState = null;
+        let settlementOfferResponseHistoryItems = [];
         let settlementDocumentCreditsRemaining = null;
         let billingPlans = [];
         let billingAccountData = null;
@@ -4014,6 +4084,8 @@
           settlementSelectedScenario = null;
           settlementRunId = null;
           settlementOfferResponseState = null;
+          settlementOfferResponseHistoryItems = [];
+          renderSettlementAttemptProgress();
           settlementDocumentCreditsRemaining = null;
           settlementDocumentCreditStatus.textContent = "Checking document credit balance…";
           settlementDocumentCreditStatus.removeAttribute("data-kind");
@@ -4390,6 +4462,71 @@
             ? "th"
             : ({ 1: "st", 2: "nd", 3: "rd" }[ordinal % 10] || "th");
           return `${ordinal}${suffix}`;
+        }
+
+        function renderSettlementAttemptProgress(
+          items = settlementOfferResponseHistoryItems,
+          emptyMessage = "Your first attempt will appear after you select a scenario.",
+        ) {
+          settlementAttemptProgressList.replaceChildren();
+          settlementAttemptProgressEmpty.textContent = emptyMessage;
+          settlementAttemptProgressEmpty.hidden = items.length > 0;
+          settlementAttemptProgressEmpty.removeAttribute("data-kind");
+          settlementAttemptProgressList.hidden = items.length === 0;
+
+          if (!items.length) {
+            settlementAttemptProgressStatus.textContent = "";
+            return;
+          }
+
+          const currentSelectionId = settlementSelectedScenario?.selection_id;
+          const selectedItem = items.find((item) => item.selection_id === currentSelectionId);
+          if (selectedItem) {
+            const state = selectedItem.outcome || (selectedItem.frozen ? "pending" : "working");
+            settlementAttemptProgressStatus.textContent =
+              `Attempt ${selectedItem.attempt_ordinal} of ${selectedItem.attempt_limit} — ${settlementAttemptStatusLabel(state)} — currently viewing`;
+          } else {
+            settlementAttemptProgressStatus.textContent =
+              `${items.length} negotiation attempt${items.length === 1 ? "" : "s"} saved.`;
+          }
+
+          for (const item of items) {
+            const state = item.outcome || (item.frozen ? "pending" : "working");
+            const stateLabel = settlementAttemptStatusLabel(state);
+            const isCurrent = item.selection_id === currentSelectionId;
+            const listItem = document.createElement("li");
+            const button = document.createElement("button");
+            const attemptLabel = document.createElement("span");
+            const statusLabel = document.createElement("span");
+
+            button.type = "button";
+            button.className = "settlement-attempt-progress-step";
+            button.dataset.state = state;
+            button.setAttribute(
+              "aria-label",
+              `Attempt ${item.attempt_ordinal}: ${stateLabel}${isCurrent ? ", currently viewing" : ", open saved attempt"}`,
+            );
+            if (isCurrent) button.setAttribute("aria-current", "step");
+            attemptLabel.className = "settlement-attempt-progress-step-label";
+            attemptLabel.textContent =
+              `${settlementAttemptOrdinalLabel(item.attempt_ordinal)} attempt`;
+            statusLabel.className = "settlement-attempt-progress-step-status";
+            statusLabel.textContent = stateLabel;
+            button.append(attemptLabel, statusLabel);
+            button.addEventListener("click", () => openSettlementHistoryItem(item));
+            listItem.append(button);
+            settlementAttemptProgressList.append(listItem);
+          }
+        }
+
+        function settlementAttemptStatusLabel(state) {
+          return ({
+            counteroffer: "Counteroffer received",
+            rejected: "Rejected",
+            accepted: "Accepted",
+            pending: "Pending",
+            working: "Working",
+          })[state] || "Working";
         }
 
         function settlementDemoClone(value) {
@@ -4965,6 +5102,8 @@
               `/cases/${caseId}/settlement-planning/offer-responses`,
             );
             if (settlementCaseId !== caseId) return;
+            settlementOfferResponseHistoryItems = items;
+            renderSettlementAttemptProgress(items);
             settlementOfferResponseHistoryList.replaceChildren();
             settlementOfferResponseHistory.hidden = items.length === 0;
             for (const item of items) {
@@ -4989,6 +5128,14 @@
             }
           } catch (error) {
             if (settlementCaseId !== caseId) return;
+            settlementOfferResponseHistoryItems = [];
+            renderSettlementAttemptProgress(
+              [],
+              error instanceof Error
+                ? error.message
+                : "Saved negotiation progress could not be loaded.",
+            );
+            settlementAttemptProgressEmpty.dataset.kind = "error";
             settlementOfferResponseHistory.hidden = false;
             settlementOfferResponseHistoryList.replaceChildren();
             const row = document.createElement("li");
@@ -5004,6 +5151,7 @@
             selection_id: item.selection_id,
             attempt_ordinal: item.attempt_ordinal,
           };
+          renderSettlementAttemptProgress();
           settlementOffer.hidden = item.frozen;
           settlementGeneratedFormats = new Set(["docx", "xlsx"]);
           void loadSettlementOfferResponse().then((loaded) => {
@@ -5336,6 +5484,7 @@
               return;
             }
             settlementOffer.hidden = false;
+            void loadSettlementOfferResponseHistory(settlementCaseId);
             settlementOffer.scrollIntoView({ behavior: "smooth", block: "nearest" });
             setSettlementStatus("Scenario selection saved. Complete the editable CR 2A proposal terms and review both drafts before sharing.", "success");
             void loadSettlementExportDestinations();
