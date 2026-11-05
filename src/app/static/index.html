@@ -1442,6 +1442,209 @@
         html { scroll-behavior: auto; }
         *, *::before, *::after { transition-duration: .01ms !important; }
       }
+
+      :root {
+        --home-forest: var(--green-dark);
+        --home-amber: #c97a42;
+      }
+      .topbar {
+        min-height: 84px;
+        border-bottom-color: color-mix(in srgb, var(--line) 75%, transparent);
+      }
+      .brand-mark {
+        position: relative;
+        width: 34px;
+        height: 34px;
+        border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line));
+        border-radius: 9px;
+        color: var(--green-dark);
+        background: var(--mint);
+      }
+      .brand-mark::after {
+        position: absolute;
+        top: -3px;
+        right: -3px;
+        width: 9px;
+        height: 9px;
+        border: 2px solid var(--page-background);
+        border-radius: 50%;
+        background: var(--home-amber);
+        content: "";
+      }
+      .brand-name { font-size: 24px; }
+      .nav { gap: clamp(14px, 2.4vw, 30px); }
+      .nav-cta { border-radius: 999px; }
+      .hero {
+        min-height: min(760px, calc(100svh - 120px));
+        grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+        gap: clamp(42px, 6vw, 84px);
+        padding: 72px 0 78px;
+      }
+      .hero .eyebrow {
+        gap: 8px;
+        margin-bottom: 24px;
+        padding: 8px 13px;
+        border: 1px solid color-mix(in srgb, var(--home-amber) 38%, var(--line));
+        border-radius: 999px;
+        color: var(--green-dark);
+        background: color-mix(in srgb, var(--home-amber) 8%, var(--surface-background));
+        letter-spacing: .09em;
+      }
+      .hero .eyebrow::before {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--home-amber);
+      }
+      .hero h1 {
+        max-width: 650px;
+        font-size: clamp(54px, 6.7vw, 82px);
+        line-height: 1.02;
+        letter-spacing: -.06em;
+      }
+      .hero h1 em { color: var(--home-forest); font-style: italic; }
+      .hero-copy { max-width: 500px; font-size: 16px; }
+      .hero .button { min-height: 50px; border-radius: 999px; }
+      .hero .button-primary {
+        color: #17241f;
+        background: var(--home-amber);
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--home-amber) 24%, transparent);
+      }
+      .hero .button-primary:hover { background: #d88a55; }
+      .hero .button-secondary {
+        border-color: var(--line);
+        border-radius: 999px;
+        color: var(--text-primary);
+        background: var(--surface-background);
+      }
+      .visual-wrap { padding: 14px 0 22px 10px; }
+      .visual-glow {
+        inset: 3% -4% -1% 4%;
+        border-radius: 34px;
+        background: color-mix(in srgb, var(--mint) 76%, transparent);
+      }
+      .workspace {
+        border-radius: 20px;
+        box-shadow: 0 30px 70px rgba(27, 44, 36, .14);
+        transform: none;
+      }
+      .workspace-top { padding: 17px 22px; }
+      .workspace-body { padding: 24px; }
+      .float-note { right: -14px; bottom: 0; border-radius: 12px; }
+      .homepage-expectations {
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 18px;
+        margin: 0 0 52px;
+        padding: 26px clamp(22px, 4vw, 42px);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface-raised);
+      }
+      .homepage-expectations[hidden] { display: none; }
+      .expectations-mark {
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--home-amber);
+        background: color-mix(in srgb, var(--home-amber) 12%, var(--surface-background));
+      }
+      .expectations-copy .eyebrow { margin-bottom: 7px; font-size: 9px; }
+      .expectations-copy h2 {
+        margin: 0 0 6px;
+        font-size: 25px;
+      }
+      .expectations-copy p:last-child {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
+      }
+      .expectations-link {
+        display: inline-flex;
+        min-height: 42px;
+        align-items: center;
+        gap: 7px;
+        color: var(--green-dark);
+        font-size: 12px;
+        font-weight: 750;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .expectations-link:hover { color: var(--home-amber); }
+      .account-panel { border-radius: 22px; }
+      .subscription-table-wrap { border-radius: 16px; }
+      .steps-panel { border-radius: 24px; }
+      .closing { padding-top: 58px; }
+      @media (max-width: 900px) {
+        .topbar {
+          height: auto;
+          min-height: 68px;
+          flex-wrap: wrap;
+          gap: 8px;
+          padding: 10px 0;
+        }
+        .nav {
+          width: 100%;
+          justify-content: space-between;
+          gap: 6px;
+          font-size: 11px;
+        }
+        .nav a:not(.nav-cta) { display: none; }
+        .nav-cta { padding: 9px 11px; white-space: nowrap; }
+        .hero {
+          min-height: 0;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 36px;
+          padding: 60px 0 68px;
+        }
+        .hero > div:first-child { max-width: 680px; }
+        .visual-wrap { width: min(100%, 680px); margin: 0 auto; }
+      }
+      @media (max-width: 600px) {
+        .nav {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          align-items: stretch;
+          gap: 8px;
+        }
+        .nav-cta { justify-content: center; }
+        #account-entry { grid-column: 1 / -1; }
+        .theme-control {
+          justify-content: center;
+          padding: 0 8px;
+          border: 1px solid var(--line);
+          border-radius: 999px;
+        }
+        .theme-control select { width: 100%; }
+        .hero { padding: 48px 0 56px; }
+        .hero > div:first-child,
+        .hero h1,
+        .hero-copy,
+        .hero-actions,
+        .visual-wrap,
+        .workspace { min-width: 0; }
+        .hero h1 { font-size: clamp(38px, 12vw, 64px); }
+        .hero .button { width: 100%; min-width: 0; min-height: 48px; }
+        .visual-wrap { padding: 8px 0 20px; }
+        .visual-glow { right: 0; }
+        .workspace-body { padding: 18px; }
+        .float-note { right: -4px; }
+        .homepage-expectations {
+          grid-template-columns: 38px minmax(0, 1fr);
+          gap: 12px;
+          margin-bottom: 38px;
+          padding: 21px 17px;
+        }
+        .expectations-mark { width: 36px; height: 36px; }
+        .expectations-copy h2 { font-size: 22px; }
+        .expectations-link { grid-column: 2; justify-self: start; }
+        .steps-panel { border-radius: 18px; }
+      }
     </style>
   </head>
   <body>
@@ -1605,11 +1808,11 @@
 
         <section class="hero" aria-labelledby="hero-title">
           <div>
-            <p class="eyebrow">Washington divorce mediation</p>
-            <h1 id="hero-title">A clearer path through <em>the process.</em></h1>
+            <p class="eyebrow">For Washington State</p>
+            <h1 id="hero-title">Clarity for the <em>next chapter.</em></h1>
             <p class="hero-copy">
-              Bring the paperwork, the questions, and the next steps into one
-              thoughtful workspace. Move at your pace, with guidance along the way.
+              A guided workspace for organizing the details and questions that matter
+              before mediation — one thoughtful step at a time.
             </p>
             <div class="hero-actions">
               <a class="button button-primary" id="hero-primary-action" href="#account">Get started <span class="arrow" aria-hidden="true">↑</span></a>
@@ -1617,7 +1820,7 @@
             </div>
             <p class="hero-note">
               <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.5 16 5v4.3c0 3.8-2.6 6.7-6 8.2-3.4-1.5-6-4.4-6-8.2V5l6-2.5Z" stroke="currentColor" stroke-width="1.4"/><path d="m7.4 9.8 1.7 1.7 3.7-3.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Account creation is available when authentication and email delivery are configured.
+              This preview is for exploring. Do not enter real case information.
             </p>
           </div>
 
@@ -1667,6 +1870,18 @@
               <div><strong>You stay in control</strong><span>Review before you decide</span></div>
             </div>
           </div>
+        </section>
+
+        <section class="homepage-expectations" aria-labelledby="expectations-title">
+          <span class="expectations-mark" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.4"/><path d="M10 9v4M10 6.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </span>
+          <div class="expectations-copy">
+            <p class="eyebrow">Clear expectations</p>
+            <h2 id="expectations-title">Structure, not legal strategy.</h2>
+            <p>Casework is a preparation and organization tool. It does not provide legal advice or representation, and it cannot predict outcomes.</p>
+          </div>
+          <a class="expectations-link" href="#how-it-works">See how it works <span aria-hidden="true">→</span></a>
         </section>
 
         <section class="account-section" id="account" aria-labelledby="account-title">
