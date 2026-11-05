@@ -793,8 +793,14 @@
       body[data-demo-page="documents"] main > section:not(#documents-demo),
       body[data-demo-page="wizard"] main > section:not(#wizard-demo) { display: none; }
       body[data-demo-page="dashboard"] main > section:not(#account-dashboard) { display: none; }
+      body[data-demo-page="files"] main > section:not(#account-dashboard) { display: none; }
       body[data-demo-page="dashboard"] footer,
+      body[data-demo-page="files"] footer,
       body[data-demo-page="dashboard"] .theme-status { display: none; }
+      body[data-demo-page="files"] .theme-status { display: none; }
+      body[data-demo-page="files"] #account-dashboard > .dashboard-panel > :not(#demo-case-navigation):not(#demo-file-manager) { display: none; }
+      body[data-demo-page="settlement"] #dashboard-header,
+      body[data-demo-page="settlement"] #demo-back-to-account { display: none; }
       body[data-demo-page="settlement-completion"] main > section:not(#settlement-completion-page),
       body[data-settlement-completion-page="true"] main > section:not(#settlement-completion-page) { display: none; }
       body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 34px auto; }
@@ -862,6 +868,37 @@
       .dashboard-demo-signin { flex: 0 0 auto; display: inline-flex; min-height: 40px; align-items: center; padding: 0 13px; border-radius: 7px; color:var(--theme-text-fff); background:var(--green-dark); text-decoration: none; font-size: 12px; font-weight: 750; }
       .dashboard-demo-signin:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
       @media (max-width: 600px) { .dashboard-demo-banner { align-items: flex-start; flex-direction: column; } }
+      .demo-case-navigation { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+      .demo-case-navigation[hidden] { display: none; }
+      .demo-case-nav-link { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 9px 15px; border: 1px solid var(--theme-border-d5ded6); border-radius: 8px; color:var(--green-dark); background:var(--surface-raised); text-decoration: none; font-size: 13px; font-weight: 750; }
+      .demo-case-nav-link[aria-current="page"] { color:var(--theme-text-fff); border-color:var(--green-dark); background:var(--green-dark); }
+      .demo-case-nav-link:focus-visible, .demo-file-action:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      .demo-file-manager { max-width: 760px; margin: 0 auto; }
+      .demo-file-manager[hidden] { display: none; }
+      .demo-file-manager h1 { margin: 5px 0 10px; color:var(--green-dark); font-size: clamp(30px, 5vw, 42px); }
+      .demo-file-manager > p:not(.eyebrow) { color:var(--muted); line-height: 1.65; }
+      .demo-file-manager-toolbar { margin: 22px 0 10px; }
+      .demo-file-picker-label { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; padding: 10px 16px; border-radius: 8px; color:var(--theme-text-fff); background:var(--green-dark); cursor: pointer; font-size: 13px; font-weight: 750; }
+      .demo-file-picker-label:focus-within { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      .demo-file-picker-label input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+      .demo-file-manager-status { min-height: 22px; color:var(--muted); font-size: 13px; }
+      .demo-file-manager-status[data-kind="error"] { color:var(--theme-text-8d3026); }
+      .demo-case-file-list { display: grid; gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
+      .demo-case-file-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 16px; border:1px solid var(--theme-border-e1e8e1); border-radius: 10px; background:var(--surface-raised); }
+      .demo-case-file-copy { min-width: 0; }
+      .demo-case-file-copy h2 { overflow-wrap: anywhere; margin: 0 0 5px; color:var(--text-primary); font-size: 15px; }
+      .demo-case-file-copy p { margin: 0; color:var(--muted); font-size: 12px; line-height: 1.5; }
+      .demo-case-file-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+      .demo-file-action { min-height: 38px; padding: 7px 11px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font-size: 12px; font-weight: 700; }
+      .demo-file-replace-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+      .demo-case-files-empty { padding: 18px; border:1px dashed var(--theme-border-d5ded6); border-radius: 10px; color:var(--muted); background:var(--surface-raised); line-height: 1.6; }
+      @media (max-width: 600px) {
+        .demo-case-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+        .demo-case-nav-link { min-height: 44px; padding: 8px; text-align: center; font-size: 12px; }
+        .demo-case-file-item { align-items: flex-start; flex-direction: column; }
+        .demo-case-file-actions { width: 100%; }
+        .demo-file-action { flex: 1 1 auto; }
+      }
       .dashboard-state { color:var(--muted); font-size: 14px; line-height: 1.6; }
       .dashboard-state[hidden] { display: none; }
       .dashboard-error { padding: 18px; border:1px solid var(--theme-border-e5c7c1); border-radius: 10px; background:var(--theme-background-fff8f6); }
@@ -1646,11 +1683,27 @@
 
         <section class="dashboard-section" id="account-dashboard" aria-labelledby="dashboard-title" hidden>
           <div class="dashboard-panel">
+            <nav class="demo-case-navigation" id="demo-case-navigation" aria-label="Demo case navigation" hidden>
+              <a id="demo-my-cases-link" class="demo-case-nav-link" href="/demo/2/dashboard">My cases</a>
+              <a id="demo-file-management-link" class="demo-case-nav-link" href="/demo/files">Case file management</a>
+            </nav>
+            <section class="demo-file-manager" id="demo-file-manager" aria-labelledby="demo-file-manager-title" hidden>
+              <p class="eyebrow">Demo case · XYZ vs ABC</p>
+              <h1 id="demo-file-manager-title">Case file management</h1>
+              <p>Review and manage files for this fictional case. File contents stay in this browser only and are not uploaded.</p>
+              <div class="demo-file-manager-toolbar">
+                <label class="demo-file-picker-label" for="demo-case-files-input">Add case files
+                  <input id="demo-case-files-input" type="file" accept=".pdf,.docx" multiple>
+                </label>
+              </div>
+              <p class="demo-file-manager-status" id="demo-case-files-status" role="status" aria-live="polite">Loading files saved in this browser…</p>
+              <ul class="demo-case-file-list" id="demo-case-files-list" aria-label="Files saved for this demo case"></ul>
+            </section>
             <aside class="dashboard-demo-banner" id="dashboard-demo-banner" role="note" hidden>
               <p><strong id="dashboard-demo-title">Dashboard demo</strong><span id="dashboard-demo-description">This is a fictional preview. No account data is shown or changed.</span></p>
               <a class="dashboard-demo-signin" id="dashboard-demo-signin" href="/">Back to home</a>
             </aside>
-            <header class="dashboard-header">
+            <header class="dashboard-header" id="dashboard-header">
               <div>
                 <p class="eyebrow">Your account</p>
                 <h1 id="dashboard-title">Your case workspace</h1>
@@ -2158,7 +2211,7 @@
                   <p class="scenario-disclaimer">Fictional page-only calculation; no case data is used, saved, or sent to AI. The End Date is an illustrative valuation/division date and is not necessarily a legal separation or characterization date.</p>
                 </section>
               </section>
-              <a class="back-to-account" href="/#account">Back to your account</a>
+              <a class="back-to-account" id="demo-back-to-account" href="/#account">Back to your account</a>
             </section>
           </div>
         </section>
@@ -2654,7 +2707,17 @@
         const settlementCompletionMode = window.location.pathname === "/settlement-completion";
         const demoDocumentsMode = window.location.pathname === "/demo/documents";
         const demoWizardMode = window.location.pathname === "/demo/wizard";
-        const demoOnlyMode = demoDocumentsMode || demoWizardMode;
+        const demoFileManagerMode = window.location.pathname === "/demo/files";
+        const demoOnlyMode = demoDocumentsMode || demoWizardMode || demoFileManagerMode;
+        const demoCaseFilesCaseId = "sample-case";
+        const demoCaseNavigation = document.getElementById("demo-case-navigation");
+        const demoFileManagementLink = document.getElementById("demo-file-management-link");
+        const demoFileManager = document.getElementById("demo-file-manager");
+        const demoCaseFilesInput = document.getElementById("demo-case-files-input");
+        const demoCaseFilesStatus = document.getElementById("demo-case-files-status");
+        const demoCaseFilesList = document.getElementById("demo-case-files-list");
+        let demoFilesDatabasePromise = null;
+        let demoManagedFileRecords = new Map();
         const documentsDemoPage = document.getElementById("documents-demo");
         const demoFileInput = document.getElementById("demo-file-input");
         const demoFileList = document.getElementById("demo-file-list");
@@ -2805,6 +2868,251 @@
               ? `${added} file${added === 1 ? "" : "s"} selected. File contents stay on your device.`
               : "Those files are already selected.";
           renderDemoFileSelection();
+        }
+
+        function openDemoFilesDatabase() {
+          if (!window.indexedDB) {
+            return Promise.reject(new Error("This browser does not support local file storage."));
+          }
+          if (demoFilesDatabasePromise) return demoFilesDatabasePromise;
+          demoFilesDatabasePromise = new Promise((resolve, reject) => {
+            const request = window.indexedDB.open("casework-demo-file-manager", 1);
+            request.onupgradeneeded = () => {
+              const store = request.result.createObjectStore("files", {
+                keyPath: "id",
+                autoIncrement: true,
+              });
+              store.createIndex("caseId", "caseId", { unique: false });
+            };
+            request.onsuccess = () => {
+              request.result.onversionchange = () => request.result.close();
+              resolve(request.result);
+            };
+            request.onerror = () => {
+              demoFilesDatabasePromise = null;
+              reject(request.error || new Error("Could not open browser file storage."));
+            };
+            request.onblocked = () => {
+              demoFilesDatabasePromise = null;
+              reject(new Error("Close other demo tabs to update browser file storage, then try again."));
+            };
+          });
+          return demoFilesDatabasePromise;
+        }
+
+        async function runDemoFilesTransaction(mode, createRequest) {
+          const database = await openDemoFilesDatabase();
+          return new Promise((resolve, reject) => {
+            const transaction = database.transaction("files", mode);
+            let requestError = null;
+            let result;
+            transaction.oncomplete = () => resolve(result);
+            transaction.onerror = () => {
+              reject(requestError || transaction.error || new Error("The browser file operation failed."));
+            };
+            transaction.onabort = () => {
+              reject(requestError || transaction.error || new Error("The browser file operation was canceled."));
+            };
+            try {
+              const request = createRequest(transaction.objectStore("files"));
+              request.onsuccess = () => { result = request.result; };
+              request.onerror = () => { requestError = request.error; };
+            } catch (error) {
+              transaction.abort();
+              reject(error);
+            }
+          });
+        }
+
+        function renderDemoCaseFiles(records) {
+          demoManagedFileRecords = new Map(records.map((record) => [record.id, record]));
+          demoCaseFilesList.replaceChildren();
+          if (!records.length) {
+            const empty = document.createElement("li");
+            empty.className = "demo-case-files-empty";
+            empty.textContent = "No files have been added to this demo case in this browser. Add a PDF or DOCX file to get started.";
+            demoCaseFilesList.append(empty);
+            return;
+          }
+          records
+            .slice()
+            .sort((left, right) => (right.updatedAt || "").localeCompare(left.updatedAt || ""))
+            .forEach((record) => {
+              const item = document.createElement("li");
+              item.className = "demo-case-file-item";
+              const copy = document.createElement("div");
+              copy.className = "demo-case-file-copy";
+              const name = document.createElement("h2");
+              name.textContent = record.name;
+              const details = document.createElement("p");
+              const extension = record.name.split(".").pop()?.toLocaleUpperCase() || "File";
+              const updated = new Date(record.updatedAt || record.createdAt).toLocaleString();
+              details.textContent = `${extension} · ${formatFileSize(record.size)} · Updated ${updated}`;
+              copy.append(name, details);
+
+              const actions = document.createElement("div");
+              actions.className = "demo-case-file-actions";
+              const download = document.createElement("button");
+              download.className = "demo-file-action";
+              download.type = "button";
+              download.textContent = "Download";
+              download.dataset.demoFileAction = "download";
+              download.dataset.fileId = String(record.id);
+              download.setAttribute("aria-label", `Download ${record.name}`);
+              const replace = document.createElement("button");
+              replace.className = "demo-file-action";
+              replace.type = "button";
+              replace.textContent = "Replace";
+              replace.dataset.demoFileAction = "replace";
+              replace.dataset.fileId = String(record.id);
+              replace.setAttribute("aria-label", `Replace ${record.name}`);
+              const replaceInput = document.createElement("input");
+              replaceInput.className = "demo-file-replace-input";
+              replaceInput.type = "file";
+              replaceInput.accept = ".pdf,.docx";
+              replaceInput.tabIndex = -1;
+              replaceInput.dataset.demoReplaceFile = "";
+              replaceInput.dataset.fileId = String(record.id);
+              replaceInput.setAttribute("aria-label", `Choose a replacement for ${record.name}`);
+              const remove = document.createElement("button");
+              remove.className = "demo-file-action";
+              remove.type = "button";
+              remove.textContent = "Delete";
+              remove.dataset.demoFileAction = "delete";
+              remove.dataset.fileId = String(record.id);
+              remove.setAttribute("aria-label", `Delete ${record.name}`);
+              actions.append(download, replace, replaceInput, remove);
+              item.append(copy, actions);
+              demoCaseFilesList.append(item);
+            });
+        }
+
+        async function loadDemoCaseFiles() {
+          const records = await runDemoFilesTransaction("readonly", (store) =>
+            store.index("caseId").getAll(demoCaseFilesCaseId));
+          renderDemoCaseFiles(records);
+        }
+
+        function isDemoCaseFile(file) {
+          const extension = file.name.split(".").pop()?.toLocaleLowerCase();
+          return extension === "pdf" || extension === "docx";
+        }
+
+        async function addDemoCaseFiles(files) {
+          const accepted = [];
+          const rejected = [];
+          for (const file of files) {
+            if (isDemoCaseFile(file)) accepted.push(file);
+            else rejected.push(file.name);
+          }
+          if (!accepted.length) {
+            demoCaseFilesStatus.textContent = `Only PDF and DOCX files are supported.${rejected.length ? ` Not added: ${rejected.join(", ")}.` : ""}`;
+            demoCaseFilesStatus.dataset.kind = "error";
+            return;
+          }
+          demoCaseFilesInput.disabled = true;
+          demoCaseFilesStatus.textContent = "Saving files in this browser…";
+          demoCaseFilesStatus.dataset.kind = "";
+          try {
+            for (const file of accepted) {
+              const now = new Date().toISOString();
+              await runDemoFilesTransaction("readwrite", (store) => store.add({
+                caseId: demoCaseFilesCaseId,
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                blob: file,
+                createdAt: now,
+                updatedAt: now,
+              }));
+            }
+            await loadDemoCaseFiles();
+            demoCaseFilesStatus.textContent = `${accepted.length} file${accepted.length === 1 ? "" : "s"} added. File contents stay in this browser only and are not uploaded.${rejected.length ? ` Unsupported files not added: ${rejected.join(", ")}.` : ""}`;
+          } catch (error) {
+            demoCaseFilesStatus.textContent = error instanceof Error
+              ? `Could not save the selected files: ${error.message}`
+              : "Could not save the selected files.";
+            demoCaseFilesStatus.dataset.kind = "error";
+            try {
+              await loadDemoCaseFiles();
+            } catch (reloadError) {
+              const detail = reloadError instanceof Error ? reloadError.message : "The file list could not be refreshed.";
+              demoCaseFilesStatus.textContent += ` ${detail}`;
+            }
+          } finally {
+            demoCaseFilesInput.disabled = false;
+            demoCaseFilesInput.value = "";
+          }
+        }
+
+        async function replaceDemoCaseFile(fileId, replacement) {
+          const current = demoManagedFileRecords.get(fileId);
+          if (!current) {
+            demoCaseFilesStatus.textContent = "That file is no longer in the list. Refresh the page and try again.";
+            demoCaseFilesStatus.dataset.kind = "error";
+            return;
+          }
+          if (!isDemoCaseFile(replacement)) {
+            demoCaseFilesStatus.textContent = "Only PDF and DOCX files are supported. The existing file was not changed.";
+            demoCaseFilesStatus.dataset.kind = "error";
+            return;
+          }
+          demoCaseFilesStatus.textContent = `Replacing ${current.name}…`;
+          demoCaseFilesStatus.dataset.kind = "";
+          try {
+            await runDemoFilesTransaction("readwrite", (store) => store.put({
+              ...current,
+              name: replacement.name,
+              type: replacement.type,
+              size: replacement.size,
+              blob: replacement,
+              updatedAt: new Date().toISOString(),
+            }));
+            await loadDemoCaseFiles();
+            demoCaseFilesStatus.textContent = `${current.name} was replaced with ${replacement.name}.`;
+          } catch (error) {
+            demoCaseFilesStatus.textContent = error instanceof Error
+              ? `Could not replace the file: ${error.message}`
+              : "Could not replace the file.";
+            demoCaseFilesStatus.dataset.kind = "error";
+          }
+        }
+
+        async function deleteDemoCaseFile(fileId) {
+          const current = demoManagedFileRecords.get(fileId);
+          if (!current) {
+            demoCaseFilesStatus.textContent = "That file is no longer in the list. Refresh the page and try again.";
+            demoCaseFilesStatus.dataset.kind = "error";
+            return;
+          }
+          if (!window.confirm(`Delete ${current.name} from this browser?`)) return;
+          demoCaseFilesStatus.textContent = `Deleting ${current.name}…`;
+          demoCaseFilesStatus.dataset.kind = "";
+          try {
+            await runDemoFilesTransaction("readwrite", (store) => store.delete(fileId));
+            await loadDemoCaseFiles();
+            demoCaseFilesStatus.textContent = `${current.name} was deleted from this browser.`;
+          } catch (error) {
+            demoCaseFilesStatus.textContent = error instanceof Error
+              ? `Could not delete the file: ${error.message}`
+              : "Could not delete the file.";
+            demoCaseFilesStatus.dataset.kind = "error";
+          }
+        }
+
+        function downloadDemoCaseFile(fileId) {
+          const record = demoManagedFileRecords.get(fileId);
+          if (!record?.blob) {
+            demoCaseFilesStatus.textContent = "The saved file contents are unavailable. Try adding the file again.";
+            demoCaseFilesStatus.dataset.kind = "error";
+            return;
+          }
+          const url = URL.createObjectURL(record.blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = record.name;
+          link.click();
+          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
         function createEmptyWizardDraft() {
@@ -8737,6 +9045,34 @@
         demoFilesNext.addEventListener("click", () => {
           if (demoSelectedFiles.length) window.location.assign("/demo");
         });
+        demoCaseFilesInput.addEventListener("change", () => {
+          void addDemoCaseFiles(Array.from(demoCaseFilesInput.files || []));
+        });
+        demoCaseFilesList.addEventListener("click", (event) => {
+          const button = event.target instanceof Element
+            ? event.target.closest("[data-demo-file-action]")
+            : null;
+          if (!(button instanceof HTMLButtonElement)) return;
+          const fileId = Number(button.dataset.fileId);
+          if (!Number.isSafeInteger(fileId)) return;
+          if (button.dataset.demoFileAction === "download") {
+            downloadDemoCaseFile(fileId);
+          } else if (button.dataset.demoFileAction === "delete") {
+            void deleteDemoCaseFile(fileId);
+          } else if (button.dataset.demoFileAction === "replace") {
+            button.parentElement.querySelector("[data-demo-replace-file]")?.click();
+          }
+        });
+        demoCaseFilesList.addEventListener("change", (event) => {
+          const input = event.target;
+          if (!(input instanceof HTMLInputElement) || !input.matches("[data-demo-replace-file]")) return;
+          const replacement = input.files?.[0];
+          const fileId = Number(input.dataset.fileId);
+          input.value = "";
+          if (replacement && Number.isSafeInteger(fileId)) {
+            void replaceDemoCaseFile(fileId, replacement);
+          }
+        });
         wizardFiledQuestion.addEventListener("change", () => updateWizardGate(true, true));
         window.addEventListener("pagehide", flushWizardDraftOnExit);
         wizardRoleQuestion.addEventListener("change", () => {
@@ -8920,9 +9256,31 @@
           existingCases.hidden = false;
         } else if (demoMode) {
           document.body.dataset.demoPage = "settlement";
+          demoCaseNavigation.hidden = false;
           showDashboardShell();
           dashboardLoading.hidden = true;
           showPreparation("demo");
+        } else if (demoFileManagerMode) {
+          document.body.dataset.demoPage = "files";
+          showDashboardShell();
+          dashboardLoading.hidden = true;
+          demoCaseNavigation.hidden = false;
+          demoFileManager.hidden = false;
+          demoFileManagementLink.setAttribute("aria-current", "page");
+          void (async () => {
+            try {
+              await loadDemoCaseFiles();
+              demoCaseFilesStatus.textContent = demoManagedFileRecords.size
+                ? `${demoManagedFileRecords.size} file${demoManagedFileRecords.size === 1 ? "" : "s"} saved in this browser.`
+                : "No files have been added to this demo case in this browser.";
+            } catch (error) {
+              demoCaseFilesStatus.textContent = error instanceof Error
+                ? `Could not load files saved in this browser: ${error.message}`
+                : "Could not load files saved in this browser.";
+              demoCaseFilesStatus.dataset.kind = "error";
+              demoCaseFilesList.replaceChildren();
+            }
+          })();
         } else if (demoDocumentsMode) {
           document.body.dataset.demoPage = "documents";
           documentsDemoPage.hidden = false;
