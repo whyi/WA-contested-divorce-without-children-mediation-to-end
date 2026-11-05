@@ -1085,8 +1085,10 @@
         .settlement-attempt-progress-heading { align-items:flex-start; flex-direction:column; gap:4px; }
         .settlement-attempt-progress-heading p { text-align:left; }
         .settlement-attempt-progress-list li { flex-basis:132px; }
+        .settlement-comparison-bar-row { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; }
+        .settlement-comparison-bar-track { grid-column: 1 / -1; grid-row: 2; }
       }
-      .settlement-planner textarea, .settlement-planner input[type="text"], .settlement-planner input[type="date"] { width: 100%; padding: 10px 12px; border:1px solid var(--theme-border-d9e1d9); border-radius: 7px; color:var(--ink); background:var(--theme-background-fff); font: inherit; font-size: 12px; }
+      .settlement-planner textarea, .settlement-planner input[type="text"], .settlement-planner input[type="date"], .settlement-planner input[type="number"] { width: 100%; padding: 10px 12px; border:1px solid var(--theme-border-d9e1d9); border-radius: 7px; color:var(--ink); background:var(--theme-background-fff); font: inherit; font-size: 12px; }
       .settlement-planner textarea { min-height: 140px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
       .settlement-planner .materials-actions { margin: 10px 0 20px; }
       .settlement-planner .materials-import { min-height: 40px; }
@@ -1107,6 +1109,28 @@
       .settlement-offer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
       .settlement-offer-grid label { display: grid; gap: 5px; }
       .settlement-offer-grid label:last-child { grid-column: 1 / -1; }
+      .settlement-offer-comparison { margin: 18px 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--theme-background-fbfcfb); }
+      .settlement-offer-comparison[hidden] { display: none; }
+      .settlement-comparison-series { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+      #settlement-comparison-series { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+      .settlement-comparison-series label { display: flex; align-items: flex-start; gap: 7px; max-width: 100%; }
+      .settlement-comparison-series label:has(input:disabled) { color: var(--muted); }
+      .settlement-comparison-context, .settlement-comparison-status { color: var(--muted); font-size: 13px; }
+      .settlement-comparison-chart { display: grid; gap: 12px; margin: 14px 0; }
+      .settlement-comparison-asset { padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+      .settlement-comparison-asset h5 { margin: 0 0 8px; font-size: 14px; }
+      .settlement-comparison-bar-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(100px, 2fr) minmax(95px, auto); align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; }
+      .settlement-comparison-bar-track { height: 12px; overflow: hidden; border-radius: 3px; background: var(--line); }
+      .settlement-comparison-bar { display: block; height: 100%; min-width: 2px; background: var(--green-dark); }
+      .settlement-comparison-bar.is-negative { background: repeating-linear-gradient(135deg, var(--theme-text-8d3026), var(--theme-text-8d3026) 4px, var(--theme-background-fbfcfb) 4px, var(--theme-background-fbfcfb) 7px); }
+      .settlement-comparison-bar-row output { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .settlement-comparison-scroll { max-width: 100%; overflow-x: auto; }
+      .settlement-comparison-table { width: 100%; min-width: 880px; border-collapse: collapse; font-size: 12px; }
+      .settlement-comparison-table th, .settlement-comparison-table td { padding: 8px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+      .settlement-comparison-table th { background: var(--theme-background-f1f5f1); }
+      .settlement-comparison-table input { min-width: 120px; }
+      .settlement-comparison-unavailable { color: var(--muted); }
+      .settlement-offer-advanced-values { margin-top: 10px; }
       .settlement-export-actions, .settlement-export-provider { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
       .settlement-demo-export-actions {
         align-items: stretch;
@@ -2192,6 +2216,38 @@
                     <p id="settlement-document-credit-status" role="status" aria-live="polite">Preview, editing, and proposal drafts are free. Checking this case's attempt-credit balance…</p>
                     <div class="settlement-export-actions" id="attempt-credit-packages" aria-label="One-time attempt-credit packages"></div>
                     <p>Milestones and proposed values below belong only to this negotiation attempt. They do not change source facts or the evidence-backed settlement ledger; a later attempt starts with a separate editable copy.</p>
+                    <section class="settlement-offer-comparison" id="settlement-offer-comparison" hidden aria-labelledby="settlement-offer-comparison-title">
+                     <h4 id="settlement-offer-comparison-title">Offer and asset comparison</h4>
+                     <p class="settlement-comparison-context" id="settlement-comparison-context"></p>
+                     <p class="settlement-comparison-status" id="settlement-comparison-status" role="status" aria-live="polite"></p>
+                     <fieldset class="settlement-comparison-series">
+                       <legend>Chart series (toggle each independently)</legend>
+                       <div id="settlement-comparison-series"></div>
+                     </fieldset>
+                     <div class="settlement-comparison-chart" id="settlement-comparison-chart" role="group" aria-label="Asset offer comparison chart"></div>
+                     <div class="settlement-comparison-scroll" role="region" aria-label="Scrollable asset comparison table" tabindex="0">
+                       <table class="settlement-comparison-table" id="settlement-comparison-table"></table>
+                     </div>
+                     <section aria-labelledby="settlement-comparison-summary-title">
+                       <h5 id="settlement-comparison-summary-title">Deterministic totals and differences</h5>
+                       <p>Differences are arithmetic comparisons of saved values only; incomplete and unresolved amounts stay marked unavailable.</p>
+                       <ul id="settlement-comparison-totals"></ul>
+                       <ul id="settlement-comparison-differences"></ul>
+                     </section>
+                     <details id="settlement-comparison-incoming-offer" hidden>
+                       <summary>Initial incoming offer notes and terms</summary>
+                       <p id="settlement-comparison-incoming-notes"></p>
+                       <ul id="settlement-comparison-incoming-terms"></ul>
+                     </details>
+                     <details id="settlement-comparison-counteroffer-context" hidden>
+                       <summary>Counteroffer compared with this attempt</summary>
+                       <p id="settlement-comparison-counteroffer-note"></p>
+                     </details>
+                     <details id="settlement-comparison-current-response" hidden>
+                       <summary>New counteroffer reported for this attempt</summary>
+                       <p id="settlement-comparison-current-response-note"></p>
+                     </details>
+                    </section>
                     <div class="settlement-offer-grid">
                       <label>From (you, the user party in the ledger)<input id="settlement-offer-from" type="text" maxlength="160" required></label>
                       <label>To<input id="settlement-offer-to" type="text" maxlength="160" required></label>
@@ -2201,8 +2257,11 @@
                       <label>Proposed response date<input id="settlement-offer-response" type="date"></label>
                       <label>Attempt-specific milestones (JSON array)<textarea id="settlement-offer-milestones" spellcheck="false" aria-describedby="settlement-offer-milestones-example"></textarea></label>
                       <pre id="settlement-offer-milestones-example">[{"name":"Refinance deadline","date":"2027-01-15"}]</pre>
-                      <label>Attempt-specific proposed values (JSON array; integer cents)<textarea id="settlement-offer-values" spellcheck="false" aria-describedby="settlement-offer-values-example"></textarea></label>
-                      <pre id="settlement-offer-values-example">[{"asset_id":"00000000-0000-4000-8000-000000000001","proposed_amount_cents":12500000}]</pre>
+                      <details class="settlement-offer-advanced-values">
+                        <summary>Advanced proposed values JSON (integer cents)</summary>
+                        <label for="settlement-offer-values">Attempt-specific proposed values<textarea id="settlement-offer-values" spellcheck="false" aria-describedby="settlement-offer-values-example"></textarea></label>
+                        <pre id="settlement-offer-values-example">[{"asset_id":"00000000-0000-4000-8000-000000000001","proposed_amount_cents":12500000}]</pre>
+                      </details>
                       <label>Proposed terms (one per line)<textarea id="settlement-offer-terms" required></textarea></label>
                     </div>
                     <div class="settlement-export-actions" role="group" aria-label="Download proposal drafts">
@@ -3007,6 +3066,7 @@
         let settlementDisclosureAvailable = false;
         let settlementRunId = null;
         let settlementOfferResponseState = null;
+        const settlementComparisonVisibility = {};
         let settlementOfferResponseHistoryItems = [];
         let settlementDocumentCreditsRemaining = null;
         let settlementFreeFirstFinalizationAvailable = false;
@@ -4837,6 +4897,7 @@
           settlementSelectedScenario = null;
           settlementRunId = null;
           settlementOfferResponseState = null;
+          renderSettlementOfferComparison();
           settlementOfferResponseHistoryItems = [];
           renderSettlementAttemptProgress();
           settlementDocumentCreditsRemaining = null;
@@ -5635,6 +5696,8 @@
           const proposalDraftUnlocked = Boolean(current?.proposal_draft_unlocked);
           const inputsLocked = frozen || Boolean(current?.finalized)
             || (proposalIssued && !proposalDraftUnlocked);
+          document.querySelectorAll("#settlement-comparison-table input[data-comparison-proposal-asset]")
+            .forEach((input) => { input.disabled = inputsLocked; });
           const modifiedMode = settlementAttemptEditableState.sent_offer_mode === "modified";
           const modifiedReviewed = Boolean(settlementAttemptEditableState.modified_offer_reviewed);
           const stateBusy = settlementAttemptStateDirty || settlementAttemptStateSaving;
@@ -5771,6 +5834,465 @@
           settlementResponseSentXlsx.setAttribute("aria-label", "Upload or replace the exact final XLSX you sent");
         }
 
+        function comparisonAmountLabel(value) {
+          if (!Number.isSafeInteger(value)) return "Unavailable";
+          return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+          }).format(value / 100);
+        }
+
+        function currentComparisonSeries(comparison) {
+          const proposed = Array.isArray(settlementAttemptEditableState.proposed_values)
+            ? settlementAttemptEditableState.proposed_values
+            : [];
+          const byAsset = new Map();
+          const duplicateAssets = new Set();
+          for (const item of proposed) {
+            if (!item || typeof item.asset_id !== "string"
+              || !Number.isSafeInteger(item.proposed_amount_cents)) continue;
+            if (byAsset.has(item.asset_id)) duplicateAssets.add(item.asset_id);
+            byAsset.set(item.asset_id, item.proposed_amount_cents);
+          }
+          const values = comparison.assets.map((asset) => ({
+            ...asset,
+            amount_cents: duplicateAssets.has(asset.asset_id)
+              ? null
+              : (byAsset.has(asset.asset_id) ? byAsset.get(asset.asset_id) : null),
+            status: duplicateAssets.has(asset.asset_id)
+              ? "unavailable"
+              : (byAsset.has(asset.asset_id) ? "reported" : "unavailable"),
+            reason: duplicateAssets.has(asset.asset_id)
+              ? "Multiple proposal values are recorded for this asset."
+              : (byAsset.has(asset.asset_id) ? null : "No proposal amount is saved for this asset."),
+          }));
+          const series = comparison.series.map((item) => item.id === "current_proposal"
+            ? {
+              ...item,
+              available: values.some((value) => value.amount_cents !== null),
+              values,
+              reason: values.some((value) => value.amount_cents !== null)
+                ? null
+                : "No current proposal amounts are recorded for this attempt.",
+            }
+            : item);
+          return { ...comparison, series };
+        }
+
+        function comparisonValueText(series, value) {
+          if (!value || value.amount_cents === null || value.amount_cents === undefined) {
+            return `Unavailable — ${value?.reason || series.reason || "No value is recorded."}`;
+          }
+          const amount = comparisonAmountLabel(value.amount_cents);
+          if (value.status === "partial_unresolved") {
+            return `Known portion ${amount}; unresolved ${comparisonAmountLabel(value.unresolved_cents)}`;
+          }
+          if (value.status === "reported" || value.status === "reported_projection") {
+            return `${amount} — reported, not verified`;
+          }
+          return amount;
+        }
+
+        function renderSettlementComparisonSeriesControls(comparison) {
+          const controls = document.getElementById("settlement-comparison-series");
+          controls.replaceChildren();
+          for (const series of comparison.series) {
+            const label = document.createElement("label");
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.checked = settlementComparisonVisibility[series.id] !== false;
+            input.disabled = !series.available;
+            input.dataset.comparisonSeries = series.id;
+            input.addEventListener("change", () => {
+              settlementComparisonVisibility[series.id] = input.checked;
+              renderSettlementComparisonChart(comparison);
+            });
+            const versionLabel = series.proposal_version_ordinal
+              ? `, version ${series.proposal_version_ordinal}`
+              : "";
+            const sourceLabel = series.attempt_ordinal
+              ? ` (Attempt ${series.attempt_ordinal}${versionLabel})`
+              : "";
+            const provenance = series.source && series.source !== "unavailable"
+              ? ` — source: ${series.source.replace(/_/g, " ")}`
+              : "";
+            const scenarioProvenance = series.scenario_id
+              ? ` — scenario ${series.scenario_id}`
+              : "";
+            const recordedAt = series.recorded_at ? ` — recorded ${series.recorded_at}` : "";
+            const verification = series.verified_by_app === false ? " — not verified" : "";
+            label.append(input, document.createTextNode(
+              `${series.label}${sourceLabel}${provenance}${scenarioProvenance}${recordedAt}${verification}`
+                + `${series.available ? "" : ` — unavailable: ${series.reason}`}`,
+            ));
+            controls.append(label);
+          }
+        }
+
+        function renderSettlementComparisonChart(comparison) {
+          const chart = document.getElementById("settlement-comparison-chart");
+          chart.replaceChildren();
+          const visible = comparison.series.filter(
+            (series) => series.available && settlementComparisonVisibility[series.id] !== false,
+          );
+          const maxAmount = Math.max(
+            1,
+            ...visible.flatMap((series) => series.values
+              .map((value) => Math.abs(value.amount_cents || 0))),
+          );
+          if (!comparison.assets.length) {
+            chart.textContent = "No asset-level ledger is saved for this attempt. Amounts are not inferred from free-text offer notes.";
+            return;
+          }
+          if (!visible.length) {
+            chart.textContent = "Turn on an available series to display its saved values.";
+            return;
+          }
+          for (const asset of comparison.assets) {
+            const group = document.createElement("section");
+            group.className = "settlement-comparison-asset";
+            group.setAttribute("aria-label", asset.asset_name);
+            const heading = document.createElement("h5");
+            heading.textContent = asset.asset_name;
+            group.append(heading);
+            for (const series of visible) {
+              const value = series.values.find((item) => item.asset_id === asset.asset_id);
+              const row = document.createElement("div");
+              row.className = "settlement-comparison-bar-row";
+              const label = document.createElement("span");
+              label.textContent = series.label;
+              row.append(label);
+              if (!value || value.amount_cents === null || value.amount_cents === undefined) {
+                const unavailable = document.createElement("span");
+                unavailable.className = "settlement-comparison-unavailable";
+                unavailable.textContent = comparisonValueText(series, value);
+                row.append(unavailable);
+              } else {
+                const track = document.createElement("span");
+                track.className = "settlement-comparison-bar-track";
+                track.setAttribute("aria-hidden", "true");
+                const bar = document.createElement("span");
+                bar.className = `settlement-comparison-bar${value.amount_cents < 0 ? " is-negative" : ""}`;
+                bar.style.width = `${Math.max(1, Math.abs(value.amount_cents) / maxAmount * 100)}%`;
+                track.append(bar);
+                row.append(track);
+                const amount = document.createElement("output");
+                amount.textContent = comparisonValueText(series, value);
+                row.append(amount);
+              }
+              group.append(row);
+            }
+            chart.append(group);
+          }
+        }
+
+        function summarizeComparisonValues(assets, values) {
+          const byAsset = new Map(values.map((value) => [value.asset_id, value]));
+          let knownSubtotal = 0;
+          let knownCount = 0;
+          let missingCount = 0;
+          let unresolvedCount = 0;
+          for (const asset of assets) {
+            const value = byAsset.get(asset.asset_id);
+            if (!value || !Number.isSafeInteger(value.amount_cents)) {
+              missingCount += 1;
+              continue;
+            }
+            knownSubtotal += value.amount_cents;
+            knownCount += 1;
+            if (value.status === "partial_unresolved") unresolvedCount += 1;
+          }
+          const complete = assets.length > 0 && missingCount === 0 && unresolvedCount === 0;
+          return {
+            total: complete ? knownSubtotal : null,
+            knownSubtotal: knownCount ? knownSubtotal : null,
+            missingCount,
+            unresolvedCount,
+            status: complete ? "complete" : (knownCount ? "partial" : "unavailable"),
+          };
+        }
+
+        function comparisonDifferences(comparison) {
+          const series = Object.fromEntries(comparison.series.map((item) => [item.id, item]));
+          const definitions = [
+            {
+              id: "party_vs_opposing_value",
+              label: "Your scenario value minus other party scenario value",
+              left: "party_value",
+              right: "opposing_value",
+            },
+            {
+              id: "current_vs_prior_proposal",
+              label: "Current proposal minus your prior proposal",
+              left: "current_proposal",
+              right: "prior_proposal",
+            },
+            {
+              id: "current_vs_counteroffer",
+              label: "Current proposal minus counteroffer that preceded this attempt",
+              left: "current_proposal",
+              right: "counteroffer",
+            },
+            {
+              id: "current_vs_latest_response_counteroffer",
+              label: "Current proposal minus current attempt's newly reported counteroffer",
+              left: "current_proposal",
+              right: "current_response_counteroffer",
+            },
+          ];
+          return definitions.map((definition) => {
+            const leftValues = new Map(
+              (series[definition.left]?.values || []).map((value) => [value.asset_id, value]),
+            );
+            const rightValues = new Map(
+              (series[definition.right]?.values || []).map((value) => [value.asset_id, value]),
+            );
+            const values = comparison.assets.map((asset) => {
+              const left = leftValues.get(asset.asset_id);
+              const right = rightValues.get(asset.asset_id);
+              const complete = Number.isSafeInteger(left?.amount_cents)
+                && Number.isSafeInteger(right?.amount_cents)
+                && left.status !== "partial_unresolved"
+                && right.status !== "partial_unresolved";
+              return {
+                ...asset,
+                amount_cents: complete ? left.amount_cents - right.amount_cents : null,
+                status: complete ? "calculated" : "unavailable",
+                reason: complete
+                  ? null
+                  : "A complete value for both compared series is unavailable.",
+              };
+            });
+            return { ...definition, values };
+          });
+        }
+
+        function renderSettlementComparisonSummary(comparison, differences) {
+          const totals = document.getElementById("settlement-comparison-totals");
+          totals.replaceChildren();
+          for (const series of comparison.series) {
+            const summary = summarizeComparisonValues(comparison.assets, series.values);
+            const item = document.createElement("li");
+            if (summary.status === "complete") {
+              item.textContent = `${series.label} total: ${comparisonAmountLabel(summary.total)}.`;
+            } else if (summary.status === "partial") {
+              item.textContent =
+                `${series.label}: known subtotal ${comparisonAmountLabel(summary.knownSubtotal)}; `
+                + `total unavailable (${summary.missingCount} missing, ${summary.unresolvedCount} unresolved).`;
+            } else {
+              item.textContent = `${series.label}: total unavailable — ${series.reason || "no complete values are recorded."}`;
+            }
+            totals.append(item);
+          }
+          const differenceList = document.getElementById("settlement-comparison-differences");
+          differenceList.replaceChildren();
+          for (const difference of differences) {
+            const summary = summarizeComparisonValues(comparison.assets, difference.values);
+            const item = document.createElement("li");
+            if (summary.status === "complete") {
+              item.textContent = `${difference.label}: ${comparisonAmountLabel(summary.total)}.`;
+            } else if (summary.status === "partial") {
+              item.textContent =
+                `${difference.label}: known subtotal ${comparisonAmountLabel(summary.knownSubtotal)}; `
+                + `complete difference unavailable for ${summary.missingCount} asset(s).`;
+            } else {
+              item.textContent = `${difference.label}: unavailable because one or both series are missing.`;
+            }
+            differenceList.append(item);
+          }
+        }
+
+        function renderSettlementOfferComparison({ focusAssetId = null } = {}) {
+          const response = settlementOfferResponseState;
+          const comparison = response?.comparison;
+          const section = document.getElementById("settlement-offer-comparison");
+          if (!comparison) {
+            section.hidden = true;
+            return;
+          }
+          section.hidden = false;
+          const view = currentComparisonSeries(comparison);
+          const originLabels = {
+            initial_incoming_offer: "Initial incoming offer — no prior user proposal is recorded.",
+            initial_user_proposal: "Your initial proposal.",
+            counteroffer_response: "Response to a recorded counteroffer.",
+          };
+          const context = document.getElementById("settlement-comparison-context");
+          context.textContent =
+            `Attempt ${view.attempt.ordinal}, proposal version ${view.attempt.proposal_version_ordinal || "not issued"} — `
+            + `${originLabels[view.offer_origin] || "Offer origin unavailable."} `
+            + `${view.attempt.finalized ? "Finalized snapshot; historical values remain read-only." : "Current values are saved attempt data."} `
+            + "Scenario values are deterministic outputs of the saved assumptions, not legal conclusions.";
+          const incoming = view.initial_incoming_offer;
+          const incomingDetails = document.getElementById("settlement-comparison-incoming-offer");
+          incomingDetails.hidden = !incoming.available;
+          document.getElementById("settlement-comparison-incoming-notes").textContent =
+            `${incoming.source === "case_intake" ? "Source: case intake. " : ""}`
+            + `${incoming.recorded_at ? `Recorded ${incoming.recorded_at}. ` : ""}`
+            + (incoming.notes || incoming.reason || "No incoming offer notes are saved.");
+          const terms = document.getElementById("settlement-comparison-incoming-terms");
+          terms.replaceChildren();
+          for (const item of incoming.asset_terms || []) {
+            const term = document.createElement("li");
+            term.textContent = `${item.asset_name || "Asset"}: ${item.term || "Term unavailable"}`;
+            terms.append(term);
+          }
+          const counterofferContext = view.counteroffer_context;
+          const counterofferDetails = document.getElementById(
+            "settlement-comparison-counteroffer-context",
+          );
+          counterofferDetails.hidden = !counterofferContext?.available;
+          document.getElementById("settlement-comparison-counteroffer-note").textContent =
+            counterofferContext?.available
+              ? `Attempt ${counterofferContext.attempt_ordinal}, proposal version ${counterofferContext.proposal_version_ordinal || "not issued"}; ${counterofferContext.relationship === "preceded_this_attempt" ? "reported before this attempt" : "reported in this attempt"}; source ${counterofferContext.source || "unspecified"}; recorded ${counterofferContext.recorded_at || "time unavailable"}; not verified by the app. ${counterofferContext.note || "No additional note was recorded."}`
+              : "";
+          const currentResponseContext = view.current_response_counteroffer_context;
+          const currentResponseDetails = document.getElementById(
+            "settlement-comparison-current-response",
+          );
+          currentResponseDetails.hidden = !currentResponseContext?.available;
+          document.getElementById("settlement-comparison-current-response-note").textContent =
+            currentResponseContext?.available
+              ? `Attempt ${currentResponseContext.attempt_ordinal}, proposal version ${currentResponseContext.proposal_version_ordinal || "not issued"}; source ${currentResponseContext.source || "unspecified"}; recorded ${currentResponseContext.recorded_at || "time unavailable"}; not verified by the app. ${currentResponseContext.note || "No additional note was recorded."}`
+              : "";
+          document.getElementById("settlement-comparison-status").textContent =
+            "The exact asset table is below. Missing baselines, unrecorded terms, and unresolved portions remain visibly unavailable; no amounts are inferred.";
+          renderSettlementComparisonSeriesControls(view);
+
+          const table = document.getElementById("settlement-comparison-table");
+          table.replaceChildren();
+          const differences = comparisonDifferences(view);
+          const head = document.createElement("thead");
+          const headerRow = document.createElement("tr");
+          for (const text of [
+            "Asset or debt",
+            "Your baseline",
+            "Your scenario value",
+            "Other party baseline",
+            "Other party scenario value",
+            "Prior proposal",
+            "Recorded counteroffer",
+            "Current response counteroffer",
+            "Projected if accepted",
+            "Scenario value difference",
+            "Proposal minus prior",
+            "Proposal minus preceding counteroffer",
+            "Proposal minus current response",
+            "Current proposal to you (editable)",
+          ]) {
+            const th = document.createElement("th");
+            th.scope = "col";
+            th.textContent = text;
+            headerRow.append(th);
+          }
+          head.append(headerRow);
+          table.append(head);
+          const body = document.createElement("tbody");
+          const seriesById = Object.fromEntries(view.series.map((item) => [item.id, item]));
+          for (const asset of view.assets) {
+            const row = document.createElement("tr");
+            const name = document.createElement("th");
+            name.scope = "row";
+            name.textContent = `${asset.asset_name} (${asset.asset_kind})`;
+            row.append(name);
+            for (const seriesId of [
+              "party_baseline",
+              "party_value",
+              "opposing_baseline",
+              "opposing_value",
+              "prior_proposal",
+              "counteroffer",
+              "current_response_counteroffer",
+              "projected_if_accepted",
+            ]) {
+              const series = seriesById[seriesId];
+              const cell = document.createElement("td");
+              const value = series.values.find((item) => item.asset_id === asset.asset_id);
+              const text = document.createElement("span");
+              text.textContent = comparisonValueText(series, value);
+              if (!value || value.amount_cents === null || value.status === "unavailable") {
+                text.className = "settlement-comparison-unavailable";
+              }
+              cell.append(text);
+              row.append(cell);
+            }
+            for (const difference of differences) {
+              const cell = document.createElement("td");
+              const value = difference.values.find((item) => item.asset_id === asset.asset_id);
+              const text = document.createElement("span");
+              text.textContent = comparisonValueText(difference, value);
+              if (!value || value.amount_cents === null) {
+                text.className = "settlement-comparison-unavailable";
+              }
+              cell.append(text);
+              row.append(cell);
+            }
+            const editCell = document.createElement("td");
+            const editLabel = document.createElement("label");
+            editLabel.textContent = `Proposal allocation to you for ${asset.asset_name}`;
+            const edit = document.createElement("input");
+            edit.type = "number";
+            edit.step = "0.01";
+            edit.dataset.comparisonProposalAsset = asset.asset_id;
+            const currentValue = seriesById.current_proposal.values
+              .find((item) => item.asset_id === asset.asset_id);
+            if (currentValue?.amount_cents !== null && currentValue?.amount_cents !== undefined) {
+              edit.value = (currentValue.amount_cents / 100).toFixed(2);
+            }
+            edit.setAttribute("aria-label", `${editLabel.textContent} in dollars`);
+            edit.disabled = Boolean(
+              response.frozen
+              || response.finalized
+              || (response.proposal_issued && !response.proposal_draft_unlocked),
+            );
+            edit.addEventListener("change", () => {
+              const raw = edit.value.trim();
+              const amount = raw === "" ? null : Number(raw);
+              const cents = amount === null ? null : Math.round(amount * 100);
+              if (
+                amount !== null
+                && (!Number.isFinite(amount)
+                  || !Number.isSafeInteger(cents)
+                  || Math.abs(amount * 100 - cents) > 0.000001)
+              ) {
+                document.getElementById("settlement-comparison-status").textContent =
+                  "Enter a valid amount to the nearest cent. No value was changed.";
+                return;
+              }
+              const proposed = (settlementAttemptEditableState.proposed_values || [])
+                .filter((item) => item.asset_id !== asset.asset_id);
+              if (cents !== null) proposed.push({
+                asset_id: asset.asset_id,
+                proposed_amount_cents: cents,
+              });
+              settlementAttemptEditableState = {
+                ...settlementAttemptEditableState,
+                proposed_values: proposed,
+              };
+              settlementOfferValues.value = JSON.stringify(proposed, null, 2);
+              settlementAttemptStateDirty = true;
+              renderSettlementOfferComparison({ focusAssetId: asset.asset_id });
+              document.getElementById("settlement-comparison-status").textContent =
+                "Current proposal updated. Historical attempts and finalized snapshots were not changed.";
+              updateSettlementResponseControls();
+              void saveSettlementAttemptState().then(updateSettlementResponseControls);
+            });
+            editLabel.append(edit);
+            editCell.append(editLabel);
+            row.append(editCell);
+            body.append(row);
+          }
+          table.append(body);
+          renderSettlementComparisonSummary(view, differences);
+          if (focusAssetId) {
+            const focused = table.querySelector(
+              `input[data-comparison-proposal-asset="${CSS.escape(focusAssetId)}"]`,
+            );
+            focused?.focus({ preventScroll: true });
+          }
+          renderSettlementComparisonChart(view);
+        }
+
         function readSettlementAttemptFormState() {
           return {
             ...settlementAttemptEditableState,
@@ -5853,6 +6375,7 @@
           const selectionId = settlementSelectedScenario?.selection_id;
           if (!caseId || !selectionId) return false;
           settlementOfferResponseState = null;
+          renderSettlementOfferComparison();
           settlementDocumentCreditsRemaining = null;
           settlementDocumentCreditStatus.textContent = "Checking this case's attempt-credit balance…";
           settlementDocumentCreditStatus.removeAttribute("data-kind");
@@ -5897,6 +6420,7 @@
             settlementOfferMilestones.value = JSON.stringify(attemptState.milestones || [], null, 2);
             settlementOfferValues.value = JSON.stringify(attemptState.proposed_values || [], null, 2);
             settlementOfferTerms.value = (attemptState.proposal_terms || []).join("\n");
+            renderSettlementOfferComparison();
             if (loadedResponse.proposal_terms && !loadedResponse.proposal_draft_unlocked) {
               const issuedTerms = loadedResponse.proposal_terms;
               settlementOfferFrom.value = issuedTerms.offer_from;
@@ -6101,6 +6625,7 @@
               sent_offer_mode: "modified",
               modified_offer_reviewed: false,
             };
+            renderSettlementOfferComparison();
             settlementResponseModifiedAccept.checked = false;
             renderModifiedOfferReview(fields, result.warnings || []);
             settlementAttemptStateDirty = true;
@@ -10027,6 +10552,18 @@
         });
         settlementResponseConfirmSent.addEventListener("click", () => {
           void confirmSettlementSentDocuments();
+        });
+        settlementOfferValues.addEventListener("change", () => {
+          try {
+            settlementAttemptEditableState = {
+              ...settlementAttemptEditableState,
+              proposed_values: JSON.parse(settlementOfferValues.value || "[]"),
+            };
+            renderSettlementOfferComparison();
+          } catch {
+            document.getElementById("settlement-comparison-status").textContent =
+              "The advanced proposed-values JSON is invalid; the saved comparison is unchanged.";
+          }
         });
         [
           settlementOfferFrom,
