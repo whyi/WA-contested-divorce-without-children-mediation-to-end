@@ -27,6 +27,8 @@
 - **FR-34-10 — Audit:** Invitation, acceptance, revocation, and denied acceptance are recorded in `auth_audit_events` with case ID, invitation ID, and actor only. Emails, tokens, and case content are never recorded.
 - **FR-34-11 — Security patterns:** Cookie-authenticated writes require the CSRF header; case routes use the existing middleware; delegation responses use `Cache-Control: no-store`; acceptance is rate limited per account.
 - **FR-34-12 — No legal claims:** The UI and API state that delegation is the party's explicit permission only and is not verification of identity or legal authority.
+- **FR-34-14 — Owner-visible delegated case:** `GET /api/v1/dashboard/status` lists the owner's case even while delegated, including closed cases, with `delegated_to` set to the delegate's invited email (the owner already knows it). The dashboard renders it as a non-openable item that states who operates it and offers a confirmed (`window.confirm`) "Revoke delegate access" action with an `aria-live` status and error message; success reloads the dashboard and the party immediately resumes operation (FR-34-08). Delegates never see this action.
+- **FR-34-15 — No plan-tier case copy:** The dashboard and plan comparison no longer show a plan-based active-case allowance, "case slots", or upgrade prompts for more cases. Party accounts with a case see no create action; professional accounts (`account_type` is returned by the dashboard) see only client cases they operate and no create action. The legacy `active_case_limit`/`plan_name` dashboard fields remain in the API for compatibility but are not used for case creation or display.
 - **FR-34-13 — UI:** Signup offers an account-type choice. A case-delegation panel lets the owner invite, view status, and revoke; professionals have a form to accept an invitation token. Messages use live regions.
 
 ## Acceptance criteria
@@ -39,6 +41,6 @@
 
 ## Implementation status
 
-- Code: `src/app/case_delegation.py`, `src/app/case_limits.py`, `src/app/main.py` (middleware), migration `0018_case_delegation`, UI in `src/app/static/index.html`.
+- Code: `src/app/case_delegation.py`, `src/app/case_limits.py`, `src/app/main.py` (middleware), migration `0018_case_delegation`, UI in `src/app/static/index.html`. Dashboard delegated-case revoke and copy cleanup: `tests/test_dashboard.py`, `tests/test_case_delegation_ui.py`.
 - Tests: `tests/test_case_delegation.py`, `tests/test_case_delegation_ui.py`.
-- Limitations: professional status is self-declared and unverified; the owner account is suspended (not shared) during delegation; the dashboard still displays the legacy plan case allowance text; legacy accounts that already own several cases keep them but cannot create more; delegates cannot release themselves (the party revokes); no organization or concurrent-user features.
+- Limitations: professional status is self-declared and unverified; the owner account is suspended (not shared) during delegation; legacy accounts that already own several cases keep them but cannot create more; delegates cannot release themselves (the party revokes); no organization or concurrent-user features.
