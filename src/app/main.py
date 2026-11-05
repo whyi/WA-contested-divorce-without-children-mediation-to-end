@@ -208,6 +208,13 @@ async def authenticate_and_authorize_case_data(
                         return JSONResponse(status_code=404, content={"detail": "Case not found."})
                     if request.method != "GET" and membership.role == "viewer":
                         return JSONResponse(status_code=403, content={"detail": "Case is read-only."})
+                    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                        case = db.get(Case, case_id)
+                        if case is not None and case.status == "finalized":
+                            return JSONResponse(
+                                status_code=409,
+                                content={"detail": "This case is completed and read-only."},
+                            )
                 db.commit()
         except ValueError:
             return JSONResponse(status_code=404, content={"detail": "Case not found."})
