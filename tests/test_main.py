@@ -337,7 +337,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('const dashboardDemoMode = window.location.pathname === "/demo/dashboard";', page)
         self.assertIn('id: "sample-case"', page)
         self.assertIn('title: "XYZ vs ABC"', page)
-        self.assertIn('window.location.assign("/demo/wizard")', page)
+        self.assertIn('window.location.assign("/demo")', page)
         self.assertIn(".case-tile-demo-add .case-tile-icon", page)
         self.assertIn('aria-label", "Upgrade your plan to create another active case."', page)
         self.assertIn("The Free plan includes 1 active case. Upgrade your plan to create another.", page)
