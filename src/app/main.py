@@ -73,7 +73,6 @@ from app.services import (
 )
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
-from app.subscription_plans import plan_for_user
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -346,8 +345,6 @@ class DashboardData(BaseModel):
     has_cases: bool
     case_count: int
     active_case_count: int
-    active_case_limit: int | None
-    plan_name: str
     account_type: Literal["party", "professional"] = "party"
     cases: list[DashboardCaseStatus]
 
@@ -440,7 +437,6 @@ def dashboard_status(
     user: Annotated[User, Depends(require_current_user)],
     db: DbSession,
 ) -> DashboardStatus:
-    plan = plan_for_user(user)
     try:
         rows = db.execute(
             select(
@@ -523,8 +519,6 @@ def dashboard_status(
             has_cases=bool(cases),
             case_count=len(cases),
             active_case_count=active_case_count,
-            active_case_limit=plan.active_case_limit,
-            plan_name=plan.name,
             account_type="professional" if getattr(user, "account_type", None) == "professional" else "party",
             cases=cases,
         )

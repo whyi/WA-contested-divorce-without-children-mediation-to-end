@@ -102,11 +102,7 @@ class MaterialsImportTests(unittest.TestCase):
             demo_mode_enabled=False,
         )
         db = Mock()
-        user = SimpleNamespace(
-            id=user_id,
-            subscription_plan="free",
-            subscription_status="free",
-        )
+        user = SimpleNamespace(id=user_id)
         db.get.side_effect = lambda model, key, **kwargs: user if model is User else None
         db.scalar.return_value = 0
         client, _ = self._client(user_id=user_id, db=db)
@@ -146,11 +142,7 @@ class MaterialsImportTests(unittest.TestCase):
     def test_import_uses_the_dashboard_case_instead_of_creating_another(self) -> None:
         user_id = uuid4()
         case_id = uuid4()
-        user = SimpleNamespace(
-            id=user_id,
-            subscription_plan="free",
-            subscription_status="free",
-        )
+        user = SimpleNamespace(id=user_id)
         case = Case(id=case_id, status="draft")
         db = Mock()
         db.get.side_effect = lambda model, key, **kwargs: (
@@ -182,13 +174,9 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertEqual(db.scalar.call_count, 1)
         object_storage.put.assert_called_once()
 
-    def test_import_cannot_create_a_case_over_the_plan_limit(self) -> None:
+    def test_import_cannot_create_a_second_party_owned_case(self) -> None:
         user_id = uuid4()
-        user = SimpleNamespace(
-            id=user_id,
-            subscription_plan="free",
-            subscription_status="free",
-        )
+        user = SimpleNamespace(id=user_id)
         db = Mock()
         db.get.side_effect = lambda model, key, **kwargs: user if model is User else None
         db.scalar.return_value = 1

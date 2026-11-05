@@ -74,14 +74,15 @@ class SettlementExportRouteTests(unittest.TestCase):
             offer_to="Party B",
             terms=["Each party retains the property listed in their column."],
         )
-        self.user = SimpleNamespace(
-            id=uuid4(),
-            settlement_attempt_limit=10,
-            document_credit_balance=1,
-        )
+        self.user = SimpleNamespace(id=uuid4())
         self.case_id = uuid4()
         self.selection_id = uuid4()
-        self.case = SimpleNamespace(profile_revision=3, settlement_revision=5)
+        self.case = SimpleNamespace(
+            profile_revision=3,
+            settlement_revision=5,
+            first_finalization_used=False,
+            attempt_credit_balance=1,
+        )
         self.selection = SimpleNamespace(
             id=self.selection_id,
             case_id=self.case_id,
@@ -115,7 +116,6 @@ class SettlementExportRouteTests(unittest.TestCase):
             self.selection,
             self.attempt,
             None,
-            self.user,
         ]
         self.db.get.return_value = self.case
 
@@ -156,14 +156,11 @@ class SettlementExportRouteTests(unittest.TestCase):
         self.assertIn("no-store", docx.headers["Cache-Control"])
         self.assertEqual(workbook.body, b"xlsx")
         self.assertIn("no-store", workbook.headers["Cache-Control"])
-        self.assertEqual(self.user.document_credit_balance, 0)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
         self.assertEqual(
-            sum(
-                isinstance(call.args[0], DocumentCreditLedgerEntry)
-                for call in self.db.add.call_args_list
-                if call.args
-            ),
-            1,
+            sum(isinstance(call.args[0], DocumentCreditLedgerEntry)
+                for call in self.db.add.call_args_list if call.args),
+            0,
         )
 
     def test_stale_selection_is_rejected_before_render_or_delivery(self) -> None:
@@ -205,7 +202,6 @@ class SettlementExportRouteTests(unittest.TestCase):
             )
             self.assertEqual(docx.body, b"docx")
             self.assertIsNotNone(self.attempt.proposal_issued_at)
-            self.user.settlement_attempt_limit = 1
             self.attempt.attempt_ordinal = 2
             self.case.profile_revision += 1
             version = next(
@@ -250,73 +246,50 @@ class SettlementExportRouteTests(unittest.TestCase):
         render_docx.assert_called_once()
         render_xlsx.assert_called_once()
 
-    def test_export_rejects_an_attempt_above_the_server_managed_limit(self) -> None:
-        self.user.settlement_attempt_limit = 1
+    def test_export_has_no_plan_attempt_limit(self) -> None:
         self.attempt.attempt_ordinal = 2
         with (
             patch("app.settlement_routes.get_settings", return_value=self.settings),
-            patch("app.settlement_routes.render_mediation_offer_docx") as render_docx,
-            self.assertRaises(HTTPException) as raised,
+            patch("app.settlement_routes.render_mediation_offer_docx", return_value=b"docx"),
+            patch("app.settlement_routes.render_property_schedule_xlsx", return_value=b"xlsx"),
         ):
-            create_settlement_offer(
-                self.case_id,
-                self.selection_id,
-                OfferCreate(terms=self.terms, confirm_credit_use=True),
-                self.user,
-                self.db,
-            )
-
-        self.assertEqual(raised.exception.status_code, 409)
-        render_docx.assert_not_called()
-
-    def test_new_version_requires_explicit_consent_and_available_credit(self) -> None:
-        self.db.scalar.side_effect = [
-            self.membership,
-            self.case,
-            self.selection,
-            self.attempt,
-            None,
-        ]
-        with (
-            patch("app.settlement_routes.get_settings", return_value=self.settings),
-            patch("app.settlement_routes.render_mediation_offer_docx") as render_docx,
-            self.assertRaises(HTTPException) as raised,
-        ):
-            create_settlement_offer(
+            response = create_settlement_offer(
                 self.case_id,
                 self.selection_id,
                 OfferCreate(terms=self.terms),
                 self.user,
                 self.db,
             )
-        self.assertEqual(raised.exception.status_code, 428)
-        render_docx.assert_not_called()
-        self.assertEqual(self.user.document_credit_balance, 1)
 
-        self.user.document_credit_balance = 0
+        self.assertEqual(response.body, b"docx")
+
+    def test_generating_new_version_is_free_without_credit_consent(self) -> None:
         self.db.scalar.side_effect = [
             self.membership,
             self.case,
             self.selection,
             self.attempt,
             None,
-            self.user,
         ]
         with (
             patch("app.settlement_routes.get_settings", return_value=self.settings),
-            patch("app.settlement_routes.render_mediation_offer_docx") as render_docx,
-            self.assertRaises(HTTPException) as raised,
+            patch("app.settlement_routes.render_mediation_offer_docx", return_value=b"docx"),
+            patch("app.settlement_routes.render_property_schedule_xlsx", return_value=b"xlsx"),
         ):
-            create_settlement_offer(
+            response = create_settlement_offer(
                 self.case_id,
                 self.selection_id,
-                OfferCreate(terms=self.terms, confirm_credit_use=True),
+                OfferCreate(terms=self.terms),
                 self.user,
                 self.db,
             )
-        self.assertEqual(raised.exception.status_code, 402)
-        render_docx.assert_not_called()
-        self.db.add.assert_not_called()
+        self.assertEqual(response.body, b"docx")
+        self.assertEqual(self.case.attempt_credit_balance, 1)
+        self.assertEqual(
+            sum(isinstance(call.args[0], DocumentCreditLedgerEntry)
+                for call in self.db.add.call_args_list if call.args),
+            0,
+        )
 
     def test_failed_pair_generation_does_not_consume_credit(self) -> None:
         self.db.scalar.side_effect = [
@@ -344,10 +317,10 @@ class SettlementExportRouteTests(unittest.TestCase):
                 self.db,
             )
         self.assertEqual(raised.exception.status_code, 422)
-        self.assertEqual(self.user.document_credit_balance, 1)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
         self.db.add.assert_not_called()
 
-    def test_revised_version_charges_once_without_overwriting_previous_version(self) -> None:
+    def test_revised_version_is_free_without_overwriting_previous_version(self) -> None:
         self.db.scalar.side_effect = [
             self.membership,
             self.case,
@@ -375,7 +348,6 @@ class SettlementExportRouteTests(unittest.TestCase):
             )
             self.attempt.proposal_draft_unlocked = True
             self.attempt.proposal_version_ordinal = 2
-            self.user.document_credit_balance = 1
             revised_terms = self.terms.model_copy(update={"offer_to": "Revised Party"})
             self.db.scalar.side_effect = [
                 self.membership,
@@ -383,7 +355,6 @@ class SettlementExportRouteTests(unittest.TestCase):
                 self.selection,
                 self.attempt,
                 None,
-                self.user,
             ]
             response = create_settlement_property_schedule(
                 self.case_id,
@@ -401,8 +372,8 @@ class SettlementExportRouteTests(unittest.TestCase):
         self.assertEqual(len(versions), 2)
         self.assertEqual(previous_version.terms_json, self.terms.model_dump(mode="json"))
         self.assertEqual(versions[1].terms_json, revised_terms.model_dump(mode="json"))
-        self.assertEqual(versions[1].credit_cost, 1)
-        self.assertEqual(self.user.document_credit_balance, 0)
+        self.assertEqual(versions[1].credit_cost, 0)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
 
     def test_existing_issued_proposal_is_backfilled_without_retroactive_charge(self) -> None:
         self.attempt.proposal_issued_at = datetime.now(UTC)
@@ -434,7 +405,7 @@ class SettlementExportRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.body, b"legacy-docx")
         self.assertEqual(version.credit_cost, 0)
-        self.assertEqual(self.user.document_credit_balance, 1)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
         self.assertEqual(
             sum(
                 isinstance(call.args[0], DocumentCreditLedgerEntry)

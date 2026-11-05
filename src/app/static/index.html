@@ -924,19 +924,6 @@
       .dashboard-error { padding: 18px; border:1px solid var(--theme-border-e5c7c1); border-radius: 10px; background:var(--theme-background-fff8f6); }
       .dashboard-error p { margin-bottom: 12px; color:var(--theme-text-8d3026); }
       .dashboard-retry { min-height: 42px; padding: 0 14px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font-weight: 700; }
-      .subscription-pricing { padding: 34px 0 72px; }
-      .subscription-table-wrap { overflow-x: auto; border:1px solid var(--line); border-radius: 10px; background:var(--paper); }
-      .subscription-table { width:100%; min-width:720px; border-collapse: collapse; text-align:center; }
-      .subscription-table caption { padding: 12px; color:var(--muted); text-align:left; font-size:12px; }
-      .subscription-table th, .subscription-table td { min-width:120px; padding: 14px 12px; border-top:1px solid var(--line); }
-      .subscription-table th:first-child, .subscription-table td:first-child { min-width:150px; text-align:left; }
-      .subscription-table thead th { vertical-align:top; }
-      .subscription-table thead th strong, .subscription-table thead th span { display:block; margin-bottom:6px; }
-      .subscription-table thead th span { color:var(--muted); font-weight:500; }
-      .subscription-table button { max-width:100%; white-space:normal; }
-      .billing-account { margin: 0 0 28px; padding: 18px; border:1px solid var(--line); border-radius:10px; background:var(--surface-raised); }
-      .billing-account h2 { margin:0 0 8px; font-size:20px; }
-      .billing-account p { color:var(--muted); line-height:1.6; }
       .onboarding-heading { max-width: 680px; margin-bottom: 24px; }
       .onboarding-heading h2, .existing-cases h2, .preparation-view h2 { margin-bottom: 10px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 4vw, 38px); font-weight: 500; letter-spacing: -.035em; }
       .onboarding-heading p:not(.eyebrow), .existing-cases > p, .preparation-view > p { color:var(--muted); font-size: 14px; line-height: 1.7; }
@@ -1402,7 +1389,6 @@
       [hidden].asset-analysis, [hidden].analysis-preview-launch { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
-      .authenticated-view main > #subscription-pricing:target { display: block; }
 
       @media (max-width: 850px) {
         .hero { grid-template-columns: 1fr; gap: 32px; padding: 62px 0 68px; }
@@ -1599,7 +1585,6 @@
       }
       .expectations-link:hover { color: var(--home-amber); }
       .account-panel { border-radius: 22px; }
-      .subscription-table-wrap { border-radius: 16px; }
       .steps-panel { border-radius: 24px; }
       .closing { padding-top: 58px; }
       @media (max-width: 900px) {
@@ -1682,8 +1667,8 @@
           <span class="brand-name">Casework</span>
         </a>
         <nav class="nav" aria-label="Main navigation">
-          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/1/dashboard">Demo 1 Free</a>
-          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/2/dashboard">Demo 2 Essential</a>
+          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/1/dashboard">Demo 1 — New case</a>
+          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/2/dashboard">Demo 2 — Existing case</a>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
@@ -1970,22 +1955,6 @@
           </div>
         </section>
 
-        <section class="subscription-pricing" id="subscription-pricing" aria-labelledby="subscription-pricing-title">
-          <div class="onboarding-heading">
-            <p class="eyebrow">Membership plans</p>
-            <h2 id="subscription-pricing-title">Choose the support that fits your casework.</h2>
-            <p>Preview and editing are free. Proposal credits are used only when generating a new DOCX + XLSX version. Existing case history remains available if a subscription ends.</p>
-          </div>
-          <p id="billing-plans-status" role="status" aria-live="polite">Loading membership plans…</p>
-          <div class="subscription-table-wrap">
-            <table class="subscription-table" id="billing-plans-table">
-              <caption>Monthly membership features and usage limits</caption>
-              <tbody id="billing-plans-body"></tbody>
-            </table>
-          </div>
-          <p class="account-footnote">Monthly document credits roll over up to twice your plan's monthly allowance. Suggested launch prices are shown only when confirmed by the billing provider.</p>
-        </section>
-
         <section class="principles" id="approach" aria-label="Product principles">
           <div class="principle">
             <span class="principle-icon" aria-hidden="true">✳</span>
@@ -2034,14 +2003,6 @@
               </div>
             </header>
             <p class="dashboard-state" id="dashboard-loading" role="status">Loading your account status…</p>
-            <section class="billing-account" id="billing-account" aria-labelledby="billing-account-title" hidden>
-              <h2 id="billing-account-title">Your membership</h2>
-              <p id="billing-account-status" role="status" aria-live="polite">Loading plan status…</p>
-              <div class="settlement-export-actions">
-                <button class="materials-import" id="billing-manage-button" type="button" hidden>Manage subscription</button>
-                <button class="dashboard-retry" id="billing-refresh-button" type="button">Refresh plan status</button>
-              </div>
-            </section>
             <div class="dashboard-state dashboard-error" id="dashboard-error" role="alert" hidden>
               <p id="dashboard-error-message">Your account status could not be loaded.</p>
               <button class="dashboard-retry" id="dashboard-retry" type="button">Try again</button>
@@ -2066,7 +2027,7 @@
               </section>
               <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
                 <h3 id="closed-cases-title">Closed cases</h3>
-                <p>Closing a case does not delete it. Your materials, attempts and remaining document credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
+                <p>Closing a case does not delete it. Your materials, attempts and remaining attempt credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
                 <p id="closed-cases-status" role="status" aria-live="polite"></p>
                 <ul class="closed-case-list" id="closed-case-list"></ul>
               </section>
@@ -2228,7 +2189,8 @@
                     <h3 id="settlement-offer-title">Prepare a CR 2A proposal draft</h3>
                     <p id="settlement-offer-attempt-status">First Attempt — active and editable</p>
                     <p>Create editable Word and Excel drafts from the selected calculation and your proposed terms. The Word draft is unsigned and is not filed. A signed CR 2A agreement may have legal effect; review it with qualified Washington counsel before signing or sharing. Nothing is sent unless you explicitly confirm delivery.</p>
-                    <p id="settlement-document-credit-status" role="status" aria-live="polite">Preview and editing are free. Generating a new version uses 1 document credit for both DOCX and XLSX. Checking your balance…</p>
+                    <p id="settlement-document-credit-status" role="status" aria-live="polite">Preview, editing, and proposal drafts are free. Checking this case's attempt-credit balance…</p>
+                    <div class="settlement-export-actions" id="attempt-credit-packages" aria-label="One-time attempt-credit packages"></div>
                     <p>Milestones and proposed values below belong only to this negotiation attempt. They do not change source facts or the evidence-backed settlement ledger; a later attempt starts with a separate editable copy.</p>
                     <div class="settlement-offer-grid">
                       <label>From (you, the user party in the ledger)<input id="settlement-offer-from" type="text" maxlength="160" required></label>
@@ -2244,14 +2206,14 @@
                       <label>Proposed terms (one per line)<textarea id="settlement-offer-terms" required></textarea></label>
                     </div>
                     <div class="settlement-export-actions" role="group" aria-label="Download proposal drafts">
-                      <button class="materials-import" id="settlement-offer-download" type="button">Download DOCX (uses 1 credit for a new version)</button>
-                      <button class="materials-import" id="settlement-schedule-download" type="button">Download XLSX (uses 1 credit for a new version)</button>
+                      <button class="materials-import" id="settlement-offer-download" type="button">Download DOCX draft</button>
+                      <button class="materials-import" id="settlement-schedule-download" type="button">Download XLSX draft</button>
                       <button class="dashboard-retry" id="settlement-new-proposal-version" type="button" hidden>Start a new proposal version</button>
                     </div>
                     <div class="settlement-export-actions" role="group" aria-label="Finalize this attempt">
                       <button class="materials-import" id="settlement-finalize-download" type="button">Finalize attempt and download final proposal</button>
                     </div>
-                    <p id="settlement-finalize-note" role="status" aria-live="polite">Draft downloads above keep this attempt editable. Finalizing downloads the mediator-facing DOCX and XLSX, saves a snapshot of both sides' values and makes this attempt read-only; changes then require the next attempt. Finalizing does not mean you sent the files to anyone — attach and confirm what you actually sent separately below.</p>
+                    <p id="settlement-finalize-note" role="status" aria-live="polite">Draft downloads above are free and keep this attempt editable. The first successful finalization for this case is free; each later successful finalization uses one attempt credit. Finalizing saves a snapshot of both sides' values and makes this attempt read-only. Finalizing does not mean you sent the files to anyone — attach and confirm what you actually sent separately below.</p>
                     <section class="settlement-export-destinations" aria-labelledby="settlement-export-destinations-title">
                       <h4 id="settlement-export-destinations-title">Optional: save or send generated drafts</h4>
                       <p>These controls are separate from the response tracker. A delivery action explicitly sends the generated drafts only after confirmation; it does not send your later edits. To track the actual final offer, review and edit the files, send those final versions yourself, and attach the exact files below. The files are never sent to AI.</p>
@@ -2287,7 +2249,7 @@
                       <li>cr2a-agreement-proposal-draft.docx</li>
                       <li>property-division-proposal-draft.xlsx</li>
                     </ul>
-                    <p>This action sends the two drafts to the displayed destination. If this is a new proposal version, it uses 1 document credit for both files. It does not file them with a court.</p>
+                    <p>This action sends the two drafts to the displayed destination. Draft creation and delivery do not use attempt credits. It does not file them with a court.</p>
                     <div class="settlement-export-actions">
                       <button class="materials-import" id="settlement-export-cancel" type="button">Cancel</button>
                       <button class="materials-import" id="settlement-export-confirm" type="button">Confirm and send both drafts</button>
@@ -2592,7 +2554,7 @@
                   </div>
                   <p class="settlement-scenario-status" id="settlement-demo-export-status" role="status" aria-live="polite">Downloaded drafts reflect the case values and options shown here. They are not sent to an external service.</p>
                   <section class="settlement-response-workflow settlement-demo-response-preview" id="settlement-demo-response-preview" aria-labelledby="settlement-demo-response-preview-title">
-                    <p class="settlement-attempt-banner" id="settlement-demo-attempt-status" role="status" aria-live="polite">Free plan — First Attempt of 1</p>
+                    <p class="settlement-attempt-banner" id="settlement-demo-attempt-status" role="status" aria-live="polite">First sample attempt</p>
                     <h4 id="settlement-demo-response-preview-title">Preview what happens after you send an offer</h4>
                     <p>This interactive preview uses made-up filenames only. It never opens a file picker, uploads, reads, or saves documents, or accesses Google Drive.</p>
                     <p><strong>Review and edit your downloaded drafts, send them to the other party yourself, then continue here.</strong></p>
@@ -2610,7 +2572,7 @@
                         <label><input type="radio" name="settlement-demo-response-outcome" value="accepted"> Offer accepted</label>
                       </fieldset>
                       <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" disabled hidden>Add fictional counteroffer example</button>
-                      <p id="settlement-demo-counteroffer-limit" hidden>Counteroffers require a second attempt, which is not available on the Free plan.</p>
+                      <p id="settlement-demo-counteroffer-limit" hidden>This sample does not include a second attempt. In a real case, each successful finalization after the free first one uses an attempt credit.</p>
                       <p id="settlement-demo-response-status" role="status" aria-live="polite">Select a response to preview the next step.</p>
                       <button class="materials-import" id="settlement-demo-response-next" type="button" disabled>Next</button>
                       <section id="settlement-demo-response-placeholder" hidden>
@@ -2778,12 +2740,7 @@
         const dashboardLoading = document.getElementById("dashboard-loading");
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
-        const billingPlansStatus = document.getElementById("billing-plans-status");
-        const billingPlansBody = document.getElementById("billing-plans-body");
-        const billingAccount = document.getElementById("billing-account");
-        const billingAccountStatus = document.getElementById("billing-account-status");
-        const billingManageButton = document.getElementById("billing-manage-button");
-        const billingRefreshButton = document.getElementById("billing-refresh-button");
+        const attemptCreditPackages = document.getElementById("attempt-credit-packages");
         const existingCases = document.getElementById("existing-cases");
         const existingCaseCount = document.getElementById("existing-case-count");
         const caseList = document.getElementById("case-list");
@@ -3033,9 +2990,8 @@
         let settlementOfferResponseState = null;
         let settlementOfferResponseHistoryItems = [];
         let settlementDocumentCreditsRemaining = null;
-        let billingPlans = [];
-        let billingAccountData = null;
-        let billingSignedIn = false;
+        let settlementFreeFirstFinalizationAvailable = false;
+        let attemptCreditPackageData = [];
         let settlementAttemptEditableState = {};
         let settlementAttemptStateLoaded = false;
         let settlementAttemptStateDirty = false;
@@ -3137,12 +3093,12 @@
         let pendingAdoption = null;
         const reviewIdempotencyKeys = new Map();
         const demoMode = window.location.pathname === "/demo";
-        const demoFreeDashboardMode = window.location.pathname === "/demo/1/dashboard";
-        const demoPaidDashboardMode = [
+        const demoNewCaseDashboardMode = window.location.pathname === "/demo/1/dashboard";
+        const demoExistingCaseDashboardMode = [
           "/demo/2/dashboard",
           "/demo/dashboard",
         ].includes(window.location.pathname);
-        const dashboardDemoMode = demoFreeDashboardMode || demoPaidDashboardMode;
+        const dashboardDemoMode = demoNewCaseDashboardMode || demoExistingCaseDashboardMode;
         const demoExperienceMode = dashboardDemoMode;
         const demoSettlementCompletionMode = window.location.pathname === "/demo/settlement-completion";
         const settlementCompletionMode = window.location.pathname === "/settlement-completion";
@@ -4266,7 +4222,7 @@
         }
 
         function openDemoCaseChoiceDialog() {
-          const source = demoFreeDashboardMode ? "demo1" : "demo2";
+          const source = demoNewCaseDashboardMode ? "demo1" : "demo2";
           demoCaseDocumentsLink.href = `/demo/documents?source=${source}`;
           demoCaseWizardLink.href = `/demo/wizard?source=${source}`;
           demoCaseChoiceDialog.showModal();
@@ -4536,7 +4492,7 @@
         async function closeCaseFromWorkspace() {
           if (!settlementCaseId) return;
           const confirmed = window.confirm(
-            "Close this case? Nothing is deleted, your document credits do not expire, and you can reopen it from Closed cases at any time.",
+            "Close this case? Nothing is deleted, your attempt credits do not expire, and you can reopen it from Closed cases at any time.",
           );
           if (!confirmed) return;
           settlementCaseClose.disabled = true;
@@ -4727,7 +4683,8 @@
           settlementOfferResponseHistoryItems = [];
           renderSettlementAttemptProgress();
           settlementDocumentCreditsRemaining = null;
-          settlementDocumentCreditStatus.textContent = "Checking document credit balance…";
+          settlementFreeFirstFinalizationAvailable = false;
+          settlementDocumentCreditStatus.textContent = "Checking this case's attempt-credit balance…";
           settlementDocumentCreditStatus.removeAttribute("data-kind");
           settlementGeneratedFormats = new Set();
           settlementResponseWorkflow.hidden = true;
@@ -5383,13 +5340,16 @@
             );
             if (settlementCaseId !== caseId) return;
             settlementDocumentCreditsRemaining = result.remaining;
+            settlementFreeFirstFinalizationAvailable = result.free_first_finalization_available === true;
             updateSettlementDocumentCreditControls();
+            renderAttemptCreditPackages();
           } catch (error) {
             if (settlementCaseId !== caseId) return;
             settlementDocumentCreditsRemaining = null;
+            settlementFreeFirstFinalizationAvailable = false;
             settlementDocumentCreditStatus.textContent = error instanceof Error
-              ? `Document credit balance could not be loaded: ${error.message}`
-              : "Document credit balance could not be loaded.";
+              ? `Attempt-credit balance could not be loaded: ${error.message}`
+              : "Attempt-credit balance could not be loaded.";
             settlementDocumentCreditStatus.dataset.kind = "error";
             updateSettlementDocumentCreditControls();
           }
@@ -5397,30 +5357,97 @@
 
         function updateSettlementDocumentCreditControls() {
           const current = settlementOfferResponseState;
-          const needsCredit = !current?.proposal_issued || current?.proposal_draft_unlocked;
           const remaining = settlementDocumentCreditsRemaining;
+          const canFinalize = settlementFreeFirstFinalizationAvailable || (remaining !== null && remaining > 0);
           if (remaining === null) {
             if (!settlementDocumentCreditStatus.dataset.kind) {
-              settlementDocumentCreditStatus.textContent = "Preview and editing are free. Generating a new version uses 1 document credit for both files. Balance unavailable.";
+              settlementDocumentCreditStatus.textContent = "Drafts, edits, and downloads are free. Attempt-credit balance unavailable; finalization is disabled until it can be checked.";
             }
           } else {
-            settlementDocumentCreditStatus.textContent = needsCredit
-              ? remaining > 0
-                ? `Preview and editing are free. Generating this version creates both DOCX and XLSX and uses 1 document credit. Balance: ${remaining}.`
-                : "Preview and editing are free. Generating this version needs 1 document credit for both files; add credits or upgrade your subscription. Balance: 0."
-              : `This proposal version is saved. Re-downloading either file is free. Balance: ${remaining} document credit${remaining === 1 ? "" : "s"}.`;
+            settlementDocumentCreditStatus.textContent =
+              `${settlementFreeFirstFinalizationAvailable ? "This case's first successful finalization is free." : "A successful finalization uses 1 attempt credit."} `
+              + `Drafts, editing, and re-downloading are free. Balance: ${remaining} attempt credit${remaining === 1 ? "" : "s"}.`;
             settlementDocumentCreditStatus.removeAttribute("data-kind");
           }
-          const blocked = needsCredit && (remaining === null || remaining < 1);
           const finalized = Boolean(current?.finalized);
-          settlementOfferDownload.disabled = blocked;
-          settlementScheduleDownload.disabled = blocked;
-          settlementFinalizeDownload.disabled = blocked || finalized || !current;
+          settlementOfferDownload.disabled = false;
+          settlementScheduleDownload.disabled = false;
+          settlementFinalizeDownload.disabled = !canFinalize || finalized || !current;
           settlementFinalizeDownload.textContent = finalized
             ? "Attempt finalized — snapshot saved"
             : "Finalize attempt and download final proposal";
           if (finalized) {
             settlementFinalizeNote.textContent = "This attempt is finalized and read-only. Re-downloading this finalized snapshot is free. Finalizing does not mean you sent the files; attach and confirm what you sent separately below.";
+          } else if (!settlementFreeFirstFinalizationAvailable && remaining === 0) {
+            settlementFinalizeNote.textContent = "Your editable work is saved. Finalization needs 1 attempt credit; choose a one-time 5- or 10-credit package below. A failed finalization preserves your work and does not use a credit.";
+          }
+        }
+
+        async function loadAttemptCreditPackages() {
+          try {
+            const response = await fetch("/api/billing/packages", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Credit packages are unavailable.");
+            attemptCreditPackageData = Array.isArray(result.packages) ? result.packages : [];
+          } catch {
+            attemptCreditPackageData = [];
+          }
+          renderAttemptCreditPackages();
+        }
+
+        function renderAttemptCreditPackages() {
+          attemptCreditPackages.replaceChildren();
+          if (!settlementCaseId) return;
+          for (const pack of attemptCreditPackageData) {
+            const button = document.createElement("button");
+            button.className = "materials-import";
+            button.type = "button";
+            button.disabled = !pack.available;
+            button.textContent = pack.available
+              ? `Buy ${pack.credits} attempt credits${pack.price ? ` — ${pack.price}` : ""}`
+              : `${pack.credits} attempt credits — unavailable`;
+            button.addEventListener("click", () => void startAttemptCreditCheckout(pack.credits));
+            attemptCreditPackages.append(button);
+          }
+          if (!attemptCreditPackageData.length) {
+            const message = document.createElement("p");
+            message.textContent = "One-time credit packages are not configured yet.";
+            attemptCreditPackages.append(message);
+          }
+        }
+
+        async function startAttemptCreditCheckout(packageSize) {
+          if (!settlementCaseId) return;
+          try {
+            const response = await fetch(`/api/billing/cases/${settlementCaseId}/checkout`, {
+              method: "POST",
+              credentials: "same-origin",
+              headers: {
+                ...csrfHeaders(),
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({ package_size: packageSize }),
+            });
+            const result = await response.json();
+            if (response.status === 401) {
+              showSignIn("Sign in before purchasing attempt credits.");
+              return;
+            }
+            if (!response.ok) throw new Error(result.detail || "Checkout could not be started.");
+            const checkout = new URL(result.checkout_url);
+            if (checkout.protocol !== "https:" || checkout.hostname !== "checkout.stripe.com") {
+              throw new Error("The billing provider returned an invalid checkout address.");
+            }
+            window.location.assign(checkout.href);
+          } catch (error) {
+            settlementDocumentCreditStatus.textContent = error instanceof Error
+              ? error.message
+              : "Checkout could not be started.";
+            settlementDocumentCreditStatus.dataset.kind = "error";
           }
           const canStartNewVersion = Boolean(
             !finalized
@@ -5522,7 +5549,7 @@
               ? "finalized; snapshot saved and read-only (not yet recorded as sent)"
               : proposalIssued && !frozen
               ? proposalDraftUnlocked
-                ? "new proposal version open; generation uses 1 document credit"
+                ? "new proposal version open; drafts and downloads are free"
                 : "proposal issued; terms and scenario are locked"
               : frozen
               ? "sent and frozen; read-only"
@@ -5666,7 +5693,7 @@
           if (!caseId || !selectionId) return false;
           settlementOfferResponseState = null;
           settlementDocumentCreditsRemaining = null;
-          settlementDocumentCreditStatus.textContent = "Checking document credit balance…";
+          settlementDocumentCreditStatus.textContent = "Checking this case's attempt-credit balance…";
           settlementDocumentCreditStatus.removeAttribute("data-kind");
           settlementAttemptStateLoaded = false;
           settlementAttemptStateDirty = false;
@@ -6204,7 +6231,7 @@
             settlementOfferResponseState.proposal_version_ordinal = result.proposal_version_ordinal;
             settlementOfferResponseState.attempt_revision = result.attempt_revision;
             setSettlementStatus(
-              `Version ${result.proposal_version_ordinal} is open for free editing. Generating it will use 1 document credit for both files.`,
+              `Version ${result.proposal_version_ordinal} is open for free editing. Draft generation and downloads are free; finalization follows this case's attempt-credit policy.`,
               "success",
             );
             updateSettlementResponseControls();
@@ -6234,26 +6261,14 @@
           }
           const isDocx = format === "docx";
           const button = isDocx ? settlementOfferDownload : settlementScheduleDownload;
-          const needsCredit = !settlementOfferResponseState?.proposal_issued
-            || settlementOfferResponseState?.proposal_draft_unlocked;
-          if (needsCredit && (settlementDocumentCreditsRemaining === null
-            || settlementDocumentCreditsRemaining < 1)) {
-            setSettlementStatus(
-              "Your preview and edits are saved for free. Generating a new version requires 1 document credit, and your balance is unavailable or insufficient.",
-              "error",
-            );
-            return false;
-          }
           if (finalize && !confirmed) {
-            const charge = needsCredit
-              ? `Under the current policy this generates the final proposal version and uses 1 document credit (remaining after: ${settlementDocumentCreditsRemaining - 1}).`
-              : "This proposal version is already generated and paid, so no further credit is used.";
+            const charge = settlementFreeFirstFinalizationAvailable
+              ? "The first successful finalization for this case is free."
+              : `This successful finalization uses 1 attempt credit (remaining after: ${settlementDocumentCreditsRemaining - 1}).`;
             if (!window.confirm(
-              `Finalize this attempt and download the final proposal? ${charge} Both sides' values are saved as a snapshot and this attempt becomes read-only; later changes require the next attempt. Re-downloading the same snapshot is free. If generation fails, nothing is charged or locked. This does not send anything to the other party.`,
+              `Finalize this attempt and download the final proposal? ${charge} Both sides' values are saved as a snapshot and this attempt becomes read-only; later changes require the next attempt. Re-downloading the same snapshot is free. If generation fails, your work is preserved and no credit is used. This does not send anything to the other party.`,
             )) return false;
-          } else if (!finalize && needsCredit && !window.confirm(
-            `Generate this proposal version? This creates both DOCX and XLSX and uses 1 document credit. Remaining after generation: ${settlementDocumentCreditsRemaining - 1}.`,
-          )) return false;
+          }
           button.disabled = true;
           try {
             const response = await fetch(
@@ -6270,7 +6285,7 @@
                 },
                 body: JSON.stringify({
                   terms: collectSettlementOfferTerms(),
-                  confirm_credit_use: needsCredit,
+                  confirm_credit_use: false,
                   ...(finalize ? { finalize: true, confirm_finalization: true } : {}),
                 }),
               },
@@ -6465,15 +6480,6 @@
             settlementExportStatus.dataset.kind = "error";
             return;
           }
-          const needsCredit = !settlementOfferResponseState?.proposal_issued
-            || settlementOfferResponseState?.proposal_draft_unlocked;
-          if (needsCredit && (settlementDocumentCreditsRemaining === null
-            || settlementDocumentCreditsRemaining < 1)) {
-            settlementExportStatus.textContent =
-              "Your preview and edits are saved for free. Generating a new version requires 1 document credit, and your balance is unavailable or insufficient.";
-            settlementExportStatus.dataset.kind = "error";
-            return;
-          }
           if (!(await saveSettlementAttemptState())) {
             settlementExportStatus.textContent = "Attempt changes must be saved before generating documents.";
             settlementExportStatus.dataset.kind = "error";
@@ -6499,11 +6505,10 @@
             channel,
             recipient,
             idempotency_key: newSettlementId(),
-            confirm_credit_use: needsCredit,
+            confirm_credit_use: false,
           };
-          settlementExportConfirmationDetails.textContent = needsCredit
-            ? `${details} Generating both documents uses 1 document credit; ${settlementDocumentCreditsRemaining - 1} will remain.`
-            : `${details} This saved proposal version is being reused at no additional credit cost.`;
+          settlementExportConfirmationDetails.textContent =
+            `${details} Draft creation and delivery are free; finalization is the only action that may use an attempt credit.`;
           settlementExportConfirm.disabled = false;
           settlementExportConfirmation.showModal();
           settlementExportCancel.focus();
@@ -9375,240 +9380,6 @@
           }
         }
 
-        function formatBillingDate(value) {
-          if (!value) return "";
-          const parsed = new Date(value);
-          return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
-        }
-
-        function renderBillingPlans() {
-          billingPlansBody.replaceChildren();
-          if (!billingPlans.length) return;
-          const headerRow = document.createElement("tr");
-          const featureHeading = document.createElement("th");
-          featureHeading.scope = "col";
-          featureHeading.textContent = "Plan";
-          headerRow.append(featureHeading);
-          for (const plan of billingPlans) {
-            const heading = document.createElement("th");
-            heading.scope = "col";
-            const name = document.createElement("strong");
-            name.textContent = plan.name;
-            const price = document.createElement("span");
-            price.textContent = plan.monthly_price || "Price unavailable";
-            const description = document.createElement("span");
-            description.textContent = plan.description;
-            const action = document.createElement("button");
-            action.type = "button";
-            action.className = plan.code === "free" ? "dashboard-retry" : "materials-import";
-            if (demoExperienceMode) {
-              action.textContent = plan.code.toLowerCase() === (demoFreeDashboardMode ? "free" : "essential")
-                ? "Demo plan"
-                : "Preview only";
-              action.disabled = true;
-            } else if (plan.code === "free") {
-              if (!billingSignedIn) {
-                action.textContent = "Create account";
-                action.addEventListener("click", () => {
-                  selectForm("signup");
-                  accountSection.scrollIntoView({ behavior: "smooth" });
-                });
-              } else if (billingAccountData?.plan_code === "free") {
-                action.textContent = "Current plan";
-                action.disabled = true;
-              } else {
-                action.textContent = "Manage subscription";
-                action.disabled = !billingAccountData?.manage_available;
-                action.addEventListener("click", () => void openBillingPortal());
-              }
-            } else if (billingAccountData?.plan_code === plan.code) {
-              action.textContent = "Current plan";
-              action.disabled = true;
-            } else if (billingAccountData?.manage_available) {
-              action.textContent = "Manage subscription";
-              action.disabled = false;
-              action.addEventListener("click", () => void openBillingPortal());
-            } else {
-              action.textContent = billingSignedIn ? "Choose plan" : "Sign in to choose";
-              action.disabled = !plan.available;
-              action.addEventListener("click", () => {
-                if (!billingSignedIn) {
-                  selectForm("signup");
-                  accountSection.scrollIntoView({ behavior: "smooth" });
-                } else {
-                  void startSubscriptionCheckout(plan.code);
-                }
-              });
-            }
-            if (!plan.available && plan.code !== "free") {
-              action.disabled = true;
-              action.textContent = "Subscriptions unavailable";
-            }
-            heading.append(name, price, description, action);
-            headerRow.append(heading);
-          }
-          const head = document.createElement("thead");
-          head.append(headerRow);
-          billingPlansBody.parentElement?.querySelector("thead")?.remove();
-          const table = document.getElementById("billing-plans-table");
-          table.insertBefore(head, billingPlansBody);
-          const rows = [
-            ["Attempts per case", (plan) => String(plan.attempt_limit)],
-            ["Proposal credits / month", (plan) => String(plan.monthly_document_credits)],
-          ];
-          for (const [label, valueForPlan] of rows) {
-            const row = document.createElement("tr");
-            const labelCell = document.createElement("th");
-            labelCell.scope = "row";
-            labelCell.textContent = label;
-            row.append(labelCell);
-            for (const plan of billingPlans) {
-              const cell = document.createElement("td");
-              cell.textContent = valueForPlan(plan);
-              row.append(cell);
-            }
-            billingPlansBody.append(row);
-          }
-        }
-
-        async function loadBillingPlans() {
-          billingPlansStatus.textContent = "Loading membership plans…";
-          try {
-            const response = await fetch("/api/billing/plans", {
-              credentials: "same-origin",
-              headers: { Accept: "application/json" },
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.detail || "Membership plans are unavailable.");
-            billingPlans = Array.isArray(result.plans) ? result.plans : [];
-            renderBillingPlans();
-            billingPlansStatus.dataset.kind = "";
-            billingPlansStatus.textContent = result.billing_configured
-              ? "Monthly plans are billed securely by Stripe. Final prices are confirmed before checkout."
-              : "Plan limits are shown for comparison. Paid subscriptions are not configured on this service yet.";
-          } catch (error) {
-            billingPlansStatus.textContent = error instanceof Error
-              ? `Membership plans could not be loaded: ${error.message}`
-              : "Membership plans could not be loaded.";
-            billingPlansStatus.dataset.kind = "error";
-          }
-        }
-
-        async function loadBillingAccount({ paymentPending = false } = {}) {
-          billingAccount.hidden = false;
-          try {
-            const response = await fetch("/api/billing/me", {
-              credentials: "same-origin",
-              headers: { Accept: "application/json" },
-            });
-            const result = await response.json();
-            if (response.status === 401) {
-              billingSignedIn = false;
-              billingAccount.hidden = true;
-              renderBillingPlans();
-              return null;
-            }
-            if (!response.ok) throw new Error(result.detail || "Membership status is unavailable.");
-            billingSignedIn = true;
-            billingAccountData = result;
-            billingAccountStatus.textContent =
-              `${result.plan_name} plan (${result.subscription_status.replaceAll("_", " ")}) · `
-              + `${result.attempt_limit} attempt${result.attempt_limit === 1 ? "" : "s"} per case · `
-              + `${result.document_credit_balance} document credit${result.document_credit_balance === 1 ? "" : "s"} available`
-              + (result.period_end ? ` · Renews or ends ${formatBillingDate(result.period_end)}` : "")
-              + (result.cancel_at_period_end ? " · Cancellation scheduled" : "");
-            billingAccountStatus.dataset.kind = "";
-            billingManageButton.hidden = !result.manage_available;
-            renderBillingPlans();
-            return result;
-          } catch (error) {
-            billingAccountStatus.textContent = error instanceof Error
-              ? error.message
-              : "Membership status could not be loaded.";
-            if (paymentPending) {
-              billingAccountStatus.textContent =
-                "Payment return received. Membership changes only after the signed billing confirmation arrives; refresh shortly.";
-            }
-            billingAccountStatus.dataset.kind = "error";
-            return null;
-          }
-        }
-
-        async function startSubscriptionCheckout(planCode) {
-          try {
-            const response = await fetch("/api/billing/checkout", {
-              method: "POST",
-              credentials: "same-origin",
-              headers: {
-                ...csrfHeaders(),
-                "Content-Type": "application/json",
-                Accept: "application/json",
-              },
-              body: JSON.stringify({ plan_code: planCode }),
-            });
-            const result = await response.json();
-            if (response.status === 401) {
-              selectForm("signup");
-              accountSection.scrollIntoView({ behavior: "smooth" });
-              throw new Error("Sign in before choosing a paid membership.");
-            }
-            if (!response.ok) throw new Error(result.detail || "Checkout could not be started.");
-            const checkout = new URL(result.checkout_url);
-            if (checkout.protocol !== "https:" || checkout.hostname !== "checkout.stripe.com") {
-              throw new Error("The billing provider returned an invalid checkout address.");
-            }
-            window.location.assign(checkout.href);
-          } catch (error) {
-            billingPlansStatus.textContent = error instanceof Error
-              ? error.message
-              : "Checkout could not be started.";
-            billingPlansStatus.dataset.kind = "error";
-          }
-        }
-
-        async function openBillingPortal() {
-          try {
-            const response = await fetch("/api/billing/portal", {
-              method: "POST",
-              credentials: "same-origin",
-              headers: { ...csrfHeaders(), Accept: "application/json" },
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.detail || "Subscription management is unavailable.");
-            const portal = new URL(result.portal_url);
-            if (portal.protocol !== "https:" || portal.hostname !== "billing.stripe.com") {
-              throw new Error("The billing provider returned an invalid management address.");
-            }
-            window.location.assign(portal.href);
-          } catch (error) {
-            billingAccountStatus.textContent = error instanceof Error
-              ? error.message
-              : "Subscription management is unavailable.";
-            billingAccountStatus.dataset.kind = "error";
-          }
-        }
-
-        async function refreshBillingStatus() {
-          const params = new URLSearchParams(window.location.search);
-          const paymentPending = params.get("billing") === "success";
-          billingRefreshButton.disabled = true;
-          let result = await loadBillingAccount({ paymentPending });
-          if (paymentPending && result?.plan_code === "free") {
-            billingAccountStatus.textContent =
-              "Payment return received. Waiting for verified confirmation from the billing provider…";
-            for (let attempt = 0; attempt < 5; attempt += 1) {
-              await new Promise((resolve) => window.setTimeout(resolve, 2000));
-              result = await loadBillingAccount({ paymentPending: true });
-              if (result?.plan_code !== "free") break;
-            }
-            if (result?.plan_code === "free") {
-              billingAccountStatus.textContent =
-                "Payment is still being confirmed. Your membership has not changed yet; use Refresh plan status in a moment.";
-            }
-          }
-          billingRefreshButton.disabled = false;
-        }
-
         async function loadDashboardStatus({ isStartup = false } = {}) {
           if (!isStartup || preparationMode) showDashboardShell();
           dashboardLoading.hidden = false;
@@ -9645,8 +9416,6 @@
               !Number.isInteger(account.case_count) ||
               !Array.isArray(account.cases) ||
               !Number.isInteger(account.active_case_count) ||
-              !(account.active_case_limit === null || Number.isInteger(account.active_case_limit)) ||
-              typeof account.plan_name !== "string" ||
               account.has_cases !== (account.case_count > 0) ||
               account.cases.length !== account.case_count
             ) {
@@ -9654,7 +9423,7 @@
             }
             showDashboardShell();
             dashboardLoading.hidden = true;
-            await refreshBillingStatus();
+            void loadAttemptCreditPackages();
             if (preparationMode) {
               showPreparation(preparationMode);
             } else {
@@ -9729,13 +9498,7 @@
         settlementCaseClose.addEventListener("click", () => {
           void closeCaseFromWorkspace();
         });
-        billingRefreshButton.addEventListener("click", () => {
-          void refreshBillingStatus();
-        });
-        billingManageButton.addEventListener("click", () => {
-          void openBillingPortal();
-        });
-        void loadBillingPlans();
+        void loadAttemptCreditPackages();
         settlementConsentGrant.addEventListener("click", grantSettlementConsent);
         settlementConsentRevoke.addEventListener("click", revokeSettlementConsent);
         settlementLedgerAdd.addEventListener("click", appendSettlementLedgerEvents);
@@ -9863,17 +9626,17 @@
             const attemptLimitReached = ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome);
             settlementDemoResponseNext.disabled = attemptLimitReached;
             settlementDemoAttemptStatus.textContent =
-              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} Attempt — Free plan (1 attempt per case)`;
+              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
             settlementDemoResponseNext.textContent = settlementDemoResponseOutcome === "counteroffer"
-              ? "Free plan limit reached"
+              ? "Sample ends here"
               : settlementDemoResponseOutcome === "rejected"
-                ? "Free plan limit reached"
+                ? "Sample ends here"
                 : "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
-              ? "This demo represents the Free plan: one attempt per case. Continuing after a counteroffer is unavailable. This demo is not connected to an account."
+              ? "This sample ends after one attempt. In a real case, the first successful finalization is free and later finalizations use attempt credits."
               : settlementDemoResponseOutcome === "accepted"
                 ? "The fictional offer was accepted. Select Next to open the completion page."
-                : "This demo represents the Free plan: one attempt per case. A rejected offer would require a second attempt, so continuing is blocked here. This demo is not connected to an account.";
+                : "This sample ends after one attempt. In a real case, the first successful finalization is free and later finalizations use attempt credits.";
           });
         });
         settlementDemoResponseNext.addEventListener("click", () => {
@@ -10354,8 +10117,8 @@
           document.body.dataset.demoPage = "dashboard";
           showDashboardShell();
           dashboardLoading.hidden = true;
-          demoInactiveCases.hidden = demoFreeDashboardMode;
-          const demoCases = demoFreeDashboardMode ? [] : [{
+          demoInactiveCases.hidden = demoNewCaseDashboardMode;
+          const demoCases = demoNewCaseDashboardMode ? [] : [{
               id: "sample-case",
               title: "XYZ vs ABC",
               status: "in progress",
@@ -10363,7 +10126,7 @@
               attempt_ordinal: 2,
             }];
           renderCases(demoCases, {
-            activeCaseCount: demoFreeDashboardMode ? 0 : 1,
+            activeCaseCount: demoNewCaseDashboardMode ? 0 : 1,
             accountType: "party",
           });
           existingCases.hidden = false;

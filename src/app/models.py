@@ -34,6 +34,7 @@ class Case(Base):
             "closed_reason IS NULL OR closed_reason IN ('accepted', 'stopped', 'closed')",
             name="ck_cases_closed_reason",
         ),
+        CheckConstraint("attempt_credit_balance >= 0", name="ck_cases_attempt_credit_balance"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -54,6 +55,12 @@ class Case(Base):
     )
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_credit_balance: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    first_finalization_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_reason: Mapped[str | None] = mapped_column(String(20))
     status_before_close: Mapped[str | None] = mapped_column(String(20))
@@ -438,6 +445,11 @@ class DocumentCreditLedgerEntry(Base):
             "idempotency_key",
             name="uq_document_credit_ledger_user_idempotency",
         ),
+        UniqueConstraint(
+            "case_id",
+            "idempotency_key",
+            name="uq_document_credit_ledger_case_idempotency",
+        ),
         CheckConstraint("delta <> 0", name="ck_document_credit_ledger_delta"),
         CheckConstraint("balance_after >= 0", name="ck_document_credit_ledger_balance"),
     )
@@ -445,6 +457,9 @@ class DocumentCreditLedgerEntry(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=True, index=True
     )
     proposal_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("settlement_proposal_versions.id", ondelete="RESTRICT"), nullable=True
@@ -863,24 +878,8 @@ class User(Base):
             name="ck_users_status",
         ),
         CheckConstraint(
-            "settlement_attempt_limit IN (1, 3, 5, 10)",
-            name="ck_users_settlement_attempt_limit",
-        ),
-        CheckConstraint(
             "account_type IN ('party', 'professional')",
             name="ck_users_account_type",
-        ),
-        CheckConstraint(
-            "document_credit_balance >= 0",
-            name="ck_users_document_credit_balance",
-        ),
-        CheckConstraint(
-            "subscription_plan IN ('free', 'essential', 'plus', 'pro')",
-            name="ck_users_subscription_plan",
-        ),
-        CheckConstraint(
-            "subscription_status IN ('free', 'legacy', 'incomplete', 'active', 'trialing', 'past_due', 'unpaid', 'canceled', 'incomplete_expired')",
-            name="ck_users_subscription_status",
         ),
     )
 
@@ -888,28 +887,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending_verification")
-    settlement_attempt_limit: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default=text("1")
-    )
-    document_credit_balance: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
     account_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="party", server_default=text("'party'")
     )
-    subscription_plan: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="free", server_default=text("'free'")
-    )
-    subscription_status: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="free", server_default=text("'free'")
-    )
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True)
-    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True)
-    subscription_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    billing_state_event_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    subscription_cancel_at_period_end: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
-    )
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -926,13 +907,6 @@ class User(Base):
     case_memberships: Mapped[list["CaseMembership"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-
-
-def user_settlement_attempt_limit(user: User) -> int:
-    from app.subscription_plans import user_settlement_attempt_limit as plan_attempt_limit
-
-    return plan_attempt_limit(user)
-
 
 class ExternalIdentity(Base):
     __tablename__ = "external_identities"

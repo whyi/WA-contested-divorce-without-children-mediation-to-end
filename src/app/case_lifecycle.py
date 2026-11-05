@@ -66,11 +66,11 @@ EXCLUDED_COLUMNS = {
 README = """Case data export
 
 manifest.json contains the case profile, notes, negotiation attempts, offers,
-calculations, generated records and your document-credit balance and ledger.
+calculations, generated records and this case's attempt-credit balance and ledger.
 files/ contains the documents you uploaded and the proposal documents generated
 for this case.
 
-Closing a case does not delete it and unused credits do not expire. This
+Closing a case does not delete it and unused attempt credits do not expire. This
 export is a copy of your workspace data, not a legal determination, and a
 closed case does not mean the legal matter is resolved.
 """
@@ -85,7 +85,7 @@ class CaseLifecycleRead(BaseModel):
     status: str
     closed_at: datetime | None
     closed_reason: str | None
-    document_credit_balance: int
+    attempt_credit_balance: int
 
 
 class ClosedCaseRead(BaseModel):
@@ -153,7 +153,7 @@ def _read(case: Case, user: User) -> CaseLifecycleRead:
         status=case.status,
         closed_at=case.closed_at,
         closed_reason=case.closed_reason,
-        document_credit_balance=user.document_credit_balance,
+        attempt_credit_balance=case.attempt_credit_balance,
     )
 
 
@@ -282,6 +282,8 @@ def export_case(
                     "property_assets": case.property_assets,
                     "profile_revision": case.profile_revision,
                     "settlement_revision": case.settlement_revision,
+                    "attempt_credit_balance": case.attempt_credit_balance,
+                    "first_finalization_used": case.first_finalization_used,
                     "created_at": case.created_at,
                     "updated_at": case.updated_at,
                 }
@@ -298,11 +300,14 @@ def export_case(
                 Base.metadata.tables["document_credit_ledger_entries"].c.balance_after,
                 Base.metadata.tables["document_credit_ledger_entries"].c.created_at,
             )
-            .where(Base.metadata.tables["document_credit_ledger_entries"].c.user_id == user.id)
+            .where(
+                Base.metadata.tables["document_credit_ledger_entries"].c.case_id == case_id,
+                Base.metadata.tables["document_credit_ledger_entries"].c.user_id == user.id,
+            )
             .order_by(Base.metadata.tables["document_credit_ledger_entries"].c.created_at)
         ).mappings()
         manifest["credits"] = {
-            "balance": user.document_credit_balance,
+            "balance": case.attempt_credit_balance,
             "ledger": [jsonable_encoder(dict(row)) for row in ledger],
         }
         files: list[dict] = []

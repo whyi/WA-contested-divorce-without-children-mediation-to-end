@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.attempt_finalization import finalize_attempt, is_finalized
+from app.attempt_credits import consume_finalization_credit
 from app.auth_routes import require_current_user
 from app.config import Settings, get_settings
 from app.database import get_db
@@ -23,7 +24,6 @@ from app.models import (
     CaseMembership,
     CaseProfileFact,
     CaseProfileFactEvent,
-    DocumentCreditLedgerEntry,
     Document,
     ExportDeliveryEvent,
     SettlementLedgerEvent,
@@ -35,7 +35,6 @@ from app.models import (
     SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
-    user_settlement_attempt_limit,
 )
 from app.export_delivery import (
     ExportDeliveryError,
@@ -170,7 +169,7 @@ class OfferResponseHistoryItem(BaseModel):
     selection_id: UUID
     scenario_id: str
     attempt_ordinal: int
-    attempt_limit: int
+    attempt_limit: int | None
     frozen: bool
     finalized: bool = False
     outcome: Literal["counteroffer", "rejected", "accepted"] | None
@@ -422,12 +421,25 @@ def read_document_credit_balance(
     user: Annotated[User, Depends(require_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, int]:
-    _authorize_case(db, user, case_id, write=False)
-    balance = db.scalar(select(User.document_credit_balance).where(User.id == user.id))
-    if balance is None:
-        raise HTTPException(status_code=404, detail="Document credit account is unavailable.")
+    case = _authorize_case(db, user, case_id, write=False)
     response.headers["Cache-Control"] = "no-store"
-    return {"remaining": balance, "cost_per_version": 1}
+    return {
+        "remaining": case.attempt_credit_balance,
+        "free_first_finalization_available": not case.first_finalization_used,
+        "cost_per_finalization": 1,
+        "package_sizes": [5, 10],
+    }
+
+
+def _require_finalization_credit(case: Case) -> None:
+    if case.first_finalization_used and case.attempt_credit_balance < 1:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "This finalized proposal needs 1 attempt credit. Your edits are saved; "
+                "purchase a 5- or 10-credit package to continue."
+            ),
+        )
 
 
 def _commit_proposal_state(db: Session) -> None:
@@ -471,15 +483,6 @@ def _prepare_attempt_offer_export(
     )
     if attempt is None:
         raise HTTPException(status_code=409, detail="Negotiation attempt is unavailable.")
-    if (
-        attempt.proposal_issued_at is None
-        and attempt.attempt_ordinal > user_settlement_attempt_limit(user)
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail="This account has reached its negotiation attempt limit.",
-        )
-
     finalized = is_finalized(attempt)
     if finalize and not finalized:
         if not confirm_finalization:
@@ -488,6 +491,7 @@ def _prepare_attempt_offer_export(
                 detail="Confirm that finalizing locks this attempt and saves its final proposal snapshot.",
             )
         _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+        _require_finalization_credit(case)
 
     requested_json = requested_terms.model_dump(mode="json")
     draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False))
@@ -510,7 +514,14 @@ def _prepare_attempt_offer_export(
                 ),
             )
         if finalize and not finalized:
-            finalize_attempt(attempt, selection, existing_version, user_id=user.id)
+            entitlement_charge = consume_finalization_credit(db, case, user, attempt)
+            finalize_attempt(
+                attempt,
+                selection,
+                existing_version,
+                user_id=user.id,
+                entitlement_charge=entitlement_charge,
+            )
             _commit_proposal_state(db)
         return attempt, existing_version
     if finalized:
@@ -527,26 +538,8 @@ def _prepare_attempt_offer_export(
             raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
         result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
     else:
-        if not confirm_credit_use:
-            raise HTTPException(
-                status_code=428,
-                detail="Confirm that generating this proposal version uses 1 document credit.",
-            )
         _check_revisions(case, selection.profile_revision, selection.settlement_revision)
         result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
-        credit_account = db.scalar(
-            select(User).where(User.id == user.id).with_for_update()
-        )
-        if credit_account is None:
-            raise HTTPException(status_code=404, detail="Document credit account is unavailable.")
-        if credit_account.document_credit_balance < 1:
-            raise HTTPException(
-                status_code=402,
-                detail=(
-                    "This proposal version requires 1 document credit. Your preview and edits are saved; "
-                    "add credits or upgrade your subscription before generating."
-                ),
-            )
 
     docx = render_mediation_offer_docx(requested_terms, result)
     workbook = render_property_schedule_xlsx(requested_terms, result)
@@ -576,21 +569,9 @@ def _prepare_attempt_offer_export(
         scenario_result_json=result.model_dump(mode="json"),
         docx_content=docx,
         xlsx_content=workbook,
-        credit_cost=0 if legacy_version else 1,
+        credit_cost=0,
     )
     db.add(version)
-    if not legacy_version:
-        credit_account.document_credit_balance -= 1
-        db.add(
-            DocumentCreditLedgerEntry(
-                id=uuid4(),
-                user_id=user.id,
-                proposal_version_id=version.id,
-                idempotency_key=f"proposal:{attempt.id}:{version_ordinal}",
-                delta=-1,
-                balance_after=credit_account.document_credit_balance,
-            )
-        )
     attempt.proposal_terms_json = requested_json
     attempt.proposal_scenario_result_json = result.model_dump(mode="json")
     if attempt.proposal_issued_at is None:
@@ -598,7 +579,14 @@ def _prepare_attempt_offer_export(
     attempt.proposal_version_ordinal = version_ordinal
     attempt.proposal_draft_unlocked = False
     if finalize:
-        finalize_attempt(attempt, selection, version, user_id=user.id)
+        entitlement_charge = consume_finalization_credit(db, case, user, attempt)
+        finalize_attempt(
+            attempt,
+            selection,
+            version,
+            user_id=user.id,
+            entitlement_charge=entitlement_charge,
+        )
     _commit_proposal_state(db)
     return attempt, version
 
@@ -1161,7 +1149,7 @@ def list_settlement_offer_responses(
                 selection_id=selection.id,
                 scenario_id=selection.scenario_id,
                 attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
-                attempt_limit=user_settlement_attempt_limit(user),
+                attempt_limit=None,
                 frozen=attempt.frozen_at is not None if attempt is not None else (
                     offer_response.outcome is not None
                 ),

@@ -74,9 +74,9 @@ async def request_app(
 
 
 class MainWorkflowTests(unittest.TestCase):
-    def test_free_plan_active_case_limit_is_enforced_with_a_user_lock(self) -> None:
+    def test_party_case_ownership_is_enforced_with_a_user_lock(self) -> None:
         user_id = uuid4()
-        user = SimpleNamespace(subscription_plan="free", subscription_status="free")
+        user = SimpleNamespace()
         db = Mock()
         db.get.return_value = user
         db.scalar.return_value = 1
@@ -93,8 +93,6 @@ class MainWorkflowTests(unittest.TestCase):
         user_id = uuid4()
         db = Mock()
         db.get.return_value = SimpleNamespace(
-            subscription_plan="free",
-            subscription_status="free",
         )
         db.scalar.return_value = 0
         request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
@@ -286,8 +284,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('name="email" type="text" autocomplete="username"', page)
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
-        self.assertIn('id="demo1-entry" href="/demo/1/dashboard">Demo 1 Free</a>', page)
-        self.assertIn('id="demo2-entry" href="/demo/2/dashboard">Demo 2 Essential</a>', page)
+        self.assertIn('id="demo1-entry" href="/demo/1/dashboard">Demo 1 — New case</a>', page)
+        self.assertIn('id="demo2-entry" href="/demo/2/dashboard">Demo 2 — Existing case</a>', page)
         self.assertEqual(page.count('class="nav-cta demo-entry"'), 2)
         self.assertNotIn('id="demo-choices"', page)
         self.assertNotIn('class="demo-quick-link"', page)
@@ -357,7 +355,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn('id="demo-landing-banner"', page)
         self.assertNotIn('id="dashboard-demo-banner"', page)
         self.assertNotIn('id="dashboard-demo-signin"', page)
-        self.assertIn('const demoFreeDashboardMode = window.location.pathname === "/demo/1/dashboard";', page)
+        self.assertIn('const demoNewCaseDashboardMode = window.location.pathname === "/demo/1/dashboard";', page)
         self.assertIn('"/demo/2/dashboard"', page)
         self.assertIn('"/demo/dashboard"', page)
         self.assertNotIn("activeCaseLimit", page.split("} else if (dashboardDemoMode) {", 1)[1])
@@ -372,8 +370,8 @@ class MainWorkflowTests(unittest.TestCase):
         demo_dashboard = responses[0][1].decode().rsplit(
             "} else if (dashboardDemoMode) {", 1
         )[1].split("} else if (demoMode)", 1)[0]
-        self.assertIn("const demoCases = demoFreeDashboardMode ? [] : [{", demo_dashboard)
-        self.assertIn("activeCaseCount: demoFreeDashboardMode ? 0 : 1", demo_dashboard)
+        self.assertIn("const demoCases = demoNewCaseDashboardMode ? [] : [{", demo_dashboard)
+        self.assertIn("activeCaseCount: demoNewCaseDashboardMode ? 0 : 1", demo_dashboard)
         self.assertNotIn("demoCaseCompleted", demo_dashboard)
         self.assertNotIn("casework-demo-case-completed", page)
         self.assertNotIn('id="demo-completed-case"', page)
@@ -392,7 +390,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('datetime="2025-08-14"', inactive_cases)
         self.assertIn('datetime="2025-04-03"', inactive_cases)
         self.assertIn('datetime="2024-12-19"', inactive_cases)
-        self.assertIn("demoInactiveCases.hidden = demoFreeDashboardMode;", essential_dashboard)
+        self.assertIn("demoInactiveCases.hidden = demoNewCaseDashboardMode;", essential_dashboard)
 
     def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
         status, body = asyncio.run(request_app("/"))
@@ -445,16 +443,15 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('name="settlement-demo-response-outcome"', table_section)
         self.assertIn('id="settlement-demo-add-counteroffer"', table_section)
         self.assertIn('id="settlement-demo-response-next"', table_section)
-        self.assertIn("Free plan — First Attempt of 1", table_section)
-        self.assertIn("Free plan (1 attempt per case)", page)
-        self.assertIn("This demo represents the Free plan: one attempt per case.", page)
+        self.assertIn("First sample attempt", table_section)
+        self.assertIn("This sample ends after one attempt.", page)
         self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached", page)
         self.assertIn(
             'id="settlement-demo-add-counteroffer" type="button" disabled hidden',
             table_section,
         )
         self.assertIn(
-            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            "This sample does not include a second attempt.",
             table_section,
         )
         self.assertNotIn("Congratulations", table_section)
@@ -462,7 +459,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('window.location.assign("/demo/settlement-completion")', page)
         self.assertIn("fictional-final-cr2a-agreement.docx", table_section)
         self.assertIn(
-            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            "This sample does not include a second attempt.",
             page,
         )
         self.assertNotIn('type="file"', table_section)
@@ -1018,7 +1015,7 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn('data-case-mode="upload"', page)
             self.assertIn('data-case-mode="wizard"', page)
             self.assertIn("Start a new case", page)
-            self.assertIn("active_case_limit", page)
+            self.assertNotIn("active_case_limit", page)
             self.assertIn("This preview does not accept or save case details or documents.", page)
         demo_page = responses[2][1].decode()
         self.assertIn('const demoMode = window.location.pathname === "/demo";', demo_page)
