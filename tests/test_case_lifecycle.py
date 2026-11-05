@@ -11,7 +11,6 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.case_limits import require_active_case_slot
 from app.case_lifecycle import (
     CaseCloseRequest,
     close_case,
@@ -226,18 +225,20 @@ class CloseAndReopenTests(LifecycleFixture):
             reopen_case(self.case.id, self.user, self.db)
         self.assertEqual(caught.exception.status_code, 409)
 
-    def test_closed_cases_do_not_use_active_slots_and_reopen_respects_limit(self) -> None:
+    def test_reopen_is_not_gated_by_subscription_plan_or_other_cases(self) -> None:
         close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
-        require_active_case_slot(self.db, self.user.id)
         second = Case(status="draft")
         self.db.add(second)
         self.db.flush()
         self.db.add(CaseMembership(case_id=second.id, user_id=self.user.id, role="owner"))
         self.db.commit()
-        with self.assertRaises(HTTPException) as caught:
+        for plan in ("free", "essential", "plus", "pro"):
+            self.user.subscription_plan = plan
+            self.db.commit()
             reopen_case(self.case.id, self.user, self.db)
-        self.assertEqual(caught.exception.status_code, 409)
-        self.assertIsNotNone(self.db.get(Case, self.case.id).closed_at)
+            self.assertIsNone(self.db.get(Case, self.case.id).closed_at)
+            self.assertEqual(self.db.get(Case, self.case.id).status, "settlement")
+            close_case(self.case.id, CaseCloseRequest(reason="closed"), self.user, self.db)
 
     def test_closed_case_listing_is_owner_scoped(self) -> None:
         close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
