@@ -171,15 +171,16 @@ the deployment has been reviewed. Do not use the development defaults or
 handle real case information before production secret management, operational
 email delivery, retention, and account-recovery policies are established.
 
-Subscription billing is disabled in demo mode. For a reviewed production
-deployment, configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the
-monthly recurring Price IDs in `STRIPE_PRICE_ID_ESSENTIAL`,
-`STRIPE_PRICE_ID_PLUS`, and `STRIPE_PRICE_ID_PRO`. Register
-`/api/billing/webhook` in Stripe for checkout completion, subscription
-created/updated/deleted, and paid-invoice events. Paid entitlements are applied
-only after webhook signature verification; a browser redirect alone never
-upgrades an account. See [Spec 30](specs/30-subscription-billing/spec-30-subscription-billing.md)
-for the provisional plan limits and credit policy.
+Attempt-credit checkout is disabled in demo mode. For a reviewed production
+deployment, configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`STRIPE_PRICE_ID_ATTEMPT_CREDITS_5`, and
+`STRIPE_PRICE_ID_ATTEMPT_CREDITS_10` with active one-time Stripe Prices. Prices
+are read from those configured Stripe Price IDs; this application does not
+set package prices. Register `/api/billing/webhook` in Stripe for completed
+one-time checkout events. Credits are granted only after webhook signature
+verification and idempotent payment processing; a browser redirect alone
+never grants credits. See [Spec 36](specs/36-attempt-credit-packages/spec-36-attempt-credit-packages.md)
+for the free first successful finalization per case and subsequent credit policy.
 
 Case-material storage is separately gated by `CASE_MATERIALS_ENABLED` and
 requires authenticated case-data access. Production case-data access requires

@@ -51,8 +51,6 @@ class DashboardStatusTests(unittest.TestCase):
                     "has_cases": True,
                     "case_count": 1,
                     "active_case_count": 1,
-                    "active_case_limit": 1,
-                    "plan_name": "Free",
                     "account_type": "party",
                     "cases": [{
                         "id": str(case_id),
@@ -74,9 +72,7 @@ class DashboardStatusTests(unittest.TestCase):
         db = Mock()
         db.execute.return_value.all.return_value = []
         app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(
-            id=uuid4(),
-            subscription_plan="plus",
-            subscription_status="active",
+            id=uuid4(), account_type="party"
         )
 
         def override_db():
@@ -92,8 +88,6 @@ class DashboardStatusTests(unittest.TestCase):
                 "has_cases": False,
                 "case_count": 0,
                 "active_case_count": 0,
-                "active_case_limit": 10,
-                "plan_name": "Plus",
                 "account_type": "party",
                 "cases": [],
             },

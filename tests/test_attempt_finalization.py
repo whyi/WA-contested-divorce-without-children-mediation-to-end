@@ -76,10 +76,16 @@ class FinalDownloadTests(unittest.TestCase):
             offer_to="Party B",
             terms=["Each party retains the property listed in their column."],
         )
-        self.user = SimpleNamespace(id=uuid4(), settlement_attempt_limit=10, document_credit_balance=1)
+        self.user = SimpleNamespace(id=uuid4())
         self.case_id = uuid4()
         self.selection_id = uuid4()
-        self.case = SimpleNamespace(profile_revision=3, settlement_revision=5)
+        self.case = SimpleNamespace(
+            id=self.case_id,
+            profile_revision=3,
+            settlement_revision=5,
+            first_finalization_used=False,
+            attempt_credit_balance=1,
+        )
         self.selection = SimpleNamespace(
             id=self.selection_id,
             case_id=self.case_id,
@@ -150,7 +156,8 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 428)
         self.render_docx.assert_not_called()
         self.assertIsNone(self.attempt.finalized_at)
-        self.assertEqual(self.user.document_credit_balance, 1)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
+        self.assertFalse(self.case.first_finalization_used)
         self.db.commit.assert_not_called()
 
     def test_confirmation_without_finalize_is_rejected_by_the_schema(self) -> None:
@@ -168,15 +175,16 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertIsNone(self.attempt.finalized_at)
         self.assertIsNone(self.attempt.finalized_snapshot_json)
 
-    def test_successful_final_download_snapshots_and_charges_once(self) -> None:
+    def test_successful_first_final_download_is_free_and_snapshots_once(self) -> None:
         response = self._final()
         self.assertEqual(response.body, b"docx")
         self.assertIsNotNone(self.attempt.finalized_at)
         self.assertEqual(self.attempt.finalized_version_ordinal, 1)
         self.assertEqual(self.attempt.finalized_by_user_id_snapshot, self.user.id)
         self.assertEqual(self.attempt.revision, 5)
-        self.assertEqual(self.user.document_credit_balance, 0)
-        self.assertEqual(len(self._added(DocumentCreditLedgerEntry)), 1)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
+        self.assertTrue(self.case.first_finalization_used)
+        self.assertEqual(len(self._added(DocumentCreditLedgerEntry)), 0)
         self.assertEqual(len(self._added(SettlementProposalVersion)), 1)
         self.db.commit.assert_called_once()
         snapshot = self.attempt.finalized_snapshot_json
@@ -187,7 +195,8 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertEqual(snapshot["proposal_version"]["docx_sha256"], hashlib.sha256(b"docx").hexdigest())
         self.assertEqual(snapshot["proposal_version"]["xlsx_sha256"], hashlib.sha256(b"xlsx").hexdigest())
         self.assertEqual(snapshot["proposal_version"]["ordinal"], 1)
-        self.assertEqual(snapshot["entitlement_charge"]["credit_cost"], 1)
+        self.assertEqual(snapshot["entitlement_charge"]["policy"], "free_first_case_finalization")
+        self.assertEqual(snapshot["entitlement_charge"]["credit_cost"], 0)
         self.assertIs(snapshot["externally_sent"], False)
         self.assertEqual(snapshot["finalized_by_user_id_snapshot"], str(self.user.id))
         self.assertIsNone(self.attempt.sent_confirmed_at)
@@ -198,7 +207,7 @@ class FinalDownloadTests(unittest.TestCase):
         self.attempt.editable_state_json["offer_to"] = "tampered"
         self.assertEqual(self.attempt.finalized_snapshot_json["negotiation"]["offer_to"], "Party B")
 
-    def test_finalizing_an_already_paid_version_does_not_charge_again(self) -> None:
+    def test_legacy_generated_version_does_not_exempt_later_finalization_credit(self) -> None:
         create_settlement_offer(
             self.case_id,
             self.selection_id,
@@ -207,18 +216,23 @@ class FinalDownloadTests(unittest.TestCase):
             self.db,
         )
         version = self._added(SettlementProposalVersion)[0]
-        self.assertEqual(self.user.document_credit_balance, 0)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
+        self.assertEqual(version.credit_cost, 0)
+        self.case.first_finalization_used = True
         self.db.reset_mock()
         self.db.scalar.side_effect = [self.membership, self.case, self.selection, self.attempt, version]
         self.render_docx.reset_mock()
         response = self._final(route=create_settlement_property_schedule, confirm_credit_use=False)
         self.assertEqual(response.body, b"xlsx")
         self.assertIsNotNone(self.attempt.finalized_at)
-        self.assertEqual(self.user.document_credit_balance, 0)
-        self.assertEqual(self._added(DocumentCreditLedgerEntry), [])
+        self.assertEqual(self.case.attempt_credit_balance, 0)
+        self.assertEqual(len(self._added(DocumentCreditLedgerEntry)), 1)
         self.assertEqual(self._added(SettlementProposalVersion), [])
         self.render_docx.assert_not_called()
-        self.assertEqual(self.attempt.finalized_snapshot_json["entitlement_charge"]["credit_cost"], 1)
+        self.assertEqual(
+            self.attempt.finalized_snapshot_json["entitlement_charge"]["policy"],
+            "attempt_credit",
+        )
 
     def test_repeated_finalization_is_idempotent_and_free(self) -> None:
         self._final()
@@ -234,7 +248,7 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertIs(self.attempt.finalized_snapshot_json, snapshot)
         self.assertEqual(self.attempt.finalized_at, finalized_at)
         self.assertEqual(self.attempt.revision, revision)
-        self.assertEqual(self.user.document_credit_balance, 0)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
         self.db.add.assert_not_called()
         self.db.commit.assert_not_called()
         self.render_docx.assert_not_called()
@@ -247,7 +261,7 @@ class FinalDownloadTests(unittest.TestCase):
             self.case_id, self.selection_id, OfferCreate(terms=self.terms), self.user, self.db
         )
         self.assertEqual(response.body, b"docx")
-        self.assertEqual(self.user.document_credit_balance, 0)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
 
     def test_finalized_attempt_rejects_generation_with_different_terms(self) -> None:
         self._final()
@@ -279,7 +293,7 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertIsNone(self.attempt.finalized_snapshot_json)
         self.assertIsNone(self.attempt.proposal_issued_at)
         self.assertEqual(self.attempt.revision, 4)
-        self.assertEqual(self.user.document_credit_balance, 1)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
         self.db.add.assert_not_called()
         self.db.commit.assert_not_called()
 
@@ -292,12 +306,15 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertEqual(self.db.commit.call_count, 1)
 
     def test_insufficient_balance_does_not_finalize(self) -> None:
-        self.user.document_credit_balance = 0
+        self.case.first_finalization_used = True
+        self.case.attempt_credit_balance = 0
         with self.assertRaises(HTTPException) as raised:
             self._final()
         self.assertEqual(raised.exception.status_code, 402)
         self.assertIsNone(self.attempt.finalized_at)
         self.render_docx.assert_not_called()
+        self.assertTrue(self.case.first_finalization_used)
+        self.assertEqual(self.case.attempt_credit_balance, 0)
 
     def test_stale_case_revisions_do_not_finalize_an_existing_version(self) -> None:
         create_settlement_offer(
@@ -453,10 +470,12 @@ class FinalizationReadModelTests(unittest.TestCase):
         )
         db = Mock()
         db.scalar.side_effect = [attempt, None]
-        result = _read_response(db, selection, None, 5)
+        result = _read_response(db, selection, None)
         self.assertTrue(result.finalized)
         self.assertEqual(result.finalized_at, finalized_at)
         self.assertEqual(result.finalized_version_ordinal, 2)
+        self.assertIsNone(result.attempt_limit)
+        self.assertIsNone(result.attempts_remaining)
         self.assertFalse(result.sent_confirmed)
         self.assertFalse(result.frozen)
 

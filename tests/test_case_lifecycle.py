@@ -69,7 +69,6 @@ class LifecycleFixture(unittest.TestCase):
         self.db = Session(engine)
         self.storage = FakeStorage()
         self.user = User(email="owner@example.com", password_hash="secret-hash", status="active")
-        self.user.document_credit_balance = 3
         self.other = User(email="other@example.com", status="active")
         self.viewer = User(email="viewer@example.com", status="active")
         self.db.add_all([self.user, self.other, self.viewer])
@@ -77,6 +76,7 @@ class LifecycleFixture(unittest.TestCase):
         self.case = Case(
             status="settlement",
             metadata_json={"case_title": "Mine", "initial_offer": {"amount": 5}},
+            attempt_credit_balance=3,
         )
         self.db.add(self.case)
         self.db.flush()
@@ -145,7 +145,9 @@ class LifecycleFixture(unittest.TestCase):
         self.db.add(
             DocumentCreditLedgerEntry(
                 user_id=self.user.id,
+                case_id=self.case.id,
                 proposal_version_id=self.version.id,
+                source_type="legacy_document_credit",
                 idempotency_key="l1",
                 delta=-1,
                 balance_after=3,
@@ -168,10 +170,9 @@ class CloseAndReopenTests(LifecycleFixture):
         self.assertEqual(self.case.status, "settlement")
         reopen_case(self.case.id, self.user, self.db)
         self.db.refresh(self.case)
-        self.db.refresh(self.user)
         self.assertIsNone(self.case.closed_at)
         self.assertEqual(self.case.status, "settlement")
-        self.assertEqual(self.user.document_credit_balance, 3)
+        self.assertEqual(self.case.attempt_credit_balance, 3)
         self.assertEqual(self.db.query(Case).count(), 1)
         self.assertEqual(self.db.query(SettlementNegotiationAttempt).count(), 1)
         self.assertEqual(self.db.query(SettlementProposalVersion).count(), 1)
@@ -225,20 +226,17 @@ class CloseAndReopenTests(LifecycleFixture):
             reopen_case(self.case.id, self.user, self.db)
         self.assertEqual(caught.exception.status_code, 409)
 
-    def test_reopen_is_not_gated_by_subscription_plan_or_other_cases(self) -> None:
+    def test_reopen_preserves_case_credits_without_tier_entitlements(self) -> None:
         close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
         second = Case(status="draft")
         self.db.add(second)
         self.db.flush()
         self.db.add(CaseMembership(case_id=second.id, user_id=self.user.id, role="owner"))
         self.db.commit()
-        for plan in ("free", "essential", "plus", "pro"):
-            self.user.subscription_plan = plan
-            self.db.commit()
-            reopen_case(self.case.id, self.user, self.db)
-            self.assertIsNone(self.db.get(Case, self.case.id).closed_at)
-            self.assertEqual(self.db.get(Case, self.case.id).status, "settlement")
-            close_case(self.case.id, CaseCloseRequest(reason="closed"), self.user, self.db)
+        reopen_case(self.case.id, self.user, self.db)
+        self.assertIsNone(self.db.get(Case, self.case.id).closed_at)
+        self.assertEqual(self.db.get(Case, self.case.id).status, "settlement")
+        self.assertEqual(self.db.get(Case, self.case.id).attempt_credit_balance, 3)
 
     def test_closed_case_listing_is_owner_scoped(self) -> None:
         close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
@@ -312,10 +310,10 @@ class ExportTests(LifecycleFixture):
             export_case(self.case.id, self.other, self.db, self.storage)
         self.assertEqual(caught.exception.status_code, 404)
 
-    def test_viewer_member_can_export_without_other_users_credits(self) -> None:
+    def test_viewer_member_exports_case_balance_without_other_users_ledger(self) -> None:
         _, manifest = self.export(self.viewer)
         self.assertEqual(manifest["credits"]["ledger"], [])
-        self.assertEqual(manifest["credits"]["balance"], 0)
+        self.assertEqual(manifest["credits"]["balance"], 3)
 
     def test_readme_does_not_claim_legal_resolution(self) -> None:
         archive, _ = self.export()
