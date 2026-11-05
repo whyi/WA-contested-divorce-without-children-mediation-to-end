@@ -21,6 +21,7 @@ from app.analysis import router as analysis_router
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.billing_routes import router as billing_router
+from app.case_delegation import resolve_case_access, router as case_delegation_router
 from app.case_lifecycle import lifecycle_write_allowed, router as case_lifecycle_router
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
@@ -114,6 +115,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(billing_router)
 app.include_router(case_lifecycle_router)
+app.include_router(case_delegation_router)
 app.include_router(export_integrations_router)
 app.include_router(materials_router)
 app.include_router(existing_offer_router)
@@ -206,15 +208,9 @@ async def authenticate_and_authorize_case_data(
                 else:
                     case_id = None
                 if case_id is not None:
-                    membership = db.scalar(
-                        select(CaseMembership).where(
-                            CaseMembership.case_id == case_id,
-                            CaseMembership.user_id == user_id,
-                            CaseMembership.revoked_at.is_(None),
-                        )
-                    )
-                    if membership is None:
-                        return JSONResponse(status_code=404, content={"detail": "Case not found."})
+                    membership, denial = resolve_case_access(db, case_id, user_id, path)
+                    if denial is not None:
+                        return JSONResponse(status_code=denial[0], content={"detail": denial[1]})
                     if request.method != "GET" and membership.role == "viewer":
                         return JSONResponse(status_code=403, content={"detail": "Case is read-only."})
                     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:

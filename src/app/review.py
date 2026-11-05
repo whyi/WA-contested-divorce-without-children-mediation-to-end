@@ -187,6 +187,7 @@ def _authorize_case(
             CaseMembership.case_id == case_id,
             CaseMembership.user_id == user.id,
             CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
         )
     )
     if membership is None:

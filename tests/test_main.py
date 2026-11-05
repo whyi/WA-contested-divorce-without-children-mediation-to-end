@@ -951,7 +951,7 @@ class MainWorkflowTests(unittest.TestCase):
                     Document: document,
                 }.get(model)
                 membership = (
-                    SimpleNamespace(role=role)
+                    SimpleNamespace(role=role, suspended_at=None)
                     if role is not None
                     else None
                 )

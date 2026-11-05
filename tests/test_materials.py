@@ -211,7 +211,7 @@ class MaterialsImportTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 409)
-        self.assertIn("allows 1 active case", response.json()["detail"])
+        self.assertIn("can own one divorce case", response.json()["detail"])
         object_storage.put.assert_not_called()
         db.commit.assert_not_called()
 

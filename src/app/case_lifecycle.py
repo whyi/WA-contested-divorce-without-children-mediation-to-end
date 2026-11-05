@@ -107,7 +107,7 @@ def get_storage() -> ObjectStorage:
 def lifecycle_write_allowed(case: Case, path: str) -> bool:
     if case.status != "finalized" and case.closed_at is None:
         return True
-    return path.rstrip("/").endswith(("/reopen", "/close"))
+    return path.rstrip("/").endswith(("/reopen", "/close", "/delegation"))
 
 
 def close_case_record(db: Session, case: Case, user_id: UUID, reason: str) -> None:
@@ -129,6 +129,7 @@ def _membership(db: Session, case_id: UUID, user: User) -> CaseMembership:
             CaseMembership.case_id == case_id,
             CaseMembership.user_id == user.id,
             CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
         )
     )
     if membership is None:
@@ -138,7 +139,7 @@ def _membership(db: Session, case_id: UUID, user: User) -> CaseMembership:
 
 def _owned_case(db: Session, case_id: UUID, user: User) -> Case:
     membership = _membership(db, case_id, user)
-    if membership.role != "owner":
+    if membership.role not in {"owner", "delegate"}:
         raise HTTPException(status_code=403, detail="Only the case owner can do this.")
     case = db.get(Case, case_id, with_for_update=True)
     if case is None:
@@ -212,8 +213,9 @@ def list_closed_cases(
         .join(CaseMembership, CaseMembership.case_id == Case.id)
         .where(
             CaseMembership.user_id == user.id,
-            CaseMembership.role == "owner",
+            CaseMembership.role.in_(("owner", "delegate")),
             CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
             Case.closed_at.is_not(None),
         )
         .order_by(Case.closed_at.desc(), Case.id)
