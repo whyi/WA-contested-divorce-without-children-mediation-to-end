@@ -35,6 +35,7 @@ from app.documents import (
     extract_document,
     render_template,
 )
+from app.extraction import retry_failed_extraction_job
 from app.existing_offer import (
     METADATA_KEY as EXISTING_OFFER_METADATA_KEY,
     ExistingOfferCreate,
@@ -679,6 +680,55 @@ def document_extraction_status(
         error_code=job.error_code if job is not None else None,
         page_count=extraction.page_count if extraction is not None else None,
     )
+
+
+@app.post(
+    "/cases/{case_id}/documents/{document_id}/extraction-jobs/{job_id}/retry",
+    response_model=DocumentExtractionStatus,
+)
+def retry_case_document_extraction(
+    case_id: UUID,
+    document_id: UUID,
+    job_id: UUID,
+    response: Response,
+    db: DbSession,
+) -> DocumentExtractionStatus:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        document = db.get(Document, document_id)
+        if document is None or document.case_id != case_id:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        job = db.get(DocumentExtractionJob, job_id)
+        if (
+            job is None
+            or job.document_id != document.id
+            or job.source_sha256 != document.sha256
+        ):
+            raise HTTPException(status_code=404, detail="Extraction job not found.")
+        if job.status != "failed":
+            raise HTTPException(
+                status_code=409,
+                detail="Only failed extraction jobs can be retried.",
+            )
+        retried = retry_failed_extraction_job(db, job.id, job.request_id)
+        if retried is None:
+            raise HTTPException(status_code=404, detail="Extraction job not found.")
+        return DocumentExtractionStatus(
+            document_id=document.id,
+            job_id=retried.id,
+            status=retried.status,
+            error_code=retried.error_code,
+            page_count=None,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Document extraction retry could not be persisted.")
+        raise HTTPException(
+            status_code=503,
+            detail="Document extraction retry is unavailable. Please try again.",
+        ) from error
 
 
 @app.post(

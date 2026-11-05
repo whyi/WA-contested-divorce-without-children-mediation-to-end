@@ -2782,6 +2782,7 @@
         const existingOfferTermsList = document.getElementById("existing-offer-terms-list");
         const existingOfferTermsSave = document.getElementById("existing-offer-terms-save");
         let existingOfferState = null;
+        let existingOfferRecoveryPending = false;
         let offerGateMode = null;
         let existingOfferUpload = null;
         const existingOfferFile = document.getElementById("existing-offer-file");
@@ -3161,10 +3162,94 @@
         const wizardDatabaseName = "casework-wizard-intake";
         const wizardDatabaseVersion = 1;
         const preparationCaseId = new URLSearchParams(window.location.search).get("case_id");
+        const caseCreateProgressStorageKey = "case-create-progress";
+        const existingOfferRecoveryKey = preparationCaseId
+          ? `case-existing-offer-recovery:${preparationCaseId}`
+          : null;
         const wizardDraftKey = preparationCaseId ? `case:${preparationCaseId}` : "active";
         const materialsBatchStorageKey = preparationCaseId
           ? `materials-import-batch:${preparationCaseId}`
           : "materials-import-batch";
+        function parseCaseCreateProgress() {
+          try {
+            const value = JSON.parse(sessionStorage.getItem(caseCreateProgressStorageKey) || "null");
+            if (
+              value &&
+              typeof value === "object" &&
+              typeof value.batchId === "string" &&
+              typeof value.itemId === "string"
+            ) return value;
+          } catch {
+            try {
+              sessionStorage.removeItem(caseCreateProgressStorageKey);
+            } catch {
+              return null;
+            }
+          }
+          return null;
+        }
+
+        function persistCaseCreateProgress() {
+          try {
+            if (caseCreateProgress) {
+              sessionStorage.setItem(
+                caseCreateProgressStorageKey,
+                JSON.stringify(caseCreateProgress),
+              );
+            } else {
+              sessionStorage.removeItem(caseCreateProgressStorageKey);
+            }
+            return true;
+          } catch {
+            return false;
+          }
+        }
+
+        function fileIdentity(file) {
+          return file
+            ? { name: file.name, size: file.size, lastModified: file.lastModified }
+            : null;
+        }
+
+        function sameFileIdentity(left, right) {
+          return Boolean(
+            left &&
+            right &&
+            left.name === right.name &&
+            left.size === right.size &&
+            left.lastModified === right.lastModified,
+          );
+        }
+
+        function persistExistingOfferRecovery(answer, notes) {
+          if (!existingOfferRecoveryKey) return false;
+          try {
+            sessionStorage.setItem(existingOfferRecoveryKey, JSON.stringify({
+              caseId: preparationCaseId,
+              answer,
+              notes,
+              upload: existingOfferUpload,
+            }));
+            return true;
+          } catch {
+            return false;
+          }
+        }
+
+        function clearExistingOfferRecovery() {
+          try {
+            if (existingOfferRecoveryKey) {
+              sessionStorage.removeItem(existingOfferRecoveryKey);
+            }
+            const progress = parseCaseCreateProgress();
+            if (progress?.caseId === preparationCaseId) {
+              sessionStorage.removeItem(caseCreateProgressStorageKey);
+            }
+          } catch {
+            return;
+          }
+        }
+
         const wizardDateKeys = ["cohabitation", "marriage", "separation", "petition"];
         let wizardDatabase = null;
         let wizardSaveTimer = null;
@@ -4232,9 +4317,21 @@
           });
           caseOfferNotes.value = "";
           caseOfferFile.value = "";
-          caseCreateProgress = null;
+          caseCreateProgress = parseCaseCreateProgress();
+          if (caseCreateProgress) {
+            caseTitleInput.value = caseCreateProgress.caseTitle || "";
+            caseCreateDialog.querySelectorAll('input[name="case-existing-offer"]').forEach((radio) => {
+              radio.checked = radio.value === caseCreateProgress.offerAnswer;
+            });
+            caseOfferNotes.value = caseCreateProgress.offerNotes || "";
+            caseOfferNotesWrap.hidden = caseCreateProgress.offerAnswer !== "yes";
+            if (caseCreateProgress.fileIdentity && !caseCreateProgress.documentId) {
+              caseCreateStatus.textContent =
+                "Your upload did not finish before reload. Reselect the same file to retry; your notes and retry identity are restored.";
+            }
+          }
           caseOfferNotes.removeAttribute("aria-invalid");
-          caseOfferNotesWrap.hidden = true;
+          if (!caseCreateProgress) caseOfferNotesWrap.hidden = true;
           caseCreateDialog.showModal();
           caseTitleInput.focus();
         }
@@ -4291,7 +4388,33 @@
               itemId: crypto.randomUUID(),
               documentId: null,
               saved: false,
+              fileIdentity: fileIdentity(offerFile),
             };
+            if (
+              offerFile &&
+              progress.fileIdentity &&
+              !sameFileIdentity(progress.fileIdentity, fileIdentity(offerFile))
+            ) {
+              progress.batchId = crypto.randomUUID();
+              progress.itemId = crypto.randomUUID();
+              progress.documentId = null;
+              progress.saved = false;
+              progress.fileIdentity = fileIdentity(offerFile);
+            }
+            progress.mode = mode;
+            progress.caseTitle = caseTitleInput.value.trim();
+            progress.offerAnswer = offerAnswer;
+            progress.offerNotes = offerNotes;
+            if (!persistCaseCreateProgress()) {
+              throw new Error("Secure retry tracking is unavailable. Check your browser settings before creating or uploading.");
+            }
+            if (
+              progress.fileIdentity &&
+              !progress.documentId &&
+              !offerFile
+            ) {
+              throw new Error("Your notes are restored. Reselect the same file to retry the pending upload.");
+            }
             if (!progress.caseId) {
               const result = await settlementApi("/cases", {
                 method: "POST",
@@ -4308,6 +4431,9 @@
               }
               progress.caseId = result.id;
               progress.saved = !(offerAnswer === "yes" && offerFile);
+              if (!persistCaseCreateProgress()) {
+                throw new Error("Your case was created, but retry tracking could not be saved. Keep this page open and retry the upload.");
+              }
             }
             if (offerAnswer === "yes" && offerFile && !progress.saved) {
               if (!progress.documentId) {
@@ -4326,6 +4452,9 @@
                 }
                 if (!response.ok) throw new Error(uploaded.detail || "The offer document could not be uploaded.");
                 progress.documentId = uploaded.document.id;
+                if (!persistCaseCreateProgress()) {
+                  throw new Error("The file may be stored, but retry tracking could not be saved. Keep this page open and retry before leaving.");
+                }
               }
               caseCreateStatus.textContent = "Saving offer details…";
               await settlementApi(`/cases/${progress.caseId}/existing-offer`, {
@@ -4337,15 +4466,25 @@
                 }),
               });
               progress.saved = true;
+              persistCaseCreateProgress();
             }
+            try {
+              sessionStorage.removeItem(caseCreateProgressStorageKey);
+            } catch {
+              // The server already saved the offer; stale recovery state is safe to reconcile.
+            }
+            caseCreateProgress = null;
             window.location.assign(
               `/onboarding/${mode}?case_id=${encodeURIComponent(progress.caseId)}`,
             );
           } catch (error) {
+            persistCaseCreateProgress();
             caseCreateStatus.textContent = (error instanceof Error
               ? error.message
               : "The case could not be created. Please try again.")
-              + (caseCreateProgress?.caseId ? " Your case and entries are kept; select an option to retry." : "");
+              + (caseCreateProgress?.caseId
+                ? " Your case and notes are kept; reselect the same file if the upload did not finish."
+                : "");
             caseCreateStatus.dataset.kind = "error";
             button.disabled = false;
             document.getElementById("case-create-cancel").disabled = false;
@@ -6709,7 +6848,10 @@
 
         // Onboarding stays closed until the offer answer (with a source when "yes") is saved on the server.
         function applyExistingOfferGate() {
-          const open = existingOfferState !== null && existingOfferState.exists !== null;
+          const open =
+            existingOfferState !== null &&
+            existingOfferState.exists !== null &&
+            !existingOfferRecoveryPending;
           if (offerGateMode === "upload") materialsWorkflow.hidden = !open;
           if (offerGateMode === "wizard") wizardDemoPage.hidden = !open;
         }
@@ -6762,13 +6904,110 @@
           applyExistingOfferGate();
         }
 
+        async function restoreExistingOfferRecovery() {
+          if (!existingOfferRecoveryKey) return null;
+          let recovery = null;
+          try {
+            recovery = JSON.parse(sessionStorage.getItem(existingOfferRecoveryKey) || "null");
+          } catch {
+            try {
+              sessionStorage.removeItem(existingOfferRecoveryKey);
+            } catch {
+              setExistingOfferStatus(
+                "Browser recovery storage is unavailable. Your saved case data is unchanged; check browser settings before retrying.",
+                "error",
+              );
+              return null;
+            }
+          }
+          if (!recovery) {
+            const progress = parseCaseCreateProgress();
+            if (progress?.caseId === preparationCaseId && !progress.saved) {
+              recovery = {
+                caseId: progress.caseId,
+                answer: progress.offerAnswer,
+                notes: progress.offerNotes || "",
+                upload: progress.fileIdentity
+                  ? {
+                    batchId: progress.batchId,
+                    itemId: progress.itemId,
+                    documentId: progress.documentId,
+                    fileIdentity: progress.fileIdentity,
+                  }
+                  : null,
+              };
+              try {
+                sessionStorage.setItem(existingOfferRecoveryKey, JSON.stringify(recovery));
+              } catch {
+                setExistingOfferStatus(
+                  "Recovery storage is unavailable. Your saved case data is unchanged; check browser storage before retrying.",
+                  "error",
+                );
+              }
+            }
+          }
+          if (
+            !recovery ||
+            recovery.caseId !== preparationCaseId ||
+            !["yes", "no"].includes(recovery.answer)
+          ) return null;
+          existingOfferUpload = recovery.upload || null;
+          if (existingOfferUpload?.batchId && existingOfferUpload?.itemId) {
+            if (!existingOfferUpload.documentId) {
+              try {
+                const response = await fetch(
+                  `/api/v1/materials/imports/${existingOfferUpload.batchId}`,
+                  { credentials: "same-origin", headers: { Accept: "application/json" } },
+                );
+                if (response.ok) {
+                  const batch = await response.json();
+                  const item = batch.items.find(
+                    (entry) => entry.item_id === existingOfferUpload.itemId,
+                  );
+                  if (item) existingOfferUpload.documentId = item.document.id;
+                }
+              } catch {
+                // The original batch/item keys remain available for the next retry.
+              }
+            }
+            recovery.upload = existingOfferUpload;
+            try {
+              sessionStorage.setItem(existingOfferRecoveryKey, JSON.stringify(recovery));
+            } catch {
+              setExistingOfferStatus(
+                "The pending upload could not be reconciled in browser storage. Keep this page open while retrying.",
+                "error",
+              );
+            }
+          }
+          existingOfferRecoveryPending = existingOfferState.exists === null;
+          existingOfferState.exists = recovery.answer === "yes";
+          existingOfferState.notes = recovery.notes || "";
+          if (existingOfferUpload?.documentId) {
+            existingOfferState.document_ids = [
+              ...new Set([...existingOfferState.document_ids, existingOfferUpload.documentId]),
+            ];
+          }
+          return {
+            message: existingOfferUpload?.documentId
+              ? "Your saved notes and uploaded file were recovered. Save to finish linking them to this offer."
+              : existingOfferUpload?.fileIdentity
+                ? "Your notes and retry identity were restored. Reselect the same file to retry; file bytes are not retained by the browser."
+                : "Your unsaved offer notes were restored. Save to retry.",
+          };
+        }
+
         async function loadExistingOffer() {
           setExistingOfferStatus("Loading offer details…");
           try {
             existingOfferState = await settlementApi(`/cases/${preparationCaseId}/existing-offer`);
+            existingOfferRecoveryPending = false;
+            existingOfferUpload = null;
+            const recovery = await restoreExistingOfferRecovery();
             renderExistingOffer();
             setExistingOfferStatus(
-              existingOfferState.exists === null ? "Answer the offer question to continue." : "",
+              recovery?.message ||
+                (existingOfferState.exists === null ? "Answer the offer question to continue." : ""),
             );
           } catch (error) {
             setExistingOfferStatus(
@@ -6801,10 +7040,30 @@
           setExistingOfferStatus("Saving offer details…");
           try {
             if (offerFile) {
+              const identity = fileIdentity(offerFile);
+              if (!existingOfferUpload || !sameFileIdentity(existingOfferUpload.fileIdentity, identity)) {
+                existingOfferUpload = {
+                  batchId: crypto.randomUUID(),
+                  itemId: crypto.randomUUID(),
+                  documentId: null,
+                  fileIdentity: identity,
+                };
+              }
+            }
+            if (!persistExistingOfferRecovery(answer, notes)) {
+              throw new Error("Secure retry tracking is unavailable. Check your browser settings before uploading or saving these entries.");
+            }
+            if (
+              existingOfferUpload?.fileIdentity &&
+              !existingOfferUpload.documentId &&
+              !offerFile
+            ) {
+              throw new Error("Your notes are restored. Reselect the same file to retry the pending upload.");
+            }
+            if (offerFile) {
               const body = new FormData();
               body.append("upload", offerFile, offerFile.name);
               body.append("case_id", preparationCaseId);
-              existingOfferUpload ||= { batchId: crypto.randomUUID(), itemId: crypto.randomUUID(), documentId: null };
               if (!existingOfferUpload.documentId) {
                 const response = await fetch(
                   `/api/v1/materials/imports/${existingOfferUpload.batchId}/files/${existingOfferUpload.itemId}`,
@@ -6817,6 +7076,9 @@
                 }
                 if (!response.ok) throw new Error(uploaded.detail || "The offer document could not be uploaded.");
                 existingOfferUpload.documentId = uploaded.document.id;
+                if (!persistExistingOfferRecovery(answer, notes)) {
+                  throw new Error("The file may be stored, but retry tracking could not be saved. Keep this page open while finishing the offer details.");
+                }
               }
               documentIds.push(existingOfferUpload.documentId);
             }
@@ -6825,9 +7087,11 @@
               body: JSON.stringify({
                 exists: answer === "yes",
                 notes: answer === "yes" ? notes || null : null,
-                document_ids: documentIds,
+                document_ids: [...new Set(documentIds)],
               }),
             });
+            clearExistingOfferRecovery();
+            existingOfferRecoveryPending = false;
             existingOfferUpload = null;
             existingOfferFile.value = "";
             renderExistingOffer();
@@ -8365,6 +8629,20 @@
             text.textContent = `${name} — ${details}`;
             label.append(checkbox, text);
             row.append(label);
+            if (
+              analysisDocument.extraction_status === "failed" &&
+              analysisDocument.extraction_job_id
+            ) {
+              const retry = document.createElement("button");
+              retry.className = "dashboard-retry";
+              retry.type = "button";
+              retry.textContent = "Retry extraction";
+              retry.addEventListener("click", () => retryDocumentExtraction(
+                analysisDocument.document_id,
+                analysisDocument.extraction_job_id,
+              ));
+              row.append(" ", retry);
+            }
             analysisDocumentList.append(row);
           }
           if (analysisDocumentsData.length === 0) {
@@ -8373,6 +8651,45 @@
             analysisDocumentList.append(row);
           }
           updateAnalysisActions();
+        }
+
+        async function retryDocumentExtraction(documentId, jobId) {
+          if (!analysisCaseId) return;
+          const caseId = analysisCaseId;
+          try {
+            const response = await fetch(
+              `/cases/${caseId}/documents/${documentId}/extraction-jobs/${jobId}/retry`,
+              {
+                method: "POST",
+                credentials: "same-origin",
+                headers: csrfHeaders(),
+              },
+            );
+            if (response.status === 401) {
+              showSignIn("Your session has expired. Please sign in again.");
+              return;
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Document extraction could not be retried.");
+            const source = analysisDocumentsData.find(
+              (document) => document.document_id === documentId,
+            );
+            if (source) source.extraction_status = result.status;
+            renderAnalysisDocuments();
+            setAnalysisStatus(
+              "Extraction retry queued. The original source remains stored and unchanged.",
+              "success",
+            );
+            const refreshOptions = loadAnalysisOptions;
+            window.setTimeout(() => {
+              if (analysisCaseId === caseId) void refreshOptions(caseId);
+            }, 2000);
+          } catch (error) {
+            setAnalysisStatus(
+              error instanceof Error ? error.message : "Document extraction could not be retried.",
+              "error",
+            );
+          }
         }
 
         function persistAnalysisRequest() {
