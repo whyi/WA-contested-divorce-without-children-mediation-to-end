@@ -46,6 +46,7 @@ class AnalysisDisclosure(BaseModel):
 
 class AnalysisDocumentOption(BaseModel):
     document_id: UUID
+    extraction_job_id: UUID | None
     extension: str
     extraction_status: Literal[
         "stored",
@@ -202,6 +203,9 @@ def case_analysis_options(
         options.append(
             AnalysisDocumentOption(
                 document_id=document.id,
+                extraction_job_id=(
+                    extraction_job.id if extraction_job is not None else None
+                ),
                 extension=document.extension,
                 extraction_status=extraction_status,
                 eligible=(
