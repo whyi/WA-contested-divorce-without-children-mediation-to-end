@@ -29,7 +29,6 @@ from app.models import (
     SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
-    user_settlement_attempt_limit,
 )
 from app.existing_offer import OfferOrigin, offer_origin
 from app.offer_documents import MediationOfferTerms
@@ -96,8 +95,8 @@ class OfferResponseRead(BaseModel):
     counteroffer_attachment_present: bool
     attempt_ordinal: int
     offer_origin: OfferOrigin
-    attempt_limit: int
-    attempts_remaining: int
+    attempt_limit: int | None
+    attempts_remaining: int | None
     frozen: bool
     finalized: bool
     finalized_at: datetime | None
@@ -369,7 +368,7 @@ def _read_response(
     db: Session,
     selection: SettlementScenarioSelection,
     response_record: SettlementOfferResponse | None,
-    attempt_limit: int,
+    attempt_limit: int | None = None,
 ) -> OfferResponseRead:
     attachments = []
     if response_record is not None:
@@ -430,9 +429,10 @@ def _read_response(
         attempt_ordinal=attempt_ordinal,
         offer_origin=offer_origin(attempt_ordinal, snapshot),
         attempt_limit=attempt_limit,
-        attempts_remaining=max(
-            0,
-            attempt_limit - (attempt.attempt_ordinal if attempt is not None else 1),
+        attempts_remaining=(
+            max(0, attempt_limit - (attempt.attempt_ordinal if attempt is not None else 1))
+            if attempt_limit is not None
+            else None
         ),
         frozen=attempt.frozen_at is not None if attempt is not None else bool(
             response_record and response_record.outcome is not None
@@ -587,7 +587,7 @@ def read_offer_response(
     _, selection = _authorized_selection(case_id, selection_id, user, db, write=False)
     response.headers["Cache-Control"] = "no-store"
     return _read_response(
-        db, selection, _response_record(db, selection), user_settlement_attempt_limit(user)
+        db, selection, _response_record(db, selection)
     )
 
 
@@ -609,7 +609,6 @@ def complete_accepted_case(
         db,
         selection,
         _response_record(db, selection),
-        user_settlement_attempt_limit(user),
     )
     if (
         current.outcome != "accepted"
@@ -723,14 +722,6 @@ def update_offer_attempt_state(
         raise HTTPException(status_code=404, detail="Negotiation attempt not found.")
     if attempt.frozen_at is not None:
         raise HTTPException(status_code=409, detail="This negotiation attempt is frozen and read-only.")
-    if (
-        attempt.proposal_issued_at is None
-        and attempt.attempt_ordinal > user_settlement_attempt_limit(user)
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail="This account has reached its negotiation attempt limit.",
-        )
     issued = attempt.proposal_issued_at is not None
     finalized = is_finalized(attempt)
     draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False)) and not finalized
@@ -966,7 +957,7 @@ def confirm_offer_sent(
     response_record = _response_record(db, selection)
     attempt = _attempt_for_selection(db, selection)
     current = _read_response(
-        db, selection, response_record, user_settlement_attempt_limit(user)
+        db, selection, response_record
     )
     if not current.sent_documents_complete:
         raise HTTPException(
@@ -1019,7 +1010,7 @@ def confirm_offer_sent(
         ) from error
     response.headers["Cache-Control"] = "no-store"
     return _read_response(
-        db, selection, response_record, user_settlement_attempt_limit(user)
+        db, selection, response_record
     )
 
 
@@ -1195,7 +1186,7 @@ async def upload_offer_response_attachment(
             logger.error("Could not remove a replaced offer-response file from storage.")
     response.headers["Cache-Control"] = "no-store"
     return _read_response(
-        db, selection, response_record, user_settlement_attempt_limit(user)
+        db, selection, response_record
     )
 
 
@@ -1212,7 +1203,7 @@ def update_offer_response(
     _lock_case(db, case_id)
     response_record = _response_record(db, selection)
     current = _read_response(
-        db, selection, response_record, user_settlement_attempt_limit(user)
+        db, selection, response_record
     )
     if not current.sent_documents_complete:
         raise HTTPException(status_code=409, detail="Attach the final sent DOCX and XLSX before choosing an outcome.")
@@ -1247,7 +1238,7 @@ def update_offer_response(
         raise HTTPException(status_code=503, detail="The response could not be saved.") from error
     response.headers["Cache-Control"] = "no-store"
     return _read_response(
-        db, selection, response_record, user_settlement_attempt_limit(user)
+        db, selection, response_record
     )
 
 
@@ -1264,7 +1255,7 @@ def continue_offer_response(
     selection = _selection(db, case_id, selection_id)
     response_record = _response_record(db, selection)
     current = _read_response(
-        db, selection, response_record, user_settlement_attempt_limit(user)
+        db, selection, response_record
     )
     if not current.sent_documents_complete:
         raise HTTPException(status_code=409, detail="Attach the final sent DOCX and XLSX before continuing.")
@@ -1281,11 +1272,6 @@ def continue_offer_response(
     if attempt is None or response_record is None or attempt.frozen_at is None:
         raise HTTPException(status_code=409, detail="The negotiation attempt is not frozen and cannot continue.")
     if current.outcome in {"counteroffer", "rejected"}:
-        if attempt.attempt_ordinal >= user_settlement_attempt_limit(user):
-            raise HTTPException(
-                status_code=409,
-                detail="No negotiation attempts remain on this account. Upgrade your plan to continue.",
-            )
         _require_current_attempt_revisions(case, attempt)
         next_attempt = db.scalar(
             select(SettlementNegotiationAttempt).where(

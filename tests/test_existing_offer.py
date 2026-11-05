@@ -61,7 +61,6 @@ class ExistingOfferValidationTests(unittest.TestCase):
     def test_create_case_persists_validated_intake(self) -> None:
         db = Mock()
         db.get.return_value = SimpleNamespace(
-            subscription_plan="free", subscription_status="free"
         )
         db.scalar.return_value = 0
         request = SimpleNamespace(state=SimpleNamespace(user_id=uuid4()))
@@ -82,7 +81,6 @@ class ExistingOfferValidationTests(unittest.TestCase):
     def test_create_case_without_answer_stores_no_offer_record(self) -> None:
         db = Mock()
         db.get.return_value = SimpleNamespace(
-            subscription_plan="free", subscription_status="free"
         )
         db.scalar.return_value = 0
         request = SimpleNamespace(state=SimpleNamespace(user_id=uuid4()))
