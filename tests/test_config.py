@@ -298,6 +298,13 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn("ai_provider_review_evidence_missing", errors)
         self.assertIn("qualified_counsel_review_evidence_missing", errors)
 
+    def test_deletion_ledger_must_use_a_dedicated_bucket(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must differ"):
+            Settings(
+                s3_bucket="shared-bucket",
+                deletion_ledger_bucket="shared-bucket",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

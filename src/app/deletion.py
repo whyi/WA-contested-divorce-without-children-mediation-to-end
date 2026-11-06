@@ -142,7 +142,34 @@ def _persist_deletion_barrier(db: Session, action: str) -> None:
         logger.error("Could not establish the permanent-deletion barrier (%s).", type(error).__name__)
         raise HTTPException(
             status_code=503,
-            detail=f"{action} could not be started. Please retry.",
+            detail=(
+                f"{action} could not be confirmed in the database. The deletion intent is "
+                "durably recorded and will be completed on retry or restore."
+            ),
+        ) from error
+
+
+def _persist_deletion_ledger(
+    db: Session,
+    tombstones: list[DeletionTombstone],
+    object_storage: ObjectStorage,
+    action: str,
+) -> None:
+    try:
+        record = getattr(object_storage, "record_deletion_tombstone")
+        for tombstone in tombstones:
+            record(
+                tombstone.scope_type,
+                str(tombstone.scope_id),
+                str(tombstone.initiated_by),
+                list(tombstone.object_keys),
+            )
+    except Exception as error:
+        db.rollback()
+        logger.error("Permanent %s ledger write failed (%s).", action, type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail=f"{action.capitalize()} could not be made durable. Please retry.",
         ) from error
 
 
@@ -203,6 +230,12 @@ def delete_document_scope(
             select(MaterialImportItem).where(MaterialImportItem.document_id == document.id)
         )
     ]
+    _persist_deletion_ledger(
+        db,
+        [tombstone, *import_item_tombstones],
+        object_storage,
+        "material deletion",
+    )
     _persist_deletion_barrier(db, "Material deletion")
     if tombstone.status == "completed":
         return True
@@ -262,6 +295,7 @@ def delete_case_scope(
         user.id,
         _case_object_keys(db, case_id),
     )
+    _persist_deletion_ledger(db, [tombstone], object_storage, "case deletion")
     _persist_deletion_barrier(db, "Case deletion")
     if tombstone.status == "completed":
         return True
@@ -352,6 +386,12 @@ def delete_account_scope(db: Session, user: User, object_storage: ObjectStorage)
         )
         for case in owned_cases
     ]
+    _persist_deletion_ledger(
+        db,
+        [account_tombstone, *case_tombstones],
+        object_storage,
+        "account deletion",
+    )
     locked_user.status = "disabled"
     _persist_deletion_barrier(db, "Account deletion")
 
