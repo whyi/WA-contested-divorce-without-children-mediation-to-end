@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -47,7 +48,11 @@ class MaterialsImportTests(unittest.TestCase):
             response.json(),
             {
                 "max_upload_bytes": 12345,
+                "max_attachments": 5,
+                "attachment_count": 0,
                 "supported_extensions": ["pdf", "docx"],
+                "max_pdf_pages": 200,
+                "ocr_supported": False,
                 "import_enabled": False,
                 "providers": {"google_drive": False, "dropbox": False},
             },
@@ -102,11 +107,7 @@ class MaterialsImportTests(unittest.TestCase):
             demo_mode_enabled=False,
         )
         db = Mock()
-        user = SimpleNamespace(
-            id=user_id,
-            subscription_plan="free",
-            subscription_status="free",
-        )
+        user = SimpleNamespace(id=user_id)
         db.get.side_effect = lambda model, key, **kwargs: user if model is User else None
         db.scalar.return_value = 0
         client, _ = self._client(user_id=user_id, db=db)
@@ -146,11 +147,7 @@ class MaterialsImportTests(unittest.TestCase):
     def test_import_uses_the_dashboard_case_instead_of_creating_another(self) -> None:
         user_id = uuid4()
         case_id = uuid4()
-        user = SimpleNamespace(
-            id=user_id,
-            subscription_plan="free",
-            subscription_status="free",
-        )
+        user = SimpleNamespace(id=user_id)
         case = Case(id=case_id, status="draft")
         db = Mock()
         db.get.side_effect = lambda model, key, **kwargs: (
@@ -169,6 +166,7 @@ class MaterialsImportTests(unittest.TestCase):
         with (
             patch("app.materials.get_settings", return_value=settings),
             patch("app.materials.storage") as object_storage,
+            patch("app.materials.enforce_attachment_quota") as quota,
         ):
             response = client.post(
                 f"/api/v1/materials/imports/{uuid4()}/files/{uuid4()}",
@@ -179,16 +177,13 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()["case_id"], str(case_id))
         self.assertFalse(any(isinstance(call.args[0], Case) for call in db.add.call_args_list))
-        self.assertEqual(db.scalar.call_count, 1)
+        self.assertEqual(db.scalar.call_count, 5)
+        quota.assert_called_once_with(db, case_id)
         object_storage.put.assert_called_once()
 
-    def test_import_cannot_create_a_case_over_the_plan_limit(self) -> None:
+    def test_import_cannot_create_a_second_party_owned_case(self) -> None:
         user_id = uuid4()
-        user = SimpleNamespace(
-            id=user_id,
-            subscription_plan="free",
-            subscription_status="free",
-        )
+        user = SimpleNamespace(id=user_id)
         db = Mock()
         db.get.side_effect = lambda model, key, **kwargs: user if model is User else None
         db.scalar.return_value = 1
@@ -211,7 +206,7 @@ class MaterialsImportTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 409)
-        self.assertIn("allows 1 active case", response.json()["detail"])
+        self.assertIn("can own one divorce case", response.json()["detail"])
         object_storage.put.assert_not_called()
         db.commit.assert_not_called()
 
@@ -228,9 +223,12 @@ class MaterialsImportTests(unittest.TestCase):
             extension="pdf",
             media_type="application/pdf",
             size_bytes=20,
+            sha256=hashlib.sha256(b"%PDF-1.7\ncontent").hexdigest(),
         )
         db = Mock()
-        db.get.side_effect = lambda model, key: batch if model is MaterialImportBatch else document
+        db.get.side_effect = lambda model, key, **kwargs: (
+            batch if model is MaterialImportBatch else document
+        )
         db.scalar.return_value = item
         settings = Settings(
             auth_enabled=True,
@@ -252,6 +250,47 @@ class MaterialsImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()["document"]["id"], str(document_id))
+        object_storage.put.assert_not_called()
+        db.commit.assert_not_called()
+
+    def test_retry_rejects_reusing_an_item_key_for_different_file_contents(self) -> None:
+        user_id, case_id, batch_id, item_id, document_id = (uuid4() for _ in range(5))
+        user = SimpleNamespace(id=user_id)
+        batch = SimpleNamespace(user_id=user_id, case_id=case_id)
+        item = SimpleNamespace(id=uuid4(), document_id=document_id)
+        original = b"%PDF-1.7\noriginal source"
+        document = SimpleNamespace(
+            id=document_id,
+            extension="pdf",
+            media_type="application/pdf",
+            size_bytes=len(original),
+            sha256=hashlib.sha256(original).hexdigest(),
+        )
+        db = Mock()
+        db.get.side_effect = lambda model, key, **kwargs: (
+            user if model is User else batch if model is MaterialImportBatch else document
+        )
+        db.scalar.side_effect = [None, item, SimpleNamespace(role="owner"), None]
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="materials-test-signing-secret-long-enough",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
+            demo_mode_enabled=False,
+        )
+        client, _ = self._client(user_id=user_id, db=db)
+        with (
+            patch("app.materials.get_settings", return_value=settings),
+            patch("app.materials.storage") as object_storage,
+        ):
+            response = client.post(
+                f"/api/v1/materials/imports/{batch_id}/files/{item_id}",
+                files={"upload": ("evidence.pdf", b"%PDF-1.7\ndifferent source", "application/pdf")},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("different file contents", response.json()["detail"])
         object_storage.put.assert_not_called()
         db.commit.assert_not_called()
 
@@ -286,7 +325,7 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         db.rollback.assert_called_once()
         object_storage.put.assert_called_once()
-        object_storage.delete.assert_called_once()
+        object_storage.delete_all_versions.assert_called_once()
 
     def test_cleanup_failure_logs_no_object_key(self) -> None:
         object_key = "private-case/private-document.pdf"
@@ -294,7 +333,7 @@ class MaterialsImportTests(unittest.TestCase):
             patch("app.materials.storage") as object_storage,
             self.assertLogs("app.materials", level="ERROR") as captured,
         ):
-            object_storage.delete.side_effect = BotoCoreError()
+            object_storage.delete_all_versions.side_effect = BotoCoreError()
             _delete_uploaded_object(object_key)
 
         self.assertNotIn(object_key, "\n".join(captured.output))

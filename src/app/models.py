@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -29,6 +30,11 @@ class Case(Base):
             "status IN ('draft', 'mediation', 'settlement', 'finalized')",
             name="ck_cases_status",
         ),
+        CheckConstraint(
+            "closed_reason IS NULL OR closed_reason IN ('accepted', 'stopped', 'closed')",
+            name="ck_cases_closed_reason",
+        ),
+        CheckConstraint("attempt_credit_balance >= 0", name="ck_cases_attempt_credit_balance"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -49,6 +55,15 @@ class Case(Base):
     )
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_credit_balance: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    first_finalization_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_reason: Mapped[str | None] = mapped_column(String(20))
+    status_before_close: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -56,6 +71,25 @@ class Case(Base):
 
     negotiations: Mapped[list["NegotiationEvent"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"
+    )
+
+
+class CaseLifecycleEvent(Base):
+    __tablename__ = "case_lifecycle_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('closed', 'reopened')",
+            name="ck_case_lifecycle_events_type",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
@@ -274,6 +308,7 @@ class SettlementOfferResponse(Base):
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     user_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     outcome: Mapped[str | None] = mapped_column(String(20))
+    counteroffer_json: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -361,6 +396,10 @@ class SettlementNegotiationAttempt(Base):
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finalized_snapshot_json: Mapped[dict | None] = mapped_column(JSONB)
+    finalized_version_ordinal: Mapped[int | None] = mapped_column(Integer)
+    finalized_by_user_id_snapshot: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -413,6 +452,11 @@ class DocumentCreditLedgerEntry(Base):
             "idempotency_key",
             name="uq_document_credit_ledger_user_idempotency",
         ),
+        UniqueConstraint(
+            "case_id",
+            "idempotency_key",
+            name="uq_document_credit_ledger_case_idempotency",
+        ),
         CheckConstraint("delta <> 0", name="ck_document_credit_ledger_delta"),
         CheckConstraint("balance_after >= 0", name="ck_document_credit_ledger_balance"),
     )
@@ -420,6 +464,14 @@ class DocumentCreditLedgerEntry(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    package_purchase_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("attempt_credit_package_purchases.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     proposal_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("settlement_proposal_versions.id", ondelete="RESTRICT"), nullable=True
@@ -434,6 +486,49 @@ class DocumentCreditLedgerEntry(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AttemptCreditPackagePurchase(Base):
+    __tablename__ = "attempt_credit_package_purchases"
+    __table_args__ = (
+        CheckConstraint(
+            "price_amount IS NULL OR "
+            "(package_size = 5 AND price_amount = 500) OR "
+            "(package_size = 10 AND price_amount = 800)",
+            name="ck_attempt_credit_package_catalog",
+        ),
+        CheckConstraint(
+            "credits_used >= 0 AND credits_used <= package_size",
+            name="ck_attempt_credit_package_used",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'paid', 'legacy', 'payment_failed', 'expired', 'refund_pending', 'refunded')",
+            name="ck_attempt_credit_package_status",
+        ),
+        UniqueConstraint("stripe_checkout_session_id", name="uq_attempt_credit_checkout_session"),
+        UniqueConstraint("stripe_payment_intent_id", name="uq_attempt_credit_payment_intent"),
+        UniqueConstraint("stripe_refund_id", name="uq_attempt_credit_refund"),
+        Index("ix_attempt_credit_purchase_case_status", "case_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    package_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_amount: Mapped[int | None] = mapped_column(Integer)
+    amount_paid: Mapped[int | None] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="usd")
+    stripe_price_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255))
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(255))
+    stripe_refund_id: Mapped[str | None] = mapped_column(String(255))
+    credits_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class BillingWebhookEvent(Base):
@@ -838,20 +933,8 @@ class User(Base):
             name="ck_users_status",
         ),
         CheckConstraint(
-            "settlement_attempt_limit IN (1, 3, 5, 10)",
-            name="ck_users_settlement_attempt_limit",
-        ),
-        CheckConstraint(
-            "document_credit_balance >= 0",
-            name="ck_users_document_credit_balance",
-        ),
-        CheckConstraint(
-            "subscription_plan IN ('free', 'essential', 'plus', 'pro')",
-            name="ck_users_subscription_plan",
-        ),
-        CheckConstraint(
-            "subscription_status IN ('free', 'legacy', 'incomplete', 'active', 'trialing', 'past_due', 'unpaid', 'canceled', 'incomplete_expired')",
-            name="ck_users_subscription_status",
+            "account_type IN ('party', 'professional')",
+            name="ck_users_account_type",
         ),
     )
 
@@ -859,25 +942,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending_verification")
-    settlement_attempt_limit: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default=text("1")
-    )
-    document_credit_balance: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
-    subscription_plan: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="free", server_default=text("'free'")
-    )
-    subscription_status: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="free", server_default=text("'free'")
+    account_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="party", server_default=text("'party'")
     )
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True)
-    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True)
-    subscription_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    billing_state_event_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    subscription_cancel_at_period_end: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
-    )
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -894,13 +962,6 @@ class User(Base):
     case_memberships: Mapped[list["CaseMembership"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-
-
-def user_settlement_attempt_limit(user: User) -> int:
-    from app.subscription_plans import user_settlement_attempt_limit as plan_attempt_limit
-
-    return plan_attempt_limit(user)
-
 
 class ExternalIdentity(Base):
     __tablename__ = "external_identities"
@@ -1047,11 +1108,47 @@ class AuthAuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DeletionTombstone(Base):
+    __tablename__ = "deletion_tombstones"
+    __table_args__ = (
+        CheckConstraint(
+            "scope_type IN ('account', 'case', 'document', 'import_item')",
+            name="ck_deletion_tombstones_scope_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'completed')",
+            name="ck_deletion_tombstones_status",
+        ),
+        UniqueConstraint("scope_type", "scope_id", name="uq_deletion_tombstone_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    scope_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    scope_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    initiated_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    object_keys: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class CaseMembership(Base):
     __tablename__ = "case_memberships"
     __table_args__ = (
-        CheckConstraint("role IN ('owner', 'editor', 'viewer')", name="ck_case_memberships_role"),
+        CheckConstraint(
+            "role IN ('owner', 'editor', 'viewer', 'delegate')",
+            name="ck_case_memberships_role",
+        ),
         UniqueConstraint("case_id", "user_id", name="uq_case_membership_user_case"),
+        Index(
+            "uq_case_membership_single_operator",
+            "case_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL AND suspended_at IS NULL AND role IN ('owner', 'delegate')"),
+            sqlite_where=text("revoked_at IS NULL AND suspended_at IS NULL AND role IN ('owner', 'delegate')"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -1060,5 +1157,35 @@ class CaseMembership(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="owner")
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="case_memberships")
+
+
+class CaseDelegationInvitation(Base):
+    __tablename__ = "case_delegation_invitations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'revoked', 'expired')",
+            name="ck_case_delegation_invitations_status",
+        ),
+        Index(
+            "uq_case_delegation_open_invitation",
+            "case_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'accepted')"),
+            sqlite_where=text("status IN ('pending', 'accepted')"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    owner_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    invitee_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    delegate_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

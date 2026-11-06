@@ -10,8 +10,9 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, provider_data_handling_notice
 from app.database import get_db
+from app.failure_logging import log_failure_event
 from app.models import (
     CaseMembership,
     Document,
@@ -46,6 +47,7 @@ class AnalysisDisclosure(BaseModel):
 
 class AnalysisDocumentOption(BaseModel):
     document_id: UUID
+    extraction_job_id: UUID | None
     extension: str
     extraction_status: Literal[
         "stored",
@@ -55,6 +57,7 @@ class AnalysisDocumentOption(BaseModel):
         "failed",
         "completed",
     ]
+    extraction_error_code: str | None = None
     eligible: bool
     page_count: int | None
 
@@ -150,6 +153,7 @@ def is_analysis_available(settings: Settings) -> bool:
         and bool((settings.bedrock_region or "").strip())
         and bool((settings.ai_analysis_notice_version or "").strip())
         and bool((settings.ai_analysis_data_handling_notice or "").strip())
+        and settings.production_ai_readiness_passed()
     )
 
 
@@ -163,7 +167,9 @@ def analysis_disclosure(settings: Settings | None = None) -> AnalysisDisclosure:
         notice_version=settings.ai_analysis_notice_version or None,
         purpose=ANALYSIS_PURPOSE,
         data_sent=ANALYSIS_DATA_SENT,
-        data_handling_notice=settings.ai_analysis_data_handling_notice or None,
+        data_handling_notice=provider_data_handling_notice(
+            settings.ai_analysis_data_handling_notice
+        ),
     )
 
 
@@ -202,8 +208,16 @@ def case_analysis_options(
         options.append(
             AnalysisDocumentOption(
                 document_id=document.id,
+                extraction_job_id=(
+                    extraction_job.id if extraction_job is not None else None
+                ),
                 extension=document.extension,
                 extraction_status=extraction_status,
+                extraction_error_code=(
+                    extraction_job.error_code
+                    if extraction_job is not None
+                    else None
+                ),
                 eligible=(
                     is_analysis_available(settings)
                     and extraction_job is not None
@@ -490,6 +504,7 @@ def _authorize_case(
             CaseMembership.case_id == case_id,
             CaseMembership.user_id == user.id,
             CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
         )
     )
     if membership is None:
@@ -606,7 +621,7 @@ def get_case_analysis_options(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Case analysis options lookup failed.")
+        log_failure_event(logger, "analysis_options_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document analysis options are unavailable. Please try again.",
@@ -632,7 +647,7 @@ def start_case_analysis(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Case analysis request could not be persisted.")
+        log_failure_event(logger, "analysis_request_persistence_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document analysis could not be started. Please try again.",
@@ -656,7 +671,7 @@ def get_case_analysis_request(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Case analysis status lookup failed.")
+        log_failure_event(logger, "analysis_status_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document analysis status is unavailable. Please try again.",
@@ -691,7 +706,7 @@ def retry_case_analysis_document(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Case analysis retry could not be persisted.")
+        log_failure_event(logger, "analysis_retry_persistence_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document analysis retry is unavailable. Please try again.",
@@ -719,7 +734,7 @@ def revoke_case_analysis_consent(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Case analysis consent could not be revoked.")
+        log_failure_event(logger, "analysis_consent_revocation_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document analysis consent could not be revoked. Please try again.",
@@ -743,7 +758,7 @@ def get_case_analysis_proposals(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Case analysis proposals lookup failed.")
+        log_failure_event(logger, "analysis_proposals_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document analysis proposals are unavailable. Please try again.",

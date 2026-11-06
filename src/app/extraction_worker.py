@@ -5,7 +5,10 @@ from collections.abc import Callable
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import SessionLocal
+from app.deletion_ledger import reconcile_from_environment
+from app.failure_logging import log_failure_event
 from app.extraction import claim_next_extraction_job, process_extraction_job
 from app.storage import ObjectStorage
 
@@ -29,14 +32,16 @@ def run_once(
 
 def main() -> None:
     storage = ObjectStorage()
+    if get_settings().case_data_enabled:
+        reconcile_from_environment()
     while True:
         try:
             worked = run_once(storage)
         except SQLAlchemyError as error:
-            logger.error("Extraction worker database operation failed (%s).", type(error).__name__)
+            log_failure_event(logger, "extraction_worker_database_failed", error)
             worked = False
         except Exception as error:
-            logger.error("Extraction worker iteration failed (%s).", type(error).__name__)
+            log_failure_event(logger, "extraction_worker_iteration_failed", error)
             worked = False
         if not worked:
             time.sleep(POLL_INTERVAL_SECONDS)

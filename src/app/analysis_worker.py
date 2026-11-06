@@ -11,9 +11,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.ai import BedrockConverseClient, analyze_document_pages
-from app.analysis import aggregate_analysis_status, is_analysis_available
+from app.analysis import aggregate_analysis_status, analysis_disclosure, is_analysis_available
 from app.config import Settings, get_settings
 from app.database import SessionLocal
+from app.deletion import scope_is_tombstoned
+from app.failure_logging import log_failure_event
 from app.models import (
     CaseMembership,
     Document,
@@ -135,7 +137,8 @@ def process_analysis_job(
             consent.notice_version != settings.ai_analysis_notice_version
             or consent.model_id != settings.bedrock_model_id
             or consent.region != settings.bedrock_region
-            or consent.data_handling_notice != settings.ai_analysis_data_handling_notice
+            or consent.data_handling_notice
+            != analysis_disclosure(settings).data_handling_notice
         ):
             _complete_without_provider(db, job, request, "cancelled", "consent_notice_changed")
             return
@@ -145,6 +148,7 @@ def process_analysis_job(
                 CaseMembership.case_id == request.case_id,
                 CaseMembership.user_id == request.user_id,
                 CaseMembership.revoked_at.is_(None),
+                CaseMembership.suspended_at.is_(None),
             )
             .with_for_update()
         )
@@ -152,13 +156,22 @@ def process_analysis_job(
             _complete_without_provider(db, job, request, "cancelled", "membership_revoked")
             return
 
-        document = db.get(Document, job.document_id)
+        if scope_is_tombstoned(db, "account", request.user_id) or scope_is_tombstoned(
+            db, "case", request.case_id
+        ):
+            _complete_without_provider(db, job, request, "cancelled", "scope_deleted")
+            return
+
+        document = db.get(Document, job.document_id, with_for_update=True)
         if (
             document is None
             or document.case_id != request.case_id
             or document.sha256 != job.source_sha256
         ):
             _complete_without_provider(db, job, request, "failed", "source_unavailable")
+            return
+        if scope_is_tombstoned(db, "document", document.id):
+            _complete_without_provider(db, job, request, "cancelled", "scope_deleted")
             return
         extraction_job = db.scalar(
             select(DocumentExtractionJob)
@@ -204,7 +217,15 @@ def process_analysis_job(
             page_texts,
             settings,
             client,
+            consent_granted=True,
         )
+        if (
+            scope_is_tombstoned(db, "account", request.user_id)
+            or scope_is_tombstoned(db, "case", request.case_id)
+            or scope_is_tombstoned(db, "document", document.id)
+        ):
+            db.rollback()
+            return
         for field in result.proposals:
             db.add(
                 DocumentAnalysisProposal(
@@ -230,7 +251,7 @@ def process_analysis_job(
         _fail_job(db, lease.job_id, "invalid_provider_response", type(error).__name__)
     except SQLAlchemyError as error:
         db.rollback()
-        logger.error("Analysis job persistence failed (%s).", type(error).__name__)
+        log_failure_event(logger, "analysis_persistence_failed", error)
 
 
 def run_once(
@@ -246,14 +267,18 @@ def run_once(
 
 
 def main() -> None:
+    if get_settings().case_data_enabled:
+        from app.deletion_ledger import reconcile_from_environment
+
+        reconcile_from_environment()
     while True:
         try:
             worked = run_once()
         except SQLAlchemyError as error:
-            logger.error("Analysis worker database operation failed (%s).", type(error).__name__)
+            log_failure_event(logger, "analysis_worker_database_failed", error)
             worked = False
         except Exception as error:
-            logger.error("Analysis worker iteration failed (%s).", type(error).__name__)
+            log_failure_event(logger, "analysis_worker_iteration_failed", error)
             worked = False
         if not worked:
             time.sleep(POLL_INTERVAL_SECONDS)
@@ -315,7 +340,7 @@ def _fail_job(db: Session, job_id: UUID, error_code: str, error_type: str) -> No
     if request is not None:
         _refresh_request_status(db, request)
     db.commit()
-    logger.error("Analysis provider request failed (%s).", error_type)
+    log_failure_event(logger, "analysis_job_failed", error_type)
 
 
 def _finish_job(job: DocumentAnalysisJob, status: str, error_code: str | None) -> None:

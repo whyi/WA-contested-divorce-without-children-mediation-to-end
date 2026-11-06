@@ -14,15 +14,17 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.attempt_finalization import finalize_attempt, is_finalized
+from app.attempt_credits import consume_finalization_credit
 from app.auth_routes import require_current_user
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, provider_data_handling_notice
 from app.database import get_db
+from app.failure_logging import log_failure_event
 from app.models import (
     Case,
     CaseMembership,
     CaseProfileFact,
     CaseProfileFactEvent,
-    DocumentCreditLedgerEntry,
     Document,
     ExportDeliveryEvent,
     SettlementLedgerEvent,
@@ -34,7 +36,6 @@ from app.models import (
     SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
-    user_settlement_attempt_limit,
 )
 from app.export_delivery import (
     ExportDeliveryError,
@@ -169,8 +170,9 @@ class OfferResponseHistoryItem(BaseModel):
     selection_id: UUID
     scenario_id: str
     attempt_ordinal: int
-    attempt_limit: int
+    attempt_limit: int | None
     frozen: bool
+    finalized: bool = False
     outcome: Literal["counteroffer", "rejected", "accepted"] | None
     attachments: list[OfferResponseHistoryAttachment]
 
@@ -180,6 +182,14 @@ class OfferCreate(BaseModel):
 
     terms: MediationOfferTerms
     confirm_credit_use: bool = False
+    finalize: bool = False
+    confirm_finalization: bool = False
+
+    @model_validator(mode="after")
+    def require_finalize_for_finalization_confirmation(self) -> "OfferCreate":
+        if self.confirm_finalization and not self.finalize:
+            raise ValueError("Finalization can be confirmed only for a final download.")
+        return self
 
 
 class DemoExportRequest(BaseModel):
@@ -223,6 +233,7 @@ def _authorize_case(db: Session, user: User, case_id: UUID, *, write: bool) -> C
             CaseMembership.case_id == case_id,
             CaseMembership.user_id == user.id,
             CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
         )
     )
     if membership is None:
@@ -357,7 +368,7 @@ def _asset_ledgers(db: Session, case_id: UUID) -> list[AssetLedger]:
             for asset_id, asset_rows in grouped.items()
         ]
     except ValueError as error:
-        logger.exception("Persisted settlement ledger failed validation.")
+        log_failure_event(logger, "settlement_ledger_invalid", error, severity="SEV1")
         raise HTTPException(status_code=500, detail="The saved settlement ledger is invalid.") from error
 
 
@@ -411,12 +422,37 @@ def read_document_credit_balance(
     user: Annotated[User, Depends(require_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, int]:
-    _authorize_case(db, user, case_id, write=False)
-    balance = db.scalar(select(User.document_credit_balance).where(User.id == user.id))
-    if balance is None:
-        raise HTTPException(status_code=404, detail="Document credit account is unavailable.")
+    case = _authorize_case(db, user, case_id, write=False)
     response.headers["Cache-Control"] = "no-store"
-    return {"remaining": balance, "cost_per_version": 1}
+    return {
+        "remaining": case.attempt_credit_balance,
+        "free_first_finalization_available": not case.first_finalization_used,
+        "cost_per_finalization": 1,
+        "package_sizes": [5, 10],
+    }
+
+
+def _require_finalization_credit(case: Case) -> None:
+    if case.first_finalization_used and case.attempt_credit_balance < 1:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "This finalized proposal needs 1 attempt credit. Your edits are saved; "
+                "purchase a 5- or 10-credit package to continue."
+            ),
+        )
+
+
+def _commit_proposal_state(db: Session) -> None:
+    try:
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "proposal_generation_failed", error)
+        raise HTTPException(
+            status_code=503,
+            detail="The proposal version could not be confirmed as saved. Reload before retrying.",
+        ) from error
 
 
 def _prepare_attempt_offer_export(
@@ -427,6 +463,8 @@ def _prepare_attempt_offer_export(
     requested_terms: MediationOfferTerms,
     *,
     confirm_credit_use: bool,
+    finalize: bool = False,
+    confirm_finalization: bool = False,
     download_format: Literal["docx", "xlsx"] | None = None,
 ) -> tuple[SettlementNegotiationAttempt, SettlementProposalVersion]:
     _authorize_case(db, user, case_id, write=True)
@@ -447,32 +485,28 @@ def _prepare_attempt_offer_export(
     )
     if attempt is None:
         raise HTTPException(status_code=409, detail="Negotiation attempt is unavailable.")
+    finalized = is_finalized(attempt)
     if getattr(attempt, "frozen_at", None) is not None or getattr(attempt, "sent_confirmed_at", None) is not None:
         raise HTTPException(status_code=409, detail="A confirmed proposal cannot be revised or regenerated.")
-    if (
-        attempt.proposal_issued_at is None
-        and attempt.attempt_ordinal > user_settlement_attempt_limit(user)
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail="This account has reached its negotiation attempt limit.",
-        )
+    if finalize and not finalized:
+        if not confirm_finalization:
+            raise HTTPException(
+                status_code=428,
+                detail="Confirm that finalizing locks this attempt and saves its final proposal snapshot.",
+            )
+        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+        _require_finalization_credit(case)
 
     requested_json = requested_terms.model_dump(mode="json")
     draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False))
     version_ordinal = getattr(attempt, "proposal_version_ordinal", 0) or 1
+    locked_version = attempt.proposal_issued_at is not None and not draft_unlocked
     existing_version = db.scalar(
         select(SettlementProposalVersion).where(
             SettlementProposalVersion.attempt_id == attempt.id,
             SettlementProposalVersion.version_ordinal == version_ordinal,
         )
     )
-    known_asset_ids = {
-        str(item["asset_id"])
-        for item in getattr(attempt, "snapshot_json", {}).get("settlement_ledger", [])
-    }
-    if any(str(value.asset_id) not in known_asset_ids for value in requested_terms.proposed_values):
-        raise HTTPException(status_code=422, detail="Proposed values must reference an asset in this attempt snapshot.")
     editable_state = getattr(attempt, "editable_state_json", {}) or {}
     editable_term_fields = {
         "offer_from",
@@ -508,65 +542,57 @@ def _prepare_attempt_offer_export(
                 status_code=409,
                 detail="Save the current attempt edits before generating proposal documents.",
             )
-
-    legacy_version = (
-        attempt.proposal_issued_at is not None
-        and not draft_unlocked
-        and existing_version is None
-    )
     if existing_version is not None:
-        if attempt.proposal_scenario_result_json is not None:
-            result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
-        else:
-            _check_revisions(case, selection.profile_revision, selection.settlement_revision)
-            result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
-    else:
-        if legacy_version and attempt.proposal_scenario_result_json is None:
-            raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
-        if legacy_version:
-            result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
-        else:
-            _check_revisions(case, selection.profile_revision, selection.settlement_revision)
-            result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
-
-    result_json = result.model_dump(mode="json")
-    current_version_terms = getattr(existing_version, "terms_json", None)
-    current_version_result = getattr(existing_version, "scenario_result_json", None)
-    content_changed = (
-        existing_version is None
-        or current_version_terms != requested_json
-        or current_version_result != result_json
-    )
-    needs_credit = not legacy_version and (
-        existing_version is None or existing_version.credit_cost == 0
-    )
-    if needs_credit and not confirm_credit_use:
-        raise HTTPException(
-            status_code=428,
-            detail="Confirm that generating this proposal version uses 1 document credit.",
-        )
-    credit_account = None
-    if needs_credit:
-        credit_account = db.scalar(
-            select(User).where(User.id == user.id).with_for_update()
-        )
-        if credit_account is None:
-            raise HTTPException(status_code=404, detail="Document credit account is unavailable.")
-        if credit_account.document_credit_balance < 1:
+        if existing_version.terms_json != requested_json:
             raise HTTPException(
-                status_code=402,
+                status_code=409,
                 detail=(
-                    "This proposal version requires 1 document credit. Your preview and edits are saved; "
-                    "add credits or upgrade your subscription before generating."
+                    "This attempt is finalized and its proposal cannot change. Continue to the next attempt to prepare changed terms."
+                    if finalized
+                    else "This proposal version is immutable. Start a new version before changing its terms."
                 ),
             )
-    if (
-        existing_version is not None
-        and not content_changed
-        and not needs_credit
-        and download_format is None
-    ):
+        downloaded_formats = set(getattr(existing_version, "downloaded_formats", []) or [])
+        proposal_state_changed = False
+        if download_format is not None:
+            if download_format not in downloaded_formats:
+                downloaded_formats.add(download_format)
+                existing_version.downloaded_formats = sorted(downloaded_formats)
+                proposal_state_changed = True
+            if attempt.proposal_issued_at is None:
+                attempt.proposal_issued_at = datetime.now(UTC)
+                proposal_state_changed = True
+            attempt.proposal_version_ordinal = version_ordinal
+            attempt.proposal_draft_unlocked = False
+        if finalize and not finalized:
+            entitlement_charge = consume_finalization_credit(db, case, user, attempt)
+            finalize_attempt(
+                attempt,
+                selection,
+                existing_version,
+                user_id=user.id,
+                entitlement_charge=entitlement_charge,
+            )
+            _commit_proposal_state(db)
+        elif proposal_state_changed:
+            _commit_proposal_state(db)
         return attempt, existing_version
+    if finalized:
+        raise HTTPException(status_code=409, detail="The finalized proposal snapshot is unavailable.")
+
+    legacy_version = locked_version
+    if legacy_version:
+        if attempt.proposal_terms_json != requested_json:
+            raise HTTPException(
+                status_code=409,
+                detail="This attempt's proposal has already been issued. Its terms cannot be changed.",
+            )
+        if attempt.proposal_scenario_result_json is None:
+            raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
+        result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
+    else:
+        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
 
     docx = render_mediation_offer_docx(requested_terms, result)
     workbook = render_property_schedule_xlsx(requested_terms, result)
@@ -574,86 +600,49 @@ def _prepare_attempt_offer_export(
     if len(docx) + len(workbook) > max_bytes:
         raise HTTPException(status_code=413, detail="Generated proposal files exceed the file size limit.")
 
-    if existing_version is not None:
-        version = existing_version
-        version.request_sha256 = hashlib.sha256(
+    version = SettlementProposalVersion(
+        id=uuid4(),
+        case_id=case_id,
+        attempt_id=attempt.id,
+        user_id_snapshot=user.id,
+        version_ordinal=version_ordinal,
+        request_sha256=hashlib.sha256(
             json.dumps(
                 {
                     "version_ordinal": version_ordinal,
                     "terms": requested_json,
-                    "scenario_result": result_json,
+                    "scenario_result": result.model_dump(mode="json"),
                 },
                 sort_keys=True,
                 separators=(",", ":"),
                 ensure_ascii=False,
             ).encode("utf-8")
-        ).hexdigest()
-        version.terms_json = requested_json
-        version.scenario_result_json = result_json
-        version.docx_content = docx
-        version.xlsx_content = workbook
-        if content_changed:
-            version.downloaded_formats = []
-            version.updated_at = datetime.now(UTC)
-    else:
-        version = SettlementProposalVersion(
-            id=uuid4(),
-            case_id=case_id,
-            attempt_id=attempt.id,
-            user_id_snapshot=user.id,
-            version_ordinal=version_ordinal,
-            request_sha256=hashlib.sha256(
-                json.dumps(
-                    {
-                        "version_ordinal": version_ordinal,
-                        "terms": requested_json,
-                        "scenario_result": result.model_dump(mode="json"),
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=False,
-                ).encode("utf-8")
-            ).hexdigest(),
-            terms_json=requested_json,
-            scenario_result_json=result_json,
-            docx_content=docx,
-            xlsx_content=workbook,
-            downloaded_formats=[],
-            credit_cost=0 if legacy_version else int(needs_credit),
-        )
-        db.add(version)
-    if needs_credit and credit_account is not None:
-        credit_account.document_credit_balance -= 1
-        version.credit_cost = 1
-        db.add(
-            DocumentCreditLedgerEntry(
-                id=uuid4(),
-                user_id=user.id,
-                proposal_version_id=version.id,
-                idempotency_key=f"proposal:{attempt.id}:{version_ordinal}",
-                delta=-1,
-                balance_after=credit_account.document_credit_balance,
-            )
-        )
+        ).hexdigest(),
+        terms_json=requested_json,
+        scenario_result_json=result.model_dump(mode="json"),
+        docx_content=docx,
+        xlsx_content=workbook,
+        credit_cost=0,
+    )
+    db.add(version)
     attempt.proposal_terms_json = requested_json
     attempt.proposal_scenario_result_json = result.model_dump(mode="json")
     if attempt.proposal_issued_at is None:
         attempt.proposal_issued_at = datetime.now(UTC)
     attempt.proposal_version_ordinal = version_ordinal
     attempt.proposal_draft_unlocked = False
-    downloaded_formats = set(getattr(version, "downloaded_formats", []) or [])
     if download_format is not None:
-        downloaded_formats.add(download_format)
-    version.downloaded_formats = sorted(downloaded_formats)
-    try:
-        db.commit()
-    except SQLAlchemyError as error:
-        db.rollback()
-        logger.exception("Proposal version and document credit could not be saved.")
-        raise HTTPException(
-            status_code=503,
-            detail="The proposal version could not be confirmed as saved. Reload before retrying.",
-        ) from error
+        version.downloaded_formats = [download_format]
+    if finalize:
+        entitlement_charge = consume_finalization_credit(db, case, user, attempt)
+        finalize_attempt(
+            attempt,
+            selection,
+            version,
+            user_id=user.id,
+            entitlement_charge=entitlement_charge,
+        )
+    _commit_proposal_state(db)
     return attempt, version
 
 
@@ -797,6 +786,7 @@ def _settlement_disclosure(settings: Settings | None = None) -> SettlementPlanni
             and (settings.bedrock_model_id or "").strip()
             and (settings.bedrock_region or "").strip()
             and (settings.settlement_planning_data_handling_notice or "").strip()
+            and settings.production_ai_readiness_passed()
         ),
         provider="Amazon Bedrock",
         model_id=settings.bedrock_model_id or None,
@@ -809,7 +799,9 @@ def _settlement_disclosure(settings: Settings | None = None) -> SettlementPlanni
             "property/debt balances and scenario assumptions; and the curated Washington authority set. "
             "Full source documents, ledger notes, credentials, and account numbers are not sent."
         ),
-        data_handling_notice=settings.settlement_planning_data_handling_notice or None,
+        data_handling_notice=provider_data_handling_notice(
+            settings.settlement_planning_data_handling_notice
+        ),
     )
 
 
@@ -840,7 +832,7 @@ def get_settlement_planning_state(
             ledger_event_count=event_count,
         )
     except SQLAlchemyError as error:
-        logger.exception("Settlement-planning state lookup failed.")
+        log_failure_event(logger, "settlement_state_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement-planning state is unavailable.") from error
 
 
@@ -857,7 +849,7 @@ def get_settlement_planning_disclosure(
         response.headers["Cache-Control"] = "no-store"
         return disclosure
     except SQLAlchemyError as error:
-        logger.exception("Settlement-planning disclosure lookup failed.")
+        log_failure_event(logger, "settlement_disclosure_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement-planning disclosure is unavailable.") from error
 
 
@@ -900,7 +892,7 @@ def grant_settlement_planning_consent(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement-planning consent could not be recorded.")
+        log_failure_event(logger, "settlement_consent_write_failed", error)
         raise HTTPException(status_code=503, detail="Consent could not be saved.") from error
 
 
@@ -935,7 +927,7 @@ def revoke_settlement_planning_consent(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement-planning consent revocation could not be recorded.")
+        log_failure_event(logger, "settlement_consent_revocation_failed", error)
         raise HTTPException(status_code=503, detail="Consent revocation could not be saved.") from error
 
 
@@ -968,7 +960,7 @@ def get_settlement_ledger_events(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Settlement ledger lookup failed.")
+        log_failure_event(logger, "settlement_ledger_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement ledger is unavailable.") from error
 
 
@@ -1051,7 +1043,7 @@ def add_settlement_ledger_event(
         ) from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement ledger event could not be saved.")
+        log_failure_event(logger, "settlement_ledger_write_failed", error)
         raise HTTPException(status_code=503, detail="Settlement ledger event could not be saved.") from error
 
 
@@ -1108,9 +1100,10 @@ def create_settlement_scenarios(
                     scenarios,
                     payload.objective,
                     _reviewed_fact_payload(facts),
+                    consent_granted=True,
                 )
-            except (ValueError, RuntimeError, BotoCoreError):
-                logger.exception("AI settlement-scenario ranking failed; calculated candidates are retained.")
+            except (ValueError, RuntimeError, BotoCoreError) as error:
+                log_failure_event(logger, "settlement_ai_ranking_failed", error)
                 ranking_error = (
                     "AI ranking failed. The calculated candidates are still available for review; "
                     "check provider configuration and try again."
@@ -1154,7 +1147,7 @@ def create_settlement_scenarios(
         raise HTTPException(status_code=422, detail=str(error)) from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement scenarios could not be loaded.")
+        log_failure_event(logger, "settlement_scenario_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement scenarios are unavailable.") from error
 
 
@@ -1215,10 +1208,11 @@ def list_settlement_offer_responses(
                 selection_id=selection.id,
                 scenario_id=selection.scenario_id,
                 attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
-                attempt_limit=user_settlement_attempt_limit(user),
+                attempt_limit=None,
                 frozen=attempt.frozen_at is not None if attempt is not None else (
                     offer_response.outcome is not None
                 ),
+                finalized=is_finalized(attempt),
                 outcome=offer_response.outcome,
                 attachments=attachments_by_response[offer_response.id],
             )
@@ -1227,7 +1221,7 @@ def list_settlement_offer_responses(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Settlement offer-response history could not be loaded.")
+        log_failure_event(logger, "settlement_response_history_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Settlement offer-response history is unavailable.",
@@ -1327,7 +1321,7 @@ def select_settlement_scenario(
         raise HTTPException(status_code=422, detail=str(error)) from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement scenario selection could not be saved.")
+        log_failure_event(logger, "settlement_scenario_selection_failed", error)
         raise HTTPException(status_code=503, detail="Scenario selection could not be saved.") from error
 
 
@@ -1348,6 +1342,8 @@ def create_settlement_offer(
             selection_id,
             payload.terms,
             confirm_credit_use=payload.confirm_credit_use,
+            finalize=payload.finalize,
+            confirm_finalization=payload.confirm_finalization,
             download_format="docx",
         )
         return Response(
@@ -1364,11 +1360,19 @@ def create_settlement_offer(
         raise
     except ValueError as error:
         db.rollback()
+        log_failure_event(logger, "proposal_generation_invalid", error)
         raise HTTPException(status_code=422, detail="Saved scenario data is invalid.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Selected settlement scenario could not be loaded.")
+        log_failure_event(logger, "proposal_generation_failed", error)
         raise HTTPException(status_code=503, detail="Offer draft could not be generated.") from error
+    except Exception as error:
+        db.rollback()
+        log_failure_event(logger, "proposal_generation_failed", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Offer draft could not be generated. Your saved attempt is unchanged.",
+        ) from error
 
 
 @router.post("/offers/{selection_id}/xlsx")
@@ -1388,6 +1392,8 @@ def create_settlement_property_schedule(
             selection_id,
             payload.terms,
             confirm_credit_use=payload.confirm_credit_use,
+            finalize=payload.finalize,
+            confirm_finalization=payload.confirm_finalization,
             download_format="xlsx",
         )
         return Response(
@@ -1404,11 +1410,19 @@ def create_settlement_property_schedule(
         raise
     except ValueError as error:
         db.rollback()
+        log_failure_event(logger, "proposal_generation_invalid", error)
         raise HTTPException(status_code=422, detail="Saved scenario data is invalid.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Selected settlement scenario could not be loaded for workbook export.")
+        log_failure_event(logger, "proposal_generation_failed", error)
         raise HTTPException(status_code=503, detail="Property schedule could not be generated.") from error
+    except Exception as error:
+        db.rollback()
+        log_failure_event(logger, "proposal_generation_failed", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Property schedule could not be generated. Your saved attempt is unchanged.",
+        ) from error
 
 
 def _destination_digest(destination: str) -> str:
@@ -1537,7 +1551,7 @@ def deliver_settlement_offer(
         raise HTTPException(status_code=409, detail="A delivery request with this key already exists.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement proposal delivery could not be completed.")
+        log_failure_event(logger, "proposal_delivery_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Delivery status could not be confirmed. Verify the destination before retrying.",

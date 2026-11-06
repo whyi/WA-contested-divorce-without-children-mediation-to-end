@@ -1,68 +1,80 @@
 import logging
-from datetime import UTC, datetime
-from typing import Annotated, Any
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.attempt_credits import (
+    PACKAGE_CATALOG,
+    PACKAGE_SIZES,
+    grant_package_credits,
+    package_size_for_price,
+)
 from app.auth_routes import require_current_user
 from app.config import get_settings
 from app.database import get_db
-from app.models import BillingWebhookEvent, DocumentCreditLedgerEntry, User
-from app.subscription_plans import PLAN_BY_CODE, PLANS, configured_price_id, plan_for_user
+from app.models import (
+    AttemptCreditPackagePurchase,
+    BillingWebhookEvent,
+    Case,
+    CaseMembership,
+    DocumentCreditLedgerEntry,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 MAX_WEBHOOK_BYTES = 1_000_000
-PAID_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 ZERO_DECIMAL_CURRENCIES = {
     "BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA",
     "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
 }
 THREE_DECIMAL_CURRENCIES = {"BHD", "JOD", "KWD", "OMR", "TND"}
-TWO_DECIMAL_ZERO_VALUE_CURRENCIES = {"ISK", "UGX"}
 
 
 class CheckoutCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    plan_code: str = Field(pattern=r"^(essential|plus|pro)$")
+    package_size: Literal[5, 10]
 
 
-class BillingPlanRead(BaseModel):
-    code: str
-    name: str
-    description: str
-    active_case_limit: int | None
-    attempt_limit: int
-    monthly_document_credits: int
-    monthly_price: str | None
+class AttemptCreditPackageRead(BaseModel):
+    credits: int
+    price: str | None
     available: bool
 
 
-class BillingPlansRead(BaseModel):
-    plans: list[BillingPlanRead]
-    billing_configured: bool
+class AttemptCreditPackagesRead(BaseModel):
+    packages: list[AttemptCreditPackageRead]
+    checkout_configured: bool
 
 
-class BillingStatusRead(BaseModel):
-    plan_code: str
-    plan_name: str
-    subscription_status: str
-    active_case_limit: int | None
-    attempt_limit: int
-    monthly_document_credits: int
-    document_credit_balance: int
-    period_end: datetime | None
-    cancel_at_period_end: bool
-    manage_available: bool
+class AccountEntitlementRead(BaseModel):
+    status: Literal["free", "paid"]
+
+
+class PackagePurchaseRead(BaseModel):
+    id: UUID
+    credits: int
+    amount: str
+    status: str
+    purchased_at: datetime | None
+    credits_used: int
+    refund_deadline: datetime | None
+    refund_eligible: bool
+
+
+class PackagePurchaseHistoryRead(BaseModel):
+    purchases: list[PackagePurchaseRead]
+    receipt_email: str
 
 
 def _stripe_settings_ready() -> bool:
@@ -74,180 +86,210 @@ def _stripe_settings_ready() -> bool:
     )
 
 
-def _stripe_url(value: Any, expected_host: str) -> str:
+def _stripe_url(value: Any) -> str:
     url = value if isinstance(value, str) else None
     parsed = urlparse(url or "")
-    if parsed.scheme != "https" or parsed.hostname != expected_host:
+    if parsed.scheme != "https" or parsed.hostname != "checkout.stripe.com":
         raise HTTPException(status_code=502, detail="The billing provider returned an invalid URL.")
     return url
 
 
-def _stripe_price_plan(price_id: str | None) -> str | None:
-    if not price_id:
-        return None
-    settings = get_settings()
-    matches = [
-        plan.code for plan in PLANS
-        if configured_price_id(settings, plan) == price_id
-    ]
-    return matches[0] if len(matches) == 1 else None
+def _package_price_id(settings: Any, package_size: int) -> str | None:
+    name = f"stripe_price_id_attempt_credits_{package_size}"
+    value = getattr(settings, name, None)
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _stripe_api_error(error: stripe.StripeError, action: str) -> HTTPException:
-    logger.error("Stripe %s failed (%s).", action, type(error).__name__)
-    return HTTPException(status_code=502, detail=f"Billing provider {action} is unavailable.")
-
-
-def _format_monthly_price(price: Any) -> str | None:
+def _format_one_time_price(price: Any) -> str | None:
     if not isinstance(price, dict) and not hasattr(price, "get"):
         return None
     amount = price.get("unit_amount")
     currency = price.get("currency")
-    recurring = price.get("recurring")
-    active = price.get("active")
     if (
         not isinstance(amount, int)
+        or isinstance(amount, bool)
+        or amount <= 0
         or not isinstance(currency, str)
-        or not isinstance(recurring, dict)
-        or recurring.get("interval") != "month"
-        or active is not True
+        or price.get("recurring") is not None
+        or price.get("active") is not True
     ):
         return None
     currency_code = currency.upper()
-    if currency_code in TWO_DECIMAL_ZERO_VALUE_CURRENCIES:
-        decimals = 0
-        divisor = 100
-    elif currency_code in ZERO_DECIMAL_CURRENCIES:
-        decimals = 0
-        divisor = 1
+    if currency_code in ZERO_DECIMAL_CURRENCIES:
+        decimals, divisor = 0, 1
     elif currency_code in THREE_DECIMAL_CURRENCIES:
-        decimals = 3
-        divisor = 1000
+        decimals, divisor = 3, 1000
     else:
-        decimals = 2
-        divisor = 100
+        decimals, divisor = 2, 100
     whole, fraction = divmod(amount, divisor)
-    if decimals == 0 and fraction:
-        return None
-    if currency_code == "USD":
-        formatted = f"${whole:,}"
-    else:
-        formatted = f"{currency_code} {whole:,}"
+    formatted = f"${whole:,}" if currency_code == "USD" else f"{currency_code} {whole:,}"
     if decimals:
         formatted += f".{fraction:0{decimals}d}"
-    return f"{formatted}/month"
+    return formatted
 
 
-@router.get("/plans", response_model=BillingPlansRead)
-def list_billing_plans() -> BillingPlansRead:
-    settings = get_settings()
-    stripe_ready = _stripe_settings_ready()
-    rows = []
-    for plan in PLANS:
-        price_id = configured_price_id(settings, plan)
-        if plan.code == "free":
-            rows.append(
-                BillingPlanRead(
-                    code=plan.code,
-                    name=plan.name,
-                    description=plan.description,
-                    active_case_limit=plan.active_case_limit,
-                    attempt_limit=plan.attempt_limit,
-                    monthly_document_credits=plan.monthly_document_credits,
-                    monthly_price="$0/month",
-                    available=True,
-                )
-            )
-            continue
-        price_text = None
-        available = False
-        if stripe_ready and price_id:
-            try:
-                price = stripe.Price.retrieve(price_id, api_key=settings.stripe_secret_key)
-            except stripe.StripeError as error:
-                logger.error("Configured Stripe price could not be loaded (%s).", type(error).__name__)
-            else:
-                price_text = _format_monthly_price(price)
-                available = bool(
-                    stripe_ready
-                    and price_text
-                    and _stripe_price_plan(price_id) == plan.code
-                )
-        rows.append(
-            BillingPlanRead(
-                code=plan.code,
-                name=plan.name,
-                description=plan.description,
-                active_case_limit=plan.active_case_limit,
-                attempt_limit=plan.attempt_limit,
-                monthly_document_credits=plan.monthly_document_credits,
-                monthly_price=price_text,
-                available=available,
-            )
-        )
-    return BillingPlansRead(plans=rows, billing_configured=stripe_ready)
-
-
-@router.get("/me", response_model=BillingStatusRead)
-def get_billing_status(
-    response: Response,
-    user: Annotated[User, Depends(require_current_user)],
-) -> BillingStatusRead:
-    plan = plan_for_user(user)
-    response.headers["Cache-Control"] = "no-store"
-    return BillingStatusRead(
-        plan_code=plan.code,
-        plan_name=plan.name,
-        subscription_status=user.subscription_status,
-        active_case_limit=plan.active_case_limit,
-        attempt_limit=plan.attempt_limit,
-        monthly_document_credits=plan.monthly_document_credits,
-        document_credit_balance=user.document_credit_balance,
-        period_end=user.subscription_period_end,
-        cancel_at_period_end=user.subscription_cancel_at_period_end,
-        manage_available=bool(user.stripe_customer_id and _stripe_settings_ready()),
+def _catalog_price_is_valid(price: Any, package_size: int) -> bool:
+    catalog = PACKAGE_CATALOG.get(package_size)
+    if catalog is None:
+        return False
+    return (
+        _format_one_time_price(price) is not None
+        and price.get("unit_amount") == catalog["price_amount"]
+        and str(price.get("currency", "")).lower() == catalog["currency"]
+        and price.get("tax_behavior") in {"exclusive", "inclusive"}
     )
 
 
-@router.post("/checkout")
+def _load_configured_price(price_id: str, package_size: int, settings: Any) -> Any | None:
+    if package_size_for_price(settings, price_id) != package_size:
+        return None
+    try:
+        price = stripe.Price.retrieve(price_id, api_key=settings.stripe_secret_key)
+    except stripe.StripeError as error:
+        logger.error("Configured Stripe package price could not be loaded (%s).", type(error).__name__)
+        return None
+    return price if _catalog_price_is_valid(price, package_size) else None
+
+
+@router.get("/packages", response_model=AttemptCreditPackagesRead)
+def list_attempt_credit_packages() -> AttemptCreditPackagesRead:
+    settings = get_settings()
+    checkout_ready = _stripe_settings_ready()
+    packages = []
+    for package_size in PACKAGE_SIZES:
+        price_id = _package_price_id(settings, package_size)
+        price_text = None
+        available = False
+        if checkout_ready and price_id:
+            price = _load_configured_price(price_id, package_size, settings)
+            if price is not None:
+                price_text = f"USD {_format_one_time_price(price)} before applicable tax"
+                available = price_text is not None
+        packages.append(
+            AttemptCreditPackageRead(
+                credits=package_size,
+                price=price_text,
+                available=available,
+            )
+        )
+    return AttemptCreditPackagesRead(
+        packages=packages,
+        checkout_configured=checkout_ready,
+    )
+
+
+def _authorized_case(db: Session, user: User, case_id: UUID) -> Case:
+    membership = db.scalar(
+        select(CaseMembership).where(
+            CaseMembership.case_id == case_id,
+            CaseMembership.user_id == user.id,
+            CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
+        )
+    )
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    case = db.get(Case, case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    return case
+
+
+def _has_verified_package_purchase(db: Session, user_id: UUID) -> bool:
+    purchase_id = db.scalar(
+        select(DocumentCreditLedgerEntry.id)
+        .where(
+            DocumentCreditLedgerEntry.user_id == user_id,
+            DocumentCreditLedgerEntry.source_type == "package_purchase",
+            DocumentCreditLedgerEntry.delta > 0,
+        )
+        .limit(1)
+    )
+    return purchase_id is not None
+
+
+@router.get("/account/entitlement", response_model=AccountEntitlementRead)
+def read_account_entitlement(
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AccountEntitlementRead:
+    return AccountEntitlementRead(
+        status="paid" if _has_verified_package_purchase(db, user.id) else "free"
+    )
+
+
+@router.post("/account/downgrade-to-free")
+def reject_paid_account_downgrade(
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, str]:
+    locked_user_id = db.scalar(select(User.id).where(User.id == user.id).with_for_update())
+    if locked_user_id is None:
+        raise HTTPException(status_code=404, detail="Account not found.")
+    if _has_verified_package_purchase(db, user.id):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "An account with a verified one-time attempt-credit purchase cannot switch to "
+                "Free. No entitlement, credits, or case access were changed."
+            ),
+        )
+    return {"status": "free"}
+
+
+@router.post("/cases/{case_id}/checkout")
 def create_checkout_session(
+    case_id: UUID,
     payload: CheckoutCreate,
     user: Annotated[User, Depends(require_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, str]:
     settings = get_settings()
-    plan = PLAN_BY_CODE[payload.plan_code]
-    price_id = configured_price_id(settings, plan)
+    case = _authorized_case(db, user, case_id)
+    case = db.scalar(select(Case).where(Case.id == case.id).with_for_update())
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    if case.attempt_credit_balance > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Use the attempt credits already in this case before buying another package.",
+        )
+    pending = db.scalar(
+        select(AttemptCreditPackagePurchase.id)
+        .where(
+            AttemptCreditPackagePurchase.case_id == case.id,
+            AttemptCreditPackagePurchase.status == "pending",
+        )
+        .limit(1)
+    )
+    if pending is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A package checkout is already pending for this case.",
+        )
+    price_id = _package_price_id(settings, payload.package_size)
     if not _stripe_settings_ready() or not price_id:
         raise HTTPException(
             status_code=503,
-            detail="Subscriptions are not configured. Your current plan has not changed.",
+            detail="Attempt-credit packages are not configured. No credits have been added.",
         )
-    price_plan = _stripe_price_plan(price_id)
-    if price_plan != plan.code:
-        raise HTTPException(status_code=503, detail="The selected subscription plan is unavailable.")
-    try:
-        price = stripe.Price.retrieve(price_id, api_key=settings.stripe_secret_key)
-    except stripe.StripeError as error:
-        raise _stripe_api_error(error, "price lookup") from error
-    if _format_monthly_price(price) is None:
-        raise HTTPException(
-            status_code=503,
-            detail="The selected monthly subscription price is unavailable.",
-        )
-    if user.subscription_status == "legacy":
-        raise HTTPException(
-            status_code=409,
-            detail="Contact support to move this legacy account to a subscription.",
-        )
-    if (
-        user.subscription_status in PAID_SUBSCRIPTION_STATUSES | {"past_due", "unpaid", "incomplete"}
-        and user.stripe_subscription_id
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail="Manage or resolve your existing subscription before starting another checkout.",
-        )
+    price = _load_configured_price(price_id, payload.package_size, settings)
+    if price is None:
+        raise HTTPException(status_code=503, detail="The selected credit package is unavailable.")
+
+    purchase = AttemptCreditPackagePurchase(
+        id=uuid4(),
+        user_id=user.id,
+        case_id=case.id,
+        package_size=payload.package_size,
+        price_amount=PACKAGE_CATALOG[payload.package_size]["price_amount"],
+        currency=PACKAGE_CATALOG[payload.package_size]["currency"],
+        stripe_price_id=price_id,
+        status="pending",
+    )
+    db.add(purchase)
+    db.commit()
+
     customer_id = user.stripe_customer_id
     try:
         if customer_id is None:
@@ -262,44 +304,69 @@ def create_checkout_session(
             user.stripe_customer_id = customer_id
             db.commit()
         base_url = settings.auth_public_base_url.rstrip("/")
+        checkout_metadata = {
+            "user_id": str(user.id),
+            "case_id": str(case.id),
+            "package_size": str(payload.package_size),
+            "purchase_id": str(purchase.id),
+        }
         session = stripe.checkout.Session.create(
-            mode="subscription",
+            mode="payment",
             customer=customer_id,
             client_reference_id=str(user.id),
             line_items=[{"price": price_id, "quantity": 1}],
-            subscription_data={
-                "metadata": {"user_id": str(user.id), "plan_code": plan.code}
+            metadata=checkout_metadata,
+            payment_intent_data={
+                "receipt_email": user.email,
+                "metadata": {"purchase_id": str(purchase.id)},
             },
-            metadata={"user_id": str(user.id), "plan_code": plan.code},
-            success_url=f"{base_url}/?billing=success",
-            cancel_url=f"{base_url}/?billing=cancel",
+            automatic_tax={"enabled": True},
+            billing_address_collection="required",
+            customer_update={"address": "auto", "name": "auto"},
+            custom_text={
+                "submit": {
+                    "message": (
+                        f"One-time purchase: {payload.package_size} credits for USD "
+                        f"${PACKAGE_CATALOG[payload.package_size]['price_amount'] / 100:.2f}, "
+                        "plus applicable tax calculated, displayed, and collected by Stripe Tax. "
+                        "A full refund is available within 30 days only if no credit from this "
+                        "package has been used. No package refund is available after any package "
+                        "credit is used. Stripe emails the receipt; no monthly subscription."
+                    )
+                }
+            },
+            success_url=f"{base_url}/?attempt_credits=pending",
+            cancel_url=f"{base_url}/?attempt_credits=cancelled",
+            idempotency_key=f"attempt-credit-checkout:{purchase.id}",
             api_key=settings.stripe_secret_key,
         )
+        session_id = session.get("id")
+        if not isinstance(session_id, str):
+            raise HTTPException(status_code=502, detail="The billing provider returned an invalid session.")
+        purchase.stripe_checkout_session_id = session_id
+        checkout_url = _stripe_url(session.get("url"))
+        db.commit()
     except stripe.StripeError as error:
         db.rollback()
-        raise _stripe_api_error(error, "checkout") from error
+        failed_purchase = db.get(AttemptCreditPackagePurchase, purchase.id)
+        if failed_purchase is not None:
+            failed_purchase.status = "payment_failed"
+            db.commit()
+        logger.error("Stripe package Checkout failed (%s).", type(error).__name__)
+        raise HTTPException(
+            status_code=502, detail="The billing provider is unavailable."
+        ) from error
+    except HTTPException:
+        db.rollback()
+        failed_purchase = db.get(AttemptCreditPackagePurchase, purchase.id)
+        if failed_purchase is not None:
+            failed_purchase.status = "payment_failed"
+            db.commit()
+        raise
     return {
-        "checkout_url": _stripe_url(session.get("url"), "checkout.stripe.com"),
+        "checkout_url": checkout_url,
         "payment_status": "pending_webhook_confirmation",
     }
-
-
-@router.post("/portal")
-def create_customer_portal_session(
-    user: Annotated[User, Depends(require_current_user)],
-) -> dict[str, str]:
-    settings = get_settings()
-    if not _stripe_settings_ready() or not user.stripe_customer_id:
-        raise HTTPException(status_code=503, detail="Subscription management is not available.")
-    try:
-        session = stripe.billing_portal.Session.create(
-            customer=user.stripe_customer_id,
-            return_url=f"{settings.auth_public_base_url.rstrip('/')}/",
-            api_key=settings.stripe_secret_key,
-        )
-    except stripe.StripeError as error:
-        raise _stripe_api_error(error, "customer portal") from error
-    return {"portal_url": _stripe_url(session.get("url"), "billing.stripe.com")}
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -310,205 +377,368 @@ def _dict(value: Any) -> dict[str, Any]:
     return {}
 
 
-def _period_end(value: Any) -> datetime | None:
-    if not isinstance(value, (int, float)):
+def _paid_package_size(session: dict[str, Any], settings: Any) -> int | None:
+    session_id = session.get("id")
+    if not isinstance(session_id, str):
         return None
-    return datetime.fromtimestamp(value, tz=UTC)
-
-
-def _event_plan_code(subscription: dict[str, Any]) -> str | None:
-    items = _dict(subscription.get("items")).get("data", [])
-    price_ids = set()
-    if isinstance(items, list):
-        for item in items:
-            price = _dict(item).get("price")
-            price_id = price if isinstance(price, str) else _dict(price).get("id")
-            if isinstance(price_id, str):
-                price_ids.add(price_id)
-    if len(price_ids) != 1:
-        return None
-    return _stripe_price_plan(next(iter(price_ids)))
-
-
-def _customer_for_event(db: Session, customer_id: Any) -> User | None:
-    if not isinstance(customer_id, str):
-        return None
-    return db.scalar(
-        select(User).where(User.stripe_customer_id == customer_id).with_for_update()
-    )
-
-
-def _apply_subscription_event(db: Session, event: dict[str, Any], event_created: datetime) -> bool:
-    subscription = _dict(_dict(event.get("data")).get("object"))
-    user = _customer_for_event(db, subscription.get("customer"))
-    if user is None:
-        return False
-    last_applied = user.billing_state_event_created_at
-    if last_applied is not None and last_applied >= event_created:
-        return True
-    event_type = event.get("type")
-    subscription_id = subscription.get("id")
-    if event_type == "customer.subscription.deleted":
-        user.subscription_plan = "free"
-        user.subscription_status = "canceled"
-        user.settlement_attempt_limit = PLAN_BY_CODE["free"].attempt_limit
-        user.stripe_subscription_id = None
-        user.subscription_period_end = _period_end(subscription.get("current_period_end"))
-        user.subscription_cancel_at_period_end = False
-    else:
-        plan_code = _event_plan_code(subscription)
-        status = subscription.get("status")
-        if plan_code is None:
-            logger.warning("Stripe subscription has no configured single-tier price (%s).", event_type)
-            user.subscription_plan = "free"
-            user.subscription_status = "unpaid"
-            user.settlement_attempt_limit = PLAN_BY_CODE["free"].attempt_limit
-        else:
-            user.subscription_plan = plan_code
-            user.subscription_status = (
-                status if status in {
-                    "incomplete",
-                    "active",
-                    "trialing",
-                    "past_due",
-                    "unpaid",
-                    "canceled",
-                    "incomplete_expired",
-                } else "unpaid"
-            )
-            user.settlement_attempt_limit = (
-                PLAN_BY_CODE[plan_code].attempt_limit
-                if user.subscription_status in PAID_SUBSCRIPTION_STATUSES
-                else PLAN_BY_CODE["free"].attempt_limit
-            )
-        if isinstance(subscription_id, str):
-            user.stripe_subscription_id = subscription_id
-        user.subscription_period_end = _period_end(
-            subscription.get("current_period_end")
+    try:
+        line_items = stripe.checkout.Session.list_line_items(
+            session_id,
+            limit=2,
+            api_key=settings.stripe_secret_key,
         )
-        user.subscription_cancel_at_period_end = bool(
-            subscription.get("cancel_at_period_end", False)
-        )
-    user.billing_state_event_created_at = event_created
-    return True
-
-
-def _invoice_subscription_id(invoice: dict[str, Any]) -> str | None:
-    subscription_id = invoice.get("subscription")
-    if isinstance(subscription_id, str):
-        return subscription_id
-    parent = _dict(invoice.get("parent"))
-    details = _dict(parent.get("subscription_details"))
-    subscription_id = details.get("subscription")
-    return subscription_id if isinstance(subscription_id, str) else None
-
-
-def _invoice_plan_code(invoice: dict[str, Any]) -> str | None:
-    lines = _dict(invoice.get("lines")).get("data", [])
-    price_ids: set[str] = set()
-    if isinstance(lines, list):
-        for line in lines:
-            price = _dict(_dict(line).get("pricing")).get("price_details")
-            price_id = _dict(price).get("price")
-            if not isinstance(price_id, str):
-                legacy_price = _dict(line).get("price")
-                price_id = legacy_price if isinstance(legacy_price, str) else _dict(legacy_price).get("id")
-            if isinstance(price_id, str):
-                price_ids.add(price_id)
-    if len(price_ids) != 1:
+    except stripe.StripeError as error:
+        logger.error("Paid Checkout line items could not be verified (%s).", type(error).__name__)
+        raise
+    rows = _dict(line_items).get("data", [])
+    if not isinstance(rows, list) or len(rows) != 1:
         return None
-    return _stripe_price_plan(next(iter(price_ids)))
+    line = _dict(rows[0])
+    quantity = line.get("quantity")
+    if not isinstance(quantity, int) or isinstance(quantity, bool) or quantity != 1:
+        return None
+    price_id = _dict(line.get("price")).get("id")
+    package_size = package_size_for_price(settings, price_id)
+    if package_size is None:
+        return None
+    configured_price = _load_configured_price(price_id, package_size, settings)
+    if configured_price is None or _dict(session.get("automatic_tax")).get("enabled") is not True:
+        return None
+    metadata_size = _dict(session.get("metadata")).get("package_size")
+    if metadata_size != str(package_size):
+        return None
+    return package_size
 
 
-def _apply_invoice_paid(db: Session, invoice: dict[str, Any]) -> bool:
-    if invoice.get("billing_reason") not in {"subscription_create", "subscription_cycle"}:
-        return True
-    amount_paid = invoice.get("amount_paid")
+def _apply_checkout_completed(
+    db: Session,
+    session: dict[str, Any],
+    *,
+    paid_at: datetime | None = None,
+) -> bool:
     if (
-        not isinstance(amount_paid, int)
-        or isinstance(amount_paid, bool)
-        or amount_paid <= 0
+        session.get("mode") != "payment"
+        or session.get("status") != "complete"
+        or session.get("payment_status") != "paid"
     ):
         return True
-    user = _customer_for_event(db, invoice.get("customer"))
-    if user is None:
-        return False
-    subscription_id = _invoice_subscription_id(invoice)
-    if not subscription_id:
-        return False
-    if user.stripe_subscription_id and user.stripe_subscription_id != subscription_id:
-        return True
-    if not user.stripe_subscription_id and user.subscription_status not in {"free", "incomplete"}:
-        return True
-    plan_code = _invoice_plan_code(invoice)
-    if plan_code is None:
-        logger.warning("Paid subscription invoice did not match one configured plan.")
-        return True
-    plan = PLAN_BY_CODE[plan_code]
-    cap = plan.monthly_document_credits * 2
-    grant = max(0, min(plan.monthly_document_credits, cap - user.document_credit_balance))
-    user.stripe_subscription_id = subscription_id
-    user.subscription_plan = plan_code
-    user.subscription_status = "active"
-    user.settlement_attempt_limit = plan.attempt_limit
-    if grant:
-        user.document_credit_balance += grant
-        invoice_id = invoice.get("id")
-        if not isinstance(invoice_id, str):
-            return False
-        db.add(
-            DocumentCreditLedgerEntry(
-                user_id=user.id,
-                proposal_version_id=None,
-                idempotency_key=f"stripe-invoice:{invoice_id}",
-                source_type="subscription_cycle",
-                source_reference=invoice_id,
-                delta=grant,
-                balance_after=user.document_credit_balance,
-            )
-        )
-    return True
-
-
-def _apply_checkout_completed(db: Session, session: dict[str, Any]) -> bool:
     user_id = session.get("client_reference_id")
-    metadata_user = _dict(session.get("metadata")).get("user_id")
-    if not isinstance(user_id, str) or user_id != metadata_user:
+    metadata = _dict(session.get("metadata"))
+    if not isinstance(user_id, str) or user_id != metadata.get("user_id"):
+        return False
+    session_id = session.get("id")
+    customer_id = session.get("customer")
+    case_id = metadata.get("case_id")
+    purchase_id = metadata.get("purchase_id")
+    if not all(
+        isinstance(value, str) and value
+        for value in (session_id, customer_id, case_id, purchase_id)
+    ):
         return False
     try:
         parsed_user_id = UUID(user_id)
+        parsed_case_id = UUID(case_id)
+        parsed_purchase_id = UUID(purchase_id)
     except ValueError:
         return False
+
     user = db.scalar(select(User).where(User.id == parsed_user_id).with_for_update())
-    customer_id = session.get("customer")
-    subscription_id = session.get("subscription")
-    if user is None or not isinstance(customer_id, str):
+    case = db.scalar(select(Case).where(Case.id == parsed_case_id).with_for_update())
+    purchase = db.scalar(
+        select(AttemptCreditPackagePurchase)
+        .where(AttemptCreditPackagePurchase.id == parsed_purchase_id)
+        .with_for_update()
+    )
+    if user is None or case is None or purchase is None:
         return False
-    if user.stripe_customer_id not in {None, customer_id}:
+    if (
+        purchase.user_id != user.id
+        or purchase.case_id != case.id
+        or purchase.stripe_checkout_session_id != session_id
+        or metadata.get("package_size") != str(purchase.package_size)
+        or user.stripe_customer_id not in {None, customer_id}
+    ):
+        return False
+
+    package_size = _paid_package_size(session, get_settings())
+    if package_size is None:
+        return False
+    if package_size != purchase.package_size:
+        return False
+    if purchase.status == "paid":
+        return True
+    if purchase.status != "pending":
+        return False
+    amount_subtotal = session.get("amount_subtotal")
+    amount_total = session.get("amount_total")
+    if (
+        session.get("currency") != "usd"
+        or amount_subtotal != purchase.price_amount
+        or not isinstance(amount_total, int)
+        or isinstance(amount_total, bool)
+        or amount_total < amount_subtotal
+    ):
         return False
     user.stripe_customer_id = customer_id
-    if isinstance(subscription_id, str):
-        user.stripe_subscription_id = subscription_id
-    if user.subscription_status == "free":
-        user.subscription_status = "incomplete"
+    payment_intent = session.get("payment_intent")
+    payment_intent_id = payment_intent if isinstance(payment_intent, str) else _dict(payment_intent).get("id")
+    if not isinstance(payment_intent_id, str) or not payment_intent_id:
+        return False
+    purchase.status = "paid"
+    purchase.amount_paid = amount_total
+    purchase.stripe_payment_intent_id = payment_intent_id
+    purchase.paid_at = paid_at or datetime.now(UTC)
+    grant_package_credits(
+        db,
+        case,
+        user,
+        package_size=package_size,
+        checkout_session_id=session_id,
+        purchase=purchase,
+    )
     return True
+
+
+def _finish_package_refund(
+    db: Session,
+    case: Case,
+    purchase: AttemptCreditPackagePurchase,
+    refund_id: str,
+) -> None:
+    if purchase.status == "refunded":
+        return
+    if (
+        purchase.status != "refund_pending"
+        or purchase.credits_used != 0
+        or case.attempt_credit_balance != purchase.package_size
+    ):
+        raise HTTPException(status_code=409, detail="This package is no longer eligible for refund.")
+    case.attempt_credit_balance -= purchase.package_size
+    purchase.status = "refunded"
+    purchase.stripe_refund_id = refund_id
+    purchase.refunded_at = datetime.now(UTC)
+    db.add(
+        DocumentCreditLedgerEntry(
+            id=uuid4(),
+            user_id=purchase.user_id,
+            case_id=case.id,
+            package_purchase_id=purchase.id,
+            proposal_version_id=None,
+            idempotency_key=f"stripe-refund:{refund_id}",
+            source_type="package_refund",
+            source_reference=refund_id,
+            delta=-purchase.package_size,
+            balance_after=case.attempt_credit_balance,
+        )
+    )
+
+
+def _apply_checkout_terminal_event(db: Session, session: dict[str, Any], status: str) -> bool:
+    session_id = session.get("id")
+    if not isinstance(session_id, str):
+        return False
+    purchase = db.scalar(
+        select(AttemptCreditPackagePurchase)
+        .where(AttemptCreditPackagePurchase.stripe_checkout_session_id == session_id)
+        .with_for_update()
+    )
+    if purchase is None:
+        return True
+    if purchase.status == "pending":
+        purchase.status = status
+    return True
+
+
+def _apply_refund_event(db: Session, refund: dict[str, Any]) -> bool:
+    purchase_id = _dict(refund.get("metadata")).get("purchase_id")
+    refund_id = refund.get("id")
+    payment_intent = refund.get("payment_intent")
+    payment_intent_id = payment_intent if isinstance(payment_intent, str) else _dict(payment_intent).get("id")
+    if not all(isinstance(value, str) and value for value in (purchase_id, refund_id, payment_intent_id)):
+        return False
+    try:
+        parsed_purchase_id = UUID(purchase_id)
+    except ValueError:
+        return False
+    purchase = db.scalar(
+        select(AttemptCreditPackagePurchase)
+        .where(AttemptCreditPackagePurchase.id == parsed_purchase_id)
+        .with_for_update()
+    )
+    if purchase is None or purchase.stripe_payment_intent_id != payment_intent_id:
+        return False
+    if refund.get("amount") != purchase.amount_paid:
+        return False
+    if purchase.status == "refunded":
+        return purchase.stripe_refund_id == refund_id
+    if purchase.status != "refund_pending":
+        return False
+    if refund.get("status") == "succeeded":
+        case = db.scalar(select(Case).where(Case.id == purchase.case_id).with_for_update())
+        if case is None:
+            return False
+        _finish_package_refund(db, case, purchase, refund_id)
+    elif refund.get("status") == "failed":
+        purchase.status = "paid"
+        purchase.stripe_refund_id = None
+    else:
+        purchase.stripe_refund_id = refund_id
+    return True
+
+
+@router.get(
+    "/cases/{case_id}/purchases",
+    response_model=PackagePurchaseHistoryRead,
+)
+def list_package_purchases(
+    case_id: UUID,
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> PackagePurchaseHistoryRead:
+    case = _authorized_case(db, user, case_id)
+    purchases = db.scalars(
+        select(AttemptCreditPackagePurchase)
+        .where(
+            AttemptCreditPackagePurchase.case_id == case.id,
+            AttemptCreditPackagePurchase.user_id == user.id,
+        )
+        .order_by(AttemptCreditPackagePurchase.created_at.desc())
+    ).all()
+    now = datetime.now(UTC)
+    results = []
+    for purchase in purchases:
+        deadline = purchase.paid_at + timedelta(days=30) if purchase.paid_at else None
+        results.append(
+            PackagePurchaseRead(
+                id=purchase.id,
+                credits=purchase.package_size,
+                amount=(
+                    f"USD ${(purchase.amount_paid or purchase.price_amount) / 100:.2f}"
+                    if purchase.price_amount is not None
+                    else "Historical amount not recorded"
+                ),
+                status=purchase.status,
+                purchased_at=purchase.paid_at,
+                credits_used=purchase.credits_used,
+                refund_deadline=deadline,
+                refund_eligible=bool(
+                    purchase.status == "paid"
+                    and purchase.credits_used == 0
+                    and deadline is not None
+                    and now <= deadline
+                    and case.attempt_credit_balance == purchase.package_size
+                ),
+            )
+        )
+    return PackagePurchaseHistoryRead(purchases=results, receipt_email=user.email)
+
+
+@router.post("/cases/{case_id}/purchases/{purchase_id}/refund")
+def refund_package_purchase(
+    case_id: UUID,
+    purchase_id: UUID,
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, str]:
+    settings = get_settings()
+    if not _stripe_settings_ready():
+        raise HTTPException(status_code=503, detail="Refund processing is not configured.")
+    case = _authorized_case(db, user, case_id)
+    case = db.scalar(select(Case).where(Case.id == case.id).with_for_update())
+    purchase = db.scalar(
+        select(AttemptCreditPackagePurchase)
+        .where(
+            AttemptCreditPackagePurchase.id == purchase_id,
+            AttemptCreditPackagePurchase.case_id == case_id,
+            AttemptCreditPackagePurchase.user_id == user.id,
+        )
+        .with_for_update()
+    )
+    if case is None or purchase is None:
+        raise HTTPException(status_code=404, detail="Purchase not found.")
+    if purchase.status == "refunded":
+        return {"status": "refunded"}
+    if purchase.status == "paid":
+        deadline = purchase.paid_at + timedelta(days=30) if purchase.paid_at else None
+        if (
+            purchase.credits_used != 0
+            or deadline is None
+            or datetime.now(UTC) > deadline
+            or case.attempt_credit_balance != purchase.package_size
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="A package refund is available within 30 days only when no package credits have been used.",
+            )
+        if not purchase.stripe_payment_intent_id:
+            raise HTTPException(status_code=409, detail="The verified payment reference is unavailable.")
+        purchase.status = "refund_pending"
+        db.commit()
+    elif purchase.status != "refund_pending":
+        raise HTTPException(status_code=409, detail="This purchase is not refundable.")
+
+    try:
+        refund = stripe.Refund.create(
+            payment_intent=purchase.stripe_payment_intent_id,
+            metadata={"purchase_id": str(purchase.id)},
+            idempotency_key=f"attempt-credit-refund:{purchase.id}",
+            api_key=settings.stripe_secret_key,
+        )
+    except stripe.StripeError as error:
+        logger.error("Stripe package refund could not be completed (%s).", type(error).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="The refund provider could not confirm the refund. Credits remain locked while it is reconciled.",
+        ) from error
+
+    refund_id = refund.get("id")
+    refund_status = refund.get("status")
+    if not isinstance(refund_id, str):
+        raise HTTPException(status_code=502, detail="The refund provider returned an invalid reference.")
+    if refund_status == "succeeded":
+        if refund.get("amount") != purchase.amount_paid:
+            raise HTTPException(
+                status_code=502,
+                detail="The refund provider did not confirm a full package refund.",
+            )
+        _finish_package_refund(db, case, purchase, refund_id)
+        db.commit()
+        return {"status": "refunded"}
+    if refund_status == "failed":
+        purchase.status = "paid"
+        purchase.stripe_refund_id = None
+        db.commit()
+        raise HTTPException(status_code=502, detail="The payment provider declined the refund.")
+    purchase.stripe_refund_id = refund_id
+    db.commit()
+    return {"status": "refund_pending"}
 
 
 def _process_event(db: Session, event: dict[str, Any]) -> str:
     event_type = event.get("type")
-    event_created = _period_end(event.get("created")) or datetime.now(UTC)
-    data = _dict(event.get("data"))
-    obj = _dict(data.get("object"))
-    if event_type == "checkout.session.completed":
-        processed = _apply_checkout_completed(db, obj)
-    elif event_type in {
-        "customer.subscription.created",
-        "customer.subscription.updated",
-        "customer.subscription.deleted",
+    created = event.get("created")
+    paid_at = (
+        datetime.fromtimestamp(created, UTC)
+        if isinstance(created, int) and not isinstance(created, bool) and created > 0
+        else None
+    )
+    if event_type in {
+        "checkout.session.completed",
+        "checkout.session.async_payment_succeeded",
     }:
-        processed = _apply_subscription_event(db, event, event_created)
-    elif event_type == "invoice.paid":
-        processed = _apply_invoice_paid(db, obj)
+        processed = _apply_checkout_completed(
+            db, _dict(_dict(event.get("data")).get("object")), paid_at=paid_at
+        )
+    elif event_type == "checkout.session.expired":
+        processed = _apply_checkout_terminal_event(
+            db, _dict(_dict(event.get("data")).get("object")), "expired"
+        )
+    elif event_type == "checkout.session.async_payment_failed":
+        processed = _apply_checkout_terminal_event(
+            db, _dict(_dict(event.get("data")).get("object")), "payment_failed"
+        )
+    elif event_type == "refund.updated":
+        processed = _apply_refund_event(db, _dict(_dict(event.get("data")).get("object")))
     else:
         return "ignored"
     if not processed:
@@ -561,12 +791,14 @@ async def receive_stripe_webhook(
         if webhook_record is None:
             raise HTTPException(status_code=503, detail="Billing event receipt could not be saved.")
         webhook_record.status = status
+        from datetime import UTC, datetime
+
         webhook_record.processed_at = datetime.now(UTC)
         db.commit()
     except HTTPException:
         db.rollback()
         raise
-    except SQLAlchemyError as error:
+    except (SQLAlchemyError, stripe.StripeError) as error:
         db.rollback()
         logger.exception("Verified Stripe event could not be committed.")
         raise HTTPException(status_code=503, detail="Billing event could not be processed.") from error

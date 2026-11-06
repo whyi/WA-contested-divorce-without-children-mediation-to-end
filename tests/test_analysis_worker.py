@@ -10,7 +10,7 @@ from app.analysis_worker import (
     claim_next_analysis_job,
     process_analysis_job,
 )
-from app.config import Settings
+from app.config import Settings, provider_data_handling_notice
 from app.models import DocumentAnalysisProposal
 
 
@@ -102,7 +102,9 @@ class AnalysisWorkerTests(unittest.TestCase):
             notice_version="notice-1",
             model_id="test-model",
             region="us-west-2",
-            data_handling_notice="Deployment retention notice.",
+            data_handling_notice=provider_data_handling_notice(
+                "Deployment retention notice."
+            ),
         )
         request.user_id = consent.user_id
         document = SimpleNamespace(
@@ -124,8 +126,14 @@ class AnalysisWorkerTests(unittest.TestCase):
         db.scalar.side_effect = [
             consent,
             SimpleNamespace(role="owner"),
+            None,
+            None,
+            None,
             extraction_job,
             extraction,
+            None,
+            None,
+            None,
         ]
         db.scalars.return_value.all.return_value = ["completed"]
         client = FakeBedrockClient(
@@ -230,6 +238,46 @@ class AnalysisWorkerTests(unittest.TestCase):
             db,
             AnalysisLease(job.id, job.lease_token),
             settings=Settings(),
+            client=client,
+        )
+
+        self.assertEqual(job.status, "cancelled")
+        self.assertEqual(job.error_code, "analysis_unavailable")
+        self.assertEqual(client.call_count, 0)
+        db.commit.assert_called_once()
+
+    def test_provider_is_not_called_when_production_readiness_is_unmet(self) -> None:
+        job = SimpleNamespace(
+            id=uuid4(),
+            request_id=uuid4(),
+            status="processing",
+            lease_token=uuid4(),
+            lease_expires_at=None,
+            error_code=None,
+            completed_at=None,
+        )
+        request = SimpleNamespace(id=job.request_id, consent_id=uuid4(), status="processing")
+        consent = SimpleNamespace(
+            id=request.consent_id,
+            request_id=request.id,
+            case_id=uuid4(),
+            user_id=uuid4(),
+            revoked_at=None,
+        )
+        request.case_id = consent.case_id
+        request.user_id = consent.user_id
+        db = Mock()
+        db.get.side_effect = [job, request]
+        db.scalar.return_value = consent
+        db.scalars.return_value.all.return_value = ["cancelled"]
+        client = FakeBedrockClient([])
+        settings = enabled_settings()
+        settings.production_readiness_required = True
+
+        process_analysis_job(
+            db,
+            AnalysisLease(job.id, job.lease_token),
+            settings=settings,
             client=client,
         )
 
