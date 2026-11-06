@@ -213,7 +213,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
             proposal_scenario_result_json={"scenario": {"id": "pinned"}},
         )
         db = Mock()
-        db.scalar.side_effect = [attempt, None]
+        db.scalar.side_effect = [attempt, None, None]
 
         result = _read_response(db, selection, None, 5)
 
@@ -906,6 +906,8 @@ class OfferResponseTransitionTests(unittest.TestCase):
         )
         current = SimpleNamespace(
             sent_documents_complete=True,
+            sent_documents_current=True,
+            proposal_downloaded_formats=["docx", "xlsx"],
             outcome=None,
             attachments=[
                 SimpleNamespace(kind="sent_docx", model_dump=lambda **_: {"kind": "sent_docx"}),
@@ -973,6 +975,36 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 409)
         db.commit.assert_not_called()
 
+    def test_sent_confirmation_requires_both_current_downloads(self) -> None:
+        case_id = uuid4()
+        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        current = SimpleNamespace(
+            sent_documents_complete=True,
+            sent_documents_current=True,
+            proposal_downloaded_formats=["docx"],
+        )
+        db = Mock()
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(None, selection)),
+            patch("app.offer_response._lock_case"),
+            patch("app.offer_response._selection", return_value=selection),
+            patch("app.offer_response._response_record", return_value=object()),
+            patch("app.offer_response._attempt_for_selection", return_value=object()),
+            patch("app.offer_response._read_response", return_value=current),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                confirm_offer_sent(
+                    case_id,
+                    selection.id,
+                    OfferSentConfirmation(expected_attempt_revision=0),
+                    Response(),
+                    SimpleNamespace(id=uuid4()),
+                    db,
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertIn("Download both current", raised.exception.detail)
+        db.commit.assert_not_called()
+
     def test_attempt_inputs_remain_editable_after_final_documents_are_uploaded(self) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(
@@ -1012,7 +1044,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertEqual(attempt.revision, 3)
         db.commit.assert_called_once()
 
-    def test_proposal_issuance_rejects_direct_attempt_content_edits(self) -> None:
+    def test_proposal_issuance_allows_attempt_content_edits_until_sent_confirmation(self) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(id=uuid4(), case_id=case_id)
         initial_state = OfferAttemptStateUpdate(expected_revision=0).model_dump(
@@ -1036,18 +1068,18 @@ class OfferResponseTransitionTests(unittest.TestCase):
             patch("app.offer_response._selection", return_value=selection),
             patch("app.offer_response._attempt_for_selection", return_value=attempt),
         ):
-            with self.assertRaises(HTTPException) as raised:
-                update_offer_attempt_state(
-                    case_id,
-                    selection.id,
-                    OfferAttemptStateUpdate(expected_revision=3, offer_to="Changed party"),
-                    Response(),
-                    SimpleNamespace(id=uuid4()),
-                    db,
-                )
+            result = update_offer_attempt_state(
+                case_id,
+                selection.id,
+                OfferAttemptStateUpdate(expected_revision=3, offer_to="Changed party"),
+                Response(),
+                SimpleNamespace(id=uuid4()),
+                db,
+            )
 
-        self.assertEqual(raised.exception.status_code, 409)
-        db.commit.assert_not_called()
+        self.assertEqual(result.editable_state["offer_to"], "Changed party")
+        self.assertEqual(attempt.revision, 4)
+        db.commit.assert_called_once()
 
     def test_frozen_attempt_rejects_outcome_correction(self) -> None:
         case_id = uuid4()
@@ -1225,7 +1257,9 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("position: fixed", html)
         self.assertIn("min-height: 86px", html)
         self.assertIn('document.body.dataset.demoPage = "settlement"', html)
-        self.assertIn("Free plan (1 attempt per case)", html)
+        self.assertIn('const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;', html)
+        self.assertIn('const demoPlanName = demoSource === "demo1" ? "Free" : "Essential";', html)
+        self.assertIn("plan (${demoAttemptLimit} attempt", html)
         self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn("counterofferNeedsFile", html)
@@ -1246,6 +1280,12 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertNotIn("settlementOfferResponseState?.sent_documents_complete", attempt_save)
         self.assertIn("An editable copy was opened as the next attempt", html)
         self.assertIn("Google Drive Picker is unavailable", html)
+        self.assertIn('id="settlement-offer-download" type="button" disabled', html)
+        self.assertIn('id="settlement-schedule-download" type="button" disabled', html)
+        self.assertIn("settlementGeneratedFormats.has(\"docx\")", html)
+        self.assertIn("settlementGeneratedFormats.has(\"xlsx\")", html)
+        self.assertIn('input", markSettlementAttemptEdited', html)
+        self.assertIn("result.proposal_documents_updated", html)
 
     def test_demo_attempt_freezes_chart_date_dragging(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
@@ -1298,10 +1338,15 @@ class OfferResponseTransitionTests(unittest.TestCase):
         )
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn(
-            "Counteroffers require a second attempt, which is not available on the Free plan.",
+            "A counteroffer may start another attempt depending on the demo plan.",
             html,
         )
-        self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached;", html)
+        self.assertIn(
+            "settlementDemoResponseNext.disabled = settlementDemoResponseOutcome !== \"accepted\";",
+            html,
+        )
+        self.assertIn("settlementDemoAttemptOrdinal >= demoAttemptLimit", html)
+        self.assertIn("settlementDemoAttemptOrdinal += 1", html)
         transition = html.split(
             'settlementDemoResponseNext.addEventListener("click"',
             1,

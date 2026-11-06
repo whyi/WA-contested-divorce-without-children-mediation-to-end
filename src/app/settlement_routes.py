@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -427,6 +427,7 @@ def _prepare_attempt_offer_export(
     requested_terms: MediationOfferTerms,
     *,
     confirm_credit_use: bool,
+    download_format: Literal["docx", "xlsx"] | None = None,
 ) -> tuple[SettlementNegotiationAttempt, SettlementProposalVersion]:
     _authorize_case(db, user, case_id, write=True)
     case = _lock_case(db, case_id)
@@ -446,6 +447,8 @@ def _prepare_attempt_offer_export(
     )
     if attempt is None:
         raise HTTPException(status_code=409, detail="Negotiation attempt is unavailable.")
+    if getattr(attempt, "frozen_at", None) is not None or getattr(attempt, "sent_confirmed_at", None) is not None:
+        raise HTTPException(status_code=409, detail="A confirmed proposal cannot be revised or regenerated.")
     if (
         attempt.proposal_issued_at is None
         and attempt.attempt_ordinal > user_settlement_attempt_limit(user)
@@ -458,39 +461,92 @@ def _prepare_attempt_offer_export(
     requested_json = requested_terms.model_dump(mode="json")
     draft_unlocked = bool(getattr(attempt, "proposal_draft_unlocked", False))
     version_ordinal = getattr(attempt, "proposal_version_ordinal", 0) or 1
-    locked_version = attempt.proposal_issued_at is not None and not draft_unlocked
     existing_version = db.scalar(
         select(SettlementProposalVersion).where(
             SettlementProposalVersion.attempt_id == attempt.id,
             SettlementProposalVersion.version_ordinal == version_ordinal,
         )
     )
-    if existing_version is not None:
-        if existing_version.terms_json != requested_json:
+    known_asset_ids = {
+        str(item["asset_id"])
+        for item in getattr(attempt, "snapshot_json", {}).get("settlement_ledger", [])
+    }
+    if any(str(value.asset_id) not in known_asset_ids for value in requested_terms.proposed_values):
+        raise HTTPException(status_code=422, detail="Proposed values must reference an asset in this attempt snapshot.")
+    editable_state = getattr(attempt, "editable_state_json", {}) or {}
+    editable_term_fields = {
+        "offer_from",
+        "offer_to",
+        "county",
+        "cause_number",
+        "proposed_effective_date",
+        "proposed_response_date",
+        "milestones",
+        "proposed_values",
+        "proposal_terms",
+    }
+    if editable_term_fields.issubset(editable_state):
+        try:
+            saved_terms = MediationOfferTerms.model_validate({
+                "offer_from": editable_state["offer_from"],
+                "offer_to": editable_state["offer_to"],
+                "county": editable_state["county"] or None,
+                "court_case_number": editable_state["cause_number"] or None,
+                "effective_date": editable_state["proposed_effective_date"],
+                "response_by_date": editable_state["proposed_response_date"],
+                "milestones": editable_state["milestones"],
+                "proposed_values": editable_state["proposed_values"],
+                "terms": editable_state["proposal_terms"],
+            })
+        except ValidationError as error:
             raise HTTPException(
                 status_code=409,
-                detail="This proposal version is immutable. Start a new version before changing its terms.",
+                detail="Save valid current attempt edits before generating proposal documents.",
+            ) from error
+        if saved_terms.model_dump(mode="json") != requested_json:
+            raise HTTPException(
+                status_code=409,
+                detail="Save the current attempt edits before generating proposal documents.",
             )
-        return attempt, existing_version
 
-    legacy_version = locked_version
-    if legacy_version:
-        if attempt.proposal_terms_json != requested_json:
-            raise HTTPException(
-                status_code=409,
-                detail="This attempt's proposal has already been issued. Its terms cannot be changed.",
-            )
-        if attempt.proposal_scenario_result_json is None:
-            raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
-        result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
+    legacy_version = (
+        attempt.proposal_issued_at is not None
+        and not draft_unlocked
+        and existing_version is None
+    )
+    if existing_version is not None:
+        if attempt.proposal_scenario_result_json is not None:
+            result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
+        else:
+            _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+            result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
     else:
-        if not confirm_credit_use:
-            raise HTTPException(
-                status_code=428,
-                detail="Confirm that generating this proposal version uses 1 document credit.",
-            )
-        _check_revisions(case, selection.profile_revision, selection.settlement_revision)
-        result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
+        if legacy_version and attempt.proposal_scenario_result_json is None:
+            raise HTTPException(status_code=409, detail="The issued proposal snapshot is unavailable.")
+        if legacy_version:
+            result = SettlementScenarioResult.model_validate(attempt.proposal_scenario_result_json)
+        else:
+            _check_revisions(case, selection.profile_revision, selection.settlement_revision)
+            result = SettlementScenarioResult.model_validate(selection.scenario_result_json)
+
+    result_json = result.model_dump(mode="json")
+    current_version_terms = getattr(existing_version, "terms_json", None)
+    current_version_result = getattr(existing_version, "scenario_result_json", None)
+    content_changed = (
+        existing_version is None
+        or current_version_terms != requested_json
+        or current_version_result != result_json
+    )
+    needs_credit = not legacy_version and (
+        existing_version is None or existing_version.credit_cost == 0
+    )
+    if needs_credit and not confirm_credit_use:
+        raise HTTPException(
+            status_code=428,
+            detail="Confirm that generating this proposal version uses 1 document credit.",
+        )
+    credit_account = None
+    if needs_credit:
         credit_account = db.scalar(
             select(User).where(User.id == user.id).with_for_update()
         )
@@ -504,6 +560,13 @@ def _prepare_attempt_offer_export(
                     "add credits or upgrade your subscription before generating."
                 ),
             )
+    if (
+        existing_version is not None
+        and not content_changed
+        and not needs_credit
+        and download_format is None
+    ):
+        return attempt, existing_version
 
     docx = render_mediation_offer_docx(requested_terms, result)
     workbook = render_property_schedule_xlsx(requested_terms, result)
@@ -511,33 +574,57 @@ def _prepare_attempt_offer_export(
     if len(docx) + len(workbook) > max_bytes:
         raise HTTPException(status_code=413, detail="Generated proposal files exceed the file size limit.")
 
-    version = SettlementProposalVersion(
-        id=uuid4(),
-        case_id=case_id,
-        attempt_id=attempt.id,
-        user_id_snapshot=user.id,
-        version_ordinal=version_ordinal,
-        request_sha256=hashlib.sha256(
+    if existing_version is not None:
+        version = existing_version
+        version.request_sha256 = hashlib.sha256(
             json.dumps(
                 {
                     "version_ordinal": version_ordinal,
                     "terms": requested_json,
-                    "scenario_result": result.model_dump(mode="json"),
+                    "scenario_result": result_json,
                 },
                 sort_keys=True,
                 separators=(",", ":"),
                 ensure_ascii=False,
             ).encode("utf-8")
-        ).hexdigest(),
-        terms_json=requested_json,
-        scenario_result_json=result.model_dump(mode="json"),
-        docx_content=docx,
-        xlsx_content=workbook,
-        credit_cost=0 if legacy_version else 1,
-    )
-    db.add(version)
-    if not legacy_version:
+        ).hexdigest()
+        version.terms_json = requested_json
+        version.scenario_result_json = result_json
+        version.docx_content = docx
+        version.xlsx_content = workbook
+        if content_changed:
+            version.downloaded_formats = []
+            version.updated_at = datetime.now(UTC)
+    else:
+        version = SettlementProposalVersion(
+            id=uuid4(),
+            case_id=case_id,
+            attempt_id=attempt.id,
+            user_id_snapshot=user.id,
+            version_ordinal=version_ordinal,
+            request_sha256=hashlib.sha256(
+                json.dumps(
+                    {
+                        "version_ordinal": version_ordinal,
+                        "terms": requested_json,
+                        "scenario_result": result.model_dump(mode="json"),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest(),
+            terms_json=requested_json,
+            scenario_result_json=result_json,
+            docx_content=docx,
+            xlsx_content=workbook,
+            downloaded_formats=[],
+            credit_cost=0 if legacy_version else int(needs_credit),
+        )
+        db.add(version)
+    if needs_credit and credit_account is not None:
         credit_account.document_credit_balance -= 1
+        version.credit_cost = 1
         db.add(
             DocumentCreditLedgerEntry(
                 id=uuid4(),
@@ -554,6 +641,10 @@ def _prepare_attempt_offer_export(
         attempt.proposal_issued_at = datetime.now(UTC)
     attempt.proposal_version_ordinal = version_ordinal
     attempt.proposal_draft_unlocked = False
+    downloaded_formats = set(getattr(version, "downloaded_formats", []) or [])
+    if download_format is not None:
+        downloaded_formats.add(download_format)
+    version.downloaded_formats = sorted(downloaded_formats)
     try:
         db.commit()
     except SQLAlchemyError as error:
@@ -1257,6 +1348,7 @@ def create_settlement_offer(
             selection_id,
             payload.terms,
             confirm_credit_use=payload.confirm_credit_use,
+            download_format="docx",
         )
         return Response(
             content=version.docx_content,
@@ -1296,6 +1388,7 @@ def create_settlement_property_schedule(
             selection_id,
             payload.terms,
             confirm_credit_use=payload.confirm_credit_use,
+            download_format="xlsx",
         )
         return Response(
             content=version.xlsx_content,

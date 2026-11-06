@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 from copy import deepcopy
 from datetime import UTC, date, datetime
@@ -30,9 +31,18 @@ from app.models import (
     User,
     user_settlement_attempt_limit,
 )
-from app.offer_documents import MediationOfferTerms
+from app.offer_documents import (
+    MediationOfferTerms,
+    render_mediation_offer_docx,
+    render_property_schedule_xlsx,
+)
 from app.modified_offer import ModifiedOfferParseError, parse_modified_offer
-from app.settlement_planning import ScenarioAxes, calculate_scenario, generate_scenarios
+from app.settlement_planning import (
+    ScenarioAxes,
+    SettlementScenarioResult,
+    calculate_scenario,
+    generate_scenarios,
+)
 from app.settlement_routes import (
     _active_profile_facts,
     _authorize_case,
@@ -89,6 +99,7 @@ class OfferResponseRead(BaseModel):
     outcome: Literal["counteroffer", "rejected", "accepted"] | None
     attachments: list[OfferResponseAttachmentRead]
     sent_documents_complete: bool
+    sent_documents_current: bool
     sent_confirmed: bool
     counteroffer_attachment_present: bool
     attempt_ordinal: int
@@ -98,6 +109,7 @@ class OfferResponseRead(BaseModel):
     proposal_issued: bool
     proposal_draft_unlocked: bool
     proposal_version_ordinal: int
+    proposal_downloaded_formats: list[Literal["docx", "xlsx"]]
     attempt_revision: int
     editable_state: dict
     snapshot: dict
@@ -166,6 +178,7 @@ class OfferAttemptStateRead(BaseModel):
     editable_state: dict
     scenario_result: dict
     scenario_recalculated: bool
+    proposal_documents_updated: bool
 
 
 def _attempt_for_selection(
@@ -365,6 +378,7 @@ def _read_response(
     attempt_limit: int,
 ) -> OfferResponseRead:
     attachments = []
+    rows = []
     if response_record is not None:
         rows = db.execute(
             select(SettlementOfferResponseAttachment, Document)
@@ -389,6 +403,15 @@ def _read_response(
     proposal_issued_at = getattr(attempt, "proposal_issued_at", None)
     proposal_terms = getattr(attempt, "proposal_terms_json", None)
     proposal_scenario_result = getattr(attempt, "proposal_scenario_result_json", None)
+    proposal_version = None
+    if attempt is not None and getattr(attempt, "id", None) is not None:
+        proposal_version = db.scalar(
+            select(SettlementProposalVersion).where(
+                SettlementProposalVersion.attempt_id == attempt.id,
+                SettlementProposalVersion.version_ordinal
+                == max(1, getattr(attempt, "proposal_version_ordinal", 0)),
+            )
+        )
     if attempt is not None and getattr(attempt, "proposal_draft_unlocked", False):
         scenario_result = selection.scenario_result_json
     elif proposal_scenario_result is not None:
@@ -402,6 +425,30 @@ def _read_response(
         and attempt.editable_state_json.get("sent_offer_mode") == "modified"
         else {"sent_docx", "sent_xlsx"}.issubset(kinds)
     )
+    required_sent_kinds = (
+        {"modified_docx", "modified_xlsx"}
+        if attempt is not None
+        and attempt.editable_state_json.get("sent_offer_mode") == "modified"
+        else {"sent_docx", "sent_xlsx"}
+    )
+    attachment_rows = {
+        item.kind: item
+        for item, _document in rows
+        if item.kind in required_sent_kinds
+    }
+    proposal_updated_at = getattr(proposal_version, "updated_at", None)
+    sent_documents_current = bool(
+        sent_documents_complete
+        and proposal_updated_at is not None
+        and required_sent_kinds.issubset(attachment_rows)
+        and all(
+            attachment_rows[kind].created_at >= proposal_updated_at
+            for kind in required_sent_kinds
+        )
+    )
+    downloaded_formats = getattr(proposal_version, "downloaded_formats", []) or []
+    if not isinstance(downloaded_formats, list):
+        downloaded_formats = []
     has_next_attempt = False
     if attempt is not None:
         has_next_attempt = db.scalar(
@@ -414,6 +461,7 @@ def _read_response(
         outcome=response_record.outcome if response_record is not None else None,
         attachments=attachments,
         sent_documents_complete=sent_documents_complete,
+        sent_documents_current=sent_documents_current,
         sent_confirmed=attempt.sent_confirmed_at is not None if attempt is not None else False,
         counteroffer_attachment_present="counteroffer" in kinds,
         attempt_ordinal=attempt.attempt_ordinal if attempt is not None else 1,
@@ -434,6 +482,9 @@ def _read_response(
         proposal_version_ordinal=(
             getattr(attempt, "proposal_version_ordinal", 0) if attempt is not None else 0
         ),
+        proposal_downloaded_formats=[
+            item for item in downloaded_formats if item in {"docx", "xlsx"}
+        ],
         attempt_revision=attempt.revision if attempt is not None else 0,
         editable_state=attempt.editable_state_json if attempt is not None else {},
         snapshot=(
@@ -557,6 +608,111 @@ def _parse_current_modified_offer(
         )
     except ModifiedOfferParseError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+def _update_attempt_proposal_documents(
+    db: Session,
+    user: User,
+    case_id: UUID,
+    selection: SettlementScenarioSelection,
+    attempt: SettlementNegotiationAttempt,
+    payload: OfferAttemptStateUpdate,
+    scenario_result: dict,
+) -> bool:
+    attempt_id = getattr(attempt, "id", None)
+    if attempt_id is None:
+        attempt.proposal_scenario_result_json = scenario_result
+        return False
+    version_ordinal = max(1, getattr(attempt, "proposal_version_ordinal", 0))
+    version = db.scalar(
+        select(SettlementProposalVersion).where(
+            SettlementProposalVersion.attempt_id == attempt_id,
+            SettlementProposalVersion.version_ordinal == version_ordinal,
+        )
+    )
+    if not payload.offer_from.strip() or not payload.offer_to.strip() or not payload.proposal_terms:
+        if version is not None:
+            version.downloaded_formats = []
+        attempt.proposal_terms_json = None
+        attempt.proposal_scenario_result_json = scenario_result
+        return False
+
+    terms = MediationOfferTerms.model_validate({
+        "offer_from": payload.offer_from,
+        "offer_to": payload.offer_to,
+        "county": payload.county or None,
+        "court_case_number": payload.cause_number or None,
+        "effective_date": payload.proposed_effective_date,
+        "response_by_date": payload.proposed_response_date,
+        "terms": payload.proposal_terms,
+        "milestones": [milestone.model_dump(mode="json") for milestone in payload.milestones],
+        "proposed_values": [value.model_dump(mode="json") for value in payload.proposed_values],
+    })
+    result = SettlementScenarioResult.model_validate(scenario_result)
+    if len(terms.terms) > 25:
+        if version is not None:
+            version.downloaded_formats = []
+        raise HTTPException(status_code=422, detail="Proposal documents support up to 25 terms.")
+    if len(terms.milestones) > 100 or len(terms.proposed_values) > 500:
+        raise HTTPException(status_code=422, detail="Proposal documents exceed supported attempt details.")
+
+    known_asset_ids = {
+        str(item["asset_id"])
+        for item in attempt.snapshot_json.get("settlement_ledger", [])
+    }
+    if any(str(value.asset_id) not in known_asset_ids for value in terms.proposed_values):
+        raise HTTPException(status_code=422, detail="Proposed values must reference an asset in this attempt snapshot.")
+
+    docx = render_mediation_offer_docx(terms, result)
+    workbook = render_property_schedule_xlsx(terms, result)
+    if len(docx) + len(workbook) > get_settings().max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Generated proposal files exceed the file size limit.")
+    terms_json = terms.model_dump(mode="json")
+    result_json = result.model_dump(mode="json")
+    request_hash = hashlib.sha256(
+        json.dumps(
+            {
+                "version_ordinal": version_ordinal,
+                "terms": terms_json,
+                "scenario_result": result_json,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if version is None:
+        version = SettlementProposalVersion(
+            id=uuid4(),
+            case_id=case_id,
+            attempt_id=attempt.id,
+            user_id_snapshot=user.id,
+            version_ordinal=version_ordinal,
+            request_sha256=request_hash,
+            terms_json=terms_json,
+            scenario_result_json=result_json,
+            docx_content=docx,
+            xlsx_content=workbook,
+            downloaded_formats=[],
+            credit_cost=0,
+        )
+        db.add(version)
+    else:
+        content_changed = (
+            version.terms_json != terms_json
+            or version.scenario_result_json != result_json
+        )
+        version.request_sha256 = request_hash
+        version.terms_json = terms_json
+        version.scenario_result_json = result_json
+        version.docx_content = docx
+        version.xlsx_content = workbook
+        if content_changed:
+            version.downloaded_formats = []
+            version.updated_at = datetime.now(UTC)
+    attempt.proposal_terms_json = terms_json
+    attempt.proposal_scenario_result_json = result_json
+    return True
 
 
 @router.get("", response_model=OfferResponseRead)
@@ -719,31 +875,15 @@ def update_offer_attempt_state(
                 "attempt_revision": attempt.revision,
             },
         )
-    if issued and not draft_unlocked:
-        incoming_state = payload.model_dump(mode="json", exclude={"expected_revision"})
-        workflow_fields = {"sent_offer_mode", "modified_offer_reviewed"}
-        saved_content = {
-            key: value
-            for key, value in attempt.editable_state_json.items()
-            if key not in workflow_fields
-        }
-        requested_content = {
-            key: value for key, value in incoming_state.items() if key not in workflow_fields
-        }
-        if saved_content != requested_content:
-            raise HTTPException(
-                status_code=409,
-                detail="This attempt's proposal has been issued. Its terms and scenario are locked.",
-            )
-        if (
-            attempt.editable_state_json.get("sent_offer_mode") == "modified"
-            and payload.sent_offer_mode != "modified"
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="The modified-offer workflow cannot be changed after it is selected.",
-            )
-    else:
+    if (
+        attempt.editable_state_json.get("sent_offer_mode") == "modified"
+        and payload.sent_offer_mode != "modified"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The modified-offer workflow cannot be changed after it is selected.",
+        )
+    if not issued or draft_unlocked:
         _require_current_attempt_revisions(case, attempt)
     if (
         payload.proposed_effective_date is not None
@@ -784,7 +924,7 @@ def update_offer_attempt_state(
             )
     scenario_result = (
         getattr(attempt, "proposal_scenario_result_json", None)
-        or selection.scenario_result_json
+        or getattr(selection, "scenario_result_json", {})
     )
     scenario_recalculated = False
     if payload.scenario_assumptions is not None:
@@ -842,6 +982,22 @@ def update_offer_attempt_state(
     attempt.editable_state_json = payload.model_dump(mode="json", exclude={"expected_revision"})
     attempt.revision += 1
     try:
+        proposal_documents_updated = _update_attempt_proposal_documents(
+            db,
+            user,
+            case_id,
+            selection,
+            attempt,
+            payload,
+            scenario_result,
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except ValueError as error:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    try:
         db.commit()
         db.refresh(attempt)
     except SQLAlchemyError as error:
@@ -856,6 +1012,7 @@ def update_offer_attempt_state(
         editable_state=attempt.editable_state_json,
         scenario_result=scenario_result,
         scenario_recalculated=scenario_recalculated,
+        proposal_documents_updated=proposal_documents_updated,
     )
 
 
@@ -940,6 +1097,18 @@ def confirm_offer_sent(
         raise HTTPException(
             status_code=409,
             detail="Attach both final DOCX and XLSX files before confirming that you sent them.",
+        )
+    if not getattr(current, "sent_documents_current", False):
+        raise HTTPException(
+            status_code=409,
+            detail="Replace the attached files with both current proposal documents before confirming.",
+        )
+    if not {"docx", "xlsx"}.issubset(
+        set(getattr(current, "proposal_downloaded_formats", []) or [])
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Download both current proposal documents before confirming that you sent them.",
         )
     if attempt is None or response_record is None:
         raise HTTPException(status_code=409, detail="Negotiation attempt is unavailable.")
