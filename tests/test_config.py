@@ -182,13 +182,52 @@ class SettingsTests(unittest.TestCase):
         self.assertIn("live_payment_configuration_incomplete", errors)
         self.assertIn("backup_restore_tombstone_reconciliation_unverified", errors)
 
-    def test_production_readiness_rejects_ai_without_verified_legal_policy_gate(self) -> None:
+    def test_production_readiness_requires_separate_counsel_and_provider_evidence_for_ai(self) -> None:
         settings = Settings(
             production_readiness_required=True,
             ai_analysis_enabled=True,
         )
 
-        self.assertIn("ai_policy_review_not_verified", settings.production_readiness_errors())
+        errors = settings.production_readiness_errors()
+        self.assertIn("qualified_counsel_review_evidence_missing", errors)
+        self.assertIn("ai_qualified_counsel_review_evidence_missing", errors)
+        self.assertIn("ai_provider_review_evidence_missing", errors)
+
+        provider_only = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+            ai_provider_review_evidence_verified=True,
+        )
+        self.assertIn(
+            "qualified_counsel_review_evidence_missing",
+            provider_only.production_readiness_errors(),
+        )
+        self.assertIn(
+            "ai_qualified_counsel_review_evidence_missing",
+            provider_only.production_readiness_errors(),
+        )
+        self.assertNotIn(
+            "ai_provider_review_evidence_missing",
+            provider_only.production_readiness_errors(),
+        )
+
+        counsel_only = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+            counsel_review_evidence_verified=True,
+        )
+        self.assertNotIn(
+            "qualified_counsel_review_evidence_missing",
+            counsel_only.production_readiness_errors(),
+        )
+        self.assertNotIn(
+            "ai_qualified_counsel_review_evidence_missing",
+            counsel_only.production_readiness_errors(),
+        )
+        self.assertIn(
+            "ai_provider_review_evidence_missing",
+            counsel_only.production_readiness_errors(),
+        )
 
     def test_complete_configuration_does_not_clear_unverified_operational_evidence(self) -> None:
         settings = Settings(
@@ -241,6 +280,23 @@ class SettingsTests(unittest.TestCase):
             "qualified_counsel_review_evidence_missing",
             reviewed.production_readiness_errors(),
         )
+
+    def test_ai_provider_evidence_flag_defaults_closed_and_clears_only_provider_gate(self) -> None:
+        settings = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+        )
+        self.assertFalse(settings.ai_provider_review_evidence_verified)
+        self.assertIn("ai_provider_review_evidence_missing", settings.production_readiness_errors())
+
+        provider_reviewed = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+            ai_provider_review_evidence_verified=True,
+        )
+        errors = provider_reviewed.production_readiness_errors()
+        self.assertNotIn("ai_provider_review_evidence_missing", errors)
+        self.assertIn("qualified_counsel_review_evidence_missing", errors)
 
 
 if __name__ == "__main__":

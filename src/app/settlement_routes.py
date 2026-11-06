@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.attempt_finalization import finalize_attempt, is_finalized
 from app.attempt_credits import consume_finalization_credit
 from app.auth_routes import require_current_user
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, provider_data_handling_notice
 from app.database import get_db
 from app.failure_logging import log_failure_event
 from app.models import (
@@ -732,6 +732,7 @@ def _settlement_disclosure(settings: Settings | None = None) -> SettlementPlanni
             and (settings.bedrock_model_id or "").strip()
             and (settings.bedrock_region or "").strip()
             and (settings.settlement_planning_data_handling_notice or "").strip()
+            and settings.production_ai_readiness_passed()
         ),
         provider="Amazon Bedrock",
         model_id=settings.bedrock_model_id or None,
@@ -744,7 +745,9 @@ def _settlement_disclosure(settings: Settings | None = None) -> SettlementPlanni
             "property/debt balances and scenario assumptions; and the curated Washington authority set. "
             "Full source documents, ledger notes, credentials, and account numbers are not sent."
         ),
-        data_handling_notice=settings.settlement_planning_data_handling_notice or None,
+        data_handling_notice=provider_data_handling_notice(
+            settings.settlement_planning_data_handling_notice
+        ),
     )
 
 
@@ -1043,6 +1046,7 @@ def create_settlement_scenarios(
                     scenarios,
                     payload.objective,
                     _reviewed_fact_payload(facts),
+                    consent_granted=True,
                 )
             except (ValueError, RuntimeError, BotoCoreError) as error:
                 log_failure_event(logger, "settlement_ai_ranking_failed", error)
