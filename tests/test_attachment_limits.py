@@ -1,5 +1,8 @@
+import os
+import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -32,6 +35,7 @@ def _jsonb_for_sqlite(_type, _compiler, **_kwargs) -> str:
 
 
 PDF = b"%PDF-1.7\n"
+FREE_SEED = 4
 
 
 class AttachmentLimitTests(unittest.TestCase):
@@ -231,7 +235,8 @@ class AttachmentLimitTests(unittest.TestCase):
         self.assertIn("FOR UPDATE", sql)
         self.assertIn("cases", sql)
 
-    def test_concurrent_requests_cannot_exceed_quota_after_lock_release(self) -> None:
+    def test_quota_is_rechecked_after_prior_transaction_ends(self) -> None:
+        # Sequential only; real parallel behavior is PostgresConcurrentUploadTests.
         self.fill(4)
         enforce_attachment_quota(self.db, self.case.id)
         self.db.rollback()
@@ -269,3 +274,96 @@ class AttachmentLimitUiTests(unittest.TestCase):
             "config.max_attachments",
         ):
             self.assertIn(marker, html)
+
+
+POSTGRES_URL = os.environ.get("WA_TEST_POSTGRES_URL")
+
+
+@unittest.skipUnless(
+    POSTGRES_URL,
+    "Set WA_TEST_POSTGRES_URL to a disposable PostgreSQL database to run concurrency tests.",
+)
+class PostgresConcurrentUploadTests(unittest.TestCase):
+    """Two independent sessions race for the last slot; the case-row lock must admit one."""
+
+    def setUp(self) -> None:
+        self.schema = f"attachment_limits_{uuid4().hex[:12]}"
+        admin = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'CREATE SCHEMA "{self.schema}"')
+        admin.dispose()
+        self.engine = create_engine(
+            POSTGRES_URL, connect_args={"options": f"-csearch_path={self.schema}"}
+        )
+        Base.metadata.create_all(self.engine)
+        with Session(self.engine) as db:
+            user = User(email="owner@example.com", status="active")
+            case = Case(status="draft", metadata_json={})
+            db.add_all([user, case])
+            db.flush()
+            db.add(CaseMembership(case_id=case.id, user_id=user.id, role="owner"))
+            db.add_all(
+                Document(
+                    case_id=case.id,
+                    object_key=f"{case.id}/seed-{n}.pdf",
+                    extension="pdf",
+                    media_type="application/pdf",
+                    sha256="0" * 64,
+                    size_bytes=1,
+                )
+                for n in range(FREE_SEED)
+            )
+            db.commit()
+            self.user_id, self.case_id = user.id, case.id
+
+    def tearDown(self) -> None:
+        app.dependency_overrides.clear()
+        self.engine.dispose()
+        admin = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'DROP SCHEMA "{self.schema}" CASCADE')
+        admin.dispose()
+
+    def test_two_parallel_uploads_at_four_of_five_admit_exactly_one(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="materials-test-signing-secret-long-enough",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_kms_key_id="alias/test-case-materials",
+            demo_mode_enabled=False,
+        )
+        user = SimpleNamespace(id=self.user_id)
+        app.dependency_overrides[require_current_user] = lambda: user
+
+        def override_db():
+            with Session(self.engine) as db:
+                yield db
+
+        app.dependency_overrides[get_db] = override_db
+        barrier = threading.Barrier(2, timeout=10)
+        statuses: list[int] = []
+
+        def attempt(n: int) -> None:
+            client = TestClient(app)
+            barrier.wait()
+            response = client.post(
+                f"/api/v1/materials/imports/{uuid4()}/files/{uuid4()}",
+                files={"upload": ("a.pdf", PDF + bytes([n]), "application/pdf")},
+                data={"case_id": str(self.case_id)},
+            )
+            statuses.append(response.status_code)
+
+        with (
+            patch("app.materials.get_settings", return_value=settings),
+            patch("app.materials.storage", Mock()),
+        ):
+            threads = [threading.Thread(target=attempt, args=(n,)) for n in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=30)
+
+        self.assertEqual(sorted(statuses), [201, 409])
+        with Session(self.engine) as db:
+            self.assertEqual(attachment_count(db, self.case_id), 5)

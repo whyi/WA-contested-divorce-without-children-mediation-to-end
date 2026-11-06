@@ -25,7 +25,8 @@
 - Exactly 2 MiB is accepted; 2 MiB + 1 byte is rejected with 413.
 - A Free case rejects its sixth attachment; a paid case rejects its 101st.
 - Deleting an attachment lets a replacement be added immediately.
-- Retries of a stored item do not duplicate or consume slots; concurrent uploads never exceed the quota.
+- Retries of a stored item do not duplicate or consume slots.
+- Concurrent uploads never exceed the quota. Default tests (SQLite) verify only that the case row is locked (`FOR UPDATE`) before counting. Real parallel behavior is verified by the optional `PostgresConcurrentUploadTests`, which races two independent sessions for the last slot and requires exactly one success. It is skipped unless `WA_TEST_POSTGRES_URL` points to a disposable PostgreSQL database (e.g. `postgresql+psycopg://user:pass@localhost:5432/scratch`); it works in a throwaway schema it drops afterwards. Until it has been run in CI or deployment validation, parallel database behavior is not proven.
 - Unauthorized users cannot read usage or upload.
 
 ## Out of scope
