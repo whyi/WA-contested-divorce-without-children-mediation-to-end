@@ -335,7 +335,8 @@ class CounterofferUiTests(unittest.TestCase):
             "settlement-counteroffer-rows",
             "settlement-counteroffer-reviewed",
             "counteroffer-values/suggestions",
-            "settlement-response-stop-choice",
+            "settlement-response-next-attempt",
+            "settlement-response-stop",
             "never sends anything to the other party",
         ):
             self.assertIn(marker, html)

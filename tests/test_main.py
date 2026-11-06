@@ -274,6 +274,15 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("loadSettlementOfferResponse({ showWorkflow: false })", page)
         self.assertIn("settlementOfferResponseState?.sent_confirmed", page)
 
+    def test_rejection_completion_routes_serve_the_dedicated_page(self) -> None:
+        for path in ("/rejection-completion", "/demo/rejection-completion"):
+            status, body = asyncio.run(request_app(path))
+            self.assertEqual(status, 200)
+            page = body.decode()
+            self.assertIn('id="rejection-completion-page"', page)
+            self.assertIn("did not produce an accepted agreement", page)
+            self.assertIn('id="rejection-completion-back-to-cases"', page)
+
     def test_root_displays_mode_choices_and_authentication_gate(self) -> None:
         status, body = asyncio.run(request_app("/"))
 

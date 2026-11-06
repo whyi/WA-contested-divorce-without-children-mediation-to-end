@@ -812,9 +812,14 @@
       body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 34px auto; }
       body[data-settlement-completion-page="true"] footer,
       body[data-settlement-completion-page="true"] .theme-status { display: none; }
+      body[data-demo-page="rejection-completion"] main > section:not(#rejection-completion-page),
+      body[data-rejection-completion-page="true"] main > section:not(#rejection-completion-page) { display: none; }
+      body[data-rejection-completion-page="true"] main > #rejection-completion-page { display: block; max-width: 900px; margin: 34px auto; }
+      body[data-rejection-completion-page="true"] footer,
+      body[data-rejection-completion-page="true"] .theme-status { display: none; }
       .settlement-completion-card { padding: clamp(22px, 5vw, 42px); border: 1px solid var(--line); border-radius: 18px; background:var(--surface-raised); box-shadow: 0 14px 40px rgba(20, 38, 29, .08); }
       .settlement-completion-card > h1 { margin: 8px 0 12px; color:var(--green-dark); font-size: clamp(28px, 5vw, 42px); line-height: 1.12; }
-      .settlement-completion-card > p, .settlement-completion-card li { max-width: 75ch; color:var(--muted); line-height: 1.7; }
+      .settlement-completion-card > p, .settlement-completion-card li, .settlement-completion-section > p { max-width: 75ch; color:var(--muted); line-height: 1.7; }
       .settlement-completion-thanks { color:var(--text-primary) !important; font-size: 17px; font-weight: 700; }
       .settlement-completion-section { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
       .settlement-completion-section h2 { color:var(--text-primary); font-size: 21px; }
@@ -2382,7 +2387,15 @@
                       </section>
                       <p id="settlement-response-delivery-note">You deliver proposals to the mediator yourself. This app never sends anything to the other party and cannot confirm delivery or the response; what you record here is your own report.</p>
                     </div>
-                    <p id="settlement-response-stop-choice" hidden>Offer rejected. You may use Next to prepare another attempt, or stop here. To stop, close the case from your dashboard; a dedicated neutral stop page is planned in a follow-up.</p>
+                    <section id="settlement-response-rejection-choices" hidden aria-labelledby="settlement-response-rejection-title">
+                      <h4 id="settlement-response-rejection-title">What would you like to do after this rejection?</h4>
+                      <p>A new attempt is created only if you choose to continue. Drafts are free; the first successful finalization for this case is free, and each later successful finalization uses one attempt credit. The current balance and any credit needed are shown before you confirm finalization.</p>
+                      <div class="materials-actions">
+                        <button class="materials-import" id="settlement-response-next-attempt" type="button">Prepare another attempt</button>
+                        <button class="materials-import" id="settlement-response-stop" type="button">Stop mediation work and close this product case</button>
+                      </div>
+                      <p id="settlement-response-stop-status" role="status" aria-live="polite"></p>
+                    </section>
                     <button class="materials-import" id="settlement-response-continue" type="button" disabled>Next</button>
                     <section class="settlement-response-placeholder" id="settlement-response-placeholder" hidden>
                       <h4>Response recorded</h4>
@@ -2652,6 +2665,12 @@
                       <p id="settlement-demo-counteroffer-limit" hidden>This sample does not include a second attempt. In a real case, each successful finalization after the free first one uses an attempt credit.</p>
                       <p id="settlement-demo-response-status" role="status" aria-live="polite">Select a response to preview the next step.</p>
                       <button class="materials-import" id="settlement-demo-response-next" type="button" disabled>Next</button>
+                      <section id="settlement-demo-rejection-choices" hidden aria-labelledby="settlement-demo-rejection-title">
+                        <h5 id="settlement-demo-rejection-title">What would you like to do after this fictional rejection?</h5>
+                        <p>This sample does not include a second attempt. In a real case, you choose whether to continue; the first successful finalization is free, and later finalizations use an attempt credit shown before confirmation.</p>
+                        <button class="materials-import" id="settlement-demo-next-attempt" type="button">Preview preparing another attempt</button>
+                        <button class="materials-import" id="settlement-demo-stop" type="button">Stop this fictional workflow</button>
+                      </section>
                       <section id="settlement-demo-response-placeholder" hidden>
                         <h5>Response recorded</h5>
                         <p>No next legal step is provided here. Continue the conversation or use another workflow when available.</p>
@@ -2731,6 +2750,29 @@
               <a id="settlement-completion-back-to-mediation" href="/">Back to mediation</a>
               <a id="settlement-completion-back-to-cases" href="/#account">Back to my cases</a>
               <button id="settlement-completion-finalize" class="completion-primary" type="button" disabled>Mark as completed and back to my cases</button>
+            </div>
+          </div>
+        </section>
+        <section class="section" id="rejection-completion-page" hidden aria-labelledby="rejection-completion-title">
+          <div class="settlement-completion-card">
+            <p class="eyebrow" id="rejection-completion-eyebrow">Mediation workflow stopped</p>
+            <h1 id="rejection-completion-title" tabindex="-1">Your mediation-preparation workspace is closed.</h1>
+            <p id="rejection-completion-status" class="settlement-completion-status" role="status" aria-live="polite"></p>
+            <div id="rejection-completion-auth-content" class="settlement-completion-section" hidden>
+              <p class="settlement-completion-thanks">Based on the response you recorded, mediation did not produce an accepted agreement in this workflow.</p>
+              <p>Only your Casework mediation-preparation workspace is closed. This does not resolve or end your divorce case. It does not file anything with a court. It does not delete data. It does not change your legal status or court record. Your case history and credits are preserved; you can reopen this workspace from Closed cases.</p>
+              <h2>Possible next steps</h2>
+              <p>Possible next steps depend on your case. You may wish to discuss possible next steps with your mediator, consult qualified Washington counsel, or learn about court processes from official sources. This is not legal advice and does not recommend a particular path.</p>
+            </div>
+            <div id="rejection-completion-demo-content" class="settlement-completion-section" hidden>
+              <p class="settlement-completion-thanks">This fictional preview ends after an offer rejection.</p>
+              <p><strong>Demo only:</strong> no real case was closed or changed, and no data was saved.</p>
+              <p>In a real case, stopping closes only the Casework mediation-preparation workspace. It does not resolve or end a divorce case. It does not file anything with a court. It does not delete data. It does not change legal status. The case history and credits remain preserved and can be reopened.</p>
+              <h2>Possible next steps</h2>
+              <p>Possible next steps depend on the case. A person may discuss options with a mediator, consult qualified Washington counsel, or learn about court processes from official sources. This is not legal advice and does not recommend a path.</p>
+            </div>
+            <div class="settlement-completion-actions">
+              <a id="rejection-completion-back-to-cases" href="/#account">Back to my cases</a>
             </div>
           </div>
         </section>
@@ -2928,6 +2970,10 @@
         const settlementResponseAcceptedFile = document.getElementById("settlement-response-accepted-file");
         const settlementResponseAcceptedStatus = document.getElementById("settlement-response-accepted-status");
         const settlementResponseContinue = document.getElementById("settlement-response-continue");
+        const settlementResponseRejectionChoices = document.getElementById("settlement-response-rejection-choices");
+        const settlementResponseNextAttempt = document.getElementById("settlement-response-next-attempt");
+        const settlementResponseStop = document.getElementById("settlement-response-stop");
+        const settlementResponseStopStatus = document.getElementById("settlement-response-stop-status");
         const settlementResponsePlaceholder = document.getElementById("settlement-response-placeholder");
         const settlementResponseChecklist = document.getElementById("settlement-response-checklist");
         const settlementOfferResponseHistory = document.getElementById("settlement-offer-response-history");
@@ -2992,7 +3038,17 @@
         const settlementDemoAttemptStatus = document.getElementById("settlement-demo-attempt-status");
         const settlementDemoResponseStatus = document.getElementById("settlement-demo-response-status");
         const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
+        const settlementDemoRejectionChoices = document.getElementById("settlement-demo-rejection-choices");
+        const settlementDemoNextAttempt = document.getElementById("settlement-demo-next-attempt");
+        const settlementDemoStop = document.getElementById("settlement-demo-stop");
         const settlementDemoResponsePlaceholder = document.getElementById("settlement-demo-response-placeholder");
+        const rejectionCompletionPage = document.getElementById("rejection-completion-page");
+        const rejectionCompletionEyebrow = document.getElementById("rejection-completion-eyebrow");
+        const rejectionCompletionTitle = document.getElementById("rejection-completion-title");
+        const rejectionCompletionStatus = document.getElementById("rejection-completion-status");
+        const rejectionCompletionAuthContent = document.getElementById("rejection-completion-auth-content");
+        const rejectionCompletionDemoContent = document.getElementById("rejection-completion-demo-content");
+        const rejectionCompletionBackToCases = document.getElementById("rejection-completion-back-to-cases");
         const settlementCompletionPage = document.getElementById("settlement-completion-page");
         const settlementCompletionStatus = document.getElementById("settlement-completion-status");
         const settlementCompletionAuthContent = document.getElementById("settlement-completion-auth-content");
@@ -3181,6 +3237,8 @@
         const demoExperienceMode = dashboardDemoMode;
         const demoSettlementCompletionMode = window.location.pathname === "/demo/settlement-completion";
         const settlementCompletionMode = window.location.pathname === "/settlement-completion";
+        const demoRejectionCompletionMode = window.location.pathname === "/demo/rejection-completion";
+        const rejectionCompletionMode = window.location.pathname === "/rejection-completion";
         const demoDocumentsMode = window.location.pathname === "/demo/documents";
         const demoWizardMode = window.location.pathname === "/demo/wizard";
         const demoFileManagerMode = window.location.pathname === "/demo/files";
@@ -5701,6 +5759,8 @@
           const modifiedMode = settlementAttemptEditableState.sent_offer_mode === "modified";
           const modifiedReviewed = Boolean(settlementAttemptEditableState.modified_offer_reviewed);
           const stateBusy = settlementAttemptStateDirty || settlementAttemptStateSaving;
+          const attemptLimitReached = current?.attempts_remaining != null
+            && current.attempts_remaining <= 0;
           settlementGenerate.disabled = Boolean(current);
           const counterofferNeedsFile = savedOutcome === "counteroffer"
             && !current?.counteroffer_attachment_present
@@ -5750,11 +5810,24 @@
             || !current?.sent_confirmed
             || !savedOutcome
             || counterofferNeedsFile
-            || (["counteroffer", "rejected"].includes(savedOutcome)
-              && current?.attempts_remaining <= 0);
+            || (["counteroffer", "rejected"].includes(savedOutcome) && attemptLimitReached);
           renderSettlementCounterofferPanel();
-          document.getElementById("settlement-response-stop-choice").hidden =
-            !(current?.outcome_choices || []).includes("stop_case");
+          const canStopAfterRejection =
+            (current?.outcome_choices || []).includes("stop_case");
+          settlementResponseRejectionChoices.hidden = !canStopAfterRejection;
+          settlementResponseContinue.hidden = savedOutcome === "rejected";
+          settlementResponseNextAttempt.disabled = settlementResponseUploading
+            || stateBusy
+            || !current?.sent_confirmed
+            || savedOutcome !== "rejected"
+            || attemptLimitReached;
+          settlementResponseNextAttempt.textContent = attemptLimitReached
+            ? "No attempts remaining"
+            : current?.attempt_limit
+              ? `Prepare another attempt — Attempt ${current.attempt_ordinal + 1} of ${current.attempt_limit}`
+              : "Prepare another attempt";
+          settlementResponseStop.disabled = settlementResponseUploading || stateBusy
+            || !canStopAfterRejection;
           settlementResponseCounterofferFile.disabled = settlementResponseUploading
             || Boolean(current?.counteroffer_attachment_present);
           settlementResponseAcceptedFile.disabled = settlementResponseUploading
@@ -5780,10 +5853,13 @@
               : current.sent_documents_complete
                 ? "final files attached; still editable until you confirm sending"
                 : "active and editable";
+            const attemptCountLabel = current.attempt_limit == null
+              ? `Attempt ${current.attempt_ordinal}`
+              : `Attempt ${current.attempt_ordinal} of ${current.attempt_limit}`;
             settlementResponseAttemptStatus.textContent =
-              `Attempt ${current.attempt_ordinal} of ${current.attempt_limit} — ${label} — ${attemptStatus}`;
+              `${attemptCountLabel} — ${label} — ${attemptStatus}`;
             settlementOfferAttemptStatus.textContent =
-              `Attempt ${current.attempt_ordinal} of ${current.attempt_limit} — ${label} — ${attemptStatus}`;
+              `${attemptCountLabel} — ${label} — ${attemptStatus}`;
             settlementOffer.querySelectorAll(".settlement-offer-grid input, .settlement-offer-grid textarea")
               .forEach((input) => { input.disabled = inputsLocked; });
             settlementAxesJson.disabled = inputsLocked;
@@ -6896,6 +6972,86 @@
               ? error.message
               : "The response cannot continue yet.";
             updateSettlementResponseControls();
+          }
+        }
+
+        async function stopSettlementAfterRejection() {
+          if (!settlementSelectedScenario
+            || settlementOfferResponseState?.outcome !== "rejected"
+            || !(settlementOfferResponseState?.outcome_choices || []).includes("stop_case")) return;
+          const confirmed = window.confirm(
+            "Stop mediation work and close this Casework case? This closes only the product workspace. It does not resolve your divorce case or delete data; you can reopen the workspace from Closed cases.",
+          );
+          if (!confirmed) return;
+          const caseId = settlementCaseId;
+          const selectionId = settlementSelectedScenario.selection_id;
+          settlementResponseStop.disabled = true;
+          settlementResponseStopStatus.textContent = "Closing the product workspace…";
+          try {
+            const result = await settlementApi(`/cases/${encodeURIComponent(caseId)}/close`, {
+              method: "POST",
+              body: JSON.stringify({ reason: "stopped" }),
+            });
+            if (settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId) return;
+            if (!result?.closed_at || result.closed_reason !== "stopped") {
+              throw new Error("The product workspace closure could not be verified.");
+            }
+            window.location.assign(
+              `/rejection-completion?case_id=${encodeURIComponent(caseId)}`,
+            );
+          } catch (error) {
+            if (settlementCaseId !== caseId
+              || settlementSelectedScenario?.selection_id !== selectionId) return;
+            settlementResponseStopStatus.textContent = error instanceof Error
+              ? error.message
+              : "The product workspace could not be closed. Please try again.";
+            updateSettlementResponseControls();
+          }
+        }
+
+        async function initializeRejectionCompletionPage() {
+          document.body.dataset.rejectionCompletionPage = "true";
+          rejectionCompletionPage.hidden = false;
+          rejectionCompletionBackToCases.href = demoRejectionCompletionMode
+            ? "/demo/2/dashboard"
+            : "/#account";
+          if (demoRejectionCompletionMode) {
+            document.body.dataset.demoPage = "rejection-completion";
+            rejectionCompletionEyebrow.textContent = "Fictional preview";
+            rejectionCompletionTitle.textContent = "This fictional mediation-preparation workflow has ended.";
+            rejectionCompletionDemoContent.hidden = false;
+            rejectionCompletionStatus.textContent =
+              "Fictional demo only — no real case data was closed, changed, or saved.";
+            rejectionCompletionTitle.focus();
+            return;
+          }
+
+          rejectionCompletionAuthContent.hidden = true;
+          rejectionCompletionDemoContent.hidden = true;
+          rejectionCompletionStatus.textContent = "Verifying product workflow closure…";
+          const caseId = new URLSearchParams(window.location.search).get("case_id");
+          if (!caseId) {
+            rejectionCompletionStatus.dataset.kind = "error";
+            rejectionCompletionStatus.textContent =
+              "The closed case could not be identified. Return to your cases to review closed workspaces.";
+            return;
+          }
+          try {
+            const { cases } = await settlementApi("/api/v1/closed-cases");
+            const closedCase = cases.find((item) => item.id === caseId);
+            if (!closedCase || closedCase.closed_reason !== "stopped") {
+              throw new Error("This page is available after a verified stop of mediation work.");
+            }
+            rejectionCompletionAuthContent.hidden = false;
+            rejectionCompletionStatus.textContent =
+              "The product mediation-preparation workflow is closed. Your case history and credits remain preserved.";
+            rejectionCompletionTitle.focus();
+          } catch (error) {
+            rejectionCompletionStatus.dataset.kind = "error";
+            rejectionCompletionStatus.textContent = error instanceof Error
+              ? error.message
+              : "The product workflow closure could not be verified.";
           }
         }
 
@@ -10550,6 +10706,13 @@
         settlementResponseContinue.addEventListener("click", () => {
           void continueSettlementOfferResponse();
         });
+        settlementResponseNextAttempt.addEventListener("click", () => {
+          if (settlementOfferResponseState?.outcome !== "rejected") return;
+          void continueSettlementOfferResponse();
+        });
+        settlementResponseStop.addEventListener("click", () => {
+          void stopSettlementAfterRejection();
+        });
         settlementResponseConfirmSent.addEventListener("click", () => {
           void confirmSettlementSentDocuments();
         });
@@ -10613,15 +10776,16 @@
             document.getElementById("settlement-demo-counteroffer-limit").hidden =
               settlementDemoResponseOutcome !== "counteroffer";
             settlementDemoResponsePlaceholder.hidden = true;
+            settlementDemoRejectionChoices.hidden =
+              settlementDemoResponseOutcome !== "rejected";
             const attemptLimitReached = ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome);
             settlementDemoResponseNext.disabled = attemptLimitReached;
+            settlementDemoResponseNext.hidden = settlementDemoResponseOutcome === "rejected";
             settlementDemoAttemptStatus.textContent =
               `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
             settlementDemoResponseNext.textContent = settlementDemoResponseOutcome === "counteroffer"
               ? "Sample ends here"
-              : settlementDemoResponseOutcome === "rejected"
-                ? "Sample ends here"
-                : "Next";
+              : "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
               ? "This sample ends after one attempt. In a real case, the first successful finalization is free and later finalizations use attempt credits."
               : settlementDemoResponseOutcome === "accepted"
@@ -10639,6 +10803,18 @@
           settlementDemoResponsePlaceholder.hidden = false;
           settlementDemoResponseStatus.textContent = "Previewing the placeholder next step using fictional data only.";
           settlementDemoResponsePlaceholder.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+        settlementDemoNextAttempt.addEventListener("click", () => {
+          if (settlementDemoResponseOutcome !== "rejected") return;
+          settlementDemoResponseStatus.textContent =
+            "The fictional sample ends after one attempt; no next attempt or data was created. In a real case, continuing is your choice, and any required credit is shown before finalization.";
+        });
+        settlementDemoStop.addEventListener("click", () => {
+          if (settlementDemoResponseOutcome !== "rejected") return;
+          if (!window.confirm(
+            "Stop this fictional workflow? No real case will be closed and no data will be saved.",
+          )) return;
+          window.location.assign("/demo/rejection-completion");
         });
         settlementGoogleConnect.addEventListener("click", () => {
           void connectSettlementExportProvider("google_drive");
@@ -11101,7 +11277,9 @@
 
         if (demoOnlyMode) initializeDemoCaseReturnLinks();
 
-        if (demoSettlementCompletionMode || settlementCompletionMode) {
+        if (demoRejectionCompletionMode || rejectionCompletionMode) {
+          void initializeRejectionCompletionPage();
+        } else if (demoSettlementCompletionMode || settlementCompletionMode) {
           void initializeSettlementCompletionPage();
         } else if (dashboardDemoMode) {
           document.body.dataset.demoPage = "dashboard";

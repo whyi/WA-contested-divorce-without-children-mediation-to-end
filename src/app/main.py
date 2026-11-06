@@ -413,10 +413,16 @@ def home() -> HTMLResponse:
     response_class=HTMLResponse,
     include_in_schema=False,
 )
+@app.get(
+    "/demo/rejection-completion",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
 @app.get("/demo/documents", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/demo/wizard", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/demo/files", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/settlement-completion", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/rejection-completion", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/upload", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
 def onboarding_page() -> HTMLResponse:
