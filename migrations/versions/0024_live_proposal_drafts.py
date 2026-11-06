@@ -4,8 +4,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0017_live_proposal_drafts"
-down_revision = "0016_subscription_memberships"
+revision = "0024_live_proposal_drafts"
+down_revision = "0023_priced_credit_package_purchases"
 branch_labels = None
 depends_on = None
 
@@ -19,6 +19,9 @@ def upgrade() -> None:
             server_default=sa.text("'[]'::jsonb"),
             nullable=False,
         ),
+    )
+    op.add_column(
+        "settlement_proposal_versions",
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),

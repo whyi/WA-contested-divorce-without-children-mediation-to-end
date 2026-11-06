@@ -6,8 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.deletion import require_scope_active
+from app.failure_logging import log_failure_event
 from app.models import Case, CaseMembership, User
-from app.subscription_plans import plan_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -17,29 +18,38 @@ def require_active_case_slot(db: Session, user_id: UUID) -> User:
         user = db.get(User, user_id, with_for_update=True)
         if user is None:
             raise HTTPException(status_code=401, detail="Authentication required.")
-        plan = plan_for_user(user)
-        active_case_count = db.scalar(
+        if getattr(user, "status", "active") != "active":
+            raise HTTPException(status_code=410, detail="This account is unavailable.")
+        require_scope_active(db, "account", user_id)
+        if getattr(user, "account_type", "party") == "professional":
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Professional accounts operate cases their clients own. "
+                    "Ask the party to invite you to their case."
+                ),
+            )
+        owned_case_count = db.scalar(
             select(func.count(Case.id))
             .join(CaseMembership, CaseMembership.case_id == Case.id)
             .where(
                 CaseMembership.user_id == user_id,
                 CaseMembership.role == "owner",
                 CaseMembership.revoked_at.is_(None),
-                Case.status != "finalized",
             )
         ) or 0
     except SQLAlchemyError as error:
-        logger.exception("Active case limit lookup failed.")
+        log_failure_event(logger, "upload_case_slot_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Active case availability could not be checked. Please try again.",
         ) from error
-    if plan.active_case_limit is not None and active_case_count >= plan.active_case_limit:
+    if owned_case_count >= 1:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"The {plan.name} plan allows {plan.active_case_limit} active case"
-                f"{'' if plan.active_case_limit == 1 else 's'}. Upgrade your plan to create another."
+                "A party account can own one divorce case. Open or reopen your existing case, "
+                "or invite a professional to operate it."
             ),
         )
     return user

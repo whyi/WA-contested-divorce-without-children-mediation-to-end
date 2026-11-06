@@ -71,6 +71,15 @@ class DocumentExtractionTests(unittest.TestCase):
         self.assertEqual(result.error_code, "password_protected")
         self.assertEqual(result.pages, ())
 
+    def test_default_page_limit_accepts_200_and_rejects_201_pages(self) -> None:
+        accepted = extract_document(create_pdf(["page"] * 200), "pdf")
+        self.assertEqual(accepted.page_count, 200)
+        self.assertFalse(accepted.needs_attention)
+
+        with self.assertRaises(DocumentExtractionError) as raised:
+            extract_document(create_pdf(["page"] * 201), "pdf")
+        self.assertEqual(raised.exception.error_code, "page_limit_exceeded")
+
     def test_pdf_page_limit_is_enforced_during_extraction(self) -> None:
         with self.assertRaisesRegex(DocumentExtractionError, "page limit"):
             extract_document(

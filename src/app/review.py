@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
 from app.database import get_db
+from app.failure_logging import log_failure_event
 from app.models import (
     Case,
     CaseMembership,
@@ -187,6 +188,7 @@ def _authorize_case(
             CaseMembership.case_id == case_id,
             CaseMembership.user_id == user.id,
             CaseMembership.revoked_at.is_(None),
+            CaseMembership.suspended_at.is_(None),
         )
     )
     if membership is None:
@@ -975,7 +977,7 @@ def get_case_proposal_review(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Proposal review lookup failed.")
+        log_failure_event(logger, "proposal_review_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Proposal review is unavailable.") from error
 
 
@@ -1013,7 +1015,7 @@ def review_case_proposal(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Proposal review decision could not be saved.")
+        log_failure_event(logger, "proposal_review_persistence_failed", error)
         raise HTTPException(status_code=503, detail="Proposal review could not be saved.") from error
 
 
@@ -1033,7 +1035,7 @@ def adopt_case_profile_facts(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Case-profile adoption could not be saved.")
+        log_failure_event(logger, "case_profile_adoption_failed", error)
         raise HTTPException(status_code=503, detail="Selected suggestions could not be adopted.") from error
 
 
@@ -1051,7 +1053,7 @@ def get_case_profile_facts(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Case-profile facts lookup failed.")
+        log_failure_event(logger, "case_profile_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Case-profile facts are unavailable.") from error
 
 
@@ -1075,7 +1077,7 @@ def withdraw_case_profile_fact(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Case-profile fact disposition could not be saved.")
+        log_failure_event(logger, "case_profile_update_failed", error)
         raise HTTPException(status_code=503, detail="Case-profile fact could not be withdrawn.") from error
 
 
@@ -1097,5 +1099,5 @@ def get_case_document_source_text(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Case source-text lookup failed.")
+        log_failure_event(logger, "source_text_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Source text is unavailable.") from error

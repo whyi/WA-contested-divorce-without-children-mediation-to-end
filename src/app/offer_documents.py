@@ -15,6 +15,19 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.settlement_planning import SettlementScenarioResult
 
 
+PROPOSED_DISCLOSURE_LABEL = "PROPOSED DISCLOSURE — PENDING QUALIFIED COUNSEL REVIEW"
+PROPOSAL_BOUNDARY_DISCLOSURE = (
+    "This file is an unsigned draft and is not filed. Casework is a preparation and "
+    "organization tool, not legal advice or representation. "
+    "It cannot guarantee correctness, fairness, acceptance, or any particular outcome. "
+    "Review all source facts, assumptions, calculations, and proposal terms. If you choose "
+    "to use this proposal, review it, download it, and provide it to your mediator. "
+    "Downloading is not delivery; the product does not automatically deliver proposals. "
+    "Any optional external transfer is user-initiated to a destination confirmed in the "
+    "interface and is not proof of mediator receipt."
+)
+
+
 def _validate_xml_text(value: str) -> str:
     if any(ord(character) < 32 and character not in "\t\n\r" for character in value):
         raise ValueError("Text contains unsupported control characters.")
@@ -176,11 +189,11 @@ def render_mediation_offer_docx(
     notice_run = notice.add_run("UNSIGNED PROPOSED DRAFT — REVIEW BEFORE SIGNING OR SHARING")
     notice_run.bold = True
     notice_run.font.size = Pt(9)
-    disclaimer = document.add_paragraph(
-        "This editable CR 2A-style proposal is not signed, filed, or legal advice. A signed "
-        "agreement may have legal effect. Review the terms and form with qualified Washington "
-        "family-law counsel before signing or sharing."
-    )
+    disclosure_label = document.add_paragraph()
+    disclosure_label_run = disclosure_label.add_run(PROPOSED_DISCLOSURE_LABEL)
+    disclosure_label_run.bold = True
+    disclosure_label_run.font.size = Pt(9)
+    disclaimer = document.add_paragraph(PROPOSAL_BOUNDARY_DISCLOSURE)
     disclaimer.paragraph_format.space_after = Pt(8)
     intro = document.add_paragraph(
         "The following is a proposed settlement stipulation and agreement for the parties' "
@@ -451,8 +464,32 @@ def render_property_schedule_xlsx(
     sheet = workbook.active
     sheet.title = "Property Division"
     assumptions = workbook.create_sheet("Scenario Assumptions")
+    review = workbook.create_sheet("Important review", 0)
+    workbook.active = 0
     workbook.calculation.fullCalcOnLoad = True
     workbook.calculation.forceFullCalc = True
+
+    review.merge_cells("A1:F1")
+    _set_safe_text(review["A1"], PROPOSED_DISCLOSURE_LABEL)
+    review["A1"].font = Font(bold=True, color="FFFFFF")
+    review["A1"].fill = PatternFill("solid", fgColor="8A4B23")
+    review["A1"].alignment = Alignment(wrap_text=True, vertical="top")
+    review.row_dimensions[1].height = 30
+    review.merge_cells("A2:F2")
+    _set_safe_text(review["A2"], PROPOSAL_BOUNDARY_DISCLOSURE)
+    review["A2"].alignment = Alignment(wrap_text=True, vertical="top")
+    review.row_dimensions[2].height = 100
+    review.merge_cells("A3:F3")
+    _set_safe_text(
+        review["A3"],
+        "This workbook is an unsigned proposed schedule. Amounts and allocations are "
+        "arithmetic outputs based on the selected scenario and entered assumptions, not "
+        "legal classifications, valuations, findings, or a prediction.",
+    )
+    review["A3"].alignment = Alignment(wrap_text=True, vertical="top")
+    review.row_dimensions[3].height = 54
+    for column in range(1, 7):
+        review.column_dimensions[get_column_letter(column)].width = 18
 
     sheet.merge_cells("A1:I1")
     _set_safe_text(sheet["A1"], "CR 2A Property-Division Proposal — Draft")

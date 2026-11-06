@@ -9,11 +9,30 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.attachment_limits import (
+    FREE_ATTACHMENT_LIMIT,
+    attachment_usage,
+    enforce_attachment_quota,
+)
 from app.auth_routes import require_current_user
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import get_db
-from app.models import Case, CaseMembership, Document, MaterialImportBatch, MaterialImportItem, User
+from app.deletion import (
+    import_item_tombstone_id,
+    require_scope_active,
+    scope_tombstone,
+)
+from app.failure_logging import log_failure_event
+from app.models import (
+    Case,
+    CaseMembership,
+    DeletionTombstone,
+    Document,
+    MaterialImportBatch,
+    MaterialImportItem,
+    User,
+)
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
 
@@ -29,7 +48,11 @@ class ProviderAvailability(BaseModel):
 
 class MaterialsConfig(BaseModel):
     max_upload_bytes: int
+    max_attachments: int
+    attachment_count: int
     supported_extensions: list[str]
+    max_pdf_pages: int
+    ocr_supported: bool
     import_enabled: bool
     providers: ProviderAvailability
 
@@ -99,7 +122,7 @@ def _existing_item(
         return batch, None
     document = db.get(Document, item.document_id)
     if document is None:
-        logger.error("Material import item references a missing document: %s", item.id)
+        log_failure_event(logger, "upload_document_missing", severity="SEV1")
         raise HTTPException(status_code=503, detail="Import status is unavailable. Please try again.")
     return batch, document
 
@@ -108,20 +131,45 @@ def _delete_uploaded_object(key: str | None) -> None:
     if key is None:
         return
     try:
-        storage.delete(key)
-    except BotoCoreError as error:
-        logger.error(
-            "Could not clean up an object after a failed material import (%s).",
-            type(error).__name__,
-        )
+        storage.delete_all_versions(key)
+    except Exception as error:
+        log_failure_event(logger, "upload_object_cleanup_failed", error, severity="SEV1")
 
 
 @router.get("/config", response_model=MaterialsConfig)
-def materials_config(_: User = Depends(require_current_user)) -> MaterialsConfig:
+def materials_config(
+    case_id: UUID | None = None,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> MaterialsConfig:
     config = get_settings()
+    stored, limit = 0, FREE_ATTACHMENT_LIMIT
+    if case_id is not None:
+        try:
+            membership = db.scalar(
+                select(CaseMembership).where(
+                    CaseMembership.case_id == case_id,
+                    CaseMembership.user_id == user.id,
+                    CaseMembership.revoked_at.is_(None),
+                    CaseMembership.suspended_at.is_(None),
+                )
+            )
+        except SQLAlchemyError as error:
+            log_failure_event(logger, "upload_authorization_lookup_failed", error)
+            raise HTTPException(
+                status_code=503,
+                detail="Case access could not be verified. Please try again.",
+            ) from error
+        if membership is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        stored, limit = attachment_usage(db, case_id)
     return MaterialsConfig(
         max_upload_bytes=config.max_upload_bytes,
+        max_attachments=limit,
+        attachment_count=stored,
         supported_extensions=["pdf", "docx"],
+        max_pdf_pages=config.max_pdf_pages,
+        ocr_supported=False,
         import_enabled=(
             config.auth_enabled
             and config.case_data_enabled
@@ -160,10 +208,18 @@ async def import_material_file(
     finally:
         await upload.close()
 
+    if scope_tombstone(
+        db, "import_item", import_item_tombstone_id(batch_id, item_id)
+    ) is not None:
+        raise HTTPException(
+            status_code=410,
+            detail="This material import was permanently deleted and cannot be retried.",
+        )
+
     try:
         existing = _existing_item(db, batch_id, item_id)
     except SQLAlchemyError as error:
-        logger.exception("Material import status lookup failed.")
+        log_failure_event(logger, "upload_reconciliation_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Import status is unavailable. Please try again.",
@@ -180,21 +236,34 @@ async def import_material_file(
                     CaseMembership.case_id == batch.case_id,
                     CaseMembership.user_id == user.id,
                     CaseMembership.revoked_at.is_(None),
+                    CaseMembership.suspended_at.is_(None),
                 )
             )
         except SQLAlchemyError as error:
-            logger.exception("Material import membership lookup failed.")
+            log_failure_event(logger, "upload_authorization_lookup_failed", error)
             raise HTTPException(
                 status_code=503,
                 detail="Import authorization is unavailable. Please try again.",
             ) from error
         if membership is None:
             raise HTTPException(status_code=404, detail="Import batch not found.")
+        case = db.get(Case, batch.case_id, with_for_update=True)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        require_scope_active(db, "case", batch.case_id)
         if document is not None:
+            if hashlib.sha256(content).hexdigest() != document.sha256:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This import item was already used for different file contents.",
+                )
             return _document_response(item_id, batch.case_id, document)
         case_id = batch.case_id
+        new_case = False
     else:
+        new_case = case_id is None
         if case_id is None:
+            require_scope_active(db, "account", user.id)
             require_active_case_slot(db, user.id)
             case = Case(id=uuid4(), status="draft")
             db.add(case)
@@ -208,27 +277,33 @@ async def import_material_file(
                         CaseMembership.case_id == case_id,
                         CaseMembership.user_id == user.id,
                         CaseMembership.revoked_at.is_(None),
+                        CaseMembership.suspended_at.is_(None),
                     )
                 )
-                case_exists = db.get(Case, case_id) is not None
+                case = db.get(Case, case_id, with_for_update=True)
             except SQLAlchemyError as error:
-                logger.exception("Case authorization lookup failed during material import.")
+                log_failure_event(logger, "upload_authorization_lookup_failed", error)
                 raise HTTPException(
                     status_code=503,
                     detail="Case access could not be verified. Please try again.",
                 ) from error
             if membership is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
+            require_scope_active(db, "case", case_id)
             if membership.role == "viewer":
                 raise HTTPException(status_code=403, detail="Case is read-only.")
-            if not case_exists:
+            if case is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
+            require_scope_active(db, "case", case_id)
         new_batch = MaterialImportBatch(id=batch_id, user_id=user.id, case_id=case_id)
         db.add_all(
             [
                 new_batch,
             ]
         )
+
+    if not new_case:
+        enforce_attachment_quota(db, case_id)
 
     document_id = uuid4()
     object_key = f"{case_id}/{document_id}.{extension}"
@@ -253,11 +328,16 @@ async def import_material_file(
     try:
         upload_attempted = True
         storage.put(object_key, content, media_type)
+        require_scope_active(db, "case", case_id)
         db.commit()
+    except HTTPException:
+        db.rollback()
+        _delete_uploaded_object(object_key if upload_attempted else None)
+        raise
     except (BotoCoreError, RuntimeError) as error:
         db.rollback()
         _delete_uploaded_object(object_key if upload_attempted else None)
-        logger.error("Material object storage failed (%s).", type(error).__name__)
+        log_failure_event(logger, "upload_storage_failed", error)
         raise HTTPException(
             status_code=503,
             detail="This file could not be stored. Please retry it.",
@@ -288,10 +368,18 @@ async def import_material_file(
                     status_code=409,
                     detail="Another file in this import is being saved. Please retry.",
                 ) from error
-        logger.error("Material import database transaction failed (%s).", type(error).__name__)
+        log_failure_event(logger, "upload_persistence_failed", error)
         raise HTTPException(
             status_code=503,
             detail="This file could not be recorded. Please retry it.",
+        ) from error
+    except Exception as error:
+        db.rollback()
+        _delete_uploaded_object(object_key if upload_attempted else None)
+        log_failure_event(logger, "upload_unexpected_failure", error)
+        raise HTTPException(
+            status_code=503,
+            detail="This file could not be confirmed as stored. Check its import status before retrying.",
         ) from error
 
     return _document_response(item_id, case_id, document)
@@ -321,10 +409,18 @@ def import_batch_status(
             select(MaterialImportItem.item_id, Document)
             .join(Document, Document.id == MaterialImportItem.document_id)
             .where(MaterialImportItem.batch_id == batch.id)
+            .where(
+                ~select(DeletionTombstone.id)
+                .where(
+                    DeletionTombstone.scope_type == "document",
+                    DeletionTombstone.scope_id == Document.id,
+                )
+                .exists()
+            )
             .order_by(MaterialImportItem.id)
         ).all()
     except SQLAlchemyError as error:
-        logger.exception("Material import status retrieval failed.")
+        log_failure_event(logger, "upload_reconciliation_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Import status is unavailable. Please try again.",

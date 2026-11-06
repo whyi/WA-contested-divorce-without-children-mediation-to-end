@@ -19,6 +19,20 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.bedrock_model_id, "us.amazon.nova-lite-v1:0")
         self.assertEqual(settings.bedrock_region, "us-west-2")
 
+    def test_support_contact_must_be_https_without_embedded_data(self) -> None:
+        settings = Settings(support_contact_url="https://support.example.test/help")
+        self.assertEqual(settings.support_contact_url, "https://support.example.test/help")
+
+        for invalid_url in (
+            "http://support.example.test/help",
+            "https://user:password@support.example.test/help",
+            "https://support.example.test/help?token=secret",
+            "https://support.example.test/help#case",
+        ):
+            with self.subTest(invalid_url=invalid_url):
+                with self.assertRaisesRegex(ValueError, "SUPPORT_CONTACT_URL"):
+                    Settings(support_contact_url=invalid_url)
+
     def test_authentication_is_disabled_without_explicit_secrets(self) -> None:
         settings = Settings(
             auth_enabled=False,
@@ -123,6 +137,174 @@ class SettingsTests(unittest.TestCase):
                 case_data_enabled=True,
                 demo_mode_enabled=False,
             )
+
+    def test_production_readiness_is_opt_in_and_reports_only_safe_check_codes(self) -> None:
+        self.assertEqual(Settings().production_readiness_errors(), ())
+
+        errors = Settings(production_readiness_required=True).production_readiness_errors()
+
+        self.assertIn("authentication_disabled", errors)
+        self.assertIn("case_data_disabled", errors)
+        self.assertIn("case_material_storage_disabled", errors)
+        self.assertIn("live_payment_configuration_incomplete", errors)
+        self.assertIn("qualified_counsel_review_evidence_missing", errors)
+        self.assertIn("backup_restore_tombstone_reconciliation_unverified", errors)
+        self.assertIn("production_alert_delivery_unverified", errors)
+        self.assertNotIn("AUTH_JWT_SECRET", " ".join(errors))
+
+    def test_production_readiness_requires_tls_and_live_payment_configuration(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            auth_encryption_key="secure-encryption-secret-that-is-long-enough",
+            auth_issuer="https://auth.example.test",
+            auth_public_base_url="https://app.example.test",
+            webauthn_origin="https://app.example.test",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            demo_mode_enabled=False,
+            production_readiness_required=True,
+            s3_kms_key_id="arn:aws:kms:us-west-2:123:key/test",
+            database_url="postgresql+psycopg://user:password@db.example.test/mediation",
+            support_contact_url="https://support.example.test/help",
+            stripe_secret_key="sk_test_example",
+            stripe_webhook_secret="whsec_example",
+            stripe_price_id_attempt_credits_5="price_five",
+            stripe_price_id_attempt_credits_10="price_ten",
+        )
+
+        errors = settings.production_readiness_errors()
+
+        self.assertNotIn("auth_signing_secret_missing_or_weak", errors)
+        self.assertNotIn("case_data_disabled", errors)
+        self.assertNotIn("case_material_storage_disabled", errors)
+        self.assertIn("database_tls_not_required", errors)
+        self.assertIn("live_payment_configuration_incomplete", errors)
+        self.assertIn("backup_restore_tombstone_reconciliation_unverified", errors)
+
+    def test_production_readiness_requires_separate_counsel_and_provider_evidence_for_ai(self) -> None:
+        settings = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+        )
+
+        errors = settings.production_readiness_errors()
+        self.assertIn("qualified_counsel_review_evidence_missing", errors)
+        self.assertIn("ai_qualified_counsel_review_evidence_missing", errors)
+        self.assertIn("ai_provider_review_evidence_missing", errors)
+
+        provider_only = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+            ai_provider_review_evidence_verified=True,
+        )
+        self.assertIn(
+            "qualified_counsel_review_evidence_missing",
+            provider_only.production_readiness_errors(),
+        )
+        self.assertIn(
+            "ai_qualified_counsel_review_evidence_missing",
+            provider_only.production_readiness_errors(),
+        )
+        self.assertNotIn(
+            "ai_provider_review_evidence_missing",
+            provider_only.production_readiness_errors(),
+        )
+
+        counsel_only = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+            counsel_review_evidence_verified=True,
+        )
+        self.assertNotIn(
+            "qualified_counsel_review_evidence_missing",
+            counsel_only.production_readiness_errors(),
+        )
+        self.assertNotIn(
+            "ai_qualified_counsel_review_evidence_missing",
+            counsel_only.production_readiness_errors(),
+        )
+        self.assertIn(
+            "ai_provider_review_evidence_missing",
+            counsel_only.production_readiness_errors(),
+        )
+
+    def test_complete_configuration_does_not_clear_unverified_operational_evidence(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            auth_encryption_key="secure-encryption-secret-that-is-long-enough",
+            auth_issuer="https://auth.example.test",
+            auth_public_base_url="https://app.example.test",
+            webauthn_origin="https://app.example.test",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            demo_mode_enabled=False,
+            production_readiness_required=True,
+            s3_kms_key_id="arn:aws:kms:us-west-2:123:key/test",
+            database_url=(
+                "postgresql+psycopg://user:password@db.example.test/mediation"
+                "?sslmode=verify-full"
+            ),
+            support_contact_url="https://support.example.test/help",
+            stripe_secret_key="sk_live_example",
+            stripe_webhook_secret="whsec_example",
+            stripe_price_id_attempt_credits_5="price_five",
+            stripe_price_id_attempt_credits_10="price_ten",
+            counsel_review_evidence_verified=True,
+        )
+
+        errors = settings.production_readiness_errors()
+
+        self.assertEqual(
+            set(errors),
+            {
+                "backup_restore_tombstone_reconciliation_unverified",
+                "production_alert_delivery_unverified",
+                "payment_provider_test_evidence_unverified",
+            },
+        )
+
+    def test_counsel_review_evidence_flag_defaults_closed_and_clears_only_its_gate(self) -> None:
+        settings = Settings(production_readiness_required=True)
+        self.assertFalse(settings.counsel_review_evidence_verified)
+        self.assertIn(
+            "qualified_counsel_review_evidence_missing",
+            settings.production_readiness_errors(),
+        )
+        reviewed = Settings(
+            production_readiness_required=True,
+            counsel_review_evidence_verified=True,
+        )
+        self.assertNotIn(
+            "qualified_counsel_review_evidence_missing",
+            reviewed.production_readiness_errors(),
+        )
+
+    def test_ai_provider_evidence_flag_defaults_closed_and_clears_only_provider_gate(self) -> None:
+        settings = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+        )
+        self.assertFalse(settings.ai_provider_review_evidence_verified)
+        self.assertIn("ai_provider_review_evidence_missing", settings.production_readiness_errors())
+
+        provider_reviewed = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+            ai_provider_review_evidence_verified=True,
+        )
+        errors = provider_reviewed.production_readiness_errors()
+        self.assertNotIn("ai_provider_review_evidence_missing", errors)
+        self.assertIn("qualified_counsel_review_evidence_missing", errors)
+
+    def test_deletion_ledger_must_use_a_dedicated_bucket(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must differ"):
+            Settings(
+                s3_bucket="shared-bucket",
+                deletion_ledger_bucket="shared-bucket",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

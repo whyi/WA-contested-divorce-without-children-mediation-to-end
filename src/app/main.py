@@ -9,8 +9,8 @@ from uuid import UUID
 
 from botocore.exceptions import BotoCoreError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select, text
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
@@ -21,10 +21,18 @@ from app.analysis import router as analysis_router
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.billing_routes import router as billing_router
+from app.case_delegation import resolve_case_access, router as case_delegation_router
+from app.case_lifecycle import lifecycle_write_allowed, router as case_lifecycle_router
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import SessionLocal, get_db
 from app.demo import ensure_demo_user
+from app.deletion import (
+    PermanentDeletionConfirmation,
+    delete_document_scope,
+    router as deletion_router,
+    scope_tombstone,
+)
 from app.documents import (
     DOCX_MEDIA_TYPE,
     PDF_MEDIA_TYPE,
@@ -33,11 +41,21 @@ from app.documents import (
     extract_document,
     render_template,
 )
+from app.extraction import MAX_EXTRACTION_RETRIES, retry_failed_extraction_job
+from app.failure_logging import log_failure_event
+from app.existing_offer import (
+    METADATA_KEY as EXISTING_OFFER_METADATA_KEY,
+    ExistingOfferCreate,
+    build_offer_record,
+    router as existing_offer_router,
+)
 from app.export_integrations import router as export_integrations_router
 from app.models import (
     AuthSession,
     Case,
+    CaseDelegationInvitation,
     CaseMembership,
+    DeletionTombstone,
     Document,
     DocumentExtraction,
     DocumentExtractionJob,
@@ -64,11 +82,19 @@ from app.services import (
 )
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
-from app.subscription_plans import plan_for_user
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 storage = ObjectStorage(settings)
+
+
+def _production_readiness_errors() -> tuple[str, ...]:
+    if not getattr(settings, "production_readiness_required", False):
+        return ()
+    readiness_check = getattr(settings, "production_readiness_errors", None)
+    if not callable(readiness_check):
+        return ("production_readiness_check_unavailable",)
+    return readiness_check()
 
 
 class OAuthCallbackQueryFilter(logging.Filter):
@@ -95,6 +121,10 @@ async def lifespan(_: FastAPI):
         with SessionLocal() as db:
             ensure_demo_user(db)
             db.commit()
+    if settings.case_data_enabled:
+        from app.deletion_ledger import reconcile_from_environment
+
+        reconcile_from_environment()
     yield
 
 
@@ -105,9 +135,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(deletion_router)
 app.include_router(billing_router)
+app.include_router(case_lifecycle_router)
+app.include_router(case_delegation_router)
 app.include_router(export_integrations_router)
 app.include_router(materials_router)
+app.include_router(existing_offer_router)
 app.include_router(offer_response_router)
 app.include_router(analysis_router)
 app.include_router(review_router)
@@ -131,6 +165,11 @@ async def authenticate_and_authorize_case_data(
         or path.startswith("/documents/")
     )
     if is_case_data_path:
+        if _production_readiness_errors():
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Production readiness requirements are unmet."},
+            )
         if (
             not settings.auth_enabled
             or not settings.case_data_enabled
@@ -186,10 +225,27 @@ async def authenticate_and_authorize_case_data(
                     session.absolute_expires_at,
                 )
                 request.state.user_id = user.id
+                account_tombstone = db.scalar(
+                    select(DeletionTombstone).where(
+                        DeletionTombstone.scope_type == "account",
+                        DeletionTombstone.scope_id == user_id,
+                    )
+                )
+                if account_tombstone is not None:
+                    return JSONResponse(
+                        status_code=410,
+                        content={"detail": "This account has been permanently deleted."},
+                    )
                 if path.startswith("/cases/"):
                     case_id = UUID(path.split("/")[2])
                 elif path.startswith("/documents/"):
                     document_id = UUID(path.split("/")[2])
+                    document_tombstone = scope_tombstone(db, "document", document_id)
+                    if document_tombstone is not None:
+                        return JSONResponse(
+                            status_code=410,
+                            content={"detail": "This material has been permanently deleted."},
+                        )
                     document = db.get(Document, document_id)
                     if document is None:
                         return JSONResponse(status_code=404, content={"detail": "Document not found."})
@@ -197,29 +253,37 @@ async def authenticate_and_authorize_case_data(
                 else:
                     case_id = None
                 if case_id is not None:
-                    membership = db.scalar(
-                        select(CaseMembership).where(
-                            CaseMembership.case_id == case_id,
-                            CaseMembership.user_id == user_id,
-                            CaseMembership.revoked_at.is_(None),
-                        )
+                    case_tombstone = scope_tombstone(db, "case", case_id)
+                    is_delete_retry = (
+                        path == f"/cases/{case_id}/permanent-deletion"
+                        and case_tombstone is not None
+                        and case_tombstone.initiated_by == user_id
                     )
-                    if membership is None:
-                        return JSONResponse(status_code=404, content={"detail": "Case not found."})
+                    if case_tombstone is not None and not is_delete_retry:
+                        return JSONResponse(
+                            status_code=410,
+                            content={"detail": "This case has been permanently deleted."},
+                        )
+                    if is_delete_retry and db.get(Case, case_id) is None:
+                        db.commit()
+                        return await call_next(request)
+                    membership, denial = resolve_case_access(db, case_id, user_id, path)
+                    if denial is not None:
+                        return JSONResponse(status_code=denial[0], content={"detail": denial[1]})
                     if request.method != "GET" and membership.role == "viewer":
                         return JSONResponse(status_code=403, content={"detail": "Case is read-only."})
                     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
                         case = db.get(Case, case_id)
-                        if case is not None and case.status == "finalized":
+                        if case is not None and not lifecycle_write_allowed(case, path):
                             return JSONResponse(
                                 status_code=409,
-                                content={"detail": "This case is completed and read-only."},
+                                content={"detail": "This case is closed and read-only. Reopen it to make changes."},
                             )
                 db.commit()
         except ValueError:
             return JSONResponse(status_code=404, content={"detail": "Case not found."})
         except SQLAlchemyError:
-            logger.exception("Case authentication or authorization lookup failed.")
+            log_failure_event(logger, "case_authorization_lookup_failed", error)
             return JSONResponse(
                 status_code=503,
                 content={"detail": "Authentication services are unavailable."},
@@ -237,6 +301,14 @@ class CaseCreate(BaseModel):
         default_factory=RelationshipMilestones
     )
     property_assets: list[PropertyAsset] = Field(default_factory=list, max_length=250)
+    existing_offer: ExistingOfferCreate | None = None
+
+    @field_validator("metadata")
+    @classmethod
+    def metadata_cannot_set_existing_offer(cls, value: dict) -> dict:
+        if EXISTING_OFFER_METADATA_KEY in value:
+            raise ValueError("Use existing_offer to record an existing offer.")
+        return value
 
 
 class CaseRead(BaseModel):
@@ -325,14 +397,14 @@ class DashboardCaseStatus(BaseModel):
     title: str
     workflow_mode: Literal["upload", "wizard"] | None
     attempt_ordinal: int
+    delegated_to: str | None = None
 
 
 class DashboardData(BaseModel):
     has_cases: bool
     case_count: int
     active_case_count: int
-    active_case_limit: int | None
-    plan_name: str
+    account_type: Literal["party", "professional"] = "party"
     cases: list[DashboardCaseStatus]
 
 
@@ -385,17 +457,43 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/v1/support/config", include_in_schema=False)
+def support_configuration(response: Response) -> dict[str, str | None]:
+    response.headers["Cache-Control"] = "no-store"
+    return {"contact_url": settings.support_contact_url}
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home() -> HTMLResponse:
     return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
 
 
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/dashboard", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/1/dashboard", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/2/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def demo_asset_overview(request: Request) -> Response:
+    source = request.query_params.get("source", "demo2")
+    case_id = request.query_params.get("demo_case_id")
+    if source not in {"demo1", "demo2"}:
+        raise HTTPException(status_code=400, detail="Invalid demo source.")
+    if not case_id:
+        return RedirectResponse(f"/demo/start?source={source}")
+    return home()
+
+
+@app.get("/demo/start", response_class=HTMLResponse, include_in_schema=False)
+def demo_start_page(request: Request) -> Response:
+    source = request.query_params.get("source", "demo1")
+    if source not in {"demo1", "demo2"}:
+        raise HTTPException(status_code=400, detail="Invalid demo source.")
+    return home()
+
+
 @app.get(
     "/demo/settlement-completion",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+@app.get(
+    "/demo/rejection-completion",
     response_class=HTMLResponse,
     include_in_schema=False,
 )
@@ -403,6 +501,7 @@ def home() -> HTMLResponse:
 @app.get("/demo/wizard", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/demo/files", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/settlement-completion", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/rejection-completion", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/upload", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
 def onboarding_page() -> HTMLResponse:
@@ -410,13 +509,16 @@ def onboarding_page() -> HTMLResponse:
 
 
 @app.get("/demo/1", include_in_schema=False)
+@app.get("/demo/1/dashboard", include_in_schema=False)
 def demo_one_entry() -> RedirectResponse:
-    return RedirectResponse("/demo/1/dashboard")
+    return RedirectResponse("/demo/start?source=demo1")
 
 
 @app.get("/demo/2", include_in_schema=False)
+@app.get("/demo/2/dashboard", include_in_schema=False)
+@app.get("/demo/dashboard", include_in_schema=False)
 def demo_two_entry() -> RedirectResponse:
-    return RedirectResponse("/demo/2/dashboard")
+    return RedirectResponse("/demo/start?source=demo2")
 
 
 @app.get("/api/v1/dashboard/status", response_model=DashboardStatus)
@@ -424,7 +526,6 @@ def dashboard_status(
     user: Annotated[User, Depends(require_current_user)],
     db: DbSession,
 ) -> DashboardStatus:
-    plan = plan_for_user(user)
     try:
         rows = db.execute(
             select(
@@ -433,6 +534,7 @@ def dashboard_status(
                 Case.metadata_json,
                 func.coalesce(func.max(SettlementNegotiationAttempt.attempt_ordinal), 1),
                 CaseMembership.role,
+                CaseMembership.suspended_at,
             )
             .join(CaseMembership, CaseMembership.case_id == Case.id)
             .outerjoin(
@@ -442,21 +544,52 @@ def dashboard_status(
             .where(
                 CaseMembership.user_id == user.id,
                 CaseMembership.revoked_at.is_(None),
-                Case.status != "finalized",
+                ~select(DeletionTombstone.id)
+                .where(
+                    DeletionTombstone.scope_type == "case",
+                    DeletionTombstone.scope_id == Case.id,
+                )
+                .exists(),
+                or_(
+                    CaseMembership.suspended_at.is_not(None),
+                    and_(Case.status != "finalized", Case.closed_at.is_(None)),
+                ),
             )
-            .group_by(Case.id, CaseMembership.role)
+            .group_by(Case.id, CaseMembership.role, CaseMembership.suspended_at)
             .order_by(Case.created_at.desc(), Case.id)
         ).all()
     except SQLAlchemyError as error:
-        logger.exception("Dashboard case-status lookup failed.")
+        log_failure_event(logger, "dashboard_case_status_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Dashboard status is unavailable. Please try again.",
         ) from error
 
+    delegates: dict[UUID, str] = {}
+    suspended_ids = [row[0] for row in rows if row[5] is not None]
+    if suspended_ids:
+        try:
+            delegates = dict(
+                db.execute(
+                    select(
+                        CaseDelegationInvitation.case_id,
+                        CaseDelegationInvitation.invitee_email,
+                    ).where(
+                        CaseDelegationInvitation.case_id.in_(suspended_ids),
+                        CaseDelegationInvitation.status == "accepted",
+                    )
+                ).all()
+            )
+        except SQLAlchemyError as error:
+            log_failure_event(logger, "dashboard_delegation_status_failed", error)
+            raise HTTPException(
+                status_code=503,
+                detail="Dashboard status is unavailable. Please try again.",
+            ) from error
+
     cases = []
     active_case_count = 0
-    for case_id, case_status, metadata, attempt_ordinal, role in rows:
+    for case_id, case_status, metadata, attempt_ordinal, role, suspended_at in rows:
         metadata = metadata if isinstance(metadata, dict) else {}
         case_title = metadata.get("case_title")
         if not isinstance(case_title, str) or not case_title.strip():
@@ -469,6 +602,9 @@ def dashboard_status(
                 title=case_title.strip(),
                 workflow_mode=workflow_mode if workflow_mode in {"upload", "wizard"} else None,
                 attempt_ordinal=attempt_ordinal,
+                delegated_to=(
+                    delegates.get(case_id, "your delegate") if suspended_at is not None else None
+                ),
             )
         )
         if role == "owner":
@@ -478,8 +614,7 @@ def dashboard_status(
             has_cases=bool(cases),
             case_count=len(cases),
             active_case_count=active_case_count,
-            active_case_limit=plan.active_case_limit,
-            plan_name=plan.name,
+            account_type="professional" if getattr(user, "account_type", None) == "professional" else "party",
             cases=cases,
         )
     )
@@ -487,16 +622,32 @@ def dashboard_status(
 
 @app.get("/readyz")
 def readiness() -> dict[str, str]:
+    readiness_errors = _production_readiness_errors()
+    if readiness_errors:
+        logger.error(
+            "Production readiness requirements are unmet (checks=%s).",
+            ",".join(readiness_errors),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Production readiness requirements are unmet.",
+        )
     try:
         with SessionLocal() as db:
             db.execute(text("SELECT 1"))
         storage.check_ready()
     except SQLAlchemyError as error:
-        logger.exception("Database readiness check failed.")
+        log_failure_event(logger, "database_readiness_failed", error, severity="SEV1")
         raise HTTPException(status_code=503, detail="Database is unavailable.") from error
     except BotoCoreError as error:
-        logger.exception("Object-storage readiness check failed.")
+        log_failure_event(logger, "object_storage_readiness_failed", error, severity="SEV1")
         raise HTTPException(status_code=503, detail="Object storage is unavailable.") from error
+    except RuntimeError as error:
+        logger.exception("Permanent-deletion ledger readiness check failed.")
+        raise HTTPException(
+            status_code=503,
+            detail="Permanent-deletion protection is unavailable.",
+        ) from error
     return {"status": "ready"}
 
 
@@ -509,6 +660,10 @@ def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
         case_metadata["case_title"] = payload.case_title.strip()
     if payload.workflow_mode:
         case_metadata["workflow_mode"] = payload.workflow_mode
+    if payload.existing_offer is not None:
+        case_metadata[EXISTING_OFFER_METADATA_KEY] = build_offer_record(
+            payload.existing_offer.exists, payload.existing_offer.notes, []
+        )
     case = Case(
         status=payload.status,
         metadata_json=case_metadata,
@@ -573,7 +728,7 @@ def update_property_tracing(
         db.commit()
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Case property-tracing update failed.")
+        log_failure_event(logger, "case_property_update_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Property-tracing data could not be saved. Please try again.",
@@ -612,7 +767,7 @@ def document_extraction_status(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Document extraction status lookup failed.")
+        log_failure_event(logger, "extraction_status_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document processing status is unavailable. Please try again.",
@@ -620,7 +775,7 @@ def document_extraction_status(
 
     if job is not None:
         if job.status == "completed" and extraction is None:
-            logger.error("Completed extraction job has no persisted extraction result.")
+            log_failure_event(logger, "extraction_result_missing", severity="SEV1")
             raise HTTPException(
                 status_code=503,
                 detail="Document processing status is unavailable. Please try again.",
@@ -635,6 +790,63 @@ def document_extraction_status(
         error_code=job.error_code if job is not None else None,
         page_count=extraction.page_count if extraction is not None else None,
     )
+
+
+@app.post(
+    "/cases/{case_id}/documents/{document_id}/extraction-jobs/{job_id}/retry",
+    response_model=DocumentExtractionStatus,
+)
+def retry_case_document_extraction(
+    case_id: UUID,
+    document_id: UUID,
+    job_id: UUID,
+    response: Response,
+    db: DbSession,
+) -> DocumentExtractionStatus:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        document = db.get(Document, document_id)
+        if document is None or document.case_id != case_id:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        job = db.get(DocumentExtractionJob, job_id)
+        if (
+            job is None
+            or job.document_id != document.id
+            or job.source_sha256 != document.sha256
+        ):
+            raise HTTPException(status_code=404, detail="Extraction job not found.")
+        if job.status != "failed":
+            raise HTTPException(
+                status_code=409,
+                detail="Only failed extraction jobs can be retried.",
+            )
+        retried = retry_failed_extraction_job(db, job.id, job.request_id)
+        if retried is None:
+            raise HTTPException(status_code=404, detail="Extraction job not found.")
+        if retried.status == "failed":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Extraction retry limit reached ({MAX_EXTRACTION_RETRIES} retries). "
+                    "The original source remains stored; contact support for help."
+                ),
+            )
+        return DocumentExtractionStatus(
+            document_id=document.id,
+            job_id=retried.id,
+            status=retried.status,
+            error_code=retried.error_code,
+            page_count=None,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "extraction_retry_persistence_failed", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Document extraction retry is unavailable. Please try again.",
+        ) from error
 
 
 @app.post(
@@ -769,7 +981,7 @@ def download_document(document_id: UUID, db: DbSession) -> Response:
     try:
         document = get_document_or_none(db, document_id)
     except SQLAlchemyError as error:
-        logger.exception("Document metadata lookup failed.")
+        log_failure_event(logger, "document_download_metadata_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document retrieval is unavailable. Please try again.",
@@ -779,7 +991,7 @@ def download_document(document_id: UUID, db: DbSession) -> Response:
     try:
         content = storage.get(document.object_key)
     except BotoCoreError as error:
-        logger.error("Document retrieval from object storage failed (%s).", type(error).__name__)
+        log_failure_event(logger, "document_download_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document retrieval is unavailable. Please try again.",
@@ -796,7 +1008,7 @@ def preview_document(document_id: UUID, db: DbSession) -> Response:
     try:
         document = db.get(Document, document_id)
     except SQLAlchemyError as error:
-        logger.exception("Document metadata lookup failed for preview.")
+        log_failure_event(logger, "document_preview_metadata_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document preview is unavailable. Please try again.",
@@ -811,7 +1023,7 @@ def preview_document(document_id: UUID, db: DbSession) -> Response:
     try:
         content = storage.get(document.object_key)
     except BotoCoreError as error:
-        logger.error("Document preview from object storage failed (%s).", type(error).__name__)
+        log_failure_event(logger, "document_preview_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document preview is unavailable. Please try again.",
@@ -828,33 +1040,36 @@ def preview_document(document_id: UUID, db: DbSession) -> Response:
 
 
 @app.delete("/documents/{document_id}", status_code=204)
-def delete_document(document_id: UUID, db: DbSession) -> Response:
+def delete_document(
+    document_id: UUID,
+    payload: PermanentDeletionConfirmation,
+    request: Request,
+    db: DbSession,
+) -> Response:
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if payload.confirmation != "DELETE MATERIAL":
+        raise HTTPException(
+            status_code=422,
+            detail='Type "DELETE MATERIAL" to confirm material deletion.',
+        )
+    existing_tombstone = scope_tombstone(db, "document", document_id)
+    if existing_tombstone is not None and existing_tombstone.initiated_by == user_id:
+        if existing_tombstone.status == "completed":
+            return Response(status_code=204, headers={"Cache-Control": "no-store"})
     try:
         document = get_document_or_none(db, document_id)
     except SQLAlchemyError as error:
-        logger.exception("Document metadata lookup failed before deletion.")
+        log_failure_event(logger, "document_deletion_metadata_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document deletion is unavailable. Please try again.",
         ) from error
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
-    try:
-        storage.delete(document.object_key)
-    except BotoCoreError as error:
-        logger.error("Document deletion from object storage failed (%s).", type(error).__name__)
-        raise HTTPException(
-            status_code=503,
-            detail="Document deletion is unavailable. Please try again.",
-        ) from error
-    try:
-        db.delete(document)
-        db.commit()
-    except SQLAlchemyError as error:
-        db.rollback()
-        logger.exception("Document metadata deletion failed after object removal.")
-        raise HTTPException(
-            status_code=503,
-            detail="Document deletion is incomplete. Please retry to finish cleanup.",
-        ) from error
-    return Response(status_code=204)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    delete_document_scope(db, user, document.case_id, document.id, storage)
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
