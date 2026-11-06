@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     case_materials_enabled: bool = False
     demo_mode_enabled: bool = False
     production_readiness_required: bool = False
+    counsel_review_evidence_verified: bool = False
     auth_jwt_secret: str | None = None
     auth_issuer: str = "http://localhost:8000"
     auth_audience: str = "casework"
@@ -201,6 +202,8 @@ class Settings(BaseSettings):
             errors.append("local_object_storage_endpoint_configured")
         if not self.support_contact_url:
             errors.append("support_contact_url_missing")
+        if not self.counsel_review_evidence_verified:
+            errors.append("qualified_counsel_review_evidence_missing")
 
         parsed_database_url = urlparse(self.database_url)
         if parsed_database_url.scheme not in {"postgresql", "postgresql+psycopg"}:

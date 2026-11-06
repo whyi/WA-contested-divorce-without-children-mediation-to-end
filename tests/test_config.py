@@ -147,6 +147,7 @@ class SettingsTests(unittest.TestCase):
         self.assertIn("case_data_disabled", errors)
         self.assertIn("case_material_storage_disabled", errors)
         self.assertIn("live_payment_configuration_incomplete", errors)
+        self.assertIn("qualified_counsel_review_evidence_missing", errors)
         self.assertIn("backup_restore_tombstone_reconciliation_unverified", errors)
         self.assertIn("production_alert_delivery_unverified", errors)
         self.assertNotIn("AUTH_JWT_SECRET", " ".join(errors))
@@ -211,6 +212,7 @@ class SettingsTests(unittest.TestCase):
             stripe_webhook_secret="whsec_example",
             stripe_price_id_attempt_credits_5="price_five",
             stripe_price_id_attempt_credits_10="price_ten",
+            counsel_review_evidence_verified=True,
         )
 
         errors = settings.production_readiness_errors()
@@ -222,6 +224,22 @@ class SettingsTests(unittest.TestCase):
                 "production_alert_delivery_unverified",
                 "payment_provider_test_evidence_unverified",
             },
+        )
+
+    def test_counsel_review_evidence_flag_defaults_closed_and_clears_only_its_gate(self) -> None:
+        settings = Settings(production_readiness_required=True)
+        self.assertFalse(settings.counsel_review_evidence_verified)
+        self.assertIn(
+            "qualified_counsel_review_evidence_missing",
+            settings.production_readiness_errors(),
+        )
+        reviewed = Settings(
+            production_readiness_required=True,
+            counsel_review_evidence_verified=True,
+        )
+        self.assertNotIn(
+            "qualified_counsel_review_evidence_missing",
+            reviewed.production_readiness_errors(),
         )
 
 
