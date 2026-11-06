@@ -1,5 +1,5 @@
 from functools import lru_cache
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     case_data_enabled: bool = False
     case_materials_enabled: bool = False
     demo_mode_enabled: bool = False
+    production_readiness_required: bool = False
     auth_jwt_secret: str | None = None
     auth_issuer: str = "http://localhost:8000"
     auth_audience: str = "casework"
@@ -174,6 +175,59 @@ class Settings(BaseSettings):
                 or (self.demo_mode_enabled and endpoint.hostname.lower() == "s3mock")
             )
         )
+
+    def production_readiness_errors(self) -> tuple[str, ...]:
+        if not self.production_readiness_required:
+            return ()
+
+        errors: list[str] = []
+        if self.demo_mode_enabled:
+            errors.append("demo_mode_enabled")
+        if not self.auth_enabled:
+            errors.append("authentication_disabled")
+        if not self.auth_jwt_secret or len(self.auth_jwt_secret.encode()) < 32:
+            errors.append("auth_signing_secret_missing_or_weak")
+        if not self.auth_cookie_secure:
+            errors.append("secure_auth_cookies_disabled")
+        if not self.auth_encryption_key or len(self.auth_encryption_key.encode()) < 32:
+            errors.append("auth_encryption_key_missing_or_weak")
+        if not self.case_data_enabled:
+            errors.append("case_data_disabled")
+        if not self.case_materials_enabled:
+            errors.append("case_material_storage_disabled")
+        if not (self.s3_kms_key_id or "").strip():
+            errors.append("s3_kms_key_missing")
+        if self._uses_local_s3_endpoint():
+            errors.append("local_object_storage_endpoint_configured")
+        if not self.support_contact_url:
+            errors.append("support_contact_url_missing")
+
+        parsed_database_url = urlparse(self.database_url)
+        if parsed_database_url.scheme not in {"postgresql", "postgresql+psycopg"}:
+            errors.append("postgresql_database_required")
+        database_sslmode = parse_qs(parsed_database_url.query).get("sslmode", [""])[0]
+        if database_sslmode not in {"require", "verify-ca", "verify-full"}:
+            errors.append("database_tls_not_required")
+
+        if not (
+            (self.stripe_secret_key or "").startswith("sk_live_")
+            and (self.stripe_webhook_secret or "").startswith("whsec_")
+            and (self.stripe_price_id_attempt_credits_5 or "").startswith("price_")
+            and (self.stripe_price_id_attempt_credits_10 or "").startswith("price_")
+        ):
+            errors.append("live_payment_configuration_incomplete")
+        if self.ai_analysis_enabled:
+            errors.append("ai_policy_review_not_verified")
+
+        # A restore can predate the in-database tombstone. No independent deletion
+        # ledger or restore reconciliation is implemented in this repository.
+        errors.append("backup_restore_tombstone_reconciliation_unverified")
+        # No monitoring provider, alert route, or alert-delivery test is configured here.
+        errors.append("production_alert_delivery_unverified")
+        # Stripe credentials/configuration do not prove the required provider test scenarios.
+        errors.append("payment_provider_test_evidence_unverified")
+
+        return tuple(errors)
 
 
 @lru_cache

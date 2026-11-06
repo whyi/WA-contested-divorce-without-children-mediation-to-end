@@ -214,6 +214,13 @@ claim that provider backups or snapshots were purged, and do not enable real
 case materials until the deployment backup/restore and retention guarantees
 are operationally configured and verified.
 
+The production-readiness checklist and fail-closed configuration gate are
+documented in the
+[security, backup, and restore readiness runbook](docs/production-security-backup-restore-readiness.md).
+`PRODUCTION_READINESS_REQUIRED=true` keeps `/readyz` and case/document access
+unready while required settings or evidence gates are missing. It does not
+replace operator sign-off or prove a restore, backup purge, or alert delivery.
+
 For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,
 the configured S3 endpoint, and LibreOffice are available.
