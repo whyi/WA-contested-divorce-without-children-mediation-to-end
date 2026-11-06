@@ -514,8 +514,19 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="settlement-demo-mark-sent"', table_section)
         self.assertIn('id="settlement-demo-response-files"', table_section)
         self.assertIn('name="settlement-demo-response-outcome"', table_section)
-        self.assertIn('id="settlement-demo-add-counteroffer"', table_section)
+        self.assertIn('id="settlement-demo-add-counteroffer"', page)
         self.assertIn('id="settlement-demo-response-next"', table_section)
+        self.assertIn('class="existing-offer-panel" id="settlement-demo-counteroffer-panel"', page)
+        self.assertIn(".existing-offer-panel[hidden] { display:none; }", page)
+        self.assertGreater(
+            page.index('id="settlement-demo-counteroffer-panel"'),
+            page.index('id="settlement-demo-response-preview"'),
+        )
+        self.assertIn(
+            'document.getElementById("settlement-demo-counteroffer-panel").hidden =\n'
+            '              settlementDemoResponseOutcome !== "counteroffer";',
+            page,
+        )
         self.assertIn("First sample attempt", table_section)
         self.assertRegex(
             page,
@@ -523,7 +534,7 @@ class MainWorkflowTests(unittest.TestCase):
         )
         self.assertIn(
             'id="settlement-demo-add-counteroffer" type="button" hidden',
-            table_section,
+            page,
         )
         self.assertNotIn("Congratulations", table_section)
         self.assertIn('id="settlement-completion-demo-content"', page)
@@ -533,7 +544,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("The Free demo allows one attempt.", page)
         self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", page)
         self.assertNotIn('type="file"', table_section)
-        self.assertIn("never opens a file picker, uploads, reads, or saves documents", table_section)
+        self.assertIn('id="settlement-demo-counteroffer-file" type="file"', page)
+        self.assertIn("it stays in this browser and is not sent or analyzed", table_section)
         self.assertIn('id="settlement-scenario-status" role="status"', page)
         self.assertIn("function renderDemoSettlementScenarios()", page)
         self.assertIn('{ label: "Higher proposed share", share: 55 }', page)
