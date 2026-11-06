@@ -1336,7 +1336,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("You reached maximum attempt of", html)
         self.assertIn("It's the end of this demo!", click)
         self.assertIn("demoAttemptLimitDialog.close()", click)
-        self.assertIn('settlementDemoAddCounteroffer.hidden = past || settlementDemoResponseOutcome !== "counteroffer";', html)
+        self.assertIn('settlementDemoAddCounteroffer.hidden = readOnly || settlementDemoResponseOutcome !== "counteroffer";', html)
 
     def test_demo_rejection_uses_next_ordinal_and_shared_limit_dialog(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
@@ -1356,6 +1356,21 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("showDemoAttemptLimitDialog()", handler)
         self.assertIn("continueSettlementDemoAttempt()", handler)
         self.assertNotIn("Preview preparing another attempt", html)
+
+    def test_demo_completion_confirms_and_locks_the_case(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('id="demo-case-done"', html)
+        self.assertIn('id="demo-case-done-dialog"', html)
+        self.assertIn("This will make this demo case read-only for the rest of this demo.", html)
+        self.assertIn('document.getElementById("demo-case-done-no").addEventListener("click", () => demoCaseDoneDialog.close())', html)
+        self.assertIn("saveDemoCaseData({ ...demoCaseData, completed: true })", html)
+        self.assertIn('if (demoCaseData?.completed) throw new Error("This demo case is read-only.")', html)
+        self.assertIn('if (mode === "readwrite" && demoCaseData?.completed)', html)
+        self.assertIn('body[data-demo-readonly="true"] [data-demo-file-action="delete"]', html)
+        self.assertIn('window.sessionStorage.removeItem(demoWizardStorageKey)', html)
+        self.assertIn('window.sessionStorage.removeItem(demoDocumentsStorageKey)', html)
 
     def test_demo_attempt_ordinal_is_saved_with_the_single_case(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
@@ -1420,8 +1435,8 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("past && !snapshot", html)
         self.assertIn("attempt_snapshots: { ...demoCaseData.attempt_snapshots", html)
         self.assertIn("current_draft: settlementDemoCurrentView", html)
-        self.assertIn("setSettlementDemoAttemptFrozen(past || Boolean(snapshot.sent))", html)
-        self.assertIn('input.disabled = past;', html)
+        self.assertIn("setSettlementDemoAttemptFrozen(readOnly || Boolean(snapshot.sent))", html)
+        self.assertIn('input.disabled = readOnly;', html)
         self.assertIn('file.size > 2 * 1024 * 1024', html)
         self.assertIn('["pdf", "docx", "xlsx"].includes(extension)', html)
         self.assertIn("demoCounterofferFileKey(ordinal)", html)
