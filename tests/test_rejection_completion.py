@@ -72,7 +72,7 @@ class RejectionCompletionTests(unittest.TestCase):
             "consult qualified Washington counsel",
             "learn about court processes",
             "This is not legal advice",
-            "Back to my cases",
+            "Back to your case",
         ):
             self.assertIn(phrase, PAGE)
         self.assertIn("data-rejection-completion-page", PAGE)
