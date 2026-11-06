@@ -13,6 +13,7 @@
 - **Accessibility target:** Proposed baseline only, pending product approval: WCAG 2.2 AA. No official WCAG conformance claim is made.
 - **Assistive technology combinations:** Not selected or tested. Product/deployment owners must decide the combinations and manual coverage before declaring the matrix complete.
 - **Release-blocking policy:** Not approved. Findings must be recorded with impact and reproducibility; no issue severity is implicitly a launch blocker.
+- **Integrated browser availability:** The workspace's integrated browser could not connect to either the loopback preview or its LAN address during the latest retry. The local service itself responded on loopback. This is an environment/tooling limitation, not a browser test result.
 
 ## Validation scope
 
@@ -28,6 +29,7 @@ For each workflow, record viewport, browser/version, device or emulation details
 ## Evidence requirements
 
 - Automated source/DOM checks, unit tests, and an automated accessibility scanner are separate evidence classes. Record exactly which were run and their limits.
+- `tests/test_accessibility_markup.py` checks accessible names, resolvable ARIA references, unique IDs, fieldset legends, and image alt attributes in the static page markup. It does not evaluate rendered visibility, keyboard interaction, viewport overflow, contrast, screen-reader output, or WCAG conformance.
 - Run an accessibility scanner only when it is already present in repository dependencies or available project tooling; do not add a scanner dependency solely for this validation.
 - An automated scanner result is not an assistive-technology test and does not establish conformance.
 - Manual keyboard checks must record focus order and visible focus for file select/remove, editing comparisons, finalize confirmation/cancellation, and error/recovery actions.
