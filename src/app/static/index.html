@@ -1236,6 +1236,7 @@
       .materials-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 20px; }
       .materials-import { min-height: 46px; padding: 0 17px; border:0; border-radius: 7px; color:var(--theme-text-fff); background:var(--green-dark); cursor: pointer; font: inherit; font-weight: 750; }
       .materials-import:disabled { background:var(--theme-background-85938a); cursor: not-allowed; }
+      .materials-import.demo-limit-ready:not(:disabled) { background:color-mix(in srgb, var(--theme-background-85938a) 80%, white); color:#17251c; }
       .materials-status { min-height: 24px; color:var(--muted); font-size: 13px; }
       .materials-status[data-kind="error"] { color:var(--theme-text-8d3026); }
       .materials-status[data-kind="success"] { color:var(--green-dark); }
@@ -2719,6 +2720,15 @@
                     <p class="offer-intake-help" id="settlement-demo-counteroffer-help">Enter at least 100 characters of notes or attach a file to continue. Fictional preview only: data resets when you restart or reload and is not sent or analyzed. Do not use real case information.</p>
                     <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" disabled hidden>Next</button>
                   </section>
+                  <dialog class="case-create-dialog" id="demo-attempt-limit-dialog" aria-labelledby="demo-attempt-limit-title">
+                    <div class="demo-wizard-dialog-content">
+                      <h2 id="demo-attempt-limit-title"></h2>
+                      <div class="wizard-clear-actions">
+                        <button class="materials-import" id="demo-attempt-upgrade" type="button">Upgrade</button>
+                        <button class="wizard-clear" id="demo-attempt-limit-close" type="button">Cancel</button>
+                      </div>
+                    </div>
+                  </dialog>
                 </section>
               </section>
               <a class="back-to-account" id="demo-back-to-account" href="/#account">Back to your account</a>
@@ -6027,9 +6037,12 @@
           settlementDemoAddCounteroffer.disabled =
             settlementDemoResponseOutcome !== "counteroffer"
             || settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal
-            || settlementDemoAttemptOrdinal >= demoAttemptLimit
             || settlementDemoCounterofferSaving
             || !demoCounterofferHasDetails();
+          settlementDemoAddCounteroffer.classList.toggle(
+            "demo-limit-ready",
+            settlementDemoAttemptOrdinal >= demoAttemptLimit && !settlementDemoAddCounteroffer.disabled,
+          );
         }
 
         async function renderDemoCounterofferFile(ordinal) {
@@ -6099,8 +6112,7 @@
           document.getElementById("settlement-demo-counteroffer-panel").hidden = settlementDemoResponseOutcome !== "counteroffer";
           document.getElementById("settlement-demo-counteroffer-notes").disabled = past;
           document.getElementById("settlement-demo-counteroffer-file").disabled = past;
-          settlementDemoAddCounteroffer.hidden = past || settlementDemoResponseOutcome !== "counteroffer"
-            || settlementDemoAttemptOrdinal >= demoAttemptLimit;
+          settlementDemoAddCounteroffer.hidden = past || settlementDemoResponseOutcome !== "counteroffer";
           settlementDemoResponseNext.hidden = past || settlementDemoResponseOutcome !== "accepted";
           settlementDemoRejectionChoices.hidden = past || settlementDemoResponseOutcome !== "rejected";
           settlementDemoCounterofferLimit.hidden = past || settlementDemoResponseOutcome !== "counteroffer"
@@ -12007,7 +12019,7 @@
               settlementDemoResponseOutcome !== "counteroffer";
             const canContinue = settlementDemoAttemptOrdinal < demoAttemptLimit;
             settlementDemoAddCounteroffer.hidden =
-              settlementDemoResponseOutcome !== "counteroffer" || !canContinue;
+              settlementDemoResponseOutcome !== "counteroffer";
             updateDemoCounterofferNext();
             settlementDemoCounterofferLimit.hidden =
               settlementDemoResponseOutcome !== "counteroffer" || canContinue;
@@ -12039,7 +12051,31 @@
             saveDemoResponseDraft();
           });
         });
-        settlementDemoAddCounteroffer.addEventListener("click", continueSettlementDemoAttempt);
+        const demoAttemptLimitDialog = document.getElementById("demo-attempt-limit-dialog");
+        const demoAttemptLimitTitle = document.getElementById("demo-attempt-limit-title");
+        const demoAttemptUpgrade = document.getElementById("demo-attempt-upgrade");
+        const demoAttemptLimitClose = document.getElementById("demo-attempt-limit-close");
+        settlementDemoAddCounteroffer.addEventListener("click", () => {
+          if (settlementDemoAddCounteroffer.disabled
+            || settlementDemoResponseOutcome !== "counteroffer"
+            || settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal
+            || settlementDemoCounterofferSaving || !demoCounterofferHasDetails()) return;
+          if (settlementDemoAttemptOrdinal < demoAttemptLimit) {
+            continueSettlementDemoAttempt();
+            return;
+          }
+          demoAttemptLimitTitle.textContent = `You reached maximum attempt of ${demoSource === "demo1" ? "free" : "essential"} tier! To continue, upgrade your tier!`;
+          demoAttemptUpgrade.hidden = false;
+          demoAttemptLimitClose.textContent = "Cancel";
+          demoAttemptLimitDialog.showModal();
+        });
+        demoAttemptUpgrade.addEventListener("click", () => {
+          demoAttemptLimitTitle.textContent = "It's the end of this demo!";
+          demoAttemptUpgrade.hidden = true;
+          demoAttemptLimitClose.textContent = "Close";
+          demoAttemptLimitClose.focus();
+        });
+        demoAttemptLimitClose.addEventListener("click", () => demoAttemptLimitDialog.close());
         settlementDemoResponseNext.addEventListener("click", () => {
           if (!settlementDemoResponseOutcome
             || ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome)) return;
