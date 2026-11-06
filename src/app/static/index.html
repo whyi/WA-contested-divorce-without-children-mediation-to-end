@@ -3692,10 +3692,6 @@
           if (!pendingDemoCase || !["documents", "wizard"].includes(mode)) return;
           try {
             const current = demoCaseData || loadDemoCaseData();
-            if (current && demoSource === "demo1") {
-              window.location.assign(demoAssetOverviewUrl(current.id));
-              return;
-            }
             if (!current) {
               saveDemoCaseData({
                 ...pendingDemoCase,
@@ -4931,10 +4927,6 @@
         function openDemoCaseChoiceDialog() {
           try {
             const existingCase = demoCaseData || loadDemoCaseData();
-            if (existingCase && demoSource === "demo1") {
-              window.location.replace(demoAssetOverviewUrl(existingCase.id));
-              return;
-            }
             pendingDemoCase = existingCase || {
               id: `demo-${createLocalId("case")}`,
               title: "Demo case",
@@ -12871,11 +12863,7 @@
           showDashboardShell();
           dashboardLoading.hidden = true;
           document.getElementById("dashboard-header").hidden = true;
-          if (demoCaseData && demoSource === "demo1") {
-            window.location.replace(demoAssetOverviewUrl(demoCaseData.id));
-          } else {
-            openDemoCaseChoiceDialog();
-          }
+          openDemoCaseChoiceDialog();
         } else if (demoMode) {
           document.body.dataset.demoPage = "settlement";
           if (demoCaseData?.completed) document.body.dataset.demoReadonly = "true";
