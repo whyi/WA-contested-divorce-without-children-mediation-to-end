@@ -3920,7 +3920,7 @@
           };
         }
 
-        function createWizardId() {
+        function createLocalId(prefix) {
           const webCrypto = globalThis.crypto;
           if (typeof webCrypto?.randomUUID === "function") return webCrypto.randomUUID();
           if (typeof webCrypto?.getRandomValues === "function") {
@@ -3930,7 +3930,7 @@
             const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
             return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
           }
-          return `wizard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         }
 
         function normalizeWizardDraft(value) {
@@ -3956,7 +3956,7 @@
               .filter((item) => item && typeof item === "object" && !Array.isArray(item))
               .map((item) => ({
                 ...item,
-                id: typeof item.id === "string" ? item.id : createWizardId(),
+                id: typeof item.id === "string" ? item.id : createLocalId("wizard"),
                 attachments: Array.isArray(item.attachments) ? item.attachments : [],
               }));
           }
@@ -4434,7 +4434,7 @@
             if (!entry) return;
             const selectedFiles = Array.from(target.files || []);
             entry.attachments.push(...selectedFiles.map((file) => ({
-              id: createWizardId(),
+              id: createLocalId("wizard"),
               name: file.name,
               type: file.type,
               size: file.size,
@@ -4452,7 +4452,7 @@
         function addWizardEntry(collection) {
           const defaults = {
             finances: {
-              id: createWizardId(),
+              id: createLocalId("wizard"),
               kind: "asset",
               category: "",
               description: "",
@@ -4464,13 +4464,13 @@
               attachments: [],
             },
             issues: {
-              id: createWizardId(),
+              id: createLocalId("wizard"),
               topic: "",
               outcome: "",
               attachments: [],
             },
             agreements: {
-              id: createWizardId(),
+              id: createLocalId("wizard"),
               summary: "",
               date: "",
               attachments: [],
@@ -4632,7 +4632,7 @@
               return;
             }
             pendingDemoCase = {
-              id: `demo-${crypto.randomUUID()}`,
+              id: `demo-${createLocalId("case")}`,
               title: "Demo case",
               status: "in progress",
               workflow_mode: "wizard",

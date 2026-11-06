@@ -35,6 +35,8 @@ On the merged `a560b44` base, the integrated Chromium browser (Chrome 150 / Elec
 
 The initial demo page load made an unnecessary billing-entitlement request and received HTTP 503. The startup call was removed while the authenticated dashboard's billing load was retained. After restarting the updated app, a fresh browser reload of Demo 2 made no `/api/billing/` requests. A source regression test verifies the billing load remains inside `loadDashboardStatus`; a live authenticated-dashboard billing flow was not exercised. Focused Python checks (13 tests) and inline JavaScript syntax validation passed after this change.
 
+The Demo 1 start flow also failed on the LAN HTTP preview because that insecure context does not expose `crypto.randomUUID()`. Demo-case creation now uses the shared browser-local ID helper, which falls back to `crypto.getRandomValues()` when available. On the running LAN preview with `randomUUID` unavailable and `getRandomValues` available, the Demo 1 choice dialog opened without an error, generated links for both start modes, and selecting “I have documents” saved the fictional case locally and opened the documents preview. A regression test covers the shared helper and its Demo 1 use.
+
 The integrated-browser measurements above do not establish support or conformance. Edge, Firefox, Safari, physical mobile devices, authenticated workflows, and all approved assistive-technology combinations remain untested; issue #136 stays open.
 
 ## Browser and manual checks not completed
