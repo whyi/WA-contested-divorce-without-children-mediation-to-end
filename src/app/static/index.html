@@ -1237,6 +1237,7 @@
       .materials-import { min-height: 46px; padding: 0 17px; border:0; border-radius: 7px; color:var(--theme-text-fff); background:var(--green-dark); cursor: pointer; font: inherit; font-weight: 750; }
       .materials-import:disabled { background:var(--theme-background-85938a); cursor: not-allowed; }
       .materials-import.demo-limit-ready:not(:disabled) { background:color-mix(in srgb, var(--theme-background-85938a) 80%, white); color:#17251c; }
+      #demo-attempt-limit-dialog h2 { font-size: 18px; line-height: 1.5; font-weight: 500; }
       .materials-status { min-height: 24px; color:var(--muted); font-size: 13px; }
       .materials-status[data-kind="error"] { color:var(--theme-text-8d3026); }
       .materials-status[data-kind="success"] { color:var(--green-dark); }
@@ -2700,7 +2701,7 @@
                       <section id="settlement-demo-rejection-choices" hidden aria-labelledby="settlement-demo-rejection-title">
                         <h5 id="settlement-demo-rejection-title">What would you like to do after this fictional rejection?</h5>
                         <p id="settlement-demo-rejection-limit"></p>
-                        <button class="materials-import" id="settlement-demo-next-attempt" type="button">Preview preparing another attempt</button>
+                        <button class="materials-import" id="settlement-demo-next-attempt" type="button">Make 2nd attempt</button>
                       </section>
                       <section id="settlement-demo-response-placeholder" hidden>
                         <h5>Response recorded</h5>
@@ -6042,6 +6043,17 @@
           settlementDemoAddCounteroffer.classList.toggle(
             "demo-limit-ready",
             settlementDemoAttemptOrdinal >= demoAttemptLimit && !settlementDemoAddCounteroffer.disabled,
+          );
+          updateDemoRejectionNext();
+        }
+
+        function updateDemoRejectionNext() {
+          settlementDemoNextAttempt.textContent = `Make ${caseAttemptLabel(settlementDemoAttemptOrdinal + 1).toLowerCase()}`;
+          settlementDemoNextAttempt.disabled = settlementDemoCounterofferSaving
+            || settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal;
+          settlementDemoNextAttempt.classList.toggle(
+            "demo-limit-ready",
+            settlementDemoAttemptOrdinal >= demoAttemptLimit && !settlementDemoNextAttempt.disabled,
           );
         }
 
@@ -11982,7 +11994,6 @@
           const ordinal = settlementDemoAttemptOrdinal;
           settlementDemoCounterofferSaving = true;
           updateDemoCounterofferNext();
-          settlementDemoNextAttempt.disabled = true;
           input.disabled = true;
           status.textContent = "Saving the file in this browser…";
           status.removeAttribute("data-kind");
@@ -12005,7 +12016,6 @@
           } finally {
             settlementDemoCounterofferSaving = false;
             updateDemoCounterofferNext();
-            settlementDemoNextAttempt.disabled = settlementDemoAttemptOrdinal >= demoAttemptLimit;
             input.disabled = false;
             input.value = "";
           }
@@ -12042,12 +12052,11 @@
               : settlementDemoResponseOutcome === "accepted"
                 ? "The fictional offer was accepted. Select Next to open the completion page."
                 : canContinue
-                  ? `Choose Preview preparing another attempt to continue. This ${demoSource === "demo1" ? "Free" : "Essential"} demo allows up to ${demoAttemptLimit} attempts.`
+                  ? `Choose ${settlementDemoNextAttempt.textContent} to continue. This ${demoSource === "demo1" ? "Free" : "Essential"} demo allows up to ${demoAttemptLimit} attempts.`
                   : `This ${demoSource === "demo1" ? "Free" : "Essential"} demo has reached its ${demoAttemptLimit}-attempt limit.`;
             document.getElementById("settlement-demo-rejection-limit").textContent = canContinue
               ? `This ${demoSource === "demo1" ? "Free" : "Essential"} demo allows up to ${demoAttemptLimit} attempts.`
               : `The ${demoSource === "demo1" ? "Free" : "Essential"} demo limit of ${demoAttemptLimit} attempt${demoAttemptLimit === 1 ? "" : "s"} has been reached.`;
-            settlementDemoNextAttempt.disabled = !canContinue || settlementDemoCounterofferSaving;
             saveDemoResponseDraft();
           });
         });
@@ -12055,6 +12064,12 @@
         const demoAttemptLimitTitle = document.getElementById("demo-attempt-limit-title");
         const demoAttemptUpgrade = document.getElementById("demo-attempt-upgrade");
         const demoAttemptLimitClose = document.getElementById("demo-attempt-limit-close");
+        function showDemoAttemptLimitDialog() {
+          demoAttemptLimitTitle.textContent = `You reached maximum attempt of ${demoSource === "demo1" ? "free" : "essential"} tier! To continue, upgrade your tier!`;
+          demoAttemptUpgrade.hidden = false;
+          demoAttemptLimitClose.textContent = "Cancel";
+          demoAttemptLimitDialog.showModal();
+        }
         settlementDemoAddCounteroffer.addEventListener("click", () => {
           if (settlementDemoAddCounteroffer.disabled
             || settlementDemoResponseOutcome !== "counteroffer"
@@ -12064,10 +12079,7 @@
             continueSettlementDemoAttempt();
             return;
           }
-          demoAttemptLimitTitle.textContent = `You reached maximum attempt of ${demoSource === "demo1" ? "free" : "essential"} tier! To continue, upgrade your tier!`;
-          demoAttemptUpgrade.hidden = false;
-          demoAttemptLimitClose.textContent = "Cancel";
-          demoAttemptLimitDialog.showModal();
+          showDemoAttemptLimitDialog();
         });
         demoAttemptUpgrade.addEventListener("click", () => {
           demoAttemptLimitTitle.textContent = "It's the end of this demo!";
@@ -12090,7 +12102,14 @@
           settlementDemoResponsePlaceholder.scrollIntoView({ behavior: "smooth", block: "nearest" });
         });
         settlementDemoNextAttempt.addEventListener("click", () => {
-          if (settlementDemoResponseOutcome !== "rejected") return;
+          if (settlementDemoResponseOutcome !== "rejected"
+            || settlementDemoNextAttempt.disabled
+            || settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal
+            || settlementDemoCounterofferSaving) return;
+          if (settlementDemoAttemptOrdinal >= demoAttemptLimit) {
+            showDemoAttemptLimitDialog();
+            return;
+          }
           continueSettlementDemoAttempt();
         });
         settlementGoogleConnect.addEventListener("click", () => {
