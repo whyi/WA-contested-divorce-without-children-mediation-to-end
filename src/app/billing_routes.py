@@ -15,7 +15,13 @@ from app.attempt_credits import PACKAGE_SIZES, grant_package_credits, package_si
 from app.auth_routes import require_current_user
 from app.config import get_settings
 from app.database import get_db
-from app.models import BillingWebhookEvent, Case, CaseMembership, User
+from app.models import (
+    BillingWebhookEvent,
+    Case,
+    CaseMembership,
+    DocumentCreditLedgerEntry,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/billing", tags=["billing"])
@@ -42,6 +48,10 @@ class AttemptCreditPackageRead(BaseModel):
 class AttemptCreditPackagesRead(BaseModel):
     packages: list[AttemptCreditPackageRead]
     checkout_configured: bool
+
+
+class AccountEntitlementRead(BaseModel):
+    status: Literal["free", "paid"]
 
 
 def _stripe_settings_ready() -> bool:
@@ -148,6 +158,48 @@ def _authorized_case(db: Session, user: User, case_id: UUID) -> Case:
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found.")
     return case
+
+
+def _has_verified_package_purchase(db: Session, user_id: UUID) -> bool:
+    purchase_id = db.scalar(
+        select(DocumentCreditLedgerEntry.id)
+        .where(
+            DocumentCreditLedgerEntry.user_id == user_id,
+            DocumentCreditLedgerEntry.source_type == "package_purchase",
+            DocumentCreditLedgerEntry.delta > 0,
+        )
+        .limit(1)
+    )
+    return purchase_id is not None
+
+
+@router.get("/account/entitlement", response_model=AccountEntitlementRead)
+def read_account_entitlement(
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AccountEntitlementRead:
+    return AccountEntitlementRead(
+        status="paid" if _has_verified_package_purchase(db, user.id) else "free"
+    )
+
+
+@router.post("/account/downgrade-to-free")
+def reject_paid_account_downgrade(
+    user: Annotated[User, Depends(require_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, str]:
+    locked_user_id = db.scalar(select(User.id).where(User.id == user.id).with_for_update())
+    if locked_user_id is None:
+        raise HTTPException(status_code=404, detail="Account not found.")
+    if _has_verified_package_purchase(db, user.id):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "An account with a verified one-time attempt-credit purchase cannot switch to "
+                "Free. No entitlement, credits, or case access were changed."
+            ),
+        )
+    return {"status": "free"}
 
 
 @router.post("/cases/{case_id}/checkout")
