@@ -1232,9 +1232,10 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("position: fixed", html)
         self.assertIn("min-height: 86px", html)
         self.assertIn('document.body.dataset.demoPage = "settlement"', html)
-        self.assertIn("This sample ends after one attempt.", html)
+        self.assertIn("The Free demo allows one attempt.", html)
+        self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", html)
         self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
-        self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
+        self.assertIn('id="settlement-demo-add-counteroffer" type="button" hidden', html)
         self.assertIn("counterofferNeedsFile", html)
         self.assertIn('id="settlement-response-confirm-sent"', html)
         self.assertIn("offer-response/confirm-sent", html)
@@ -1303,18 +1304,20 @@ class OfferResponseTransitionTests(unittest.TestCase):
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
             encoding="utf-8"
         )
-        self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
+        self.assertIn('id="settlement-demo-add-counteroffer" type="button" hidden', html)
+        self.assertIn("const demoAttemptLimit = demoSource === \"demo1\" ? 1 : 3;", html)
+        self.assertIn("settlementDemoAttemptOrdinal >= demoAttemptLimit", html)
         self.assertIn(
-            "This sample does not include a second attempt.",
+            'settlementDemoResponseNext.disabled =\n              settlementDemoResponseOutcome !== "accepted";',
             html,
         )
-        self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached;", html)
         transition = html.split(
             'settlementDemoResponseNext.addEventListener("click"',
             1,
         )[1].split("for (const dateInput of [settlementStartDate", 1)[0]
         self.assertIn('["counteroffer", "rejected"].includes(settlementDemoResponseOutcome)', transition)
         self.assertNotIn("settlementDemoAttemptOrdinal +=", transition)
+        self.assertIn("settlementDemoAttemptOrdinal += 1", html)
 
 
 if __name__ == "__main__":
