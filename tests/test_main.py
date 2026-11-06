@@ -3,6 +3,7 @@ import re
 import unittest
 from types import SimpleNamespace
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 from uuid import uuid4
 from unittest.mock import MagicMock, Mock, patch
 
@@ -34,6 +35,7 @@ async def request_app(
     body: bytes = b"",
     headers: list[tuple[bytes, bytes]] | None = None,
 ) -> tuple[int, bytes]:
+    url = urlsplit(path)
     sent_request = False
     messages: list[dict] = []
 
@@ -54,9 +56,9 @@ async def request_app(
         "http_version": "1.1",
         "method": method,
         "scheme": "http",
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": b"",
+        "path": url.path,
+        "raw_path": url.path.encode(),
+        "query_string": url.query.encode(),
         "root_path": "",
         "headers": headers or [],
         "server": ("testserver", 80),
@@ -178,7 +180,7 @@ class MainWorkflowTests(unittest.TestCase):
 
     def test_theme_selection_persistence_and_shared_page_coverage(self) -> None:
         pages = []
-        for path in ("/", "/demo", "/demo/wizard"):
+        for path in ("/", "/demo?source=demo2&demo_case_id=theme-test-case", "/demo/wizard"):
             status, body = asyncio.run(request_app(path))
             self.assertEqual(status, 200)
             pages.append(body.decode())
@@ -359,8 +361,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="demo-case-wizard-link" href="/demo/wizard"', page)
         self.assertIn("I have documents", page)
         self.assertIn("Guide me step by step", page)
-        self.assertIn('data-case-mode="upload"', page)
-        self.assertIn('data-case-mode="wizard"', page)
+        self.assertIn('data-start-mode="upload"', page)
+        self.assertIn('data-start-mode="wizard"', page)
         self.assertIn('id="materials-workflow"', page)
         self.assertIn('id="materials-file-input"', page)
         self.assertIn('id="google-drive-picker"', page)
@@ -488,7 +490,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("openSettlementPlanner(item.id)", page)
 
     def test_existing_demo_shows_dynamic_fictional_settlement_scenarios(self) -> None:
-        status, body = asyncio.run(request_app("/demo"))
+        status, body = asyncio.run(
+            request_app("/demo?source=demo1&demo_case_id=demo-free-case")
+        )
 
         self.assertEqual(status, 200)
         page = body.decode()
@@ -685,7 +689,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", milestone_logic)
 
     def test_asset_trend_uses_selector_without_duplicate_highlight_list(self) -> None:
-        status, body = asyncio.run(request_app("/demo"))
+        status, body = asyncio.run(
+            request_app("/demo?source=demo1&demo_case_id=demo-free-case")
+        )
 
         self.assertEqual(status, 200)
         page = body.decode()
@@ -1132,8 +1138,8 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn('id="account-dashboard"', page)
             self.assertIn('"/api/v1/dashboard/status"', page)
             self.assertIn('id="case-create-dialog"', page)
-            self.assertIn('data-case-mode="upload"', page)
-            self.assertIn('data-case-mode="wizard"', page)
+            self.assertIn('data-start-mode="upload"', page)
+            self.assertIn('data-start-mode="wizard"', page)
             self.assertIn("Start a new case", page)
             self.assertNotIn("active_case_limit", page)
             self.assertIn("This preview does not accept or save case details or documents.", page)
