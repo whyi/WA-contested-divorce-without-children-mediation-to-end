@@ -11460,20 +11460,22 @@
             settlementDemoCounterofferLimit.textContent = demoSource === "demo1"
               ? "The Free demo allows one attempt. A real case's plan limits are checked by the account's server-side entitlement."
               : `The Essential demo allows up to ${demoAttemptLimit} attempts. A real case's plan limits are checked by the account's server-side entitlement.`;
+            settlementDemoAddCounteroffer.textContent = canContinue
+              ? `Continue to attempt ${settlementDemoAttemptOrdinal + 1}`
+              : "Attempt limit reached";
             settlementDemoResponsePlaceholder.hidden = true;
             settlementDemoRejectionChoices.hidden =
               settlementDemoResponseOutcome !== "rejected";
             settlementDemoResponseNext.disabled =
               settlementDemoResponseOutcome !== "accepted";
-            settlementDemoResponseNext.hidden = settlementDemoResponseOutcome === "rejected";
+            settlementDemoResponseNext.hidden =
+              ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome);
             settlementDemoAttemptStatus.textContent =
               `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
-            settlementDemoResponseNext.textContent = settlementDemoResponseOutcome === "counteroffer"
-              ? "Sample ends here"
-              : "Next";
+            settlementDemoResponseNext.textContent = "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
               ? canContinue
-                ? `A counteroffer can start attempt ${settlementDemoAttemptOrdinal + 1} of ${demoAttemptLimit} in this ${demoSource === "demo1" ? "Free" : "Essential"} demo.`
+                ? `Continue to attempt ${settlementDemoAttemptOrdinal + 1} of ${demoAttemptLimit} in this ${demoSource === "demo1" ? "Free" : "Essential"} demo.`
                 : `This ${demoSource === "demo1" ? "Free" : "Essential"} demo has reached its ${demoAttemptLimit}-attempt limit.`
               : settlementDemoResponseOutcome === "accepted"
                 ? "The fictional offer was accepted. Select Next to open the completion page."
