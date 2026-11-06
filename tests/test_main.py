@@ -410,37 +410,55 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('"/demo/dashboard"', page)
         self.assertNotIn("activeCaseLimit", page.split("} else if (dashboardDemoMode) {", 1)[1])
         self.assertIn('title: "XYZ vs ABC"', page)
-        self.assertIn('window.location.assign("/demo")', page)
+        self.assertIn('window.location.assign(demoAssetOverviewUrl(item.id))', page)
         self.assertIn('function openDemoCaseChoiceDialog()', page)
-        self.assertIn('demoCaseDocumentsLink.href = `/demo/documents?source=${source}`', page)
-        self.assertIn('demoCaseWizardLink.href = `/demo/wizard?source=${source}`', page)
+        self.assertIn('const demoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`', page)
+        self.assertIn('demoCaseDocumentsLink.href = `/demo/documents?${query}`', page)
+        self.assertIn('demoCaseWizardLink.href = `/demo/wizard?${query}`', page)
+        self.assertIn('window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId))', page)
         self.assertIn(".case-tile-demo-add .case-tile-icon", page)
+        self.assertIn('const demoActiveCaseLimit = demoSource === "demo1" ? 1 : 3;', page)
+        self.assertIn('const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;', page)
+        self.assertIn("current.active.length >= demoActiveCaseLimit", page)
+        self.assertIn("window.localStorage.getItem(demoCaseStorageKey)", page)
+        self.assertIn("window.localStorage.setItem(demoCaseStorageKey, JSON.stringify(data))", page)
+        self.assertIn("function continueSettlementDemoAttempt()", page)
+        self.assertIn("settlementDemoAttemptOrdinal >= demoAttemptLimit", page)
+        self.assertIn("demoCaseDocumentsLink.addEventListener(\"click\"", page)
+        self.assertIn("demoCaseWizardLink.addEventListener(\"click\"", page)
+        self.assertIn('demo:${demoSource}:${demoCurrentCaseId}', page)
         self.assertIn('if (!demoMode && !demoOnlyMode && !demoExperienceMode', page)
 
         demo_dashboard = responses[0][1].decode().rsplit(
             "} else if (dashboardDemoMode) {", 1
         )[1].split("} else if (demoMode)", 1)[0]
-        self.assertIn("const demoCases = demoNewCaseDashboardMode ? [] : [{", demo_dashboard)
-        self.assertIn("activeCaseCount: demoNewCaseDashboardMode ? 0 : 1", demo_dashboard)
+        self.assertIn("renderCases(demoCaseData.active", demo_dashboard)
+        self.assertIn("activeCaseCount: demoCaseData.active.length", demo_dashboard)
+        self.assertIn('document.body.dataset.demoPlan = demoSource === "demo2" ? "essential" : "free"', page)
         self.assertNotIn("demoCaseCompleted", demo_dashboard)
         self.assertNotIn("casework-demo-case-completed", page)
         self.assertNotIn('id="demo-completed-case"', page)
-        self.assertNotIn("planName", demo_dashboard)
 
         essential_dashboard = responses[1][1].decode()
         inactive_cases = essential_dashboard.split(
             'id="demo-inactive-cases"', 1
         )[1].split("</section>", 1)[0]
-        self.assertIn('id="demo-inactive-cases-title">Inactive cases</h3>', essential_dashboard)
-        self.assertEqual(inactive_cases.count('class="case-tile case-tile-inactive"'), 3)
-        self.assertIn("Jordan vs Taylor", inactive_cases)
-        self.assertIn("Morgan vs Lee", inactive_cases)
-        self.assertIn("Casey vs Rivera", inactive_cases)
-        self.assertNotIn("XYZ vs ABC", inactive_cases)
-        self.assertIn('datetime="2025-08-14"', inactive_cases)
-        self.assertIn('datetime="2025-04-03"', inactive_cases)
-        self.assertIn('datetime="2024-12-19"', inactive_cases)
-        self.assertIn("demoInactiveCases.hidden = demoNewCaseDashboardMode;", essential_dashboard)
+        self.assertIn('id="demo-inactive-cases-title">Archived cases</h3>', essential_dashboard)
+        self.assertIn('id="demo-archived-case-list"', inactive_cases)
+        self.assertIn("function renderDemoArchivedCases()", page)
+        self.assertIn("function archiveDemoCase(caseId)", page)
+        self.assertIn("function restoreDemoCase(caseId)", page)
+        self.assertIn("Jordan vs Taylor", page)
+        self.assertIn("Morgan vs Lee", page)
+        self.assertIn("Casey vs Rivera", page)
+        self.assertIn("demoInactiveCases.hidden = false", essential_dashboard)
+        self.assertIn("Restore ${item.title}", page)
+        self.assertIn("Archive ${item.title}", page)
+        self.assertIn("demo-archive-status", page)
+        restore_demo_case = page.split("function restoreDemoCase(caseId)", 1)[1].split(
+            "function initializeDemoCaseReturnLinks()", 1
+        )[0]
+        self.assertIn("current.active.length >= demoActiveCaseLimit", restore_demo_case)
 
     def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
         status, body = asyncio.run(request_app("/"))
@@ -495,24 +513,21 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="settlement-demo-add-counteroffer"', table_section)
         self.assertIn('id="settlement-demo-response-next"', table_section)
         self.assertIn("First sample attempt", table_section)
-        self.assertIn("This sample ends after one attempt.", page)
-        self.assertIn("settlementDemoResponseNext.disabled = attemptLimitReached", page)
+        self.assertRegex(
+            page,
+            r'settlementDemoResponseNext\.disabled\s*=\s*settlementDemoResponseOutcome\s*!==\s*"accepted"',
+        )
         self.assertIn(
             'id="settlement-demo-add-counteroffer" type="button" disabled hidden',
             table_section,
         )
-        self.assertIn(
-            "This sample does not include a second attempt.",
-            table_section,
-        )
         self.assertNotIn("Congratulations", table_section)
         self.assertIn('id="settlement-completion-demo-content"', page)
-        self.assertIn('window.location.assign("/demo/settlement-completion")', page)
+        self.assertIn('`/demo/settlement-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`', page)
         self.assertIn("fictional-final-cr2a-agreement.docx", table_section)
-        self.assertIn(
-            "This sample does not include a second attempt.",
-            page,
-        )
+        self.assertIn('const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;', page)
+        self.assertIn("The Free demo allows one attempt.", page)
+        self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", page)
         self.assertNotIn('type="file"', table_section)
         self.assertIn("never opens a file picker, uploads, reads, or saves documents", table_section)
         self.assertIn('id="settlement-scenario-status" role="status"', page)
@@ -1140,7 +1155,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="demo-documents-back" data-demo-case-return href="/demo/dashboard">Back to case page</a>', document_demo_page)
         self.assertIn('document.querySelectorAll("[data-demo-case-return]")', document_demo_page)
         self.assertIn("Only PDF and DOCX files are supported.", document_demo_page)
-        self.assertIn('window.location.assign("/demo")', document_demo_page)
+        self.assertIn('window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId))', document_demo_page)
         wizard_demo_page = responses[5][1].decode()
         self.assertIn('id="demo-wizard-back" data-demo-case-return href="/demo/dashboard">Back to dashboard</a>', wizard_demo_page)
         self.assertLess(wizard_demo_page.index('id="demo-wizard-back"'), wizard_demo_page.index('id="wizard-gated-content"'))
@@ -1148,7 +1163,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('demoSource === "demo2"', wizard_demo_page)
         self.assertIn('"/demo/1/dashboard"', wizard_demo_page)
         self.assertIn('"/demo/2/dashboard"', wizard_demo_page)
-        self.assertIn('if (demoOnlyMode) initializeDemoCaseReturnLinks();', wizard_demo_page)
+        self.assertIn('if (dashboardDemoMode || demoMode || demoOnlyMode || demoSettlementCompletionMode || demoRejectionCompletionMode)', wizard_demo_page)
+        self.assertIn("demoMyCasesLink.href = demoDashboardPath", wizard_demo_page)
         self.assertIn('id="wizard-filed-question"', wizard_demo_page)
         self.assertIn('id="wizard-role-question" disabled', wizard_demo_page)
         self.assertIn(

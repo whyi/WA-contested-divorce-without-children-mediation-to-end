@@ -994,6 +994,11 @@
       .inactive-cases > p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.5; }
       .inactive-case-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:14px; margin-top:16px; }
       .inactive-case-grid .case-tile { min-height:150px; aspect-ratio:auto; }
+      .demo-case-card { display:grid; gap:10px; align-content:start; }
+      .demo-case-card .case-tile { min-height:150px; aspect-ratio:auto; }
+      .demo-case-card-action { justify-self:start; }
+      .demo-archive-status { min-height:1.5em; margin-top:10px !important; }
+      .demo-case-state-status { grid-column:1 / -1; margin:0; color:var(--text-secondary); font-size:13px; }
       .case-tile-new { border:1px dashed var(--theme-border-9ab5a2); background:var(--theme-background-f7faf7); }
       .case-tile-demo-add { align-items:center; justify-content:center; }
       .case-tile-demo-add .case-tile-icon { width:82px; height:82px; border-radius:26px; font-size:64px; }
@@ -2004,13 +2009,14 @@
             <nav class="demo-case-navigation" id="demo-case-navigation" aria-label="Demo case navigation" hidden>
               <div class="demo-case-nav-context">
                 <span class="demo-case-nav-mark" aria-hidden="true">XY</span>
-                <span class="demo-case-nav-case"><strong>XYZ vs ABC</strong><span>Active case</span></span>
+                <span class="demo-case-nav-case"><strong id="demo-current-case-title">XYZ vs ABC</strong><span>Active case</span></span>
               </div>
               <div class="demo-case-nav-links">
                 <a id="demo-my-cases-link" class="demo-case-nav-link" href="/demo/2/dashboard">My cases</a>
                 <a id="demo-mediation-link" class="demo-case-nav-link" href="/demo">Mediation</a>
                 <a id="demo-file-management-link" class="demo-case-nav-link" href="/demo/files">Case file management</a>
               </div>
+              <p class="demo-case-state-status" id="demo-case-state-status" role="status" aria-live="polite" hidden></p>
             </nav>
             <section class="demo-file-manager" id="demo-file-manager" aria-labelledby="demo-file-manager-title" hidden>
               <p class="eyebrow">Active case · XYZ vs ABC</p>
@@ -2043,6 +2049,7 @@
                 <p id="existing-case-count">Loading your active cases…</p>
               </div>
               <div class="case-grid" id="case-list" aria-live="polite"></div>
+              <p class="demo-archive-status" id="demo-archive-status" role="status" aria-live="polite"></p>
               <section class="delegation-accept" id="delegation-accept" aria-labelledby="delegation-accept-title">
                 <h3 id="delegation-accept-title">Accept a client's case invitation</h3>
                 <p>For attorney or paralegal accounts. Enter the one-time code from the invitation email sent to this account's address. Accepting is your explicit choice and does not verify your identity or legal authority.</p>
@@ -2079,34 +2086,16 @@
                 <p id="account-permanent-deletion-status" role="status" aria-live="polite"></p>
               </section>
               <section class="inactive-cases" id="demo-inactive-cases" aria-labelledby="demo-inactive-cases-title" hidden>
-                <h3 id="demo-inactive-cases-title">Inactive cases</h3>
-                <p>Archived case previews are not open yet.</p>
-                <div class="inactive-case-grid">
-                  <button class="case-tile case-tile-inactive" type="button" disabled>
-                    <span class="case-tile-copy">
-                      <span class="case-tile-title">Jordan vs Taylor</span>
-                      <span class="case-tile-meta">Archived · <time datetime="2025-08-14">Aug 14, 2025</time></span>
-                    </span>
-                  </button>
-                  <button class="case-tile case-tile-inactive" type="button" disabled>
-                    <span class="case-tile-copy">
-                      <span class="case-tile-title">Morgan vs Lee</span>
-                      <span class="case-tile-meta">Archived · <time datetime="2025-04-03">Apr 3, 2025</time></span>
-                    </span>
-                  </button>
-                  <button class="case-tile case-tile-inactive" type="button" disabled>
-                    <span class="case-tile-copy">
-                      <span class="case-tile-title">Casey vs Rivera</span>
-                      <span class="case-tile-meta">Last active · <time datetime="2024-12-19">Dec 19, 2024</time></span>
-                    </span>
-                  </button>
-                </div>
+                <h3 id="demo-inactive-cases-title">Archived cases</h3>
+                <p>Archived demo cases are kept in this browser. Restore a case to return it to Active cases.</p>
+                <div class="inactive-case-grid" id="demo-archived-case-list" aria-live="polite"></div>
               </section>
               <dialog class="case-create-dialog" id="demo-case-choice-dialog" aria-labelledby="demo-case-choice-title">
                 <div class="case-create-content">
                   <p class="eyebrow">New demo case</p>
                   <h2 id="demo-case-choice-title">How would you like to start?</h2>
                   <p>Choose a fictional preview. Nothing is uploaded or saved to an account.</p>
+                  <p id="demo-case-choice-status" role="status" aria-live="polite"></p>
                   <div class="case-mode-options">
                     <a class="case-mode-choice" id="demo-case-documents-link" href="/demo/documents">
                       <strong>I have documents</strong>
@@ -2691,13 +2680,13 @@
                         <label><input type="radio" name="settlement-demo-response-outcome" value="rejected"> Offer rejected</label>
                         <label><input type="radio" name="settlement-demo-response-outcome" value="accepted"> Offer accepted</label>
                       </fieldset>
-                      <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" disabled hidden>Add fictional counteroffer example</button>
-                      <p id="settlement-demo-counteroffer-limit" hidden>This sample does not include a second attempt. In a real case, each successful finalization after the free first one uses an attempt credit.</p>
+                      <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" hidden>Add fictional counteroffer example</button>
+                      <p id="settlement-demo-counteroffer-limit" hidden></p>
                       <p id="settlement-demo-response-status" role="status" aria-live="polite">Select a response to preview the next step.</p>
                       <button class="materials-import" id="settlement-demo-response-next" type="button" disabled>Next</button>
                       <section id="settlement-demo-rejection-choices" hidden aria-labelledby="settlement-demo-rejection-title">
                         <h5 id="settlement-demo-rejection-title">What would you like to do after this fictional rejection?</h5>
-                        <p>This sample does not include a second attempt. In a real case, you choose whether to continue; the first successful finalization is free, and later finalizations use an attempt credit shown before confirmation.</p>
+                        <p id="settlement-demo-rejection-limit"></p>
                         <button class="materials-import" id="settlement-demo-next-attempt" type="button">Preview preparing another attempt</button>
                         <button class="materials-import" id="settlement-demo-stop" type="button">Stop this fictional workflow</button>
                       </section>
@@ -3079,6 +3068,8 @@
         const settlementDemoResponseFiles = document.getElementById("settlement-demo-response-files");
         const settlementDemoAttemptStatus = document.getElementById("settlement-demo-attempt-status");
         const settlementDemoResponseStatus = document.getElementById("settlement-demo-response-status");
+        const settlementDemoAddCounteroffer = document.getElementById("settlement-demo-add-counteroffer");
+        const settlementDemoCounterofferLimit = document.getElementById("settlement-demo-counteroffer-limit");
         const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
         const settlementDemoRejectionChoices = document.getElementById("settlement-demo-rejection-choices");
         const settlementDemoNextAttempt = document.getElementById("settlement-demo-next-attempt");
@@ -3292,14 +3283,41 @@
         const demoWizardMode = window.location.pathname === "/demo/wizard";
         const demoFileManagerMode = window.location.pathname === "/demo/files";
         const demoOnlyMode = demoDocumentsMode || demoWizardMode || demoFileManagerMode;
-        const demoCaseFilesCaseId = "sample-case";
+        const demoQuery = new URLSearchParams(window.location.search);
+        const demoSource = demoNewCaseDashboardMode
+          ? "demo1"
+          : demoExistingCaseDashboardMode
+            ? "demo2"
+            : demoQuery.get("source") === "demo1"
+              ? "demo1"
+              : demoQuery.get("source") === "demo2"
+                ? "demo2"
+                : window.location.pathname === "/demo"
+                  ? "demo1"
+                  : "demo2";
+        const demoActiveCaseLimit = demoSource === "demo1" ? 1 : 3;
+        const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;
+        const demoDashboardPath = demoSource === "demo1"
+          ? "/demo/1/dashboard"
+          : "/demo/2/dashboard";
+        const demoCurrentCaseId = demoQuery.get("demo_case_id") || "sample-case";
+        const demoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`;
+        const demoCaseFilesCaseId = demoCurrentCaseId;
+        let demoCaseData = null;
+        let pendingDemoCase = null;
         const demoCaseNavigation = document.getElementById("demo-case-navigation");
         const demoMediationLink = document.getElementById("demo-mediation-link");
         const demoFileManagementLink = document.getElementById("demo-file-management-link");
+        const demoMyCasesLink = document.getElementById("demo-my-cases-link");
         const demoFileManager = document.getElementById("demo-file-manager");
         const demoCaseFilesInput = document.getElementById("demo-case-files-input");
         const demoCaseFilesStatus = document.getElementById("demo-case-files-status");
         const demoCaseFilesList = document.getElementById("demo-case-files-list");
+        const demoArchivedCaseList = document.getElementById("demo-archived-case-list");
+        const demoArchiveStatus = document.getElementById("demo-archive-status");
+        const demoCaseChoiceStatus = document.getElementById("demo-case-choice-status");
+        const demoCaseStateStatus = document.getElementById("demo-case-state-status");
+        const demoCurrentCaseTitle = document.querySelector(".demo-case-nav-case strong");
         let demoFilesDatabasePromise = null;
         let demoManagedFileRecords = new Map();
         const documentsDemoPage = document.getElementById("documents-demo");
@@ -3333,7 +3351,11 @@
         const existingOfferRecoveryKey = preparationCaseId
           ? `case-existing-offer-recovery:${preparationCaseId}`
           : null;
-        const wizardDraftKey = preparationCaseId ? `case:${preparationCaseId}` : "active";
+        const wizardDraftKey = preparationCaseId
+          ? `case:${preparationCaseId}`
+          : demoWizardMode
+            ? `demo:${demoSource}:${demoCurrentCaseId}`
+            : "active";
         const materialsBatchStorageKey = preparationCaseId
           ? `materials-import-batch:${preparationCaseId}`
           : "materials-import-batch";
@@ -3455,16 +3477,199 @@
           document.body.classList.add("authenticated-view");
         }
 
+        function defaultDemoCaseData(source) {
+          if (source === "demo1") return { active: [], archived: [] };
+          return {
+            active: [{
+              id: "sample-case",
+              title: "XYZ vs ABC",
+              status: "in progress",
+              workflow_mode: "wizard",
+              attempt_ordinal: 2,
+            }],
+            archived: [
+              { id: "archived-jordan-taylor", title: "Jordan vs Taylor", archived_at: "2025-08-14" },
+              { id: "archived-morgan-lee", title: "Morgan vs Lee", archived_at: "2025-04-03" },
+              { id: "archived-casey-rivera", title: "Casey vs Rivera", archived_at: "2024-12-19" },
+            ],
+          };
+        }
+
+        function loadDemoCaseData() {
+          let serialized;
+          try {
+            serialized = window.localStorage.getItem(demoCaseStorageKey);
+          } catch {
+            throw new Error("Demo cases are unavailable because browser storage could not be read.");
+          }
+          if (serialized === null) return defaultDemoCaseData(demoSource);
+          let parsed;
+          try {
+            parsed = JSON.parse(serialized);
+          } catch {
+            throw new Error("Saved demo cases could not be read. Clear this demo's browser data to restart it.");
+          }
+          if (
+            !parsed ||
+            !Array.isArray(parsed.active) ||
+            !Array.isArray(parsed.archived) ||
+            [...parsed.active, ...parsed.archived].some(
+              (item) => !item || typeof item.id !== "string" || typeof item.title !== "string",
+            )
+          ) {
+            throw new Error("Saved demo cases are invalid. Clear this demo's browser data to restart it.");
+          }
+          return parsed;
+        }
+
+        function saveDemoCaseData(data) {
+          try {
+            window.localStorage.setItem(demoCaseStorageKey, JSON.stringify(data));
+          } catch {
+            throw new Error("Demo changes were not saved because browser storage is unavailable or full.");
+          }
+          demoCaseData = data;
+        }
+
+        function demoAssetOverviewUrl(caseId = demoCurrentCaseId) {
+          return `/demo?source=${demoSource}&demo_case_id=${encodeURIComponent(caseId)}`;
+        }
+
+        function renderDemoArchivedCases() {
+          if (!demoArchivedCaseList) return;
+          demoArchivedCaseList.replaceChildren();
+          for (const item of demoCaseData?.archived || []) {
+            const card = document.createElement("article");
+            card.className = "demo-case-card";
+            const tile = document.createElement("div");
+            tile.className = "case-tile case-tile-inactive";
+            tile.setAttribute("aria-label", `${item.title}, archived`);
+            const copy = document.createElement("span");
+            copy.className = "case-tile-copy";
+            const title = document.createElement("span");
+            title.className = "case-tile-title";
+            title.textContent = item.title;
+            const meta = document.createElement("span");
+            meta.className = "case-tile-meta";
+            meta.textContent = `Archived · ${item.archived_at || "date not recorded"}`;
+            copy.append(title, meta);
+            tile.append(copy);
+            const restore = document.createElement("button");
+            restore.type = "button";
+            restore.className = "dashboard-retry demo-case-card-action";
+            restore.textContent = `Restore ${item.title}`;
+            restore.addEventListener("click", () => restoreDemoCase(item.id));
+            card.append(tile, restore);
+            demoArchivedCaseList.append(card);
+          }
+          if (!demoCaseData?.archived.length) {
+            const empty = document.createElement("p");
+            empty.textContent = "No archived demo cases.";
+            demoArchivedCaseList.append(empty);
+          }
+        }
+
+        function archiveDemoCase(caseId) {
+          try {
+            const current = demoCaseData || loadDemoCaseData();
+            const data = { active: [...current.active], archived: [...current.archived] };
+            const index = data.active.findIndex((item) => item.id === caseId);
+            if (index < 0) return;
+            const [item] = data.active.splice(index, 1);
+            data.archived.unshift({ ...item, archived_at: new Date().toISOString().slice(0, 10) });
+            saveDemoCaseData(data);
+            renderCases(data.active, { activeCaseCount: data.active.length, accountType: "party" });
+            renderDemoArchivedCases();
+            demoArchiveStatus.textContent = `${item.title} moved to Archived cases. Its demo data was kept.`;
+            demoArchiveStatus.dataset.kind = "success";
+          } catch (error) {
+            demoArchiveStatus.textContent = error instanceof Error
+              ? error.message
+              : "The demo case could not be archived.";
+            demoArchiveStatus.dataset.kind = "error";
+          }
+        }
+
+        function restoreDemoCase(caseId) {
+          try {
+            const current = demoCaseData || loadDemoCaseData();
+            if (current.active.length >= demoActiveCaseLimit) {
+              const plan = demoSource === "demo1" ? "Free" : "Essential";
+              throw new Error(
+                `The ${plan} demo allows ${demoActiveCaseLimit} active case${demoActiveCaseLimit === 1 ? "" : "s"}. Archive an active case before restoring another.`,
+              );
+            }
+            const data = { active: [...current.active], archived: [...current.archived] };
+            const index = data.archived.findIndex((item) => item.id === caseId);
+            if (index < 0) return;
+            const [item] = data.archived.splice(index, 1);
+            const restored = { ...item };
+            delete restored.archived_at;
+            data.active.unshift(restored);
+            saveDemoCaseData(data);
+            renderCases(data.active, { activeCaseCount: data.active.length, accountType: "party" });
+            renderDemoArchivedCases();
+            demoArchiveStatus.textContent = `${item.title} restored to Active cases.`;
+            demoArchiveStatus.dataset.kind = "success";
+          } catch (error) {
+            demoArchiveStatus.textContent = error instanceof Error
+              ? error.message
+              : "The demo case could not be restored.";
+            demoArchiveStatus.dataset.kind = "error";
+          }
+        }
+
         function initializeDemoCaseReturnLinks() {
-          const demoSource = new URLSearchParams(window.location.search).get("source");
-          const dashboardPath = demoSource === "demo1"
-            ? "/demo/1/dashboard"
-            : demoSource === "demo2"
-              ? "/demo/2/dashboard"
-              : "/demo/dashboard";
           document.querySelectorAll("[data-demo-case-return]").forEach((link) => {
-            link.href = dashboardPath;
+            link.href = demoDashboardPath;
           });
+          if (demoMyCasesLink) demoMyCasesLink.href = demoDashboardPath;
+          if (demoMediationLink) demoMediationLink.href = demoAssetOverviewUrl();
+          if (demoFileManagementLink) {
+            demoFileManagementLink.href =
+              `/demo/files?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`;
+          }
+          if (demoCurrentCaseTitle && demoCaseData) {
+            const currentCase = [...demoCaseData.active, ...demoCaseData.archived]
+              .find((item) => item.id === demoCurrentCaseId);
+            if (currentCase) demoCurrentCaseTitle.textContent = currentCase.title;
+          }
+        }
+
+        function showDemoCaseStateError(error) {
+          demoCaseStateStatus.hidden = false;
+          demoCaseStateStatus.textContent = error instanceof Error
+            ? error.message
+            : "Demo cases could not be loaded or saved.";
+          demoCaseStateStatus.dataset.kind = "error";
+        }
+
+        function startDemoCase(mode, event) {
+          event.preventDefault();
+          if (!pendingDemoCase || !["documents", "wizard"].includes(mode)) return;
+          try {
+            const current = demoCaseData || loadDemoCaseData();
+            if (current.active.length >= demoActiveCaseLimit) {
+              const plan = demoSource === "demo1" ? "Free" : "Essential";
+              throw new Error(
+                `The ${plan} demo allows ${demoActiveCaseLimit} active case${demoActiveCaseLimit === 1 ? "" : "s"}. Archive an active case before starting another.`,
+              );
+            }
+            const data = { active: [...current.active], archived: [...current.archived] };
+            if (![...data.active, ...data.archived].some((item) => item.id === pendingDemoCase.id)) {
+              data.active.unshift(pendingDemoCase);
+              saveDemoCaseData(data);
+            }
+            const path = mode === "documents" ? "/demo/documents" : "/demo/wizard";
+            window.location.assign(
+              `${path}?source=${demoSource}&demo_case_id=${encodeURIComponent(pendingDemoCase.id)}`,
+            );
+          } catch (error) {
+            demoCaseChoiceStatus.textContent = error instanceof Error
+              ? error.message
+              : "The demo case could not be saved.";
+            demoCaseChoiceStatus.dataset.kind = "error";
+          }
         }
 
         function showSignIn(message = "") {
@@ -4504,9 +4709,29 @@
         }
 
         function openDemoCaseChoiceDialog() {
-          const source = demoNewCaseDashboardMode ? "demo1" : "demo2";
-          demoCaseDocumentsLink.href = `/demo/documents?source=${source}`;
-          demoCaseWizardLink.href = `/demo/wizard?source=${source}`;
+          try {
+            const data = demoCaseData || loadDemoCaseData();
+            pendingDemoCase = {
+              id: `demo-${crypto.randomUUID()}`,
+              title: `New demo case ${data.active.length + 1}`,
+              status: "in progress",
+              workflow_mode: "wizard",
+              attempt_ordinal: 1,
+            };
+            demoCaseChoiceStatus.textContent = "";
+            demoCaseChoiceStatus.removeAttribute("data-kind");
+            const query = `source=${demoSource}&demo_case_id=${encodeURIComponent(pendingDemoCase.id)}`;
+            demoCaseDocumentsLink.href = `/demo/documents?${query}`;
+            demoCaseWizardLink.href = `/demo/wizard?${query}`;
+          } catch (error) {
+            demoCaseChoiceStatus.textContent = error instanceof Error
+              ? error.message
+              : "A new demo case could not be started.";
+            demoCaseChoiceStatus.dataset.kind = "error";
+            demoCaseChoiceDialog.showModal();
+            return;
+          }
+
           demoCaseChoiceDialog.showModal();
           demoCaseDocumentsLink.focus();
         }
@@ -4728,7 +4953,7 @@
             tile.setAttribute("aria-label", `Open ${item.title}, ${caseAttemptLabel(item.attempt_ordinal)}`);
             tile.addEventListener("click", () => {
               if (dashboardDemoMode) {
-                window.location.assign("/demo");
+                window.location.assign(demoAssetOverviewUrl(item.id));
                 return;
               }
               if (item.workflow_mode) {
@@ -4739,7 +4964,19 @@
                 openSettlementPlanner(item.id);
               }
             });
-            caseList.append(tile);
+            if (dashboardDemoMode) {
+              const card = document.createElement("article");
+              card.className = "demo-case-card";
+              const archive = document.createElement("button");
+              archive.type = "button";
+              archive.className = "dashboard-retry demo-case-card-action";
+              archive.textContent = `Archive ${item.title}`;
+              archive.addEventListener("click", () => archiveDemoCase(item.id));
+              card.append(tile, archive);
+              caseList.append(card);
+            } else {
+              caseList.append(tile);
+            }
           }
 
           existingCaseCount.textContent = accountType === "professional"
@@ -4762,11 +4999,27 @@
           const meta = document.createElement("span");
           meta.className = "case-tile-meta";
           if (dashboardDemoMode) {
-            createTile.className = "case-tile case-tile-new case-tile-demo-add";
-            createTile.setAttribute("aria-label", "Start a new demo case.");
-            addIcon.textContent = "+";
-            createTile.append(addIcon);
-            createTile.addEventListener("click", openDemoCaseChoiceDialog);
+            const demoAtCapacity = activeCaseCount >= demoActiveCaseLimit;
+            if (demoAtCapacity) {
+              createTile.className = "case-tile case-tile-locked";
+              createTile.disabled = true;
+              const plan = demoSource === "demo1" ? "Free" : "Essential";
+              createTile.setAttribute(
+                "aria-label",
+                `${plan} demo limit reached: ${demoActiveCaseLimit} active cases. Archive a case to start another.`,
+              );
+              addIcon.textContent = String(demoActiveCaseLimit);
+              title.textContent = `${plan} demo limit reached`;
+              meta.textContent = "Archive an active case to start another";
+              copy.append(title, meta);
+              createTile.append(addIcon, copy);
+            } else {
+              createTile.className = "case-tile case-tile-new case-tile-demo-add";
+              createTile.setAttribute("aria-label", "Start a new demo case.");
+              addIcon.textContent = "+";
+              createTile.append(addIcon);
+              createTile.addEventListener("click", openDemoCaseChoiceDialog);
+            }
           } else {
             createTile.setAttribute("aria-label", "Start a new case");
             addIcon.textContent = "+";
@@ -7265,7 +7518,7 @@
           document.body.dataset.rejectionCompletionPage = "true";
           rejectionCompletionPage.hidden = false;
           rejectionCompletionBackToCases.href = demoRejectionCompletionMode
-            ? "/demo/2/dashboard"
+            ? demoDashboardPath
             : "/#account";
           if (demoRejectionCompletionMode) {
             document.body.dataset.demoPage = "rejection-completion";
@@ -7311,7 +7564,8 @@
           settlementCompletionPage.hidden = false;
           if (demoSettlementCompletionMode) {
             document.body.dataset.demoPage = "settlement-completion";
-            settlementCompletionBack.href = "/demo";
+            settlementCompletionBack.href = demoAssetOverviewUrl();
+            settlementCompletionBackToCases.href = demoDashboardPath;
             settlementCompletionFinalize.textContent = "Return to active demo case";
             settlementCompletionAuthContent.hidden = true;
             settlementCompletionDemoContent.hidden = false;
@@ -9400,6 +9654,31 @@
             : settlementScenarioStatus.textContent;
         }
 
+        function continueSettlementDemoAttempt() {
+          if (
+            !["counteroffer", "rejected"].includes(settlementDemoResponseOutcome)
+            || settlementDemoAttemptOrdinal >= demoAttemptLimit
+          ) return;
+          settlementDemoAttemptSnapshots.push(captureSettlementDemoAttempt());
+          settlementDemoAttemptOrdinal += 1;
+          settlementDemoResponseOutcome = "";
+          settlementDemoResponseFiles
+            .querySelectorAll('input[name="settlement-demo-response-outcome"]')
+            .forEach((input) => { input.checked = false; });
+          settlementDemoResponseFiles.hidden = true;
+          settlementDemoMarkSent.disabled = false;
+          settlementDemoAddCounteroffer.hidden = true;
+          settlementDemoCounterofferLimit.hidden = true;
+          settlementDemoRejectionChoices.hidden = true;
+          settlementDemoResponsePlaceholder.hidden = true;
+          settlementDemoAttemptStatus.textContent =
+            `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
+          settlementDemoResponseStatus.textContent =
+            `Attempt ${settlementDemoAttemptOrdinal} of ${demoAttemptLimit}. Review the sample, then mark the fictional documents as sent to continue.`;
+          setSettlementDemoAttemptFrozen(false);
+          settlementDemoMarkSent.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+
         settlementScenarioResults.addEventListener("change", (event) => {
           const target = event.target;
           if (!(target instanceof HTMLInputElement)
@@ -11081,6 +11360,12 @@
         document.getElementById("demo-case-choice-cancel").addEventListener("click", () => {
           demoCaseChoiceDialog.close();
         });
+        demoCaseDocumentsLink.addEventListener("click", (event) => {
+          startDemoCase("documents", event);
+        });
+        demoCaseWizardLink.addEventListener("click", (event) => {
+          startDemoCase("wizard", event);
+        });
         caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((button) => {
           button.addEventListener("click", () => {
             void createCaseFromDashboard(button.dataset.caseMode, button);
@@ -11278,15 +11563,20 @@
         settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]').forEach((input) => {
           input.addEventListener("change", () => {
             settlementDemoResponseOutcome = input.value;
-            document.getElementById("settlement-demo-add-counteroffer").hidden =
-              settlementDemoResponseOutcome !== "counteroffer";
-            document.getElementById("settlement-demo-counteroffer-limit").hidden =
-              settlementDemoResponseOutcome !== "counteroffer";
+            const canContinue = settlementDemoAttemptOrdinal < demoAttemptLimit;
+            settlementDemoAddCounteroffer.hidden =
+              settlementDemoResponseOutcome !== "counteroffer" || !canContinue;
+            settlementDemoAddCounteroffer.disabled = !canContinue;
+            settlementDemoCounterofferLimit.hidden =
+              settlementDemoResponseOutcome !== "counteroffer" || canContinue;
+            settlementDemoCounterofferLimit.textContent = demoSource === "demo1"
+              ? "The Free demo allows one attempt. A real case's plan limits are checked by the account's server-side entitlement."
+              : `The Essential demo allows up to ${demoAttemptLimit} attempts. A real case's plan limits are checked by the account's server-side entitlement.`;
             settlementDemoResponsePlaceholder.hidden = true;
             settlementDemoRejectionChoices.hidden =
               settlementDemoResponseOutcome !== "rejected";
-            const attemptLimitReached = ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome);
-            settlementDemoResponseNext.disabled = attemptLimitReached;
+            settlementDemoResponseNext.disabled =
+              settlementDemoResponseOutcome !== "accepted";
             settlementDemoResponseNext.hidden = settlementDemoResponseOutcome === "rejected";
             settlementDemoAttemptStatus.textContent =
               `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
@@ -11294,17 +11584,28 @@
               ? "Sample ends here"
               : "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
-              ? "This sample ends after one attempt. In a real case, the first successful finalization is free and later finalizations use attempt credits."
+              ? canContinue
+                ? `A counteroffer can start attempt ${settlementDemoAttemptOrdinal + 1} of ${demoAttemptLimit} in this ${demoSource === "demo1" ? "Free" : "Essential"} demo.`
+                : `This ${demoSource === "demo1" ? "Free" : "Essential"} demo has reached its ${demoAttemptLimit}-attempt limit.`
               : settlementDemoResponseOutcome === "accepted"
                 ? "The fictional offer was accepted. Select Next to open the completion page."
-                : "This sample ends after one attempt. In a real case, the first successful finalization is free and later finalizations use attempt credits.";
+                : canContinue
+                  ? `Choose Preview preparing another attempt to continue. This ${demoSource === "demo1" ? "Free" : "Essential"} demo allows up to ${demoAttemptLimit} attempts.`
+                  : `This ${demoSource === "demo1" ? "Free" : "Essential"} demo has reached its ${demoAttemptLimit}-attempt limit.`;
+            document.getElementById("settlement-demo-rejection-limit").textContent = canContinue
+              ? `This ${demoSource === "demo1" ? "Free" : "Essential"} demo allows up to ${demoAttemptLimit} attempts.`
+              : `The ${demoSource === "demo1" ? "Free" : "Essential"} demo limit of ${demoAttemptLimit} attempt${demoAttemptLimit === 1 ? "" : "s"} has been reached.`;
+            settlementDemoNextAttempt.disabled = !canContinue;
           });
         });
+        settlementDemoAddCounteroffer.addEventListener("click", continueSettlementDemoAttempt);
         settlementDemoResponseNext.addEventListener("click", () => {
           if (!settlementDemoResponseOutcome
             || ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome)) return;
           if (settlementDemoResponseOutcome === "accepted") {
-            window.location.assign("/demo/settlement-completion");
+            window.location.assign(
+              `/demo/settlement-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`,
+            );
             return;
           }
           settlementDemoResponsePlaceholder.hidden = false;
@@ -11313,15 +11614,16 @@
         });
         settlementDemoNextAttempt.addEventListener("click", () => {
           if (settlementDemoResponseOutcome !== "rejected") return;
-          settlementDemoResponseStatus.textContent =
-            "The fictional sample ends after one attempt; no next attempt or data was created. In a real case, continuing is your choice, and any required credit is shown before finalization.";
+          continueSettlementDemoAttempt();
         });
         settlementDemoStop.addEventListener("click", () => {
           if (settlementDemoResponseOutcome !== "rejected") return;
           if (!window.confirm(
             "Stop this fictional workflow? No real case will be closed and no data will be saved.",
           )) return;
-          window.location.assign("/demo/rejection-completion");
+          window.location.assign(
+            `/demo/rejection-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`,
+          );
         });
         settlementGoogleConnect.addEventListener("click", () => {
           void connectSettlementExportProvider("google_drive");
@@ -11602,7 +11904,9 @@
           renderDemoFileSelection();
         });
         demoFilesNext.addEventListener("click", () => {
-          if (demoSelectedFiles.length) window.location.assign("/demo");
+          if (demoSelectedFiles.length) {
+            window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId));
+          }
         });
         demoCaseFilesInput.addEventListener("change", () => {
           void addDemoCaseFiles(Array.from(demoCaseFilesInput.files || []));
@@ -11655,7 +11959,7 @@
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
           if (saved) {
-            window.location.assign(preparationCaseId ? "/#account" : "/demo");
+            window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
@@ -11782,7 +12086,16 @@
           }
         });
 
-        if (demoOnlyMode) initializeDemoCaseReturnLinks();
+        if (dashboardDemoMode || demoMode || demoOnlyMode || demoSettlementCompletionMode || demoRejectionCompletionMode) {
+          document.body.dataset.demoAccount = demoSource;
+          document.body.dataset.demoPlan = demoSource === "demo2" ? "essential" : "free";
+          try {
+            demoCaseData = loadDemoCaseData();
+            initializeDemoCaseReturnLinks();
+          } catch (error) {
+            showDemoCaseStateError(error);
+          }
+        }
 
         if (demoRejectionCompletionMode || rejectionCompletionMode) {
           void initializeRejectionCompletionPage();
@@ -11792,19 +12105,17 @@
           document.body.dataset.demoPage = "dashboard";
           showDashboardShell();
           dashboardLoading.hidden = true;
-          demoInactiveCases.hidden = demoNewCaseDashboardMode;
-          const demoCases = demoNewCaseDashboardMode ? [] : [{
-              id: "sample-case",
-              title: "XYZ vs ABC",
-              status: "in progress",
-              workflow_mode: "wizard",
-              attempt_ordinal: 2,
-            }];
-          renderCases(demoCases, {
-            activeCaseCount: demoNewCaseDashboardMode ? 0 : 1,
-            accountType: "party",
-          });
-          existingCases.hidden = false;
+          if (!demoCaseData) {
+            showDashboardError(demoCaseStateStatus.textContent || "Demo cases could not be loaded.");
+          } else {
+            demoInactiveCases.hidden = false;
+            renderCases(demoCaseData.active, {
+              activeCaseCount: demoCaseData.active.length,
+              accountType: "party",
+            });
+            renderDemoArchivedCases();
+            existingCases.hidden = false;
+          }
         } else if (demoMode) {
           document.body.dataset.demoPage = "settlement";
           demoCaseNavigation.hidden = false;
@@ -11812,6 +12123,7 @@
           showDashboardShell();
           dashboardLoading.hidden = true;
           showPreparation("demo");
+          if (!demoCaseData) showDemoCaseStateError(new Error("Demo case state is unavailable."));
         } else if (demoFileManagerMode) {
           document.body.dataset.demoPage = "files";
           showDashboardShell();
