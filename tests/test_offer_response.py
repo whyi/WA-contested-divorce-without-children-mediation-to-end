@@ -1331,11 +1331,31 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal", click)
         self.assertIn("!demoCounterofferHasDetails()", click)
         self.assertIn("settlementDemoAttemptOrdinal < demoAttemptLimit", click)
-        self.assertIn("demoAttemptLimitDialog.showModal()", click)
-        self.assertIn("You reached maximum attempt of", click)
+        self.assertIn("showDemoAttemptLimitDialog()", click)
+        self.assertIn("demoAttemptLimitDialog.showModal()", html)
+        self.assertIn("You reached maximum attempt of", html)
         self.assertIn("It's the end of this demo!", click)
         self.assertIn("demoAttemptLimitDialog.close()", click)
         self.assertIn('settlementDemoAddCounteroffer.hidden = past || settlementDemoResponseOutcome !== "counteroffer";', html)
+
+    def test_demo_rejection_uses_next_ordinal_and_shared_limit_dialog(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("#demo-attempt-limit-dialog h2 { font-size: 18px;", html)
+        update = html.split("function updateDemoRejectionNext()", 1)[1].split(
+            "async function renderDemoCounterofferFile", 1
+        )[0]
+        self.assertIn("caseAttemptLabel(settlementDemoAttemptOrdinal + 1).toLowerCase()", update)
+        self.assertIn('"demo-limit-ready"', update)
+        self.assertIn("settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal", update)
+        handler = html.split('settlementDemoNextAttempt.addEventListener("click"', 1)[1].split(
+            'settlementGoogleConnect.addEventListener', 1
+        )[0]
+        self.assertIn("settlementDemoAttemptOrdinal >= demoAttemptLimit", handler)
+        self.assertIn("showDemoAttemptLimitDialog()", handler)
+        self.assertIn("continueSettlementDemoAttempt()", handler)
+        self.assertNotIn("Preview preparing another attempt", html)
 
     def test_demo_attempt_ordinal_is_saved_with_the_single_case(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
