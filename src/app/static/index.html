@@ -827,6 +827,7 @@
       .settlement-completion-status[data-kind="error"] { color:var(--theme-text-8d3026); }
       .settlement-completion-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
       .settlement-completion-actions a, .settlement-completion-actions button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid var(--line); border-radius: 8px; color:var(--text-primary); background: transparent; font: inherit; text-decoration: none; cursor: pointer; }
+      .settlement-completion-actions [hidden] { display: none; }
       .settlement-completion-actions .completion-primary { border-color:var(--green-dark); color:var(--theme-text-fff); background:var(--green-dark); }
       .settlement-completion-actions button:disabled { cursor: wait; opacity: .7; }
       body[data-demo-page] .demo-entry { display: inline-flex !important; }
@@ -2723,7 +2724,6 @@
                         <h5 id="settlement-demo-rejection-title">What would you like to do after this fictional rejection?</h5>
                         <p id="settlement-demo-rejection-limit"></p>
                         <button class="materials-import" id="settlement-demo-next-attempt" type="button">Preview preparing another attempt</button>
-                        <button class="materials-import" id="settlement-demo-stop" type="button">Stop this fictional workflow</button>
                       </section>
                       <section id="settlement-demo-response-placeholder" hidden>
                         <h5>Response recorded</h5>
@@ -3127,7 +3127,6 @@
         const settlementDemoResponseNext = document.getElementById("settlement-demo-response-next");
         const settlementDemoRejectionChoices = document.getElementById("settlement-demo-rejection-choices");
         const settlementDemoNextAttempt = document.getElementById("settlement-demo-next-attempt");
-        const settlementDemoStop = document.getElementById("settlement-demo-stop");
         const settlementDemoResponsePlaceholder = document.getElementById("settlement-demo-response-placeholder");
         const rejectionCompletionPage = document.getElementById("rejection-completion-page");
         const rejectionCompletionEyebrow = document.getElementById("rejection-completion-eyebrow");
@@ -6019,7 +6018,7 @@
             list.append(item);
           }
           status.textContent = settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal
-            ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only. Select the current attempt to return.`
+            ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only snapshot.`
             : `${caseAttemptLabel(settlementDemoAttemptOrdinal)} is current.`;
           if (Array.from({ length: settlementDemoAttemptOrdinal - 1 }, (_, index) => index + 1)
             .some((ordinal) => !demoCaseData?.attempt_snapshots?.[ordinal])) {
@@ -7843,18 +7842,18 @@
           settlementCompletionPage.hidden = false;
           if (demoSettlementCompletionMode) {
             document.body.dataset.demoPage = "settlement-completion";
-            settlementCompletionBack.href = demoAssetOverviewUrl();
-            settlementCompletionBackToCases.href = demoAssetOverviewUrl();
-            settlementCompletionFinalize.textContent = "Return to active demo case";
+            settlementCompletionBackToMediation.href = demoAssetOverviewUrl();
+            settlementCompletionBackToCases.hidden = true;
+            settlementCompletionFinalize.hidden = true;
             settlementCompletionAuthContent.hidden = true;
             settlementCompletionDemoContent.hidden = false;
             settlementCompletionStatus.textContent =
-              "Fictional demo only — no offer, attachment, or case data was saved.";
+              "Fictional demo only — no agreement was attached or sent.";
             settlementCompletionPage.querySelector("h1").focus();
             return;
           }
 
-          settlementCompletionBack.href = "/";
+          settlementCompletionBackToMediation.href = "/#account";
           settlementCompletionAuthContent.hidden = false;
           settlementCompletionStatus.textContent = "Verifying the accepted offer…";
           const query = new URLSearchParams(window.location.search);
@@ -8177,6 +8176,7 @@
         }
 
         settlementCompletionBackToMediation.addEventListener("click", (event) => {
+          if (demoSettlementCompletionMode) return;
           if (!document.referrer) return;
           const previousPage = new URL(document.referrer);
           const completionPaths = ["/settlement-completion", "/demo/settlement-completion"];
@@ -12048,15 +12048,6 @@
         settlementDemoNextAttempt.addEventListener("click", () => {
           if (settlementDemoResponseOutcome !== "rejected") return;
           continueSettlementDemoAttempt();
-        });
-        settlementDemoStop.addEventListener("click", () => {
-          if (settlementDemoResponseOutcome !== "rejected") return;
-          if (!window.confirm(
-            "Stop this fictional workflow? No real case will be closed and no data will be saved.",
-          )) return;
-          window.location.assign(
-            `/demo/rejection-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`,
-          );
         });
         settlementGoogleConnect.addEventListener("click", () => {
           void connectSettlementExportProvider("google_drive");
