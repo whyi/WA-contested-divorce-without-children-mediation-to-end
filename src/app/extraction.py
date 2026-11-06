@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.deletion import scope_is_tombstoned
 from app.documents import DocumentExtractionError, extract_document
 from app.models import Document, DocumentExtraction, DocumentExtractionJob
 from app.storage import ObjectStorage
@@ -158,9 +159,15 @@ def process_extraction_job(
             or job.lease_token != lease.token
         ):
             return
-        document = db.get(Document, job.document_id)
+        document = db.get(Document, job.document_id, with_for_update=True)
         if document is None:
             _finish_job(job, "needs_attention", "source_unavailable")
+            db.commit()
+            return
+        if scope_is_tombstoned(db, "document", document.id) or scope_is_tombstoned(
+            db, "case", document.case_id
+        ):
+            _finish_job(job, "failed", "scope_deleted")
             db.commit()
             return
         if document.sha256 != job.source_sha256:
@@ -223,6 +230,11 @@ def process_extraction_job(
             extraction.page_count = extracted.page_count
             extraction.pages_json = page_data
             extraction.review_status = "pending_review"
+        if scope_is_tombstoned(db, "document", document.id) or scope_is_tombstoned(
+            db, "case", document.case_id
+        ):
+            db.rollback()
+            return
         _finish_job(
             job,
             "needs_attention" if extracted.needs_attention else "completed",

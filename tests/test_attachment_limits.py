@@ -65,7 +65,7 @@ class AttachmentLimitTests(unittest.TestCase):
         self.stored: dict[str, bytes] = {}
         storage = Mock()
         storage.put.side_effect = lambda key, content, media: self.stored.__setitem__(key, content)
-        storage.delete.side_effect = lambda key: self.stored.pop(key, None)
+        storage.delete_all_versions.side_effect = lambda key: self.stored.pop(key, None)
         settings = Settings(
             auth_enabled=True,
             auth_jwt_secret="materials-test-signing-secret-long-enough",

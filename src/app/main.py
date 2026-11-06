@@ -27,6 +27,12 @@ from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import SessionLocal, get_db
 from app.demo import ensure_demo_user
+from app.deletion import (
+    PermanentDeletionConfirmation,
+    delete_document_scope,
+    router as deletion_router,
+    scope_tombstone,
+)
 from app.documents import (
     DOCX_MEDIA_TYPE,
     PDF_MEDIA_TYPE,
@@ -48,6 +54,7 @@ from app.models import (
     Case,
     CaseDelegationInvitation,
     CaseMembership,
+    DeletionTombstone,
     Document,
     DocumentExtraction,
     DocumentExtractionJob,
@@ -114,6 +121,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(deletion_router)
 app.include_router(billing_router)
 app.include_router(case_lifecycle_router)
 app.include_router(case_delegation_router)
@@ -198,10 +206,27 @@ async def authenticate_and_authorize_case_data(
                     session.absolute_expires_at,
                 )
                 request.state.user_id = user.id
+                account_tombstone = db.scalar(
+                    select(DeletionTombstone).where(
+                        DeletionTombstone.scope_type == "account",
+                        DeletionTombstone.scope_id == user_id,
+                    )
+                )
+                if account_tombstone is not None:
+                    return JSONResponse(
+                        status_code=410,
+                        content={"detail": "This account has been permanently deleted."},
+                    )
                 if path.startswith("/cases/"):
                     case_id = UUID(path.split("/")[2])
                 elif path.startswith("/documents/"):
                     document_id = UUID(path.split("/")[2])
+                    document_tombstone = scope_tombstone(db, "document", document_id)
+                    if document_tombstone is not None:
+                        return JSONResponse(
+                            status_code=410,
+                            content={"detail": "This material has been permanently deleted."},
+                        )
                     document = db.get(Document, document_id)
                     if document is None:
                         return JSONResponse(status_code=404, content={"detail": "Document not found."})
@@ -209,6 +234,20 @@ async def authenticate_and_authorize_case_data(
                 else:
                     case_id = None
                 if case_id is not None:
+                    case_tombstone = scope_tombstone(db, "case", case_id)
+                    is_delete_retry = (
+                        path == f"/cases/{case_id}/permanent-deletion"
+                        and case_tombstone is not None
+                        and case_tombstone.initiated_by == user_id
+                    )
+                    if case_tombstone is not None and not is_delete_retry:
+                        return JSONResponse(
+                            status_code=410,
+                            content={"detail": "This case has been permanently deleted."},
+                        )
+                    if is_delete_retry and db.get(Case, case_id) is None:
+                        db.commit()
+                        return await call_next(request)
                     membership, denial = resolve_case_access(db, case_id, user_id, path)
                     if denial is not None:
                         return JSONResponse(status_code=denial[0], content={"detail": denial[1]})
@@ -462,6 +501,12 @@ def dashboard_status(
             .where(
                 CaseMembership.user_id == user.id,
                 CaseMembership.revoked_at.is_(None),
+                ~select(DeletionTombstone.id)
+                .where(
+                    DeletionTombstone.scope_type == "case",
+                    DeletionTombstone.scope_id == Case.id,
+                )
+                .exists(),
                 or_(
                     CaseMembership.suspended_at.is_not(None),
                     and_(Case.status != "finalized", Case.closed_at.is_(None)),
@@ -928,7 +973,24 @@ def preview_document(document_id: UUID, db: DbSession) -> Response:
 
 
 @app.delete("/documents/{document_id}", status_code=204)
-def delete_document(document_id: UUID, db: DbSession) -> Response:
+def delete_document(
+    document_id: UUID,
+    payload: PermanentDeletionConfirmation,
+    request: Request,
+    db: DbSession,
+) -> Response:
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if payload.confirmation != "DELETE MATERIAL":
+        raise HTTPException(
+            status_code=422,
+            detail='Type "DELETE MATERIAL" to confirm material deletion.',
+        )
+    existing_tombstone = scope_tombstone(db, "document", document_id)
+    if existing_tombstone is not None and existing_tombstone.initiated_by == user_id:
+        if existing_tombstone.status == "completed":
+            return Response(status_code=204, headers={"Cache-Control": "no-store"})
     try:
         document = get_document_or_none(db, document_id)
     except SQLAlchemyError as error:
@@ -939,22 +1001,8 @@ def delete_document(document_id: UUID, db: DbSession) -> Response:
         ) from error
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
-    try:
-        storage.delete(document.object_key)
-    except BotoCoreError as error:
-        logger.error("Document deletion from object storage failed (%s).", type(error).__name__)
-        raise HTTPException(
-            status_code=503,
-            detail="Document deletion is unavailable. Please try again.",
-        ) from error
-    try:
-        db.delete(document)
-        db.commit()
-    except SQLAlchemyError as error:
-        db.rollback()
-        logger.exception("Document metadata deletion failed after object removal.")
-        raise HTTPException(
-            status_code=503,
-            detail="Document deletion is incomplete. Please retry to finish cleanup.",
-        ) from error
-    return Response(status_code=204)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    delete_document_scope(db, user, document.case_id, document.id, storage)
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})

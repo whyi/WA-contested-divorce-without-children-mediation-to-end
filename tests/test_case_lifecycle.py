@@ -253,10 +253,17 @@ class ClosedWriteGuardTests(LifecycleFixture):
         self.assertFalse(lifecycle_write_allowed(self.case, f"{base}/documents/render"))
         self.assertTrue(lifecycle_write_allowed(self.case, f"{base}/reopen"))
         self.assertTrue(lifecycle_write_allowed(self.case, f"{base}/close"))
+        self.assertTrue(lifecycle_write_allowed(self.case, f"{base}/permanent-deletion"))
+        self.assertTrue(
+            lifecycle_write_allowed(
+                self.case, f"{base}/materials/{uuid4()}/permanent-deletion"
+            )
+        )
         self.case.closed_at = None
         self.case.status = "finalized"
         self.assertFalse(lifecycle_write_allowed(self.case, f"{base}/negotiations"))
         self.assertTrue(lifecycle_write_allowed(self.case, f"{base}/reopen"))
+        self.assertTrue(lifecycle_write_allowed(self.case, f"{base}/permanent-deletion"))
 
 
 class ExportTests(LifecycleFixture):
