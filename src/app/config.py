@@ -1,7 +1,7 @@
 from functools import lru_cache
 from urllib.parse import parse_qs, urlparse
 
-from pydantic import Field, model_validator
+from pydantic import EmailStr, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     case_data_enabled: bool = False
     case_materials_enabled: bool = False
     demo_mode_enabled: bool = False
+    owner_beta_enabled: bool = False
+    owner_beta_email: EmailStr | None = None
     production_readiness_required: bool = False
     counsel_review_evidence_verified: bool = False
     auth_jwt_secret: str | None = None
@@ -179,6 +181,13 @@ class Settings(BaseSettings):
                 raise ValueError("DEMO_MODE_ENABLED is restricted to localhost.")
             if self.case_data_enabled:
                 raise ValueError("Demo mode cannot enable case-data APIs.")
+        if self.owner_beta_enabled:
+            if not self.auth_enabled:
+                raise ValueError("OWNER_BETA_ENABLED requires AUTH_ENABLED.")
+            if self.demo_mode_enabled:
+                raise ValueError("OWNER_BETA_ENABLED cannot be used with DEMO_MODE_ENABLED.")
+            if self.owner_beta_email is None:
+                raise ValueError("OWNER_BETA_EMAIL is required when OWNER_BETA_ENABLED is true.")
         return self
 
     def _uses_local_s3_endpoint(self) -> bool:

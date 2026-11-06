@@ -39,12 +39,13 @@ from app.auth import (
     hash_password,
     hash_token,
     normalize_email,
+    normalize_email,
     random_token,
     validate_password,
     verify_password,
     verify_token,
 )
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.database import get_db
 from app.demo import DEMO_USERNAME, verify_demo_password
 from app.models import (
@@ -147,6 +148,18 @@ def _require_email_config() -> None:
     _require_secret_config()
     if not settings.smtp_host or not settings.auth_email_from:
         raise HTTPException(status_code=503, detail="Email delivery is not configured.")
+
+
+def _owner_beta_allows(email: str, settings: Settings | None = None) -> bool:
+    settings = settings or get_settings()
+    if not settings.owner_beta_enabled:
+        return True
+    if settings.owner_beta_email is None:
+        return False
+    try:
+        return normalize_email(email) == normalize_email(str(settings.owner_beta_email))
+    except ValueError:
+        return False
 
 
 def _send_email(recipient: str, subject: str, body: str) -> None:
@@ -427,6 +440,7 @@ def _current_user(request: Request, db: Session) -> User:
         or session.absolute_expires_at <= now
         or (user.status != "active" and not pending_deletion_retry)
         or (deletion_tombstone is not None and not is_account_deletion)
+        or not _owner_beta_allows(user.email)
     ):
         raise HTTPException(status_code=401, detail="Authentication required.")
     if request.cookies.get(_ACCESS_COOKIE) and request.method in _UNSAFE_METHODS:
@@ -453,6 +467,8 @@ def signup(payload: SignupRequest, request: Request, db: DbSession) -> dict[str,
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     _rate_limit(db, request, "signup", email)
+    if not _owner_beta_allows(email):
+        return {"message": "If signup can be completed, verification instructions will be sent."}
     existing = db.scalar(select(User).where(User.email == email))
     if existing is None:
         user = User(
@@ -526,7 +542,11 @@ def verify_email(payload: EmailTokenRequest, db: DbSession) -> dict[str, str]:
     if token is None or token.expires_at <= now:
         raise HTTPException(status_code=400, detail="Verification token is invalid or expired.")
     user = db.get(User, token.user_id)
-    if user is None or user.status != "pending_verification":
+    if (
+        user is None
+        or user.status != "pending_verification"
+        or not _owner_beta_allows(user.email)
+    ):
         raise HTTPException(status_code=400, detail="Verification token is invalid or expired.")
     token.used_at = now
     user.status = "active"
@@ -545,8 +565,10 @@ def resend_verification(
     _require_email_config()
     email = normalize_email(str(payload.email))
     _rate_limit(db, request, "verify-resend", email)
-    user = db.scalar(
-        select(User).where(User.email == email, User.status == "pending_verification")
+    user = (
+        db.scalar(select(User).where(User.email == email, User.status == "pending_verification"))
+        if _owner_beta_allows(email)
+        else None
     )
     if user is not None:
         now = datetime.now(UTC)
@@ -598,6 +620,7 @@ def login(
         user is None
         or user.status != "active"
         or user.password_hash is None
+        or not _owner_beta_allows(user.email, settings)
         or not (
             verify_demo_password(payload.password, user.password_hash)
             if demo_login
@@ -652,7 +675,12 @@ def verify_login_totp(
             TotpCredential.revoked_at.is_(None),
         )
     )
-    if user is None or user.status != "active" or credential is None:
+    if (
+        user is None
+        or user.status != "active"
+        or credential is None
+        or not _owner_beta_allows(user.email)
+    ):
         raise HTTPException(status_code=401, detail="Authentication challenge is invalid.")
     if not _verify_second_factor(db, user, credential, payload.code):
         raise HTTPException(status_code=401, detail="Invalid authentication code.")
@@ -702,6 +730,7 @@ def refresh(request: Request, response: Response, db: DbSession) -> dict:
         or session.absolute_expires_at <= now
         or user is None
         or user.status != "active"
+        or not _owner_beta_allows(user.email)
     ):
         clear_auth_cookies(response)
         raise HTTPException(status_code=401, detail="Refresh authentication is required.")
@@ -769,7 +798,11 @@ def forgot_password(
     _require_email_config()
     email = normalize_email(str(payload.email))
     _rate_limit(db, request, "password-forgot", email)
-    user = db.scalar(select(User).where(User.email == email, User.status == "active"))
+    user = (
+        db.scalar(select(User).where(User.email == email, User.status == "active"))
+        if _owner_beta_allows(email)
+        else None
+    )
     if user is not None:
         now = datetime.now(UTC)
         token = random_token()
@@ -810,7 +843,7 @@ def reset_password(
     if token is None or token.expires_at <= now:
         raise HTTPException(status_code=400, detail="Password reset token is invalid or expired.")
     user = db.get(User, token.user_id)
-    if user is None or user.status != "active":
+    if user is None or user.status != "active" or not _owner_beta_allows(user.email):
         raise HTTPException(status_code=400, detail="Password reset token is invalid or expired.")
     user.password_hash = hash_password(payload.password)
     token.used_at = now
@@ -1103,6 +1136,8 @@ def google_oidc_callback(
         subject = str(claims["sub"])
     except (KeyError, ValueError) as error:
         raise HTTPException(status_code=401, detail="Google sign-in could not be verified.") from error
+    if challenge.purpose == "google_oidc" and not _owner_beta_allows(email, settings):
+        raise HTTPException(status_code=401, detail="Google sign-in could not be completed.")
     identity = db.scalar(
         select(ExternalIdentity).where(
             ExternalIdentity.provider == "google",
@@ -1111,7 +1146,11 @@ def google_oidc_callback(
     )
     if challenge.purpose == "google_oidc_link":
         linked_user = db.get(User, challenge.user_id)
-        if linked_user is None or linked_user.status != "active":
+        if (
+            linked_user is None
+            or linked_user.status != "active"
+            or not _owner_beta_allows(linked_user.email, settings)
+        ):
             raise HTTPException(status_code=401, detail="Google account linking could not be completed.")
         if identity is not None and identity.user_id != linked_user.id:
             raise HTTPException(status_code=409, detail="Google identity is already linked.")
@@ -1158,7 +1197,11 @@ def google_oidc_callback(
         )
         db.add(identity)
     challenge.consumed_at = now
-    if user is None or user.status != "active":
+    if (
+        user is None
+        or user.status != "active"
+        or not _owner_beta_allows(user.email, settings)
+    ):
         raise HTTPException(status_code=401, detail="Google sign-in could not be completed.")
     if user.mfa_enabled:
         mfa_challenge = random_token()
@@ -1292,7 +1335,8 @@ def passkey_authentication_options(
     credentials = []
     if payload.email:
         email = normalize_email(str(payload.email))
-        user = db.scalar(select(User).where(User.email == email, User.status == "active"))
+        if _owner_beta_allows(email, settings):
+            user = db.scalar(select(User).where(User.email == email, User.status == "active"))
         if user is not None:
             credentials = list(
                 db.scalars(
@@ -1367,7 +1411,11 @@ def verify_passkey_authentication(
     except WebAuthnException as error:
         raise HTTPException(status_code=401, detail="Passkey assertion is invalid.") from error
     user = db.get(User, credential.user_id)
-    if user is None or user.status != "active":
+    if (
+        user is None
+        or user.status != "active"
+        or not _owner_beta_allows(user.email)
+    ):
         raise HTTPException(status_code=401, detail="Passkey assertion is invalid.")
     challenge.consumed_at = now
     credential.sign_count = verified.new_sign_count

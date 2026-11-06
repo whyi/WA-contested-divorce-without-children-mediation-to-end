@@ -29,6 +29,10 @@ for existing production gates.
 - UAT must deny unauthenticated users and any account other than the
   specifically designated owner. Enforce this on registration and sign-in at
   the server, not just in page routing or deployment obscurity.
+- The application has an opt-in server-side gate using
+  `OWNER_BETA_ENABLED=true` and a deployment-injected `OWNER_BETA_EMAIL`. Keep
+  the address in protected deployment configuration, never source control.
+  The gate is not a substitute for isolated UAT infrastructure or HTTPS.
 - Use synthetic case names, amounts, dates, documents, and responses. Do not
   upload actual client, opposing-party, or other sensitive case materials.
 - Keep the UAT database, object storage, KMS key, signing/encryption secrets,
@@ -54,6 +58,9 @@ UAT does not satisfy production backup/restore, legal, payment, AI, alerting, or
 release gates unless the responsible reviewer explicitly verifies the
 production-specific control.
 
-**Status:** Boundaries are documented. Hosted UAT, owner-only registration,
-isolated resources, guarded reset, integration configuration, and successful
-UAT evidence are not implemented or verified by this change.
+**Status:** Environment boundaries and an opt-in server-side owner email gate
+are implemented. No owner email is configured here, and no hosted UAT,
+isolated resources, guarded reset, test-integration setup, or successful UAT
+evidence is implemented or verified by this change. See
+[Spec 58](../specs/58-owner-only-authentication/spec-58-owner-only-authentication.md)
+for the authentication gate and its deployment requirements.
