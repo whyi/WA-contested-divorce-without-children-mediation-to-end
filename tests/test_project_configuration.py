@@ -61,6 +61,7 @@ class ProjectConfigurationTests(unittest.TestCase):
         self.assertIn('AUTH_ENABLED: "${AUTH_ENABLED:-true}"', compose)
         self.assertIn('CASE_DATA_ENABLED: "${CASE_DATA_ENABLED:-false}"', compose)
         self.assertIn('CASE_MATERIALS_ENABLED: "${CASE_MATERIALS_ENABLED:-false}"', compose)
+        self.assertIn('PRODUCTION_READINESS_REQUIRED: "${PRODUCTION_READINESS_REQUIRED:-false}"', compose)
         self.assertIn('AI_ANALYSIS_ENABLED: "${AI_ANALYSIS_ENABLED:-false}"', compose)
         self.assertIn('AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}', compose)
         self.assertIn('BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}', compose)

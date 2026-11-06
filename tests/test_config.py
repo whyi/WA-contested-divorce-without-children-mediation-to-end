@@ -138,5 +138,92 @@ class SettingsTests(unittest.TestCase):
                 demo_mode_enabled=False,
             )
 
+    def test_production_readiness_is_opt_in_and_reports_only_safe_check_codes(self) -> None:
+        self.assertEqual(Settings().production_readiness_errors(), ())
+
+        errors = Settings(production_readiness_required=True).production_readiness_errors()
+
+        self.assertIn("authentication_disabled", errors)
+        self.assertIn("case_data_disabled", errors)
+        self.assertIn("case_material_storage_disabled", errors)
+        self.assertIn("live_payment_configuration_incomplete", errors)
+        self.assertIn("backup_restore_tombstone_reconciliation_unverified", errors)
+        self.assertIn("production_alert_delivery_unverified", errors)
+        self.assertNotIn("AUTH_JWT_SECRET", " ".join(errors))
+
+    def test_production_readiness_requires_tls_and_live_payment_configuration(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            auth_encryption_key="secure-encryption-secret-that-is-long-enough",
+            auth_issuer="https://auth.example.test",
+            auth_public_base_url="https://app.example.test",
+            webauthn_origin="https://app.example.test",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            demo_mode_enabled=False,
+            production_readiness_required=True,
+            s3_kms_key_id="arn:aws:kms:us-west-2:123:key/test",
+            database_url="postgresql+psycopg://user:password@db.example.test/mediation",
+            support_contact_url="https://support.example.test/help",
+            stripe_secret_key="sk_test_example",
+            stripe_webhook_secret="whsec_example",
+            stripe_price_id_attempt_credits_5="price_five",
+            stripe_price_id_attempt_credits_10="price_ten",
+        )
+
+        errors = settings.production_readiness_errors()
+
+        self.assertNotIn("auth_signing_secret_missing_or_weak", errors)
+        self.assertNotIn("case_data_disabled", errors)
+        self.assertNotIn("case_material_storage_disabled", errors)
+        self.assertIn("database_tls_not_required", errors)
+        self.assertIn("live_payment_configuration_incomplete", errors)
+        self.assertIn("backup_restore_tombstone_reconciliation_unverified", errors)
+
+    def test_production_readiness_rejects_ai_without_verified_legal_policy_gate(self) -> None:
+        settings = Settings(
+            production_readiness_required=True,
+            ai_analysis_enabled=True,
+        )
+
+        self.assertIn("ai_policy_review_not_verified", settings.production_readiness_errors())
+
+    def test_complete_configuration_does_not_clear_unverified_operational_evidence(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            auth_encryption_key="secure-encryption-secret-that-is-long-enough",
+            auth_issuer="https://auth.example.test",
+            auth_public_base_url="https://app.example.test",
+            webauthn_origin="https://app.example.test",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            demo_mode_enabled=False,
+            production_readiness_required=True,
+            s3_kms_key_id="arn:aws:kms:us-west-2:123:key/test",
+            database_url=(
+                "postgresql+psycopg://user:password@db.example.test/mediation"
+                "?sslmode=verify-full"
+            ),
+            support_contact_url="https://support.example.test/help",
+            stripe_secret_key="sk_live_example",
+            stripe_webhook_secret="whsec_example",
+            stripe_price_id_attempt_credits_5="price_five",
+            stripe_price_id_attempt_credits_10="price_ten",
+        )
+
+        errors = settings.production_readiness_errors()
+
+        self.assertEqual(
+            set(errors),
+            {
+                "backup_restore_tombstone_reconciliation_unverified",
+                "production_alert_delivery_unverified",
+                "payment_provider_test_evidence_unverified",
+            },
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
