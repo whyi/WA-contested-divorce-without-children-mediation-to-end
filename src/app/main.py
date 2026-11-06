@@ -41,7 +41,7 @@ from app.documents import (
     extract_document,
     render_template,
 )
-from app.extraction import retry_failed_extraction_job
+from app.extraction import MAX_EXTRACTION_RETRIES, retry_failed_extraction_job
 from app.failure_logging import log_failure_event
 from app.existing_offer import (
     METADATA_KEY as EXISTING_OFFER_METADATA_KEY,
@@ -795,6 +795,14 @@ def retry_case_document_extraction(
         retried = retry_failed_extraction_job(db, job.id, job.request_id)
         if retried is None:
             raise HTTPException(status_code=404, detail="Extraction job not found.")
+        if retried.status == "failed":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Extraction retry limit reached ({MAX_EXTRACTION_RETRIES} retries). "
+                    "The original source remains stored; contact support for help."
+                ),
+            )
         return DocumentExtractionStatus(
             document_id=document.id,
             job_id=retried.id,
