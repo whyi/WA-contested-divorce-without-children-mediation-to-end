@@ -266,6 +266,21 @@ class OfferOriginTests(unittest.TestCase):
 class ExistingOfferUiTests(unittest.TestCase):
     page = open("src/app/static/index.html", encoding="utf-8").read()
 
+    def test_existing_offer_question_is_inside_both_selected_start_paths(self) -> None:
+        chooser = self.page.split('id="case-create-choice"', 1)[1].split("</section>", 1)[0]
+        intake = self.page.split('id="case-create-offer-intake"', 1)[1].split(
+            "</section>", 1
+        )[0]
+        self.assertNotIn("case-offer-question", chooser)
+        self.assertIn('id="case-offer-question"', intake)
+        self.assertIn('data-start-mode="upload"', chooser)
+        self.assertIn('data-start-mode="wizard"', chooser)
+        self.assertIn("showCaseStartPath(button.dataset.startMode)", self.page)
+        self.assertIn(
+            "createCaseFromDashboard(activeCaseStartMode, caseCreateContinue)",
+            self.page,
+        )
+
     def test_setup_dialog_and_preparation_page_ask_the_question_accessibly(self) -> None:
         for marker in (
             'id="case-offer-question"',
@@ -279,6 +294,15 @@ class ExistingOfferUiTests(unittest.TestCase):
         status = self.page.split('id="existing-offer-status"', 1)[1][:120]
         self.assertIn('aria-live="polite"', status)
 
+    def test_selected_file_recovery_requires_reselection_or_removal(self) -> None:
+        self.assertIn('id="case-offer-file-recovery"', self.page)
+        self.assertIn('id="case-offer-file-clear"', self.page)
+        create = self.page.split("async function createCaseFromDashboard", 1)[1].split(
+            "function renderCases", 1
+        )[0]
+        self.assertIn("Reselect the previously selected offer document", create)
+        self.assertIn("caseCreateDraftFileIdentity = null", self.page)
+
     def test_client_validates_offer_source_and_uses_server_endpoint(self) -> None:
         self.assertIn("existing_offer:", self.page)
         self.assertIn("/existing-offer", self.page)
@@ -290,7 +314,7 @@ class ExistingOfferUiTests(unittest.TestCase):
         )[0]
         self.assertNotIn("offer=pending", self.page)
         self.assertIn('id="case-offer-file"', self.page)
-        guard = create.index('offerAnswer === "yes" && !offerNotes && !offerFile')
+        guard = create.index('offerAnswer === "yes"\n            && !offerNotes\n            && !offerFile')
         self.assertLess(guard, create.index('settlementApi("/cases"'))
         self.assertLess(guard, create.index("window.location.assign"))
         # A file-only answer is persisted only after the upload, and only then may onboarding advance.
