@@ -1324,12 +1324,12 @@ class OfferResponseTransitionTests(unittest.TestCase):
             encoding="utf-8"
         )
         response_handler = html.split(
-            'settlementDemoResponseFiles.querySelectorAll(\'input[name="settlement-demo-response-outcome"]\')',
+            'settlementDemoResponseFiles.querySelectorAll(\'input[name="settlement-demo-response-outcome"]\').forEach((input) => {\n'
+            '          input.addEventListener("change"',
             1,
         )[1].split('settlementDemoAddCounteroffer.addEventListener', 1)[0]
         self.assertIn(
-            "settlementDemoAddCounteroffer.textContent = canContinue\n"
-            "              ? `Continue to attempt ${settlementDemoAttemptOrdinal + 1}`",
+            'settlementDemoAddCounteroffer.textContent = "Next";',
             response_handler,
         )
         self.assertIn(
@@ -1353,13 +1353,39 @@ class OfferResponseTransitionTests(unittest.TestCase):
             "function continueSettlementDemoAttempt()", 1
         )[1].split("settlementScenarioResults.addEventListener", 1)[0]
         self.assertIn(
-            "saveDemoCaseData({ ...demoCaseData, attempt_ordinal: nextOrdinal });",
+            "attempt_ordinal: nextOrdinal,",
             continue_attempt,
         )
         self.assertLess(
             continue_attempt.index("saveDemoCaseData("),
             continue_attempt.index("settlementDemoAttemptOrdinal += 1;"),
         )
+
+    def test_demo_attempt_history_and_local_counteroffer_storage(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('id="demo-attempt-progress" aria-label="Demo negotiation attempts"', html)
+        case_navigation = html.split('<nav class="demo-case-navigation"', 1)[1].split(
+            '<section class="demo-file-manager"', 1
+        )[0]
+        self.assertLess(case_navigation.index('id="demo-current-case-title"'), case_navigation.index('id="demo-attempt-progress"'))
+        self.assertLess(case_navigation.index('id="demo-attempt-progress"'), case_navigation.index('id="demo-mediation-link"'))
+        self.assertIn('viewDemoAttempt(ordinal, { navigate: true })', html)
+        self.assertIn('url.searchParams.set("attempt", String(ordinal));', html)
+        self.assertIn('window.history.pushState(null, "", url)', html)
+        self.assertIn('window.addEventListener("popstate", restoreDemoAttemptFromUrl);', html)
+        self.assertIn('document.getElementById("demo-attempt-view-status").focus();', html)
+        self.assertIn('[aria-current="step"] .demo-attempt-circle', html)
+        self.assertIn("past && !snapshot", html)
+        self.assertIn("attempt_snapshots: { ...demoCaseData.attempt_snapshots", html)
+        self.assertIn("current_draft: settlementDemoCurrentView", html)
+        self.assertIn("setSettlementDemoAttemptFrozen(past || Boolean(snapshot.sent))", html)
+        self.assertIn('input.disabled = past;', html)
+        self.assertIn('file.size > 2 * 1024 * 1024', html)
+        self.assertIn('["pdf", "docx", "xlsx"].includes(extension)', html)
+        self.assertIn("demoCounterofferFileKey(ordinal)", html)
+        self.assertIn('settlementDemoCounterofferSaving', html)
 
 
 if __name__ == "__main__":
