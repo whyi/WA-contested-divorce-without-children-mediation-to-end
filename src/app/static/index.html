@@ -3685,17 +3685,19 @@
           if (!pendingDemoCase || !["documents", "wizard"].includes(mode)) return;
           try {
             const current = demoCaseData || loadDemoCaseData();
-            if (current) {
+            if (current && demoSource === "demo1") {
               window.location.assign(demoAssetOverviewUrl(current.id));
               return;
             }
-            saveDemoCaseData({
-              ...pendingDemoCase,
-              workflow_mode: mode === "documents" ? "upload" : "wizard",
-            });
+            if (!current) {
+              saveDemoCaseData({
+                ...pendingDemoCase,
+                workflow_mode: mode === "documents" ? "upload" : "wizard",
+              });
+            }
             const path = mode === "documents" ? "/demo/documents" : "/demo/wizard";
             window.location.assign(
-              `${path}?source=${demoSource}&demo_case_id=${encodeURIComponent(pendingDemoCase.id)}`,
+              `${path}?source=${demoSource}&demo_case_id=${encodeURIComponent(current?.id || pendingDemoCase.id)}`,
             );
           } catch (error) {
             demoCaseChoiceStatus.textContent = error instanceof Error
@@ -4799,11 +4801,11 @@
         function openDemoCaseChoiceDialog() {
           try {
             const existingCase = demoCaseData || loadDemoCaseData();
-            if (existingCase) {
+            if (existingCase && demoSource === "demo1") {
               window.location.replace(demoAssetOverviewUrl(existingCase.id));
               return;
             }
-            pendingDemoCase = {
+            pendingDemoCase = existingCase || {
               id: `demo-${createLocalId("case")}`,
               title: "Demo case",
               status: "in progress",
@@ -12559,7 +12561,7 @@
           showDashboardShell();
           dashboardLoading.hidden = true;
           document.getElementById("dashboard-header").hidden = true;
-          if (demoCaseData) {
+          if (demoCaseData && demoSource === "demo1") {
             window.location.replace(demoAssetOverviewUrl(demoCaseData.id));
           } else {
             openDemoCaseChoiceDialog();
