@@ -121,6 +121,10 @@ async def lifespan(_: FastAPI):
         with SessionLocal() as db:
             ensure_demo_user(db)
             db.commit()
+    if settings.case_data_enabled:
+        from app.deletion_ledger import reconcile_from_environment
+
+        reconcile_from_environment()
     yield
 
 
@@ -620,6 +624,12 @@ def readiness() -> dict[str, str]:
     except BotoCoreError as error:
         log_failure_event(logger, "object_storage_readiness_failed", error, severity="SEV1")
         raise HTTPException(status_code=503, detail="Object storage is unavailable.") from error
+    except RuntimeError as error:
+        logger.exception("Permanent-deletion ledger readiness check failed.")
+        raise HTTPException(
+            status_code=503,
+            detail="Permanent-deletion protection is unavailable.",
+        ) from error
     return {"status": "ready"}
 
 

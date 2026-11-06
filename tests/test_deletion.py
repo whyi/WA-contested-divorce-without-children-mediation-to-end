@@ -23,6 +23,7 @@ from app.deletion import (
     import_item_tombstone_id,
     router,
 )
+from app.deletion_ledger import reconcile_deletion_ledger
 from app.models import (
     Case,
     CaseDelegationInvitation,
@@ -47,11 +48,41 @@ class FakeStorage:
     def __init__(self) -> None:
         self.deleted: list[str] = []
         self.fail = False
+        self.fail_ledger = False
+        self.ledger_entries: list[dict[str, str | int]] = []
+
+    def deletion_ledger_initialized(self) -> bool:
+        return True
+
+    def initialize_deletion_ledger(self, entries) -> None:
+        self.ledger_entries.extend(entries)
 
     def delete_all_versions(self, key: str) -> None:
         if self.fail:
             raise RuntimeError("object version purge failed")
         self.deleted.append(key)
+
+    def record_deletion_tombstone(
+        self,
+        scope_type: str,
+        scope_id: str,
+        initiated_by: str,
+        object_keys: list[str] | None = None,
+    ) -> None:
+        if self.fail_ledger:
+            raise RuntimeError("deletion ledger unavailable")
+        entry = {
+            "schema_version": 1,
+            "scope_type": scope_type,
+            "scope_id": scope_id,
+            "initiated_by": initiated_by,
+            "object_keys": object_keys or [],
+        }
+        if entry not in self.ledger_entries:
+            self.ledger_entries.append(entry)
+
+    def read_deletion_tombstones(self):
+        return list(self.ledger_entries)
 
 
 class PermanentDeletionTests(unittest.TestCase):
@@ -200,6 +231,13 @@ class PermanentDeletionTests(unittest.TestCase):
         self.assertEqual(tombstone.status, "completed")
         self.assertEqual(tombstone.object_keys, [])
         self.assertEqual(self.storage.deleted, [self.document.object_key])
+        self.assertIn(
+            ("document", str(self.document.id), str(self.owner.id)),
+            {
+                (entry["scope_type"], entry["scope_id"], entry["initiated_by"])
+                for entry in self.storage.ledger_entries
+            },
+        )
         self.assertEqual(
             self.db.scalar(
                 select(DeletionTombstone.status).where(
@@ -220,6 +258,13 @@ class PermanentDeletionTests(unittest.TestCase):
         self.assertEqual(self.db.scalar(select(NegotiationEvent.id)), None)
         self.assertEqual(self.db.scalar(select(CaseLifecycleEvent.id)), None)
         self.assertEqual(self.storage.deleted, [self.document.object_key])
+        self.assertIn(
+            ("case", str(self.case.id), str(self.owner.id)),
+            {
+                (entry["scope_type"], entry["scope_id"], entry["initiated_by"])
+                for entry in self.storage.ledger_entries
+            },
+        )
         self.assertTrue(
             self.db.scalar(
                 select(DeletionTombstone.id).where(
@@ -247,6 +292,85 @@ class PermanentDeletionTests(unittest.TestCase):
             self.assertEqual(raised.exception.status_code, 403)
         self.assertEqual(self.storage.deleted, [])
         self.assertEqual(self.db.scalar(select(DeletionTombstone.id)), None)
+
+    def test_deletion_fails_closed_when_external_ledger_cannot_be_written(self) -> None:
+        self.storage.fail_ledger = True
+
+        with self.assertRaises(HTTPException) as raised:
+            delete_case_scope(self.db, self.owner, self.case.id, self.storage)
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIsNotNone(self.db.get(Case, self.case.id))
+        self.assertIsNone(self.db.scalar(select(DeletionTombstone.id)))
+        self.assertEqual(self.storage.deleted, [])
+
+    def test_restore_reconciliation_removes_deleted_case_and_account_from_snapshot(self) -> None:
+        case_id, owner_id = self.case.id, self.owner.id
+        self.storage.ledger_entries.extend(
+            [
+                {
+                    "schema_version": 1,
+                    "scope_type": "case",
+                    "scope_id": str(case_id),
+                    "initiated_by": str(owner_id),
+                    "object_keys": [self.document.object_key],
+                },
+                {
+                    "schema_version": 1,
+                    "scope_type": "account",
+                    "scope_id": str(owner_id),
+                    "initiated_by": str(owner_id),
+                    "object_keys": [],
+                },
+            ]
+        )
+
+        reconciled = reconcile_deletion_ledger(self.db, self.storage)
+
+        self.assertEqual(reconciled, 2)
+        self.assertIsNone(self.db.get(Case, case_id))
+        self.assertIsNone(self.db.get(User, owner_id))
+        self.assertEqual(self.storage.deleted, [self.document.object_key])
+        self.assertEqual(
+            self.db.scalar(
+                select(DeletionTombstone.status).where(
+                    DeletionTombstone.scope_type == "case",
+                    DeletionTombstone.scope_id == case_id,
+                )
+            ),
+            "completed",
+        )
+        self.assertEqual(
+            self.db.scalar(
+                select(DeletionTombstone.status).where(
+                    DeletionTombstone.scope_type == "account",
+                    DeletionTombstone.scope_id == owner_id,
+                )
+            ),
+            "completed",
+        )
+
+    def test_initialization_backfills_existing_database_tombstones(self) -> None:
+        from app.deletion_ledger import initialize_deletion_ledger
+
+        self.db.add(
+            DeletionTombstone(
+                scope_type="case",
+                scope_id=uuid4(),
+                initiated_by=self.owner.id,
+                status="completed",
+                object_keys=[],
+            )
+        )
+        self.db.commit()
+        self.storage.ledger_entries.clear()
+        self.storage.deletion_ledger_initialized = lambda: False
+
+        count = initialize_deletion_ledger(self.db, self.storage)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(len(self.storage.ledger_entries), 1)
+        self.assertEqual(self.storage.ledger_entries[0]["scope_type"], "case")
 
     def test_object_failure_leaves_pending_tombstone_and_retry_finishes(self) -> None:
         self.storage.fail = True
@@ -297,6 +421,7 @@ class PermanentDeletionTests(unittest.TestCase):
 
         self.assertTrue(delete_account_scope(self.db, self.owner, self.storage))
 
+        self.assertEqual(self.storage.ledger_entries[0]["scope_type"], "account")
         self.assertIsNone(self.db.get(User, self.owner.id))
         self.assertIsNone(self.db.get(Case, self.case.id))
         self.assertIsNotNone(self.db.get(Case, other_case.id))
