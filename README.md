@@ -195,6 +195,15 @@ deployment. Keep `AUTH_ENABLED=false` until the decisions in
 the deployment has been reviewed. Do not use the development defaults or
 handle real case information before production secret management, operational
 email delivery, retention, and account-recovery policies are established.
+For a dedicated owner-only UAT deployment, set `OWNER_BETA_ENABLED=true` and
+inject `OWNER_BETA_EMAIL` through protected deployment configuration. The
+allowlist is enforced on signup, account recovery, password/Google/passkey/MFA
+authentication, refresh, and every authenticated request. Owner-only mode
+requires authentication and cannot be combined with demo mode. Keep it disabled
+for the local Compose demo; enabling it does not provision or certify an
+isolated UAT environment. See
+[Spec 58](specs/58-owner-only-authentication/spec-58-owner-only-authentication.md)
+for the authentication boundary and its remaining deployment requirements.
 
 Attempt-credit checkout is disabled in demo mode. For a reviewed production
 deployment, configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
