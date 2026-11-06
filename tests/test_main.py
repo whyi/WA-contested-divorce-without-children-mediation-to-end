@@ -17,7 +17,9 @@ from app.main import (
     app,
     create_case,
     delete_document,
+    lifespan,
     preview_document,
+    readiness,
     read_property_tracing,
     update_property_tracing,
 )
@@ -83,6 +85,33 @@ class MainWorkflowTests(unittest.TestCase):
             response.json(),
             {"detail": "Production readiness requirements are unmet."},
         )
+
+    def test_case_data_startup_reconciles_external_deletion_ledger(self) -> None:
+        async def start_application():
+            async with lifespan(app):
+                return
+
+        with (
+            patch(
+                "app.main.settings",
+                SimpleNamespace(demo_mode_enabled=False, case_data_enabled=True),
+            ),
+            patch("app.deletion_ledger.reconcile_from_environment") as reconcile,
+        ):
+            asyncio.run(start_application())
+
+        reconcile.assert_called_once_with()
+
+    def test_readiness_fails_closed_when_deletion_protection_is_unavailable(self) -> None:
+        with patch(
+            "app.main.storage.check_ready",
+            side_effect=RuntimeError("ledger marker missing"),
+        ), patch("app.main.SessionLocal", MagicMock()):
+            with self.assertRaises(HTTPException) as raised:
+                readiness()
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIn("Permanent-deletion protection", raised.exception.detail)
 
     def test_party_case_ownership_is_enforced_with_a_user_lock(self) -> None:
         user_id = uuid4()

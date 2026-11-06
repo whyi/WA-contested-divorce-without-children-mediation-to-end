@@ -267,6 +267,10 @@ def run_once(
 
 
 def main() -> None:
+    if get_settings().case_data_enabled:
+        from app.deletion_ledger import reconcile_from_environment
+
+        reconcile_from_environment()
     while True:
         try:
             worked = run_once()

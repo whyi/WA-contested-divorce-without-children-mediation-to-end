@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://mediation:mediation-dev-only@localhost:5432/mediation"
     s3_bucket: str = "mediation-documents"
+    deletion_ledger_bucket: str = "mediation-deletion-ledger"
     s3_region: str = "us-west-2"
     s3_endpoint_url: str | None = None
     s3_kms_key_id: str | None = None
@@ -79,6 +80,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_s3_credentials(self) -> "Settings":
+        if self.deletion_ledger_bucket == self.s3_bucket:
+            raise ValueError("DELETION_LEDGER_BUCKET must differ from S3_BUCKET.")
         if bool(self.s3_access_key_id) != bool(self.s3_secret_access_key):
             raise ValueError("S3 access key and secret key must be configured together.")
         if self.s3_endpoint_url:

@@ -1,6 +1,6 @@
 # Spec 44: Immediate Permanent Deletion
 
-- **Status:** Implemented for active application data; provider database-backup guarantees unresolved
+- **Status:** Implemented for active application data and application-level restore reconciliation; provider restore exercise remains outstanding
 - **Related issue:** [#134 — Immediately honor permanent deletion of accounts and case materials](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/134)
 - **Related specifications:** [Spec 06: Secure Case Material Storage](../06-secure-case-material-storage/spec-06-secure-case-material-storage.md), [Spec 32: Reopenable Case Closure and Complete Data Export](../32-reopenable-case-closure-and-export/spec-32-reopenable-case-closure-and-export.md)
 - **Objective:** When a user confirms deletion, remove everything under application control immediately, separately from reversible case closure, and fail closed at any unsupported storage boundary.
@@ -20,7 +20,11 @@
 
 The application stores source objects through an S3-compatible adapter. The deletion implementation enumerates exact-key object versions and delete markers and deletes them individually. Its success depends on provider credentials granting `ListBucketVersions` and `DeleteObjectVersion`; failures are explicit and retryable. In an S3-compatible backend that does not implement these operations, deletion fails closed.
 
-Database rows have many `ON DELETE CASCADE` constraints, but this is not by itself a deletion protocol. The application adds durable tombstones before purging external objects, blocks case/document/account access while deletion is pending, deletes generated proposal DOCX/XLSX data and derived records through their database cascades, and leaves completed tombstones to prevent stale in-app jobs or retries from recreating the scope. Once complete, tombstones retain only opaque scope/initiator UUIDs and status/timestamps; source object keys are cleared. The current extraction and analysis queues are database-backed polling workers (not Redis/Celery). Export responses use `Cache-Control: no-store`; no shared application cache is configured in the repository.
+Database rows have many `ON DELETE CASCADE` constraints, but this is not by itself a deletion protocol. The application writes opaque deletion intents to the dedicated, versioned `DELETION_LEDGER_BUCKET` before committing database tombstones or purging external objects. The API replays that external ledger before accepting traffic whenever case data is enabled; readiness fails if the bucket is unavailable, versioning is disabled, or the initialization marker is missing. Reconciliation restores tombstones, purges any restored source-object versions, and removes restored case/document/account rows and derived records. The ledger bucket must be separate from the database backup boundary and protected from deletion by the application identity; see [the restore procedure](../../docs/deletion-ledger-restore.md).
+
+The one-time initialization command copies tombstones from the authoritative live database and is intentionally not an automatic fallback. A deployment that has already lost its only post-deletion database state without an initialized independent ledger cannot infer historic deletion requests from an older snapshot. Never initialize from a stale restored snapshot and claim protection.
+
+The current extraction and analysis queues are database-backed polling workers (not Redis/Celery). Export responses use `Cache-Control: no-store`; no shared application cache is configured in the repository.
 
 The repository includes Docker Compose for local Postgres and Moto only. It has no production database backup/snapshot policy, backup inventory, point-in-time restore procedure, or restore hook that reconciles tombstones from a separately protected deletion ledger. A database restore from a snapshot preceding deletion can therefore restore both content rows and omit the tombstone. No code change can truthfully guarantee non-resurrection from those unobservable provider-managed backups. This is the remaining infrastructure blocker; no user policy decision is pending.
 
@@ -32,7 +36,10 @@ The repository includes Docker Compose for local Postgres and Moto only. It has 
 4. Partial failures are reported. Retrying is idempotent; stale sessions, uploads, extraction/analysis jobs, and exports cannot recreate or access deleted data.
 5. Tests verify real cascade behavior, source and derived cleanup, authorization, retries/failures, stale work denial, and non-destructive closure.
 6. S3 version purge fails closed when provider operations are unavailable; the system never claims to purge unconfigured provider-managed backups.
+7. Deletion intents are durably written to the independent ledger before the database barrier; a failed ledger write prevents deletion from being reported as started.
+8. API startup and readiness fail closed until the external ledger is initialized and versioned; startup reconciles the ledger before serving case-data routes.
+9. A restore exercise against the deployment's actual database backup and object-storage providers must pass and be recorded before issue closure.
 
 ## Delivery status and unresolved decision
 
-This additive specification records the confirmed policy without modifying historical specs. Active application deletion and S3 object-version deletion are implemented. Issue #134 remains open until infrastructure documents and verifies a database backup/restore process that cannot resurrect data after deletion, including an independently preserved deletion ledger or a supported selective purge of all relevant snapshots and replicas.
+This additive specification records the confirmed policy without modifying historical specs. Active application deletion, S3 object-version deletion, and code-driven restore reconciliation are implemented. Issue #134 remains open until the production ledger is initialized with the authoritative tombstone history, its IAM/retention controls are verified, and an actual deployment backup restore exercise proves reconciliation before traffic resumes.
