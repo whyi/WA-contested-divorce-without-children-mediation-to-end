@@ -37,9 +37,13 @@ services:
       AWS_DEFAULT_REGION: us-west-2
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      DELETION_LEDGER_BUCKET: ${DELETION_LEDGER_BUCKET:-mediation-deletion-ledger}
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - aws --endpoint-url http://s3mock:5000 s3api head-bucket --bucket mediation-documents >/dev/null 2>&1 || aws --endpoint-url http://s3mock:5000 s3api create-bucket --bucket mediation-documents --create-bucket-configuration LocationConstraint=us-west-2
+      - >-
+        (aws --endpoint-url http://s3mock:5000 s3api head-bucket --bucket mediation-documents >/dev/null 2>&1 || aws --endpoint-url http://s3mock:5000 s3api create-bucket --bucket mediation-documents --create-bucket-configuration LocationConstraint=us-west-2)
+        && (aws --endpoint-url http://s3mock:5000 s3api head-bucket --bucket "$DELETION_LEDGER_BUCKET" >/dev/null 2>&1 || aws --endpoint-url http://s3mock:5000 s3api create-bucket --bucket "$DELETION_LEDGER_BUCKET" --create-bucket-configuration LocationConstraint=us-west-2)
+        && aws --endpoint-url http://s3mock:5000 s3api put-bucket-versioning --bucket "$DELETION_LEDGER_BUCKET" --versioning-configuration Status=Enabled
     restart: "no"
 
   api:
@@ -47,6 +51,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://mediation:mediation-dev-only@db:5432/mediation
       S3_BUCKET: ${S3_BUCKET:-mediation-documents}
+      DELETION_LEDGER_BUCKET: ${DELETION_LEDGER_BUCKET:-mediation-deletion-ledger}
       S3_REGION: ${S3_REGION:-us-west-2}
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://s3mock:5000}
       S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}
@@ -113,6 +118,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://mediation:mediation-dev-only@db:5432/mediation
       S3_BUCKET: ${S3_BUCKET:-mediation-documents}
+      DELETION_LEDGER_BUCKET: ${DELETION_LEDGER_BUCKET:-mediation-deletion-ledger}
       S3_REGION: ${S3_REGION:-us-west-2}
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://s3mock:5000}
       S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}
@@ -144,6 +150,10 @@ services:
     build: .
     command: ["python", "-m", "app.analysis_worker"]
     environment:
+      S3_BUCKET: ${S3_BUCKET:-mediation-documents}
+      DELETION_LEDGER_BUCKET: ${DELETION_LEDGER_BUCKET:-mediation-deletion-ledger}
+      S3_REGION: ${S3_REGION:-us-west-2}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://s3mock:5000}
       DATABASE_URL: postgresql+psycopg://mediation:mediation-dev-only@db:5432/mediation
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
