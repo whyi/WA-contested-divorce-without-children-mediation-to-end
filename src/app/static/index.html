@@ -3104,6 +3104,9 @@
         const adoptSelectedButton = document.getElementById("adopt-selected-proposals");
         const materialsItems = [];
         let materialsMaxBytes = 0;
+        let materialsMaxAttachments = 0;
+        let materialsStoredCount = 0;
+        let materialsFormatsText = "";
         let materialsImportEnabled = false;
         let materialsReady = false;
         let materialsBatchId = null;
@@ -7922,11 +7925,43 @@
           updateMaterialsControls();
         }
 
+        function materialsConfigUrl() {
+          return preparationCaseId
+            ? `/api/v1/materials/config?case_id=${encodeURIComponent(preparationCaseId)}`
+            : "/api/v1/materials/config";
+        }
+
+        function renderMaterialsLimits() {
+          materialsLimits.textContent =
+            `${materialsFormatsText} Maximum size: ${formatFileSize(materialsMaxBytes)} per file. ` +
+            `${materialsStoredCount} of ${materialsMaxAttachments} attachments used in this case; ` +
+            `${Math.max(materialsMaxAttachments - materialsStoredCount, 0)} remaining. ` +
+            "Removing a stored attachment frees a slot.";
+        }
+
+        async function refreshMaterialsUsage() {
+          try {
+            const response = await fetch(materialsConfigUrl(), {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (!response.ok) return;
+            const result = await response.json();
+            if (Number.isInteger(result.attachment_count) && Number.isInteger(result.max_attachments)) {
+              materialsStoredCount = result.attachment_count;
+              materialsMaxAttachments = result.max_attachments;
+              renderMaterialsLimits();
+            }
+          } catch {
+            // The next import response still enforces the limit on the server.
+          }
+        }
+
         async function loadMaterialsConfig() {
           materialsReady = false;
           updateMaterialsControls();
           try {
-            const response = await fetch("/api/v1/materials/config", {
+            const response = await fetch(materialsConfigUrl(), {
               credentials: "same-origin",
               headers: { Accept: "application/json" },
             });
@@ -7940,6 +7975,10 @@
             if (
               !Number.isInteger(config.max_upload_bytes) ||
               config.max_upload_bytes <= 0 ||
+              !Number.isInteger(config.max_attachments) ||
+              config.max_attachments <= 0 ||
+              !Number.isInteger(config.attachment_count) ||
+              config.attachment_count < 0 ||
               !Array.isArray(config.supported_extensions) ||
               typeof config.import_enabled !== "boolean"
             ) {
@@ -7947,8 +7986,11 @@
             }
             materialsMaxBytes = config.max_upload_bytes;
             materialsImportEnabled = config.import_enabled;
-            materialsLimits.textContent =
-              `Supported formats: ${config.supported_extensions.map((extension) => extension.toUpperCase()).join(", ")}. Maximum size: ${formatFileSize(materialsMaxBytes)} per file.`;
+            materialsMaxAttachments = config.max_attachments;
+            materialsStoredCount = config.attachment_count;
+            materialsFormatsText =
+              `Supported formats: ${config.supported_extensions.map((extension) => extension.toUpperCase()).join(", ")}.`;
+            renderMaterialsLimits();
             materialsDisabledNote.hidden = materialsImportEnabled;
             materialsReady = true;
             await restoreMaterialsBatch();
@@ -10462,6 +10504,14 @@
           let failures = 0;
           try {
             for (const item of pending) {
+              if (materialsStoredCount >= materialsMaxAttachments) {
+                item.error =
+                  `Not imported: this case already has ${materialsStoredCount} of ${materialsMaxAttachments} allowed attachments. ` +
+                  "Remove a stored attachment to free a slot, then retry this file.";
+                item.status = item.error;
+                failures += 1;
+                continue;
+              }
               item.status = "Uploading…";
               item.error = "";
               renderMaterials();
@@ -10490,6 +10540,8 @@
                 item.imported = true;
                 item.status = "Imported";
                 item.error = "";
+                materialsStoredCount += 1;
+                renderMaterialsLimits();
               } catch (error) {
                 try {
                   if (await reconcileImport(item)) continue;
@@ -10499,12 +10551,13 @@
                 item.status = error instanceof Error ? error.message : "Import failed. Please retry.";
                 item.error = item.status;
                 failures += 1;
+                if (item.status.includes("allowed attachments")) await refreshMaterialsUsage();
               }
               renderMaterials();
             }
             const importedCount = materialsItems.filter((item) => item.imported).length;
             materialsStatus.textContent = failures
-              ? `${importedCount} file(s) imported. ${failures} failed; remove or retry the failed files.`
+              ? `${importedCount} file(s) imported. ${failures} not imported (see each file's reason); imported files were kept. Remove or retry the others.`
               : `${importedCount} file(s) stored in a draft case. They have not been analyzed or legally reviewed.`;
             materialsStatus.dataset.kind = failures ? "error" : "success";
             if (importedCount) updateAnalysisPreviewLaunch();
