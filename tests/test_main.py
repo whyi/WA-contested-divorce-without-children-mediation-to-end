@@ -420,6 +420,10 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("archiveDemoCase", page)
         self.assertNotIn("restoreDemoCase", page)
         self.assertIn('title: "XYZ vs ABC"', page)
+        default_demo_case = page.split(
+            "function defaultDemoCaseData(source)", 1
+        )[1].split("function loadDemoCaseData()", 1)[0]
+        self.assertIn("attempt_ordinal: 1", default_demo_case)
         self.assertIn('function openDemoCaseChoiceDialog()', page)
         self.assertIn('const demoCaseStorageKey = `casework-demo-case-v2:${demoSource}`', page)
         self.assertIn('const legacyDemoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`', page)
