@@ -1,19 +1,19 @@
 # Spec 47: Pre-launch Responsive and Accessibility Validation
 
-- **Status:** Validation incomplete; product and deployment decisions remain open
+- **Status:** Validation targets approved; evidence incomplete
 - **Related issue:** [#136 — Validate mobile usability and accessibility across core workflows](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/136)
 - **Related specifications:** [Spec 05: Case-Materials Selection and Import](../05-case-materials-import/spec-05-case-materials-import.md), [Spec 32: Reopenable Case Closure and Complete Data Export](../32-reopenable-case-closure-and-export/spec-32-reopenable-case-closure-and-export.md), [Spec 35: Attempt Finalization](../35-attempt-finalization-snapshot/spec-35-attempt-finalization-snapshot.md), [Spec 39: Toggleable Offer Comparisons](../39-toggleable-offer-comparisons/spec-39-toggleable-offer-comparisons.md), [Spec 40: Rejection-Stop Completion](../40-rejection-stop-completion/spec-40-rejection-stop-completion.md), [Spec 42: Case Attachment Upload Limits](../42-case-attachment-upload-limits/spec-42-case-attachment-upload-limits.md), [Spec 45: Failure Messaging and Recovery](../45-failure-messaging-support-escalation/spec-45-failure-messaging-support-escalation.md), and [Spec 46: Document Processing Limits](../46-document-processing-limits/spec-46-document-processing-limits.md)
-- **Historical specs:** Existing specifications are preserved; this specification adds validation scope and records unresolved decisions.
-- **Objective:** Establish an evidence-based pre-launch validation process for responsive layouts, keyboard interactions, accessibility semantics, and recovery paths without asserting unapproved standards, browser support, assistive-technology coverage, or launch policy.
+- **Historical specs:** Existing specifications are preserved; this specification adds validation scope and records the approved targets.
+- **Objective:** Establish an evidence-based pre-launch validation process for responsive layouts, keyboard interactions, accessibility semantics, and recovery paths without making unsupported conformance, coverage, or launch-readiness claims.
 
 ## Decisions and approval state
 
-- **Browser/device matrix:** Not approved or specified. No browser support is implied by this specification.
-- **Viewport sizes:** For the initial responsive test pass, exercise 320, 375, 768, and 1280 CSS pixels when a capable browser is available. These are requested test widths, not a supported-device promise or a minimum-width policy.
-- **Accessibility target:** Proposed baseline only, pending product approval: WCAG 2.2 AA. No official WCAG conformance claim is made.
-- **Assistive technology combinations:** Not selected or tested. Product/deployment owners must decide the combinations and manual coverage before declaring the matrix complete.
-- **Release-blocking policy:** Not approved. Findings must be recorded with impact and reproducibility; no issue severity is implicitly a launch blocker.
-- **Integrated browser availability:** The workspace's integrated browser could not connect to either the loopback preview or its LAN address. A temporary local headless Chromium run is recorded in the evidence report; this is one emulated browser only, not a supported-browser decision or manual AT result.
+- **Browser/device matrix:** Approved target: latest stable Chrome, Edge, Firefox, and Safari on desktop, plus Safari and Chrome on mobile. Approval defines the intended validation matrix; it does not mean every combination has been tested.
+- **Viewport sizes:** Exercise 320, 375, 768, and 1280 CSS pixels. These are requested test widths, not a minimum-width policy or a supported-device promise.
+- **Accessibility target:** WCAG 2.2 AA is the approved target. No official WCAG conformance claim is made.
+- **Assistive technology combinations:** Approved manual targets are NVDA with Firefox on Windows, VoiceOver with Safari on macOS and iOS, and TalkBack with Chrome on Android. No result is implied until each combination is actually tested.
+- **Release-blocking policy:** Critical and serious accessibility defects block release; any exception must be documented. Findings must include impact and reproducibility.
+- **Integrated browser availability:** The follow-up demo checks used the workspace's integrated Chromium browser against an isolated preview. This is one emulated browser only, not evidence for the approved browser matrix or manual AT coverage.
 
 ## Validation scope
 
@@ -48,4 +48,4 @@ For each workflow, record viewport, browser/version, device or emulation details
 
 ## Current validation record
 
-See [Issue 136 validation evidence](../../docs/issue-136-prelaunch-validation-evidence.md). The current record includes static markup tests and limited headless Chromium measurements for fictional demo views. Approved browser/AT decisions, real-device coverage, full keyboard workflow checks, authenticated flows, and assistive-technology evidence remain incomplete. Keep issue #136 open.
+See [Issue 136 validation evidence](../../docs/issue-136-prelaunch-validation-evidence.md). The record includes the approved targets, static markup tests, and limited integrated-Chromium measurements for fictional demo views. Real-device and browser-matrix coverage, full keyboard workflow checks, authenticated flows, and assistive-technology evidence remain incomplete. Keep issue #136 open.

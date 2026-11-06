@@ -420,6 +420,10 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("archiveDemoCase", page)
         self.assertNotIn("restoreDemoCase", page)
         self.assertIn('title: "XYZ vs ABC"', page)
+        default_demo_case = page.split(
+            "function defaultDemoCaseData(source)", 1
+        )[1].split("function loadDemoCaseData()", 1)[0]
+        self.assertIn("attempt_ordinal: 1", default_demo_case)
         self.assertIn('function openDemoCaseChoiceDialog()', page)
         self.assertIn('const demoCaseStorageKey = `casework-demo-case-v2:${demoSource}`', page)
         self.assertIn('const legacyDemoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`', page)
@@ -440,6 +444,25 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("} else if (demoStartMode) {", start_page)
         self.assertIn("if (demoCaseData) {", start_page)
         self.assertIn("window.location.replace(demoAssetOverviewUrl(demoCaseData.id))", start_page)
+        self.assertLess(
+            start_page.index('id="demo-case-choice-dialog"'),
+            start_page.index('id="existing-cases"'),
+        )
+        self.assertIn(".dashboard-header[hidden] { display: none; }", start_page)
+
+    def test_billing_data_loads_only_after_valid_dashboard_status(self) -> None:
+        _, body = asyncio.run(request_app("/"))
+        page = body.decode()
+
+        self.assertEqual(page.count("void loadAttemptCreditPackages();"), 1)
+        dashboard_status = page.split(
+            "async function loadDashboardStatus(", 1
+        )[1].split(
+            "\n        }\n\n        buildAssetTimelineStops();", 1
+        )[0]
+        billing_load = dashboard_status.index("void loadAttemptCreditPackages();")
+        for guard in ("response.status === 401", "if (!response.ok)", "!account"):
+            self.assertLess(dashboard_status.index(guard), billing_load)
 
     def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
         status, body = asyncio.run(request_app("/"))
@@ -714,19 +737,23 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('setAttribute("aria-current", "step")', navigation)
         self.assertIn("focusTarget.focus({ preventScroll: true })", navigation)
 
-    def test_wizard_entry_ids_work_on_insecure_lan_http(self) -> None:
+    def test_browser_local_ids_work_on_insecure_lan_http(self) -> None:
         status, body = asyncio.run(request_app("/demo/wizard"))
 
         self.assertEqual(status, 200)
         page = body.decode()
-        id_generator = page.split("function createWizardId()", 1)[1].split(
+        id_generator = page.split("function createLocalId(prefix)", 1)[1].split(
             "function normalizeWizardDraft", 1
         )[0]
         self.assertIn("globalThis.crypto", id_generator)
         self.assertIn("webCrypto?.randomUUID", id_generator)
         self.assertIn("webCrypto?.getRandomValues", id_generator)
         self.assertIn("Math.random()", id_generator)
-        self.assertNotIn("return crypto.randomUUID()", id_generator)
+        self.assertNotIn("crypto.randomUUID()", id_generator)
+        demo_case_creation = page.split("function openDemoCaseChoiceDialog()", 1)[1].split(
+            "function startDemoCase", 1
+        )[0]
+        self.assertIn('createLocalId("case")', demo_case_creation)
 
     def test_wizard_supports_browser_local_optional_files_for_each_record(self) -> None:
         status, body = asyncio.run(request_app("/demo/wizard"))
