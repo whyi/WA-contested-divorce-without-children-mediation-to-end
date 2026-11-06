@@ -53,6 +53,18 @@ class Case(Base):
         default=list,
         server_default=text("'[]'::jsonb"),
     )
+    wizard_intake_json: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    wizard_intake_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_credit_balance: Mapped[int] = mapped_column(

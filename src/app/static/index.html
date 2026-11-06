@@ -3540,6 +3540,8 @@
 
         const wizardDateKeys = ["cohabitation", "marriage", "separation", "petition"];
         let wizardDatabase = null;
+        let wizardServerRevision = 0;
+        let wizardServerReady = false;
         let wizardSaveTimer = null;
         let wizardSaveQueue = Promise.resolve();
         let wizardClearingDraft = false;
@@ -4103,6 +4105,89 @@
           return normalized;
         }
 
+        function wizardDraftToApi() {
+          return {
+            schema_version: 1,
+            filed: wizardDraft.filed || null,
+            role: wizardDraft.role || null,
+            dates: Object.fromEntries(wizardDateKeys.map((key) => [
+              key,
+              {
+                date: wizardDraft.dates[key].date || null,
+                unknown: wizardDraft.dates[key].unknown,
+              },
+            ])),
+            finances: wizardDraft.finances.map((entry) => ({
+              id: entry.id,
+              kind: entry.kind,
+              category: entry.category,
+              description: entry.description,
+              acquired_date: entry.acquiredDate || null,
+              acquisition_method: entry.acquisitionMethod || null,
+              amount: entry.amount || null,
+              owners: entry.owners,
+              holding: entry.holding || null,
+            })),
+            issues: wizardDraft.issues.map((entry) => ({
+              id: entry.id,
+              topic: entry.topic,
+              outcome: entry.outcome,
+            })),
+            agreements: wizardDraft.agreements.map((entry) => ({
+              id: entry.id,
+              summary: entry.summary,
+              date: entry.date || null,
+            })),
+          };
+        }
+
+        function wizardDraftFromApi(value, localDraft) {
+          const local = normalizeWizardDraft(localDraft);
+          const serverDraft = value && typeof value === "object" ? value : {};
+          const localAttachments = Object.fromEntries(
+            ["finances", "issues", "agreements"].map((collection) => [
+              collection,
+              new Map(local[collection].map((entry) => [entry.id, entry.attachments])),
+            ]),
+          );
+          return normalizeWizardDraft({
+            schemaVersion: serverDraft.schema_version,
+            filed: serverDraft.filed || "",
+            role: serverDraft.role || "",
+            dates: Object.fromEntries(wizardDateKeys.map((key) => [
+              key,
+              {
+                date: serverDraft.dates?.[key]?.date || "",
+                unknown: serverDraft.dates?.[key]?.unknown === true,
+              },
+            ])),
+            finances: (serverDraft.finances || []).map((entry) => ({
+              id: entry.id,
+              kind: entry.kind,
+              category: entry.category,
+              description: entry.description,
+              acquiredDate: entry.acquired_date || "",
+              acquisitionMethod: entry.acquisition_method || "",
+              amount: entry.amount == null ? "" : String(entry.amount),
+              owners: entry.owners,
+              holding: entry.holding || "",
+              attachments: localAttachments.finances.get(entry.id) || [],
+            })),
+            issues: (serverDraft.issues || []).map((entry) => ({
+              id: entry.id,
+              topic: entry.topic,
+              outcome: entry.outcome,
+              attachments: localAttachments.issues.get(entry.id) || [],
+            })),
+            agreements: (serverDraft.agreements || []).map((entry) => ({
+              id: entry.id,
+              summary: entry.summary,
+              date: entry.date || "",
+              attachments: localAttachments.agreements.get(entry.id) || [],
+            })),
+          });
+        }
+
         function setWizardSaveStatus(message, kind = "") {
           wizardSaveStatus.textContent = message;
           if (kind) wizardSaveStatus.dataset.kind = kind;
@@ -4146,17 +4231,11 @@
           });
         }
 
-        function saveWizardDraft() {
+        function saveWizardDraftLocally() {
           if (!wizardDatabase) {
-            setWizardSaveStatus(
-              "Not saved: browser-local storage is unavailable. Your changes will be lost if you leave this page.",
-              "error",
-            );
-            return Promise.resolve(false);
+            return Promise.resolve({ saved: false, error: "browser-local storage is unavailable" });
           }
-          setWizardSaveStatus("Saving this draft in your browser…");
-          const revision = wizardDraftRevision;
-          const save = wizardSaveQueue.then(() => new Promise((resolve) => {
+          return new Promise((resolve) => {
             let transaction;
             try {
               transaction = wizardDatabase.transaction("drafts", "readwrite");
@@ -4166,30 +4245,104 @@
                 updatedAt: new Date().toISOString(),
               });
             } catch (error) {
-              setWizardSaveStatus(
-                `Not saved: ${error instanceof Error ? error.message : "browser storage failed"}. Your latest changes are only on this page.`,
-                "error",
-              );
-              resolve(false);
+              resolve({
+                saved: false,
+                error: error instanceof Error ? error.message : "browser-local storage failed",
+              });
               return;
             }
-            transaction.oncomplete = () => {
-              if (revision === wizardDraftRevision) {
-                setWizardSaveStatus(`Saved in this browser at ${new Date().toLocaleTimeString()}.`);
-              }
-              resolve(true);
-            };
-            transaction.onerror = transaction.onabort = () => {
-              const reason = transaction.error?.name === "QuotaExceededError"
+            transaction.oncomplete = () => resolve({ saved: true, error: "" });
+            transaction.onerror = transaction.onabort = () => resolve({
+              saved: false,
+              error: transaction.error?.name === "QuotaExceededError"
                 ? "browser storage is full; remove some attachments and try again"
-                : transaction.error?.message || "browser storage failed";
-              setWizardSaveStatus(
-                `Not saved: ${reason}. Your latest changes are only on this page.`,
-                "error",
-              );
-              resolve(false);
-            };
-          }));
+                : transaction.error?.message || "browser storage failed",
+            });
+          });
+        }
+
+        function saveWizardDraft() {
+          if (!wizardDatabase && !preparationCaseId) {
+            setWizardSaveStatus(
+              "Not saved: browser-local storage is unavailable. Your changes will be lost if you leave this page.",
+              "error",
+            );
+            return Promise.resolve(false);
+          }
+          setWizardSaveStatus(
+            preparationCaseId ? "Saving this draft to your case…" : "Saving this draft in your browser…",
+          );
+          const revision = wizardDraftRevision;
+          const save = wizardSaveQueue.then(async () => {
+            const localSave = await saveWizardDraftLocally();
+            if (preparationCaseId) {
+              if (!wizardServerReady) {
+                if (revision === wizardDraftRevision) {
+                  setWizardSaveStatus(
+                    "Not saved to your case. Reload after the case draft is available, then try again.",
+                    "error",
+                  );
+                }
+                return false;
+              }
+              try {
+                const result = await settlementApi(
+                  `/cases/${encodeURIComponent(preparationCaseId)}/wizard-intake`,
+                  {
+                    method: "PUT",
+                    body: JSON.stringify({
+                      expected_revision: wizardServerRevision,
+                      draft: wizardDraftToApi(),
+                    }),
+                  },
+                );
+                if (
+                  !Number.isSafeInteger(result?.revision)
+                  || result.revision !== wizardServerRevision + 1
+                ) {
+                  throw new Error("The saved case draft could not be verified. Reload and try again.");
+                }
+                wizardServerRevision = result.revision;
+                if (revision === wizardDraftRevision) {
+                  const hasAttachments = ["finances", "issues", "agreements"].some(
+                    (collection) => wizardDraft[collection].some((entry) => entry.attachments.length),
+                  );
+                  setWizardSaveStatus(
+                    localSave.saved || !hasAttachments
+                      ? `Saved to your case at ${new Date().toLocaleTimeString()}. Supporting files remain in this browser only.`
+                      : `Saved to your case. Supporting files were not saved in this browser: ${localSave.error}.`,
+                    localSave.saved || !hasAttachments ? "" : "error",
+                  );
+                }
+                return true;
+              } catch (error) {
+                if (error?.httpStatus === 409) {
+                  wizardServerReady = false;
+                  wizardFinish.disabled = true;
+                }
+                if (revision === wizardDraftRevision) {
+                  setWizardSaveStatus(
+                    `Not saved to your case: ${error instanceof Error ? error.message : "case storage failed"}.`,
+                    "error",
+                  );
+                }
+                return false;
+              }
+            }
+            if (!localSave.saved) {
+              if (revision === wizardDraftRevision) {
+                setWizardSaveStatus(
+                  `Not saved: ${localSave.error}. Your latest changes are only on this page.`,
+                  "error",
+                );
+              }
+              return false;
+            }
+            if (revision === wizardDraftRevision) {
+              setWizardSaveStatus(`Saved in this browser at ${new Date().toLocaleTimeString()}.`);
+            }
+            return true;
+          });
           wizardSaveQueue = save.then(() => undefined, () => undefined);
           return save;
         }
@@ -4419,7 +4572,9 @@
           }
           wizardRoleQuestion.disabled = wizardDraft.filed !== "yes";
           wizardGatedContent.hidden = wizardDraft.filed !== "yes";
-          wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          wizardFinish.disabled = wizardDraft.filed !== "yes"
+            || !wizardDraft.role
+            || Boolean(preparationCaseId && !wizardServerReady);
           updateWizardUnlockStatus();
           renderWizardCollections();
         }
@@ -4435,26 +4590,61 @@
         }
 
         async function initializeWizardDraft() {
-          setWizardSaveStatus("Loading a draft saved in this browser…");
+          setWizardSaveStatus(
+            preparationCaseId ? "Loading the draft saved to your case…" : "Loading a draft saved in this browser…",
+          );
+          let localSaved = null;
           try {
             wizardDatabase = await openWizardDatabase();
-            const saved = await loadWizardDraft();
-            if (saved) {
-              wizardDraft = normalizeWizardDraft(saved);
-              renderWizardDraft();
-              setWizardSaveStatus("Restored the draft and attached files saved in this browser.");
-            } else {
-              renderWizardDraft();
-              setWizardSaveStatus("No saved draft yet. Changes will be saved in this browser as you go.");
-            }
-          } catch (error) {
+            localSaved = await loadWizardDraft();
+          } catch {
             wizardDatabase = null;
-            renderWizardDraft();
-            setWizardSaveStatus(
-              `Local draft storage is unavailable: ${error instanceof Error ? error.message : "unknown storage error"}. Changes will not survive leaving this page.`,
-              "error",
-            );
           }
+          if (preparationCaseId) {
+            try {
+              const result = await settlementApi(
+                `/cases/${encodeURIComponent(preparationCaseId)}/wizard-intake`,
+              );
+              if (!Number.isSafeInteger(result?.revision)) {
+                throw new Error("The case draft could not be verified. Reload the case and try again.");
+              }
+              wizardServerRevision = result.revision;
+              wizardServerReady = true;
+              if (wizardServerRevision === 0 && localSaved) {
+                wizardDraft = normalizeWizardDraft(localSaved);
+                renderWizardDraft();
+                await saveWizardDraft();
+                return;
+              }
+              wizardDraft = wizardDraftFromApi(result.draft, localSaved);
+              renderWizardDraft();
+              setWizardSaveStatus(
+                wizardDatabase
+                  ? `Restored the draft saved to your case at ${new Date().toLocaleTimeString()}. Supporting files remain in this browser only.`
+                  : "Restored the draft saved to your case. Browser-local supporting file storage is unavailable.",
+                wizardDatabase ? "" : "error",
+              );
+            } catch (error) {
+              wizardServerReady = false;
+              wizardDraft = normalizeWizardDraft(localSaved);
+              renderWizardDraft();
+              setWizardSaveStatus(
+                `Could not load the draft saved to your case: ${error instanceof Error ? error.message : "case storage failed"}. Reload after reconnecting before saving or continuing.`,
+                "error",
+              );
+            }
+            return;
+          }
+          wizardDraft = normalizeWizardDraft(localSaved);
+          renderWizardDraft();
+          setWizardSaveStatus(
+            localSaved
+              ? "Restored the draft and attached files saved in this browser."
+              : wizardDatabase
+                ? "No saved draft yet. Changes will be saved in this browser as you go."
+                : "Local draft storage is unavailable. Changes will not survive leaving this page.",
+            wizardDatabase ? "" : "error",
+          );
         }
 
         function updateWizardGate(showBlockedDialog = false, saveImmediately = false) {
@@ -4465,7 +4655,9 @@
           }
           wizardRoleQuestion.disabled = filedAnswer !== "yes";
           wizardGatedContent.hidden = filedAnswer !== "yes";
-          wizardFinish.disabled = filedAnswer !== "yes" || !wizardDraft.role;
+          wizardFinish.disabled = filedAnswer !== "yes"
+            || !wizardDraft.role
+            || Boolean(preparationCaseId && !wizardServerReady);
           updateWizardUnlockStatus();
           refreshWizardReview();
           if (filedAnswer === "no" && showBlockedDialog && !wizardFiledDialog.open) {
@@ -4518,7 +4710,9 @@
           }
           if (target.dataset.wizardBase === "role") {
             wizardDraft.role = target.value;
-            wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+            wizardFinish.disabled = wizardDraft.filed !== "yes"
+              || !wizardDraft.role
+              || Boolean(preparationCaseId && !wizardServerReady);
             updateWizardUnlockStatus();
             refreshWizardReview();
             scheduleWizardSave(true);
@@ -4688,21 +4882,79 @@
           wizardClearingDraft = true;
           window.clearTimeout(wizardSaveTimer);
           await wizardSaveQueue;
+          let caseCleared = false;
           try {
-            if (!wizardDatabase) {
+            if (preparationCaseId) {
+              if (!wizardServerReady) {
+                throw new Error("The case draft is unavailable; reload before clearing it.");
+              }
+              const result = await settlementApi(
+                `/cases/${encodeURIComponent(preparationCaseId)}/wizard-intake`,
+                {
+                  method: "PUT",
+                  body: JSON.stringify({
+                    expected_revision: wizardServerRevision,
+                    draft: {
+                      schema_version: 1,
+                      filed: null,
+                      role: null,
+                      dates: {},
+                      finances: [],
+                      issues: [],
+                      agreements: [],
+                    },
+                  }),
+                },
+              );
+              if (
+                !Number.isSafeInteger(result?.revision)
+                || result.revision !== wizardServerRevision + 1
+              ) {
+                throw new Error("The cleared case draft could not be verified. Reload and try again.");
+              }
+              wizardServerRevision = result.revision;
+              caseCleared = true;
+            } else if (!wizardDatabase) {
               throw new Error("Browser-local storage is unavailable; the saved draft could not be verified or cleared.");
             }
-            await deleteWizardDraft();
+            if (wizardDatabase) {
+              try {
+                await deleteWizardDraft();
+              } catch (error) {
+                if (!caseCleared) throw error;
+                wizardDraft = createEmptyWizardDraft();
+                renderWizardDraft();
+                setWizardSaveStatus(
+                  `Answers were cleared from your case, but browser-local draft files could not be removed: ${error instanceof Error ? error.message : "browser storage failed"}.`,
+                  "error",
+                );
+                wizardClearDialog.close();
+                wizardClearingDraft = false;
+                wizardFiledQuestion.querySelector('input[value="yes"]').focus();
+                return;
+              }
+            }
             wizardDraft = createEmptyWizardDraft();
             renderWizardDraft();
-            setWizardSaveStatus("The saved answers and attached evidence were cleared from this browser.");
+            setWizardSaveStatus(
+              preparationCaseId
+                ? "The saved answers were cleared from your case and this browser. Supporting evidence remains browser-local."
+                : "The saved answers and attached evidence were cleared from this browser.",
+            );
             wizardClearDialog.close();
             wizardClearingDraft = false;
             wizardFiledQuestion.querySelector('input[value="yes"]').focus();
           } catch (error) {
+            if (error?.httpStatus === 409) wizardServerReady = false;
+            if (caseCleared) {
+              wizardDraft = createEmptyWizardDraft();
+              renderWizardDraft();
+            }
             wizardClearingDraft = false;
             setWizardSaveStatus(
-              `Draft was not cleared: ${error instanceof Error ? error.message : "browser storage failed"}.`,
+              caseCleared
+                ? `Answers were cleared from your case, but the browser-local draft could not be verified: ${error instanceof Error ? error.message : "browser storage failed"}.`
+                : `Draft was not cleared: ${error instanceof Error ? error.message : "browser storage failed"}.`,
               "error",
             );
           }
@@ -12400,7 +12652,9 @@
         window.addEventListener("pagehide", flushWizardDraftOnExit);
         wizardRoleQuestion.addEventListener("change", () => {
           wizardDraft.role = wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked')?.value || "";
-          wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          wizardFinish.disabled = wizardDraft.filed !== "yes"
+            || !wizardDraft.role
+            || Boolean(preparationCaseId && !wizardServerReady);
           updateWizardUnlockStatus();
           refreshWizardReview();
           scheduleWizardSave(true);
