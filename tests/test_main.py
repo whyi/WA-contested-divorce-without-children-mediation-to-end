@@ -440,6 +440,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("} else if (demoStartMode) {", start_page)
         self.assertIn("if (demoCaseData) {", start_page)
         self.assertIn("window.location.replace(demoAssetOverviewUrl(demoCaseData.id))", start_page)
+        self.assertLess(
+            start_page.index('id="demo-case-choice-dialog"'),
+            start_page.index('id="existing-cases"'),
+        )
+        self.assertIn(".dashboard-header[hidden] { display: none; }", start_page)
 
     def test_billing_data_loads_only_after_valid_dashboard_status(self) -> None:
         _, body = asyncio.run(request_app("/"))
