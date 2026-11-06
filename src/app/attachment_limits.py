@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.failure_logging import log_failure_event
 from app.models import Case, Document, DocumentCreditLedgerEntry
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ def attachment_usage(db: Session, case_id: UUID) -> tuple[int, int]:
     try:
         return attachment_count(db, case_id), attachment_limit(db, case_id)
     except SQLAlchemyError as error:
-        logger.exception("Attachment usage lookup failed.")
+        log_failure_event(logger, "upload_quota_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Attachment usage could not be checked. Please try again.",
@@ -50,7 +51,7 @@ def enforce_attachment_quota(db: Session, case_id: UUID, incoming: int = 1) -> N
         limit = attachment_limit(db, case_id)
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Attachment quota check failed.")
+        log_failure_event(logger, "upload_quota_check_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Attachment limits could not be checked. Please try again.",

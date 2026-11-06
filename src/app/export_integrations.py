@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.auth_routes import require_current_user
 from app.config import get_settings
 from app.database import get_db
+from app.failure_logging import log_failure_event
 from app.models import AuthChallenge, ExportProviderConnection, User
 from app.secret_encryption import decrypt_secret, derive_encryption_key, encrypt_secret
 
@@ -94,7 +95,7 @@ def export_destinations(
             )
         }
     except SQLAlchemyError as error:
-        logger.exception("Export provider connection status could not be loaded.")
+        log_failure_event(logger, "proposal_download_destination_status_failed", error)
         raise HTTPException(status_code=503, detail="Export destination status is unavailable.") from error
     destinations = {
         "google_drive": {
@@ -441,7 +442,7 @@ def disconnect_export_provider(
             )
         )
     except SQLAlchemyError as error:
-        logger.exception("Export provider connection could not be loaded for disconnect.")
+        log_failure_event(logger, "proposal_delivery_destination_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Provider connection could not be removed.") from error
     if connection is None:
         response.headers["Cache-Control"] = "no-store"
