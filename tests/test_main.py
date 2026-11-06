@@ -536,7 +536,7 @@ class MainWorkflowTests(unittest.TestCase):
             '              settlementDemoResponseOutcome !== "counteroffer";',
             page,
         )
-        self.assertIn("First sample attempt", table_section)
+        self.assertNotIn("First sample attempt", table_section)
         self.assertRegex(
             page,
             r'settlementDemoResponseNext\.disabled\s*=\s*settlementDemoResponseOutcome\s*!==\s*"accepted"',
@@ -691,6 +691,19 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("fetch(", milestone_logic)
         self.assertNotIn("localStorage", milestone_logic)
         self.assertNotIn("sessionStorage", milestone_logic)
+
+    def test_demo_documents_offer_requires_valid_details(self) -> None:
+        with TestClient(app) as client:
+            page = client.get("/demo/documents?source=demo2&demo_case_id=sample-case").text
+        self.assertIn('id="demo-documents-has-offer" type="checkbox"', page)
+        self.assertIn('id="demo-documents-offer-panel" aria-label="Existing offer" hidden', page)
+        self.assertIn('id="demo-documents-offer-file" type="file"', page)
+        self.assertIn('id="demo-documents-offer-notes"', page)
+        self.assertNotIn('id="demo-documents-back"', page)
+        self.assertIn('hasMinimumOfferNotes(demoDocumentsOfferNotes.value)', page)
+        self.assertIn('demoSelectedFiles.length === 0 || demoDocumentsOfferBusy', page)
+        self.assertIn('store.put(record)', page)
+        self.assertIn('documents_offer: {', page)
 
     def test_asset_trend_uses_selector_without_duplicate_highlight_list(self) -> None:
         with TestClient(app) as client:
@@ -1185,7 +1198,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('const demoDocumentsMode = window.location.pathname === "/demo/documents";', document_demo_page)
         self.assertIn('id="demo-file-input" type="file"', document_demo_page)
         self.assertIn('id="demo-files-next" type="button" disabled', document_demo_page)
-        self.assertIn('id="demo-documents-back" data-demo-case-return href="/demo/start?source=demo1">Back to Asset Overview</a>', document_demo_page)
+        self.assertNotIn('id="demo-documents-back"', document_demo_page)
+        self.assertIn('id="demo-documents-has-offer" type="checkbox"', document_demo_page)
+        self.assertIn('id="demo-documents-offer-file" type="file"', document_demo_page)
+        self.assertIn('id="demo-documents-offer-notes"', document_demo_page)
+        self.assertIn('hasMinimumOfferNotes(demoDocumentsOfferNotes.value)', document_demo_page)
         self.assertIn('document.querySelectorAll("[data-demo-case-return]")', document_demo_page)
         self.assertIn("Only PDF and DOCX files are supported.", document_demo_page)
         self.assertIn('window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId))', document_demo_page)
