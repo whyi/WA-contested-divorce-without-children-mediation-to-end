@@ -79,6 +79,9 @@ class AnalysisFailureTests(unittest.TestCase):
         db.scalar.side_effect = [
             consent,
             SimpleNamespace(role="owner"),
+            None,
+            None,
+            None,
             extraction_job,
             extraction,
         ]

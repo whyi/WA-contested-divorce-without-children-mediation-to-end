@@ -39,6 +39,20 @@ class ClosedCaseDashboardTests(unittest.TestCase):
         reopen_fn = PAGE[PAGE.index("async function reopenClosedCase") :][:1500]
         self.assertIn("loadDashboardStatus", reopen_fn)
 
+    def test_permanent_deletion_has_distinct_typed_material_case_and_account_controls(self) -> None:
+        for element_id in (
+            "settlement-case-delete",
+            "account-permanent-deletion-form",
+            "account-permanent-delete-submit",
+        ):
+            self.assertIn(f'id="{element_id}"', PAGE)
+        self.assertIn('Type DELETE MY ACCOUNT', PAGE)
+        self.assertIn('Type DELETE CASE', PAGE)
+        self.assertIn('Type DELETE MATERIAL', PAGE)
+        self.assertIn("/permanent-deletion`", PAGE)
+        self.assertIn("/materials/${encodeURIComponent(documentId)}/permanent-deletion", PAGE)
+        self.assertIn("Provider-managed database backups and snapshots are not configured", PAGE)
+
 
 if __name__ == "__main__":
     unittest.main()

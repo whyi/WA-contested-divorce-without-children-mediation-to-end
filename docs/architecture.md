@@ -64,3 +64,21 @@ when the test was authored. Contributors and coding agents are responsible for
 following and reporting the red-green sequence. A hook installed under
 `.git/hooks` is local to one clone; shared enforcement requires distributing a
 tracked hook and/or running equivalent pairing and test checks in CI.
+
+## 6. Permanent Deletion Boundary
+
+Case closure remains reversible and is not a deletion mechanism; see Spec 32.
+Confirmed permanent deletion is defined by Spec 44. The application stores
+uploaded source objects in an S3-compatible bucket, while generated proposal
+files and extracted/analysis data are stored in database rows. Deletion
+tombstones block active application access and stale work, and the storage
+adapter enumerates and deletes all known S3 object versions and delete markers.
+Production deletion therefore requires `ListBucketVersions` and
+`DeleteObjectVersion` permissions; failure to enumerate or purge is explicit.
+
+The repository has no production database-backup/snapshot configuration,
+restore process, or independently retained tombstone ledger. A restore from a
+snapshot predating a deletion could therefore restore data without the
+tombstone. The application must not claim synchronous purge of provider-managed
+backups or non-resurrection after such a restore until deployment-specific
+backup and restore behavior is configured and verified.

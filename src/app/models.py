@@ -1054,6 +1054,32 @@ class AuthAuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DeletionTombstone(Base):
+    __tablename__ = "deletion_tombstones"
+    __table_args__ = (
+        CheckConstraint(
+            "scope_type IN ('account', 'case', 'document', 'import_item')",
+            name="ck_deletion_tombstones_scope_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'completed')",
+            name="ck_deletion_tombstones_status",
+        ),
+        UniqueConstraint("scope_type", "scope_id", name="uq_deletion_tombstone_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    scope_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    scope_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    initiated_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    object_keys: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class CaseMembership(Base):
     __tablename__ = "case_memberships"
     __table_args__ = (

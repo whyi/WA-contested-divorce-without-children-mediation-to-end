@@ -124,8 +124,14 @@ class AnalysisWorkerTests(unittest.TestCase):
         db.scalar.side_effect = [
             consent,
             SimpleNamespace(role="owner"),
+            None,
+            None,
+            None,
             extraction_job,
             extraction,
+            None,
+            None,
+            None,
         ]
         db.scalars.return_value.all.return_value = ["completed"]
         client = FakeBedrockClient(

@@ -18,7 +18,20 @@ from app.auth_routes import require_current_user
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import get_db
-from app.models import Case, CaseMembership, Document, MaterialImportBatch, MaterialImportItem, User
+from app.deletion import (
+    import_item_tombstone_id,
+    require_scope_active,
+    scope_tombstone,
+)
+from app.models import (
+    Case,
+    CaseMembership,
+    DeletionTombstone,
+    Document,
+    MaterialImportBatch,
+    MaterialImportItem,
+    User,
+)
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError, validate_upload
 
@@ -115,8 +128,8 @@ def _delete_uploaded_object(key: str | None) -> None:
     if key is None:
         return
     try:
-        storage.delete(key)
-    except BotoCoreError as error:
+        storage.delete_all_versions(key)
+    except Exception as error:
         logger.error(
             "Could not clean up an object after a failed material import (%s).",
             type(error).__name__,
@@ -193,6 +206,14 @@ async def import_material_file(
     finally:
         await upload.close()
 
+    if scope_tombstone(
+        db, "import_item", import_item_tombstone_id(batch_id, item_id)
+    ) is not None:
+        raise HTTPException(
+            status_code=410,
+            detail="This material import was permanently deleted and cannot be retried.",
+        )
+
     try:
         existing = _existing_item(db, batch_id, item_id)
     except SQLAlchemyError as error:
@@ -224,6 +245,10 @@ async def import_material_file(
             ) from error
         if membership is None:
             raise HTTPException(status_code=404, detail="Import batch not found.")
+        case = db.get(Case, batch.case_id, with_for_update=True)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        require_scope_active(db, "case", batch.case_id)
         if document is not None:
             if hashlib.sha256(content).hexdigest() != document.sha256:
                 raise HTTPException(
@@ -236,6 +261,7 @@ async def import_material_file(
     else:
         new_case = case_id is None
         if case_id is None:
+            require_scope_active(db, "account", user.id)
             require_active_case_slot(db, user.id)
             case = Case(id=uuid4(), status="draft")
             db.add(case)
@@ -252,7 +278,7 @@ async def import_material_file(
                         CaseMembership.suspended_at.is_(None),
                     )
                 )
-                case_exists = db.get(Case, case_id) is not None
+                case = db.get(Case, case_id, with_for_update=True)
             except SQLAlchemyError as error:
                 logger.exception("Case authorization lookup failed during material import.")
                 raise HTTPException(
@@ -261,10 +287,12 @@ async def import_material_file(
                 ) from error
             if membership is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
+            require_scope_active(db, "case", case_id)
             if membership.role == "viewer":
                 raise HTTPException(status_code=403, detail="Case is read-only.")
-            if not case_exists:
+            if case is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
+            require_scope_active(db, "case", case_id)
         new_batch = MaterialImportBatch(id=batch_id, user_id=user.id, case_id=case_id)
         db.add_all(
             [
@@ -298,6 +326,7 @@ async def import_material_file(
     try:
         upload_attempted = True
         storage.put(object_key, content, media_type)
+        require_scope_active(db, "case", case_id)
         db.commit()
     except (BotoCoreError, RuntimeError) as error:
         db.rollback()
@@ -366,6 +395,14 @@ def import_batch_status(
             select(MaterialImportItem.item_id, Document)
             .join(Document, Document.id == MaterialImportItem.document_id)
             .where(MaterialImportItem.batch_id == batch.id)
+            .where(
+                ~select(DeletionTombstone.id)
+                .where(
+                    DeletionTombstone.scope_type == "document",
+                    DeletionTombstone.scope_id == Document.id,
+                )
+                .exists()
+            )
             .order_by(MaterialImportItem.id)
         ).all()
     except SQLAlchemyError as error:

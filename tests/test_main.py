@@ -6,10 +6,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 from unittest.mock import MagicMock, Mock, patch
 
-from botocore.exceptions import BotoCoreError
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
 from app.database import get_db
@@ -23,6 +21,7 @@ from app.main import (
     read_property_tracing,
     update_property_tracing,
 )
+from app.deletion import PermanentDeletionConfirmation
 from app.models import AuthSession, Case, CaseMembership, Document, User
 from app.property_tracing import PropertyTracingUpdate
 
@@ -841,17 +840,27 @@ class MainWorkflowTests(unittest.TestCase):
 
     def test_document_deletion_removes_the_object_and_metadata(self) -> None:
         document_id = uuid4()
-        document = SimpleNamespace(object_key="case/document.pdf")
+        user_id = uuid4()
+        document = SimpleNamespace(id=document_id, case_id=uuid4(), object_key="case/document.pdf")
+        user = SimpleNamespace(id=user_id)
         db = Mock()
-        db.get.return_value = document
+        db.get.side_effect = [document, user]
+        request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
 
-        with patch("app.main.storage") as object_storage:
-            response = delete_document(document_id, db)
+        with (
+            patch("app.main.delete_document_scope") as delete_scope,
+            patch("app.main.scope_tombstone", return_value=None),
+        ):
+            response = delete_document(
+                document_id,
+                PermanentDeletionConfirmation(confirmation="DELETE MATERIAL"),
+                request,
+                db,
+            )
 
         self.assertEqual(response.status_code, 204)
-        object_storage.delete.assert_called_once_with("case/document.pdf")
-        db.delete.assert_called_once_with(document)
-        db.commit.assert_called_once()
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        delete_scope.assert_called_once()
 
     def test_pdf_preview_is_inline_and_not_cacheable(self) -> None:
         document_id = uuid4()
@@ -874,37 +883,50 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         object_storage.get.assert_called_once_with("case/document.pdf")
 
-    def test_document_deletion_reports_incomplete_metadata_cleanup(self) -> None:
-        document = SimpleNamespace(object_key="case/document.pdf")
+    def test_document_deletion_reports_failure_from_permanent_deletion_service(self) -> None:
+        user_id = uuid4()
+        document = SimpleNamespace(id=uuid4(), case_id=uuid4(), object_key="case/document.pdf")
+        user = SimpleNamespace(id=user_id)
         db = Mock()
-        db.get.return_value = document
-        db.commit.side_effect = SQLAlchemyError("database unavailable")
+        db.get.side_effect = [document, user]
+        request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
 
         with (
-            patch("app.main.storage") as object_storage,
+            patch("app.main.delete_document_scope", side_effect=HTTPException(status_code=503)),
+            patch("app.main.scope_tombstone", return_value=None),
             self.assertRaises(HTTPException) as raised,
         ):
-            delete_document(uuid4(), db)
+            delete_document(
+                document.id,
+                PermanentDeletionConfirmation(confirmation="DELETE MATERIAL"),
+                request,
+                db,
+            )
 
         self.assertEqual(raised.exception.status_code, 503)
-        object_storage.delete.assert_called_once_with("case/document.pdf")
-        db.rollback.assert_called_once()
 
-    def test_document_deletion_keeps_metadata_when_object_removal_fails(self) -> None:
-        document = SimpleNamespace(object_key="case/document.pdf")
+    def test_document_deletion_requires_exact_confirmation(self) -> None:
+        user_id = uuid4()
+        document = SimpleNamespace(id=uuid4(), case_id=uuid4(), object_key="case/document.pdf")
+        user = SimpleNamespace(id=user_id)
         db = Mock()
-        db.get.return_value = document
+        db.get.side_effect = [document, user]
+        request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
 
         with (
-            patch("app.main.storage") as object_storage,
+            patch("app.main.delete_document_scope") as delete_scope,
+            patch("app.main.scope_tombstone", return_value=None),
             self.assertRaises(HTTPException) as raised,
         ):
-            object_storage.delete.side_effect = BotoCoreError()
-            delete_document(uuid4(), db)
+            delete_document(
+                document.id,
+                PermanentDeletionConfirmation(confirmation="DELETE CASE"),
+                request,
+                db,
+            )
 
-        self.assertEqual(raised.exception.status_code, 503)
-        db.delete.assert_not_called()
-        db.commit.assert_not_called()
+        self.assertEqual(raised.exception.status_code, 422)
+        delete_scope.assert_not_called()
 
     def test_document_deletion_requires_case_membership_and_non_viewer_role(self) -> None:
         user_id = uuid4()
@@ -961,10 +983,7 @@ class MainWorkflowTests(unittest.TestCase):
                     if role is not None
                     else None
                 )
-                if method == "STATUS":
-                    db.scalar.side_effect = [membership, None, None]
-                else:
-                    db.scalar.return_value = membership
+                db.scalar.side_effect = [None, membership, None, None, None]
                 app.dependency_overrides[get_db] = lambda: db
                 session_context = MagicMock()
                 session_context.__enter__.return_value = db
@@ -977,6 +996,8 @@ class MainWorkflowTests(unittest.TestCase):
                         return_value={"sub": str(user_id), "sid": str(session_id)},
                     ),
                     patch("app.main.storage") as object_storage,
+                    patch("app.main.scope_tombstone", return_value=None),
+                    patch("app.main.delete_document_scope") as delete_scope,
                 ):
                     object_storage.get.return_value = b"private"
                     path = {
@@ -988,20 +1009,29 @@ class MainWorkflowTests(unittest.TestCase):
                         request_app(
                             path,
                             request_method,
+                            body=(
+                                b'{"confirmation":"DELETE MATERIAL"}'
+                                if request_method == "DELETE"
+                                else b'{}'
+                            ),
                             headers=[
                                 (b"cookie", b"auth_access=test; auth_csrf=csrf"),
                                 (b"x-csrf-token", b"csrf"),
+                                (
+                                    b"content-type",
+                                    b"application/json",
+                                ),
                             ],
                         )
                     )
 
                 self.assertEqual(status, expected_status)
                 if method == "DELETE" and role == "owner":
-                    object_storage.delete.assert_called_once_with("case/document.pdf")
+                    delete_scope.assert_called_once()
                 elif method == "GET" and role == "viewer":
                     object_storage.get.assert_called_once_with("case/document.pdf")
                 else:
-                    object_storage.delete.assert_not_called()
+                    delete_scope.assert_not_called()
                     object_storage.get.assert_not_called()
                 app.dependency_overrides.clear()
 

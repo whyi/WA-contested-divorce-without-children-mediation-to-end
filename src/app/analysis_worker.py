@@ -14,6 +14,7 @@ from app.ai import BedrockConverseClient, analyze_document_pages
 from app.analysis import aggregate_analysis_status, is_analysis_available
 from app.config import Settings, get_settings
 from app.database import SessionLocal
+from app.deletion import scope_is_tombstoned
 from app.models import (
     CaseMembership,
     Document,
@@ -153,13 +154,22 @@ def process_analysis_job(
             _complete_without_provider(db, job, request, "cancelled", "membership_revoked")
             return
 
-        document = db.get(Document, job.document_id)
+        if scope_is_tombstoned(db, "account", request.user_id) or scope_is_tombstoned(
+            db, "case", request.case_id
+        ):
+            _complete_without_provider(db, job, request, "cancelled", "scope_deleted")
+            return
+
+        document = db.get(Document, job.document_id, with_for_update=True)
         if (
             document is None
             or document.case_id != request.case_id
             or document.sha256 != job.source_sha256
         ):
             _complete_without_provider(db, job, request, "failed", "source_unavailable")
+            return
+        if scope_is_tombstoned(db, "document", document.id):
+            _complete_without_provider(db, job, request, "cancelled", "scope_deleted")
             return
         extraction_job = db.scalar(
             select(DocumentExtractionJob)
@@ -206,6 +216,13 @@ def process_analysis_job(
             settings,
             client,
         )
+        if (
+            scope_is_tombstoned(db, "account", request.user_id)
+            or scope_is_tombstoned(db, "case", request.case_id)
+            or scope_is_tombstoned(db, "document", document.id)
+        ):
+            db.rollback()
+            return
         for field in result.proposals:
             db.add(
                 DocumentAnalysisProposal(

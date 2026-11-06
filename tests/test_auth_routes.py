@@ -12,6 +12,7 @@ from starlette.requests import Request
 from app.database import get_db
 from app.auth_routes import (
     LoginRequest,
+    _current_user,
     _decrypt_totp,
     _encrypt_totp,
     _set_auth_cookies,
@@ -54,6 +55,56 @@ class AuthenticationRouteTests(unittest.TestCase):
         }
 
         self.assertTrue(required.issubset(paths), sorted(required - paths))
+
+    def test_pending_account_deletion_blocks_stale_sessions_except_retry_endpoint(self) -> None:
+        user_id, session_id = uuid4(), uuid4()
+        now = datetime.now(UTC)
+        user = SimpleNamespace(id=user_id, status="disabled")
+        session = SimpleNamespace(
+            user_id=user_id,
+            revoked_at=None,
+            idle_expires_at=now + timedelta(days=1),
+            absolute_expires_at=now + timedelta(days=2),
+        )
+        tombstone = SimpleNamespace(status="pending")
+        db = Mock()
+        db.get.side_effect = lambda model, key: session if model.__name__ == "AuthSession" else user
+        db.scalar.return_value = tombstone
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+        )
+
+        def make_request(path: str) -> Request:
+            return Request(
+                {
+                    "type": "http",
+                    "method": "DELETE",
+                    "path": path,
+                    "raw_path": path.encode(),
+                    "query_string": b"",
+                    "headers": [(b"authorization", b"Bearer access-token")],
+                    "server": ("testserver", 80),
+                    "client": ("testclient", 12345),
+                    "scheme": "http",
+                }
+            )
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=settings),
+            patch(
+                "app.auth_routes.verify_token",
+                return_value={"sub": str(user_id), "sid": str(session_id)},
+            ),
+        ):
+            self.assertIs(
+                _current_user(make_request("/api/v1/account/permanent-deletion"), db),
+                user,
+            )
+            with self.assertRaises(HTTPException) as raised:
+                _current_user(make_request("/api/auth/sessions"), db)
+
+        self.assertEqual(raised.exception.status_code, 401)
 
     def test_passkey_verification_handlers_are_not_duplicated(self) -> None:
         handlers = [

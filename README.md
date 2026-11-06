@@ -191,10 +191,22 @@ and the application role must be limited to the configured bucket and KMS key.
 Before enabling real uploads, document the
 retention period, backup/versioning behavior, legal-hold process, and deletion
 policy. Source files remain while retained in a case; an authorized case
-member can delete a file, and linked extracted or derived data must also be
-removed or made inaccessible. The current deletion endpoint removes the source
-object and document metadata; do not enable real materials until the policy
-and cleanup of all derived data are operationally covered.
+owner can permanently delete a material or case with a separate typed
+confirmation. Account deletion requires password reauthentication and removes
+all owned cases and credentials. See
+[Spec 44](specs/44-immediate-permanent-deletion/spec-44-immediate-permanent-deletion.md)
+for the exact API, cascade, and guarantee boundaries. Deletion enumerates and
+purges known S3 object versions/delete markers, and requires version-list and
+version-delete permissions. A database tombstone blocks stale application
+requests and worker retries.
+
+The repository's Compose stack only defines local Postgres and Moto; it does
+not define production database snapshots/backups, a restore workflow, or an
+independently protected tombstone ledger. Therefore it cannot verify that a
+provider-managed database restore will not resurrect deleted records. Do not
+claim that provider backups or snapshots were purged, and do not enable real
+case materials until the deployment backup/restore and retention guarantees
+are operationally configured and verified.
 
 For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,
