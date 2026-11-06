@@ -24,8 +24,8 @@ class HomepageRedesignTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         page = response.text
         self.assertIn('id="account-entry" href="#account"', page)
-        self.assertIn('id="demo1-entry" href="/demo/1/dashboard"', page)
-        self.assertIn('id="demo2-entry" href="/demo/2/dashboard"', page)
+        self.assertIn('id="demo1-entry" href="/demo/start?source=demo1"', page)
+        self.assertIn('id="demo2-entry" href="/demo?source=demo2&amp;demo_case_id=sample-case"', page)
 
 
 if __name__ == "__main__":
