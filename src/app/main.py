@@ -88,6 +88,15 @@ settings = get_settings()
 storage = ObjectStorage(settings)
 
 
+def _production_readiness_errors() -> tuple[str, ...]:
+    if not getattr(settings, "production_readiness_required", False):
+        return ()
+    readiness_check = getattr(settings, "production_readiness_errors", None)
+    if not callable(readiness_check):
+        return ("production_readiness_check_unavailable",)
+    return readiness_check()
+
+
 class OAuthCallbackQueryFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         arguments = record.args
@@ -152,6 +161,11 @@ async def authenticate_and_authorize_case_data(
         or path.startswith("/documents/")
     )
     if is_case_data_path:
+        if _production_readiness_errors():
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Production readiness requirements are unmet."},
+            )
         if (
             not settings.auth_enabled
             or not settings.case_data_enabled
@@ -586,6 +600,16 @@ def dashboard_status(
 
 @app.get("/readyz")
 def readiness() -> dict[str, str]:
+    readiness_errors = _production_readiness_errors()
+    if readiness_errors:
+        logger.error(
+            "Production readiness requirements are unmet (checks=%s).",
+            ",".join(readiness_errors),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Production readiness requirements are unmet.",
+        )
     try:
         with SessionLocal() as db:
             db.execute(text("SELECT 1"))
