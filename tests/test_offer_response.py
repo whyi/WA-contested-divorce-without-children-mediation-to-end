@@ -1371,7 +1371,10 @@ class OfferResponseTransitionTests(unittest.TestCase):
         )[0]
         self.assertLess(case_navigation.index('id="demo-current-case-title"'), case_navigation.index('id="demo-attempt-progress"'))
         self.assertLess(case_navigation.index('id="demo-attempt-progress"'), case_navigation.index('id="demo-mediation-link"'))
-        self.assertIn('button.addEventListener("click", () => viewDemoAttempt(ordinal, { navigate: true }));', html)
+        self.assertIn('viewDemoAttempt(ordinal, { navigate: true })', html)
+        self.assertIn('url.searchParams.set("attempt", String(ordinal));', html)
+        self.assertIn('window.history.pushState(null, "", url)', html)
+        self.assertIn('window.addEventListener("popstate", restoreDemoAttemptFromUrl);', html)
         self.assertIn('document.getElementById("demo-attempt-view-status").focus();', html)
         self.assertIn('[aria-current="step"] .demo-attempt-circle', html)
         self.assertIn("past && !snapshot", html)

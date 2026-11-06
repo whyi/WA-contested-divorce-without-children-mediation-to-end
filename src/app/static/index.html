@@ -6020,7 +6020,12 @@
             label.className = "demo-attempt-progress-label";
             label.textContent = caseAttemptLabel(ordinal);
             button.append(circle, label);
-            button.addEventListener("click", () => viewDemoAttempt(ordinal, { navigate: true }));
+            button.addEventListener("click", () => {
+              if (!viewDemoAttempt(ordinal, { navigate: true })) return;
+              const url = new URL(window.location.href);
+              url.searchParams.set("attempt", String(ordinal));
+              if (url.href !== window.location.href) window.history.pushState(null, "", url);
+            });
             item.append(button);
             list.append(item);
           }
@@ -6058,27 +6063,34 @@
         }
 
         function viewDemoAttempt(ordinal, { navigate = false } = {}) {
-          if (ordinal === settlementDemoViewingOrdinal) return;
+          if (ordinal === settlementDemoViewingOrdinal) {
+            if (navigate) document.getElementById("demo-attempt-view-status").focus();
+            return true;
+          }
           if (settlementDemoCounterofferSaving) {
             document.getElementById("demo-attempt-progress-status").textContent =
               "Wait for the counteroffer file to finish saving.";
-            return;
+            return false;
           }
           const past = ordinal < settlementDemoAttemptOrdinal;
           const snapshot = past ? demoCaseData?.attempt_snapshots?.[ordinal] : settlementDemoCurrentView;
-          if (!snapshot) return;
+          if (ordinal < 1 || ordinal > settlementDemoAttemptOrdinal || !snapshot) {
+            document.getElementById("demo-attempt-progress-status").textContent =
+              "That attempt snapshot is unavailable in this browser.";
+            return false;
+          }
           if (settlementDemoViewingOrdinal === settlementDemoAttemptOrdinal) {
             if (assetEditDraft) {
               document.getElementById("demo-attempt-progress-status").textContent =
                 "Save or cancel your asset edits before reviewing an earlier attempt.";
-              return;
+              return false;
             }
             settlementDemoCurrentView = captureSettlementDemoAttempt();
             try {
               saveDemoCaseData({ ...demoCaseData, current_draft: settlementDemoCurrentView });
             } catch (error) {
               document.getElementById("demo-attempt-progress-status").textContent = error.message;
-              return;
+              return false;
             }
           }
           settlementDemoViewingOrdinal = ordinal;
@@ -6113,6 +6125,18 @@
           if (navigate) {
             document.getElementById("demo-attempt-view-status").focus();
           }
+          return true;
+        }
+
+        function restoreDemoAttemptFromUrl() {
+          const value = new URL(window.location.href).searchParams.get("attempt");
+          const ordinal = value === null ? settlementDemoAttemptOrdinal : Number(value);
+          if (Number.isInteger(ordinal) && viewDemoAttempt(ordinal)) return;
+          const status = document.getElementById("demo-attempt-progress-status");
+          status.textContent = "That attempt snapshot is unavailable in this browser.";
+          const url = new URL(window.location.href);
+          url.searchParams.set("attempt", String(settlementDemoViewingOrdinal));
+          window.history.replaceState(null, "", url);
         }
 
         function saveDemoResponseDraft() {
@@ -9961,6 +9985,9 @@
           settlementDemoAttemptOrdinal += 1;
           settlementDemoViewingOrdinal = settlementDemoAttemptOrdinal;
           settlementDemoCurrentView = null;
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.delete("attempt");
+          window.history.replaceState(null, "", currentUrl);
           settlementDemoResponseStatus.removeAttribute("data-kind");
           settlementDemoResponseOutcome = "";
           settlementDemoResponseFiles
@@ -12575,6 +12602,8 @@
           } else {
             void renderDemoCounterofferFile(settlementDemoAttemptOrdinal);
           }
+          restoreDemoAttemptFromUrl();
+          window.addEventListener("popstate", restoreDemoAttemptFromUrl);
           if (!demoCaseData || demoCaseData.id !== demoCurrentCaseId) {
             showDemoCaseStateError(new Error("The requested demo case is unavailable."));
           }
