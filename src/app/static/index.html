@@ -1725,7 +1725,7 @@
         </a>
         <nav class="nav" aria-label="Main navigation">
           <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/start?source=demo1">Demo 1 — Free</a>
-          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo?source=demo2&amp;demo_case_id=sample-case">Demo 2 — Essential</a>
+          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/start?source=demo2">Demo 2 — Essential</a>
           <a href="#how-it-works">How it works</a>
           <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
@@ -3337,8 +3337,7 @@
         const demoQuery = new URLSearchParams(window.location.search);
         const demoSource = demoQuery.get("source") === "demo1" ? "demo1" : "demo2";
         const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;
-        const demoCurrentCaseId = demoQuery.get("demo_case_id")
-          || (demoSource === "demo2" ? "sample-case" : "");
+        const demoCurrentCaseId = demoQuery.get("demo_case_id") || "";
         const demoCaseStorageKey = `casework-demo-case-v2:${demoSource}`;
         const legacyDemoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`;
         const demoCaseFilesCaseId = demoCurrentCaseId;
@@ -3576,17 +3575,6 @@
           document.body.classList.add("authenticated-view");
         }
 
-        function defaultDemoCaseData(source) {
-          if (source === "demo1") return null;
-          return {
-            id: "sample-case",
-            title: "XYZ vs ABC",
-            status: "in progress",
-            workflow_mode: "wizard",
-            attempt_ordinal: 1,
-          };
-        }
-
         function loadDemoCaseData() {
           let serialized;
           let storageKey = demoCaseStorageKey;
@@ -3599,7 +3587,7 @@
           } catch {
             throw new Error("The demo case is unavailable because browser storage could not be read.");
           }
-          if (serialized === null) return defaultDemoCaseData(demoSource);
+          if (serialized === null) return null;
           let parsed;
           try {
             parsed = JSON.parse(serialized);
@@ -3623,9 +3611,7 @@
             const sampleCase = demoSource === "demo2"
               ? allCases.find((item) => item.id === "sample-case")
               : null;
-            const selectedCase = demoSource === "demo2"
-              ? sampleCase || defaultDemoCaseData(demoSource)
-              : parsed.active[0] || parsed.archived[0] || null;
+            const selectedCase = sampleCase || parsed.active[0] || parsed.archived[0] || null;
             const migratedCase = selectedCase
               ? {
                 ...Object.fromEntries(Object.entries(selectedCase).filter(([key]) => key !== "archived_at")),
@@ -3634,7 +3620,7 @@
                   ? selectedCase.attempt_ordinal
                   : 1,
               }
-              : defaultDemoCaseData(demoSource);
+              : null;
             if (migratedCase) saveDemoCaseData(migratedCase);
             return migratedCase;
           }
@@ -3704,7 +3690,10 @@
               window.location.assign(demoAssetOverviewUrl(current.id));
               return;
             }
-            saveDemoCaseData(pendingDemoCase);
+            saveDemoCaseData({
+              ...pendingDemoCase,
+              workflow_mode: mode === "documents" ? "upload" : "wizard",
+            });
             const path = mode === "documents" ? "/demo/documents" : "/demo/wizard";
             window.location.assign(
               `${path}?source=${demoSource}&demo_case_id=${encodeURIComponent(pendingDemoCase.id)}`,
@@ -12558,8 +12547,8 @@
         if (demoPageRequiresCase && !demoPageHasCase) {
           if (demoCaseData?.id) {
             window.location.replace(demoAssetOverviewUrl(demoCaseData.id));
-          } else if (demoSource === "demo1") {
-            window.location.replace("/demo/start?source=demo1");
+          } else if (!demoCaseStateStatus.dataset.kind) {
+            window.location.replace(`/demo/start?source=${demoSource}`);
           } else {
             document.body.dataset.demoPage = "case-error";
             showDashboardShell();
