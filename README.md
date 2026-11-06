@@ -1,5 +1,5 @@
 # WA-contested-divorce-without-children-mediation-to-end
-AI-driven SDD wizard guiding Washington State contested no-children divorce cases from mandatory settlement conference to final decree.
+A preparation and organization workspace for Washington divorce-without-children mediation materials and user-reviewed proposals. It is not legal advice, and no outcome is guaranteed.
 
 ## Repository workflow
 
@@ -119,8 +119,21 @@ ranking, and provider or response failures are returned separately from the
 calculated results. After a user selects a current scenario, the case workflow
 can generate an unsigned CR 2A-style DOCX proposal and an editable XLSX
 property schedule. These drafts are not stored or sent by generation/download;
-a signed agreement may have legal effect, so users should consult qualified
-Washington counsel.
+a signed agreement may have legal effect. The product-boundary disclosures and
+proposal boilerplate are proposed wording pending qualified counsel review;
+they are not an attorney opinion or a guarantee of legal protection. Users must
+review all facts, assumptions, calculations, and proposal terms. Downloading
+does not deliver a proposal; the user is responsible for providing it to the
+mediator. The app does not automatically deliver proposals.
+
+Production case-data endpoints, including sensitive analysis and proposal
+generation, are blocked when `PRODUCTION_READINESS_REQUIRED=true` until all
+readiness checks pass. That includes
+`COUNSEL_REVIEW_EVIDENCE_VERIFIED=true`, which may be set only after qualified
+counsel has reviewed the exact versioned materials in Spec 51 and the review
+record is retained. The flag is an operator-controlled launch gate, not evidence
+that review occurred. Both readiness settings default off for local/demo use;
+production deployments must explicitly require readiness.
 
 Migration `0009_cr2a_property_exports` adds encrypted Google Drive/Dropbox
 connections and minimal delivery audit records. Google Drive linking uses the
