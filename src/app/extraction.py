@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -13,12 +13,14 @@ from app.config import get_settings
 from app.deletion import scope_is_tombstoned
 from app.documents import DocumentExtractionError, extract_document
 from app.failure_logging import log_failure_event
-from app.models import Document, DocumentExtraction, DocumentExtractionJob
+from app.models import Case, Document, DocumentExtraction, DocumentExtractionJob
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError
 
 logger = logging.getLogger(__name__)
-MAX_EXTRACTION_ATTEMPTS = 3
+MAX_EXTRACTION_RETRIES = 3
+MAX_EXTRACTION_ATTEMPTS = MAX_EXTRACTION_RETRIES + 1
+MAX_CONCURRENT_EXTRACTION_JOBS_PER_CASE = 3
 EXTRACTION_LEASE = timedelta(minutes=10)
 
 
@@ -85,8 +87,9 @@ def retry_failed_extraction_job(
     )
     if job is None or job.status != "failed":
         return job
+    if job.attempts >= MAX_EXTRACTION_ATTEMPTS:
+        return job
     job.status = "queued"
-    job.attempts = 0
     job.error_code = None
     job.lease_token = None
     job.lease_expires_at = None
@@ -114,33 +117,74 @@ def claim_next_extraction_job(
     ).all()
     for exhausted_job in exhausted_jobs:
         _finish_job(exhausted_job, "failed", "worker_interrupted")
-    job = db.scalar(
-        select(DocumentExtractionJob)
-        .where(
-            or_(
-                DocumentExtractionJob.status == "queued",
-                and_(
-                    expired,
-                    DocumentExtractionJob.attempts < MAX_EXTRACTION_ATTEMPTS,
+    skipped_case_ids: set[UUID] = set()
+    while True:
+        eligible = or_(
+            DocumentExtractionJob.status == "queued",
+            and_(
+                expired,
+                DocumentExtractionJob.attempts < MAX_EXTRACTION_ATTEMPTS,
+            ),
+        )
+        candidates = (
+            select(Document.case_id)
+            .join(DocumentExtractionJob, DocumentExtractionJob.document_id == Document.id)
+            .where(eligible)
+            .order_by(DocumentExtractionJob.created_at, DocumentExtractionJob.id)
+            .limit(1)
+        )
+        if skipped_case_ids:
+            candidates = candidates.where(Document.case_id.not_in(skipped_case_ids))
+        case_id = db.scalar(candidates)
+        if case_id is None:
+            db.commit()
+            return None
+        skipped_case_ids.add(case_id)
+
+        locked_case_id = db.scalar(
+            select(Case.id)
+            .where(Case.id == case_id)
+            .with_for_update(skip_locked=True)
+        )
+        if locked_case_id is None:
+            continue
+
+        active_jobs = db.scalar(
+            select(func.count(DocumentExtractionJob.id))
+            .join(Document, Document.id == DocumentExtractionJob.document_id)
+            .where(
+                Document.case_id == case_id,
+                DocumentExtractionJob.status == "processing",
+                or_(
+                    DocumentExtractionJob.lease_expires_at.is_(None),
+                    DocumentExtractionJob.lease_expires_at > now,
                 ),
             )
         )
-        .order_by(DocumentExtractionJob.created_at, DocumentExtractionJob.id)
-        .with_for_update(skip_locked=True)
-        .limit(1)
-    )
-    if job is None:
-        db.commit()
-        return None
+        if (active_jobs or 0) >= MAX_CONCURRENT_EXTRACTION_JOBS_PER_CASE:
+            db.commit()
+            continue
 
-    token = uuid4()
-    job.status = "processing"
-    job.attempts += 1
-    job.lease_token = token
-    job.lease_expires_at = now + EXTRACTION_LEASE
-    job.error_code = None
-    db.commit()
-    return ExtractionLease(job_id=job.id, token=token)
+        job = db.scalar(
+            select(DocumentExtractionJob)
+            .join(Document, Document.id == DocumentExtractionJob.document_id)
+            .where(Document.case_id == case_id, eligible)
+            .order_by(DocumentExtractionJob.created_at, DocumentExtractionJob.id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        if job is None:
+            db.commit()
+            continue
+
+        token = uuid4()
+        job.status = "processing"
+        job.attempts += 1
+        job.lease_token = token
+        job.lease_expires_at = now + EXTRACTION_LEASE
+        job.error_code = None
+        db.commit()
+        return ExtractionLease(job_id=job.id, token=token)
 
 
 def process_extraction_job(

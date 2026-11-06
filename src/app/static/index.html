@@ -9758,8 +9758,14 @@
               if (analysisCaseId === caseId) void refreshOptions(caseId);
             }, 2000);
           } catch (error) {
+            const retryLimitReached =
+              httpStatus === 409 &&
+              error instanceof Error &&
+              error.message.startsWith("Extraction retry limit reached");
             setAnalysisStatus(
-              "Extraction could not be retried. The original source remains stored; check its status before trying again.",
+              retryLimitReached
+                ? error.message
+                : "Extraction could not be retried. The original source remains stored; check its status before trying again.",
               "error",
             );
             addFailureSupportActions(analysisStatus, "extraction/OCR retry", {
