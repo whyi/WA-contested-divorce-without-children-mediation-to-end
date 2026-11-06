@@ -472,19 +472,17 @@ def home() -> HTMLResponse:
 def demo_asset_overview(request: Request) -> Response:
     source = request.query_params.get("source", "demo2")
     case_id = request.query_params.get("demo_case_id")
-    if source == "demo1" and not case_id:
-        return RedirectResponse("/demo/start?source=demo1")
     if source not in {"demo1", "demo2"}:
         raise HTTPException(status_code=400, detail="Invalid demo source.")
+    if not case_id:
+        return RedirectResponse(f"/demo/start?source={source}")
     return home()
 
 
 @app.get("/demo/start", response_class=HTMLResponse, include_in_schema=False)
 def demo_start_page(request: Request) -> Response:
     source = request.query_params.get("source", "demo1")
-    if source == "demo2":
-        return RedirectResponse("/demo?source=demo2&demo_case_id=sample-case")
-    if source != "demo1":
+    if source not in {"demo1", "demo2"}:
         raise HTTPException(status_code=400, detail="Invalid demo source.")
     return home()
 
@@ -520,7 +518,7 @@ def demo_one_entry() -> RedirectResponse:
 @app.get("/demo/2/dashboard", include_in_schema=False)
 @app.get("/demo/dashboard", include_in_schema=False)
 def demo_two_entry() -> RedirectResponse:
-    return RedirectResponse("/demo?source=demo2&demo_case_id=sample-case")
+    return RedirectResponse("/demo/start?source=demo2")
 
 
 @app.get("/api/v1/dashboard/status", response_model=DashboardStatus)

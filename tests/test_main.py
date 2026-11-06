@@ -333,7 +333,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="verify-form"', page)
         self.assertIn('href="#account">Sign up / Sign in', page)
         self.assertIn('id="demo1-entry" href="/demo/start?source=demo1">Demo 1 — Free</a>', page)
-        self.assertIn('id="demo2-entry" href="/demo?source=demo2&amp;demo_case_id=sample-case">Demo 2 — Essential</a>', page)
+        self.assertIn('id="demo2-entry" href="/demo/start?source=demo2">Demo 2 — Essential</a>', page)
         self.assertEqual(page.count('class="nav-cta demo-entry"'), 2)
         self.assertNotIn('id="demo-choices"', page)
         self.assertNotIn('class="demo-quick-link"', page)
@@ -386,23 +386,26 @@ class MainWorkflowTests(unittest.TestCase):
         legacy_entry_paths = (
             ("/demo/1", "/demo/start?source=demo1"),
             ("/demo/1/dashboard", "/demo/start?source=demo1"),
-            ("/demo/2", "/demo?source=demo2&demo_case_id=sample-case"),
-            ("/demo/2/dashboard", "/demo?source=demo2&demo_case_id=sample-case"),
-            ("/demo/dashboard", "/demo?source=demo2&demo_case_id=sample-case"),
+            ("/demo/2", "/demo/start?source=demo2"),
+            ("/demo/2/dashboard", "/demo/start?source=demo2"),
+            ("/demo/dashboard", "/demo/start?source=demo2"),
             ("/demo?source=demo1", "/demo/start?source=demo1"),
+            ("/demo?source=demo2", "/demo/start?source=demo2"),
         )
         with TestClient(app, follow_redirects=False) as client:
             for path, target in legacy_entry_paths:
                 response = client.get(path)
                 self.assertEqual(response.status_code, 307)
                 self.assertEqual(response.headers["location"], target)
-            self.assertEqual(client.get("/demo?source=demo2").status_code, 200)
+            self.assertEqual(client.get("/demo/start?source=demo2").status_code, 200)
+            self.assertEqual(client.get("/demo/start?source=invalid").status_code, 400)
+            self.assertEqual(client.get("/demo?source=invalid").status_code, 400)
 
         paths = (
             "/demo/start?source=demo1",
             "/demo?source=demo2&demo_case_id=sample-case",
             "/demo?source=demo1&demo_case_id=demo-free-case",
-            "/demo",
+            "/demo/start?source=demo2",
         )
         with TestClient(app) as client:
             responses = [client.get(path) for path in paths]
@@ -419,11 +422,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("demoActiveCaseLimit", page)
         self.assertNotIn("archiveDemoCase", page)
         self.assertNotIn("restoreDemoCase", page)
-        self.assertIn('title: "XYZ vs ABC"', page)
-        default_demo_case = page.split(
-            "function defaultDemoCaseData(source)", 1
-        )[1].split("function loadDemoCaseData()", 1)[0]
-        self.assertIn("attempt_ordinal: 1", default_demo_case)
+        self.assertIn('if (serialized === null) return null;', page)
+        self.assertIn('workflow_mode: mode === "documents" ? "upload" : "wizard"', page)
+        self.assertIn("const selectedCase = sampleCase || parsed.active[0] || parsed.archived[0] || null;", page)
         self.assertIn('function openDemoCaseChoiceDialog()', page)
         self.assertIn('const demoCaseStorageKey = `casework-demo-case-v2:${demoSource}`', page)
         self.assertIn('const legacyDemoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`', page)

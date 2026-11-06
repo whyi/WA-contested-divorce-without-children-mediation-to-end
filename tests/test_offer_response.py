@@ -1342,8 +1342,8 @@ class OfferResponseTransitionTests(unittest.TestCase):
             html,
         )
         self.assertIn("attempt_ordinal: 1,", html.split(
-            "function defaultDemoCaseData(source)", 1
-        )[1].split("function loadDemoCaseData()", 1)[0])
+            "function openDemoCaseChoiceDialog()", 1
+        )[1].split("async function createCaseFromDashboard", 1)[0])
         self.assertIn(
             "settlementDemoAttemptStatus.textContent =\n"
             "                `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;",
