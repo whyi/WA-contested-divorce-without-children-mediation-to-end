@@ -1146,6 +1146,8 @@ class MainWorkflowTests(unittest.TestCase):
                 page = client.get(f"/demo/wizard?source={source}&demo_case_id=sample").text
                 self.assertNotIn('id="demo-wizard-back"', page)
                 self.assertIn('id="wizard-finish" type="button" disabled', page)
+                self.assertIn('#wizard-finish { cursor: pointer; }', page)
+                self.assertIn('#wizard-finish:disabled { cursor: not-allowed; }', page)
                 self.assertIn(
                     'window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId))',
                     page,
