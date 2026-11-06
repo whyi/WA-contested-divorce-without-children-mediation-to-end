@@ -7,6 +7,7 @@ from botocore.exceptions import BotoCoreError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.attachment_limits import enforce_attachment_quota
 from app.models import Case, Document, DocumentExtraction
 from app.storage import ObjectStorage
 
@@ -34,6 +35,7 @@ def store_artifacts(
     uploaded_keys: list[str] = []
     extraction = None
 
+    enforce_attachment_quota(db, case_id, len(artifacts))
     try:
         for artifact in artifacts:
             document_id = uuid4()
