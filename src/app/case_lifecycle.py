@@ -16,7 +16,14 @@ from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
 from app.database import Base, get_db
-from app.models import Case, CaseLifecycleEvent, CaseMembership, Document, User
+from app.models import (
+    Case,
+    CaseLifecycleEvent,
+    CaseMembership,
+    DeletionTombstone,
+    Document,
+    User,
+)
 from app.storage import ObjectStorage
 
 logger = logging.getLogger(__name__)
@@ -107,7 +114,9 @@ def get_storage() -> ObjectStorage:
 def lifecycle_write_allowed(case: Case, path: str) -> bool:
     if case.status != "finalized" and case.closed_at is None:
         return True
-    return path.rstrip("/").endswith(("/reopen", "/close", "/delegation"))
+    return path.rstrip("/").endswith(
+        ("/reopen", "/close", "/delegation", "/permanent-deletion")
+    )
 
 
 def close_case_record(db: Session, case: Case, user_id: UUID, reason: str) -> None:
@@ -217,6 +226,12 @@ def list_closed_cases(
             CaseMembership.revoked_at.is_(None),
             CaseMembership.suspended_at.is_(None),
             Case.closed_at.is_not(None),
+            ~select(DeletionTombstone.id)
+            .where(
+                DeletionTombstone.scope_type == "case",
+                DeletionTombstone.scope_id == Case.id,
+            )
+            .exists(),
         )
         .order_by(Case.closed_at.desc(), Case.id)
     ).all()

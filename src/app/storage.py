@@ -62,3 +62,51 @@ class ObjectStorage:
 
     def delete(self, key: str) -> None:
         self.client.delete_object(Bucket=self.settings.s3_bucket, Key=key)
+
+    def delete_all_versions(self, key: str) -> None:
+        versions = []
+        key_marker = None
+        version_id_marker = None
+        while True:
+            request = {
+                "Bucket": self.settings.s3_bucket,
+                "Prefix": key,
+            }
+            if key_marker is not None:
+                request["KeyMarker"] = key_marker
+            if version_id_marker is not None:
+                request["VersionIdMarker"] = version_id_marker
+            page = self.client.list_object_versions(**request)
+            versions.extend(
+                {"Key": item["Key"], "VersionId": item["VersionId"]}
+                for item in page.get("Versions", [])
+                if item.get("Key") == key
+            )
+            versions.extend(
+                {"Key": item["Key"], "VersionId": item["VersionId"]}
+                for item in page.get("DeleteMarkers", [])
+                if item.get("Key") == key
+            )
+            if not page.get("IsTruncated"):
+                break
+            key_marker = page.get("NextKeyMarker")
+            version_id_marker = page.get("NextVersionIdMarker")
+            if key_marker is None:
+                raise RuntimeError("S3 object-version listing returned an invalid continuation marker.")
+
+        for offset in range(0, len(versions), 1000):
+            response = self.client.delete_objects(
+                Bucket=self.settings.s3_bucket,
+                Delete={"Objects": versions[offset : offset + 1000], "Quiet": True},
+            )
+            if response.get("Errors"):
+                raise RuntimeError("S3 object version purge failed.")
+
+        remaining = self.client.list_object_versions(
+            Bucket=self.settings.s3_bucket,
+            Prefix=key,
+        )
+        if any(item.get("Key") == key for item in remaining.get("Versions", [])) or any(
+            item.get("Key") == key for item in remaining.get("DeleteMarkers", [])
+        ):
+            raise RuntimeError("S3 object version purge could not be verified.")

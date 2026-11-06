@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.deletion import require_scope_active
 from app.models import Case, CaseMembership, User
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,9 @@ def require_active_case_slot(db: Session, user_id: UUID) -> User:
         user = db.get(User, user_id, with_for_update=True)
         if user is None:
             raise HTTPException(status_code=401, detail="Authentication required.")
+        if getattr(user, "status", "active") != "active":
+            raise HTTPException(status_code=410, detail="This account is unavailable.")
+        require_scope_active(db, "account", user_id)
         if getattr(user, "account_type", "party") == "professional":
             raise HTTPException(
                 status_code=403,

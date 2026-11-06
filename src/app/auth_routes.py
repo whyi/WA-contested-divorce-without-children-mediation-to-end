@@ -53,6 +53,7 @@ from app.models import (
     AuthRateLimit,
     AuthSession,
     AuthToken,
+    DeletionTombstone,
     ExternalIdentity,
     PasskeyCredential,
     RecoveryCode,
@@ -405,6 +406,18 @@ def _current_user(request: Request, db: Session) -> User:
     session = db.get(AuthSession, session_id)
     user = db.get(User, user_id)
     now = datetime.now(UTC)
+    is_account_deletion = request.url.path == "/api/v1/account/permanent-deletion"
+    deletion_tombstone = db.scalar(
+        select(DeletionTombstone).where(
+            DeletionTombstone.scope_type == "account",
+            DeletionTombstone.scope_id == user_id,
+        )
+    )
+    pending_deletion_retry = (
+        is_account_deletion
+        and deletion_tombstone is not None
+        and deletion_tombstone.status == "pending"
+    )
     if (
         session is None
         or user is None
@@ -412,7 +425,8 @@ def _current_user(request: Request, db: Session) -> User:
         or session.revoked_at is not None
         or session.idle_expires_at <= now
         or session.absolute_expires_at <= now
-        or user.status != "active"
+        or (user.status != "active" and not pending_deletion_retry)
+        or (deletion_tombstone is not None and not is_account_deletion)
     ):
         raise HTTPException(status_code=401, detail="Authentication required.")
     if request.cookies.get(_ACCESS_COOKIE) and request.method in _UNSAFE_METHODS:
