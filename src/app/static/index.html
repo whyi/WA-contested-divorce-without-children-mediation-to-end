@@ -1739,15 +1739,17 @@
             <p id="demo-file-help">Only file names and selection details are kept temporarily in this browser tab. Files are not uploaded or analyzed.</p>
             <ul class="demo-file-list" id="demo-file-list" aria-label="Selected files"></ul>
             <p class="demo-file-status" id="demo-file-status" role="status" aria-live="polite"></p>
-            <label><input id="demo-documents-has-offer" type="checkbox"> I have a (counter) offer from the other side</label>
-            <section class="existing-offer-panel" id="demo-documents-offer-panel" aria-label="Existing offer" hidden>
-              <label for="demo-documents-offer-file">Attach the offer (PDF, DOCX, or XLSX, up to 2 MB)</label>
-              <input id="demo-documents-offer-file" type="file" accept=".pdf,.docx,.xlsx">
-              <p id="demo-documents-offer-file-status" role="status" aria-live="polite">No file attached.</p>
-              <label for="demo-documents-offer-notes">Notes about the offer</label>
-              <textarea id="demo-documents-offer-notes" rows="5" maxlength="20000"></textarea>
-              <p>Attach a file or enter at least 100 characters. Fictional data only; the offer is temporary and is not sent or analyzed.</p>
-            </section>
+            <div id="demo-existing-offer-intake">
+              <label><input id="demo-documents-has-offer" type="checkbox"> I have a (counter) offer from the other side</label>
+              <section class="existing-offer-panel" id="demo-documents-offer-panel" aria-label="Existing offer" hidden>
+                <label for="demo-documents-offer-file">Attach the offer (PDF, DOCX, or XLSX, up to 2 MB)</label>
+                <input id="demo-documents-offer-file" type="file" accept=".pdf,.docx,.xlsx">
+                <p id="demo-documents-offer-file-status" role="status" aria-live="polite">No file attached.</p>
+                <label for="demo-documents-offer-notes">Notes about the offer</label>
+                <textarea id="demo-documents-offer-notes" rows="5" maxlength="20000"></textarea>
+                <p>Attach a file or enter at least 100 characters. Fictional data only; the offer is temporary and is not sent or analyzed.</p>
+              </section>
+            </div>
             <div class="demo-flow-actions">
               <button class="button button-primary demo-next" id="demo-files-next" type="button" disabled>Next <span class="arrow" aria-hidden="true">→</span></button>
             </div>
@@ -3762,6 +3764,13 @@
           demoFilesNext.disabled = demoSelectedFiles.length === 0 || demoDocumentsOfferBusy
             || (demoDocumentsHasOffer.checked
               && !demoDocumentsOfferFileSaved && !hasMinimumOfferNotes(demoDocumentsOfferNotes.value));
+          if (demoWizardMode) updateWizardFinish();
+        }
+
+        function updateWizardFinish() {
+          wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role
+            || (demoWizardMode && (demoDocumentsOfferBusy || (demoDocumentsHasOffer.checked
+              && !demoDocumentsOfferFileSaved && !hasMinimumOfferNotes(demoDocumentsOfferNotes.value))));
         }
 
         function demoDocumentsOfferKey() {
@@ -3777,8 +3786,13 @@
             }));
             return true;
           } catch (error) {
-            demoFileStatus.textContent = `Demo documents were not saved: ${error instanceof Error ? error.message : "browser storage failed"}.`;
-            demoFileStatus.dataset.kind = "error";
+            const message = `Demo offer draft was not saved: ${error instanceof Error ? error.message : "browser storage failed"}.`;
+            if (demoWizardMode) {
+              setWizardSaveStatus(message, "error");
+            } else {
+              demoFileStatus.textContent = message;
+              demoFileStatus.dataset.kind = "error";
+            }
             return false;
           }
         }
@@ -3795,8 +3809,13 @@
             }
             renderDemoFileSelection();
           } catch (error) {
-            demoFileStatus.textContent = `Demo documents could not be restored: ${error instanceof Error ? error.message : "browser storage failed"}.`;
-            demoFileStatus.dataset.kind = "error";
+            const message = `Demo offer draft could not be restored: ${error instanceof Error ? error.message : "browser storage failed"}.`;
+            if (demoWizardMode) {
+              setWizardSaveStatus(message, "error");
+            } else {
+              demoFileStatus.textContent = message;
+              demoFileStatus.dataset.kind = "error";
+            }
           }
           const offer = draft || demoCaseData?.documents_offer;
           demoDocumentsHasOffer.checked = Boolean(offer?.exists);
@@ -4519,7 +4538,7 @@
           }
           wizardRoleQuestion.disabled = wizardDraft.filed !== "yes";
           wizardGatedContent.hidden = wizardDraft.filed !== "yes";
-          wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          updateWizardFinish();
           updateWizardUnlockStatus();
           renderWizardCollections();
         }
@@ -4590,7 +4609,7 @@
           }
           wizardRoleQuestion.disabled = filedAnswer !== "yes";
           wizardGatedContent.hidden = filedAnswer !== "yes";
-          wizardFinish.disabled = filedAnswer !== "yes" || !wizardDraft.role;
+          updateWizardFinish();
           updateWizardUnlockStatus();
           refreshWizardReview();
           if (filedAnswer === "no" && showBlockedDialog && !wizardFiledDialog.open) {
@@ -4643,7 +4662,7 @@
           }
           if (target.dataset.wizardBase === "role") {
             wizardDraft.role = target.value;
-            wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+            updateWizardFinish();
             updateWizardUnlockStatus();
             refreshWizardReview();
             scheduleWizardSave(true);
@@ -12650,7 +12669,7 @@
         wizardFiledQuestion.addEventListener("change", () => updateWizardGate(true, true));
         wizardRoleQuestion.addEventListener("change", () => {
           wizardDraft.role = wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked')?.value || "";
-          wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
+          updateWizardFinish();
           updateWizardUnlockStatus();
           refreshWizardReview();
           scheduleWizardSave(true);
@@ -12665,10 +12684,27 @@
           wizardNoChoice.focus();
         });
         wizardFinish.addEventListener("click", async () => {
-          if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
+          updateWizardFinish();
+          if (wizardFinish.disabled) return;
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
           if (saved) {
+            if (demoWizardMode) {
+              updateWizardFinish();
+              if (wizardFinish.disabled || !saveDemoDocumentsDraft()) return;
+              try {
+                saveDemoCaseData({
+                  ...demoCaseData,
+                  documents_offer: {
+                    exists: demoDocumentsHasOffer.checked,
+                    notes: demoDocumentsOfferNotes.value,
+                  },
+                });
+              } catch (error) {
+                setWizardSaveStatus(error instanceof Error ? error.message : "The offer details could not be saved.", "error");
+                return;
+              }
+            }
             window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });
@@ -12918,7 +12954,12 @@
         } else if (demoWizardMode) {
           document.body.dataset.demoPage = "wizard";
           wizardDemoPage.hidden = false;
-          void initializeWizardDraft();
+          wizardGatedContent.insertBefore(
+            document.getElementById("demo-existing-offer-intake"),
+            wizardGatedContent.querySelector(".wizard-storage-note"),
+          );
+          demoDocumentsOfferBusy = true;
+          void initializeWizardDraft().then(() => loadDemoDocumentsOffer());
         } else {
           loadDashboardStatus({ isStartup: true });
         }
