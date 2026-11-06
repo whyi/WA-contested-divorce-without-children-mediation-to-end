@@ -2219,6 +2219,7 @@
                     <p id="settlement-offer-attempt-status">First Attempt — active and editable</p>
                     <p>Create editable Word and Excel drafts from the selected calculation and your proposed terms. The Word draft is unsigned and is not filed. A signed CR 2A agreement may have legal effect; review it with qualified Washington counsel before signing or sharing. Nothing is sent unless you explicitly confirm delivery.</p>
                     <p id="settlement-document-credit-status" role="status" aria-live="polite">Preview, editing, and proposal drafts are free. Checking this case's attempt-credit balance…</p>
+                    <p id="account-entitlement-status" role="status" aria-live="polite">Checking account purchase status…</p>
                     <div class="settlement-export-actions" id="attempt-credit-packages" aria-label="One-time attempt-credit packages"></div>
                     <p>Milestones and proposed values below belong only to this negotiation attempt. They do not change source facts or the evidence-backed settlement ledger; a later attempt starts with a separate editable copy.</p>
                     <section class="settlement-offer-comparison" id="settlement-offer-comparison" hidden aria-labelledby="settlement-offer-comparison-title">
@@ -2860,6 +2861,7 @@
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
         const attemptCreditPackages = document.getElementById("attempt-credit-packages");
+        const accountEntitlementStatus = document.getElementById("account-entitlement-status");
         const existingCases = document.getElementById("existing-cases");
         const existingCaseCount = document.getElementById("existing-case-count");
         const caseList = document.getElementById("case-list");
@@ -5675,6 +5677,24 @@
             attemptCreditPackageData = [];
           }
           renderAttemptCreditPackages();
+          await loadAccountEntitlement();
+        }
+
+        async function loadAccountEntitlement() {
+          try {
+            const response = await fetch("/api/billing/account/entitlement", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Account purchase status is unavailable.");
+            accountEntitlementStatus.textContent = result.status === "paid"
+              ? "Account status: Paid. This records verified one-time purchase history and remains Paid after credits are used. Account status does not change case access or credit balances."
+              : "Account status: Free. A verified one-time package purchase changes this status to Paid; using the case's credits does not change it.";
+          } catch {
+            accountEntitlementStatus.textContent =
+              "Account purchase status is unavailable. This does not change case access or credit balances.";
+          }
         }
 
         function renderAttemptCreditPackages() {
