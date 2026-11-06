@@ -462,6 +462,11 @@ class DocumentCreditLedgerEntry(Base):
     case_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    package_purchase_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("attempt_credit_package_purchases.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     proposal_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("settlement_proposal_versions.id", ondelete="RESTRICT"), nullable=True
     )
@@ -475,6 +480,49 @@ class DocumentCreditLedgerEntry(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AttemptCreditPackagePurchase(Base):
+    __tablename__ = "attempt_credit_package_purchases"
+    __table_args__ = (
+        CheckConstraint(
+            "price_amount IS NULL OR "
+            "(package_size = 5 AND price_amount = 500) OR "
+            "(package_size = 10 AND price_amount = 800)",
+            name="ck_attempt_credit_package_catalog",
+        ),
+        CheckConstraint(
+            "credits_used >= 0 AND credits_used <= package_size",
+            name="ck_attempt_credit_package_used",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'paid', 'legacy', 'payment_failed', 'expired', 'refund_pending', 'refunded')",
+            name="ck_attempt_credit_package_status",
+        ),
+        UniqueConstraint("stripe_checkout_session_id", name="uq_attempt_credit_checkout_session"),
+        UniqueConstraint("stripe_payment_intent_id", name="uq_attempt_credit_payment_intent"),
+        UniqueConstraint("stripe_refund_id", name="uq_attempt_credit_refund"),
+        Index("ix_attempt_credit_purchase_case_status", "case_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    package_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_amount: Mapped[int | None] = mapped_column(Integer)
+    amount_paid: Mapped[int | None] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="usd")
+    stripe_price_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255))
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(255))
+    stripe_refund_id: Mapped[str | None] = mapped_column(String(255))
+    credits_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class BillingWebhookEvent(Base):

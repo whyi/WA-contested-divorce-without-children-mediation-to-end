@@ -220,7 +220,14 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertEqual(version.credit_cost, 0)
         self.case.first_finalization_used = True
         self.db.reset_mock()
-        self.db.scalar.side_effect = [self.membership, self.case, self.selection, self.attempt, version]
+        self.db.scalar.side_effect = [
+            self.membership,
+            self.case,
+            self.selection,
+            self.attempt,
+            version,
+            None,
+        ]
         self.render_docx.reset_mock()
         response = self._final(route=create_settlement_property_schedule, confirm_credit_use=False)
         self.assertEqual(response.body, b"xlsx")

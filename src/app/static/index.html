@@ -2240,6 +2240,12 @@
                     <p id="settlement-document-credit-status" role="status" aria-live="polite">Preview, editing, and proposal drafts are free. Checking this case's attempt-credit balance…</p>
                     <p id="account-entitlement-status" role="status" aria-live="polite">Checking account purchase status…</p>
                     <div class="settlement-export-actions" id="attempt-credit-packages" aria-label="One-time attempt-credit packages"></div>
+                    <p>One-time packages: 5 credits for USD $5 or 10 credits for USD $8, plus applicable tax calculated, displayed, and collected by Stripe Tax. Stripe emails the payment receipt. Full package refunds are available within 30 days only if no credit from that package has been used; if any package credit has been used, that package is not refundable. A separate service-failure credit restoration is unaffected. You may buy another package only when this case's balance is zero. No monthly subscription.</p>
+                    <section aria-labelledby="attempt-credit-purchase-history-title">
+                      <h4 id="attempt-credit-purchase-history-title">Package purchase history</h4>
+                      <p id="attempt-credit-receipt-note" role="status" aria-live="polite">Stripe emails receipts to the email address used for your purchase.</p>
+                      <div id="attempt-credit-purchase-history"></div>
+                    </section>
                     <p>Milestones and proposed values below belong only to this negotiation attempt. They do not change source facts or the evidence-backed settlement ledger; a later attempt starts with a separate editable copy.</p>
                     <section class="settlement-offer-comparison" id="settlement-offer-comparison" hidden aria-labelledby="settlement-offer-comparison-title">
                      <h4 id="settlement-offer-comparison-title">Offer and asset comparison</h4>
@@ -2880,6 +2886,8 @@
         const dashboardError = document.getElementById("dashboard-error");
         const dashboardErrorMessage = document.getElementById("dashboard-error-message");
         const attemptCreditPackages = document.getElementById("attempt-credit-packages");
+        const attemptCreditPurchaseHistory = document.getElementById("attempt-credit-purchase-history");
+        const attemptCreditReceiptNote = document.getElementById("attempt-credit-receipt-note");
         const accountEntitlementStatus = document.getElementById("account-entitlement-status");
         const existingCases = document.getElementById("existing-cases");
         const existingCaseCount = document.getElementById("existing-case-count");
@@ -5079,6 +5087,7 @@
 
         async function openSettlementPlanner(caseId) {
           settlementCaseId = caseId;
+          void loadAttemptCreditPurchaseHistory();
           loadCaseDelegation(caseId);
           settlementSelectedScenario = null;
           settlementRunId = null;
@@ -5785,6 +5794,7 @@
           } else if (!settlementFreeFirstFinalizationAvailable && remaining === 0) {
             settlementFinalizeNote.textContent = "Your editable work is saved. Finalization needs 1 attempt credit; choose a one-time 5- or 10-credit package below. A failed finalization preserves your work and does not use a credit.";
           }
+          renderAttemptCreditPackages();
         }
 
         async function loadAttemptCreditPackages() {
@@ -5820,19 +5830,102 @@
           }
         }
 
+        async function loadAttemptCreditPurchaseHistory() {
+          const caseId = settlementCaseId;
+          attemptCreditPurchaseHistory.replaceChildren();
+          if (!caseId) return;
+          try {
+            const response = await fetch(`/api/billing/cases/${caseId}/purchases`, {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (settlementCaseId !== caseId) return;
+            if (!response.ok) throw new Error(result.detail || "Purchase history is unavailable.");
+            attemptCreditReceiptNote.textContent =
+              `Stripe emails payment receipts to ${result.receipt_email}. Do not share payment-card details with support.`;
+            const purchases = Array.isArray(result.purchases) ? result.purchases : [];
+            if (!purchases.length) {
+              const empty = document.createElement("p");
+              empty.textContent = "No package purchases for this case.";
+              attemptCreditPurchaseHistory.append(empty);
+              return;
+            }
+            for (const purchase of purchases) {
+              const row = document.createElement("p");
+              const date = purchase.purchased_at
+                ? new Date(purchase.purchased_at).toLocaleDateString()
+                : "Pending";
+              row.textContent =
+                `${purchase.credits} credits — ${purchase.amount} — ${purchase.status} — ${date}; `
+                + `${purchase.credits_used} package credits used.`;
+              if (purchase.refund_eligible) {
+                const refund = document.createElement("button");
+                refund.type = "button";
+                refund.className = "materials-import";
+                refund.textContent = "Request full package refund";
+                refund.addEventListener("click", async () => {
+                  refund.disabled = true;
+                  try {
+                    const refundResponse = await fetch(
+                      `/api/billing/cases/${caseId}/purchases/${purchase.id}/refund`,
+                      {
+                        method: "POST",
+                        credentials: "same-origin",
+                        headers: { ...csrfHeaders(), Accept: "application/json" },
+                      },
+                    );
+                    const refundResult = await refundResponse.json();
+                    if (!refundResponse.ok) {
+                      throw new Error(refundResult.detail || "Refund could not be requested.");
+                    }
+                    await refreshSettlementDocumentCredits();
+                    await loadAttemptCreditPurchaseHistory();
+                  } catch (error) {
+                    settlementDocumentCreditStatus.textContent = error instanceof Error
+                      ? error.message
+                      : "Refund could not be requested.";
+                    settlementDocumentCreditStatus.dataset.kind = "error";
+                    refund.disabled = false;
+                  }
+                });
+                row.append(document.createTextNode(" Refund window ends "));
+                row.append(document.createTextNode(new Date(purchase.refund_deadline).toLocaleDateString()));
+                row.append(document.createTextNode(". "));
+                row.append(refund);
+              }
+              attemptCreditPurchaseHistory.append(row);
+            }
+          } catch {
+            if (settlementCaseId !== caseId) return;
+            attemptCreditReceiptNote.textContent =
+              "Stripe emails receipts to the email address used for your purchase.";
+            const unavailable = document.createElement("p");
+            unavailable.textContent = "Purchase history is temporarily unavailable.";
+            attemptCreditPurchaseHistory.append(unavailable);
+          }
+        }
+
         function renderAttemptCreditPackages() {
           attemptCreditPackages.replaceChildren();
           if (!settlementCaseId) return;
+          const balanceKnown = settlementDocumentCreditsRemaining !== null;
+          const hasCredits = balanceKnown && settlementDocumentCreditsRemaining > 0;
           for (const pack of attemptCreditPackageData) {
             const button = document.createElement("button");
             button.className = "materials-import";
             button.type = "button";
-            button.disabled = !pack.available;
+            button.disabled = !pack.available || !balanceKnown || hasCredits;
             button.textContent = pack.available
               ? `Buy ${pack.credits} attempt credits${pack.price ? ` — ${pack.price}` : ""}`
               : `${pack.credits} attempt credits — unavailable`;
             button.addEventListener("click", () => void startAttemptCreditCheckout(pack.credits));
             attemptCreditPackages.append(button);
+          }
+          if (hasCredits) {
+            const message = document.createElement("p");
+            message.textContent = "Use the remaining credits in this case before buying another package.";
+            attemptCreditPackages.append(message);
           }
           if (!attemptCreditPackageData.length) {
             const message = document.createElement("p");
