@@ -48,6 +48,8 @@ class MaterialsImportTests(unittest.TestCase):
             response.json(),
             {
                 "max_upload_bytes": 12345,
+                "max_attachments": 5,
+                "attachment_count": 0,
                 "supported_extensions": ["pdf", "docx"],
                 "import_enabled": False,
                 "providers": {"google_drive": False, "dropbox": False},
@@ -162,6 +164,7 @@ class MaterialsImportTests(unittest.TestCase):
         with (
             patch("app.materials.get_settings", return_value=settings),
             patch("app.materials.storage") as object_storage,
+            patch("app.materials.enforce_attachment_quota") as quota,
         ):
             response = client.post(
                 f"/api/v1/materials/imports/{uuid4()}/files/{uuid4()}",
@@ -173,6 +176,7 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertEqual(response.json()["case_id"], str(case_id))
         self.assertFalse(any(isinstance(call.args[0], Case) for call in db.add.call_args_list))
         self.assertEqual(db.scalar.call_count, 1)
+        quota.assert_called_once_with(db, case_id)
         object_storage.put.assert_called_once()
 
     def test_import_cannot_create_a_second_party_owned_case(self) -> None:

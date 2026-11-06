@@ -50,6 +50,7 @@ from app.settlement_routes import (
 )
 from app.case_lifecycle import close_case_record
 from app.storage import ObjectStorage
+from app.attachment_limits import enforce_attachment_quota
 from app.validation import UploadValidationError, validate_upload
 
 logger = logging.getLogger(__name__)
@@ -1190,8 +1191,6 @@ async def upload_offer_response_attachment(
         sha256=hashlib.sha256(content).hexdigest(),
         size_bytes=len(content),
     )
-    db.add(document)
-
     old_objects: list[str] = []
     if kind in {"sent_docx", "sent_xlsx", "modified_docx", "modified_xlsx"} and (
         attempt is None or attempt.frozen_at is None
@@ -1208,6 +1207,8 @@ async def upload_offer_response_attachment(
                 old_objects.append(old_document.object_key)
                 db.delete(old_document)
             db.delete(item)
+    enforce_attachment_quota(db, case_id)
+    db.add(document)
     db.add(
         SettlementOfferResponseAttachment(
             response_id=response_record.id,

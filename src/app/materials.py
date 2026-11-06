@@ -9,6 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.attachment_limits import (
+    FREE_ATTACHMENT_LIMIT,
+    attachment_usage,
+    enforce_attachment_quota,
+)
 from app.auth_routes import require_current_user
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
@@ -29,6 +34,8 @@ class ProviderAvailability(BaseModel):
 
 class MaterialsConfig(BaseModel):
     max_upload_bytes: int
+    max_attachments: int
+    attachment_count: int
     supported_extensions: list[str]
     import_enabled: bool
     providers: ProviderAvailability
@@ -117,10 +124,36 @@ def _delete_uploaded_object(key: str | None) -> None:
 
 
 @router.get("/config", response_model=MaterialsConfig)
-def materials_config(_: User = Depends(require_current_user)) -> MaterialsConfig:
+def materials_config(
+    case_id: UUID | None = None,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> MaterialsConfig:
     config = get_settings()
+    stored, limit = 0, FREE_ATTACHMENT_LIMIT
+    if case_id is not None:
+        try:
+            membership = db.scalar(
+                select(CaseMembership).where(
+                    CaseMembership.case_id == case_id,
+                    CaseMembership.user_id == user.id,
+                    CaseMembership.revoked_at.is_(None),
+                    CaseMembership.suspended_at.is_(None),
+                )
+            )
+        except SQLAlchemyError as error:
+            logger.exception("Case authorization lookup failed for attachment usage.")
+            raise HTTPException(
+                status_code=503,
+                detail="Case access could not be verified. Please try again.",
+            ) from error
+        if membership is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        stored, limit = attachment_usage(db, case_id)
     return MaterialsConfig(
         max_upload_bytes=config.max_upload_bytes,
+        max_attachments=limit,
+        attachment_count=stored,
         supported_extensions=["pdf", "docx"],
         import_enabled=(
             config.auth_enabled
@@ -199,7 +232,9 @@ async def import_material_file(
                 )
             return _document_response(item_id, batch.case_id, document)
         case_id = batch.case_id
+        new_case = False
     else:
+        new_case = case_id is None
         if case_id is None:
             require_active_case_slot(db, user.id)
             case = Case(id=uuid4(), status="draft")
@@ -236,6 +271,9 @@ async def import_material_file(
                 new_batch,
             ]
         )
+
+    if not new_case:
+        enforce_attachment_quota(db, case_id)
 
     document_id = uuid4()
     object_key = f"{case_id}/{document_id}.{extension}"

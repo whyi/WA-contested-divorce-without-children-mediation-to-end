@@ -207,7 +207,8 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
 
 
 class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
-    async def test_uploaded_final_file_is_stored_without_extraction_or_delivery(self) -> None:
+    @patch("app.offer_response.enforce_attachment_quota")
+    async def test_uploaded_final_file_is_stored_without_extraction_or_delivery(self, _quota) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(
             id=uuid4(), case_id=case_id, run_id=uuid4(), scenario_id="saved"
@@ -256,11 +257,13 @@ class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(isinstance(item, Document) for item in stored_models))
         self.assertTrue(any(isinstance(item, SettlementOfferResponseAttachment) for item in stored_models))
         self.assertFalse(any(isinstance(item, DocumentExtraction) for item in stored_models))
+        _quota.assert_called_once_with(db, case_id)
         delete.assert_not_called()
         rank.assert_not_called()
         deliver.assert_not_called()
 
-    async def test_replacing_modified_source_invalidates_prior_review(self) -> None:
+    @patch("app.offer_response.enforce_attachment_quota")
+    async def test_replacing_modified_source_invalidates_prior_review(self, _quota) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(id=uuid4(), case_id=case_id)
         user = SimpleNamespace(id=uuid4())
