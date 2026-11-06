@@ -1226,15 +1226,11 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('id="settlement-response-accepted-file"', html)
         self.assertIn('uploadSettlementResponseFile("accepted_offer", file)', html)
         self.assertIn("First Attempt — active and editable", html)
-        self.assertIn('id="settlement-demo-attempt-status"', html)
-        self.assertIn("First sample attempt", html)
-        self.assertIn('body[data-demo-page="settlement"] .settlement-attempt-banner', html)
-        self.assertIn("position: fixed", html)
-        self.assertIn("min-height: 86px", html)
+        self.assertNotIn('id="settlement-demo-attempt-status"', html)
+        self.assertNotIn('body[data-demo-page="settlement"] .settlement-attempt-banner', html)
         self.assertIn('document.body.dataset.demoPage = "settlement"', html)
         self.assertIn("The Free demo allows one attempt.", html)
         self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", html)
-        self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn("counterofferNeedsFile", html)
         self.assertIn('id="settlement-response-confirm-sent"', html)
@@ -1344,11 +1340,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("attempt_ordinal: 1,", html.split(
             "function openDemoCaseChoiceDialog()", 1
         )[1].split("async function createCaseFromDashboard", 1)[0])
-        self.assertIn(
-            "settlementDemoAttemptStatus.textContent =\n"
-            "                `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;",
-            html,
-        )
+        self.assertIn('window.scrollTo({ top: 0, behavior: "instant" });', html)
         continue_attempt = html.split(
             "function continueSettlementDemoAttempt()", 1
         )[1].split("settlementScenarioResults.addEventListener", 1)[0]
@@ -1393,7 +1385,8 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("demoCounterofferFileKey(ordinal)", html)
         self.assertIn('settlementDemoCounterofferSaving', html)
         self.assertIn('function demoCounterofferHasDetails()', html)
-        self.assertIn('document.getElementById("settlement-demo-counteroffer-notes").value.trim()', html)
+        self.assertIn('hasMinimumOfferNotes(document.getElementById("settlement-demo-counteroffer-notes").value)', html)
+        self.assertIn('Array.from(value.trim()).length >= 100', html)
         self.assertIn('settlementDemoCounterofferFileOrdinal === settlementDemoViewingOrdinal', html)
         self.assertIn('settlementDemoResponseOutcome === "counteroffer" && !demoCounterofferHasDetails()', html)
         self.assertIn('addEventListener("input", updateDemoCounterofferNext)', html)

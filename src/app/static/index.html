@@ -1179,37 +1179,6 @@
       .settlement-export-destinations > p, #settlement-export-confirmation-details { color: var(--muted); font-size: 13px; }
       .settlement-response-workflow { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
       .settlement-demo-response-preview { margin-top: 18px; padding: 16px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--surface-background); }
-      body[data-demo-page="settlement"] { padding-top: 86px; }
-      body[data-demo-page="settlement"] .settlement-attempt-banner {
-        position: fixed;
-        z-index: 1000;
-        inset: 0 0 auto;
-        display: flex;
-        width: 100%;
-        min-height: 86px;
-        align-items: center;
-        justify-content: center;
-        margin: 0;
-        padding: 16px 22px;
-        border: 0;
-        border-bottom: 1px solid var(--border-color);
-        border-radius: 0;
-        color: var(--green-dark);
-        background: var(--surface-raised);
-        box-shadow: 0 5px 18px rgba(20, 38, 29, .16);
-        font-size: clamp(24px, 4vw, 36px) !important;
-        font-weight: 850;
-        letter-spacing: -.025em;
-        text-align: center;
-      }
-      @media (max-width: 500px) {
-        body[data-demo-page="settlement"] { padding-top: 98px; }
-        body[data-demo-page="settlement"] .settlement-attempt-banner {
-          min-height: 98px;
-          padding: 14px 16px;
-          font-size: clamp(22px, 6vw, 29px) !important;
-        }
-      }
       .settlement-response-workflow[hidden], .settlement-response-counteroffer[hidden],
       .settlement-response-checklist[hidden], .settlement-response-placeholder[hidden],
       .settlement-demo-response-files[hidden], #settlement-response-modified[hidden],
@@ -1746,7 +1715,7 @@
         <section class="demo-flow-page" id="documents-demo" aria-labelledby="documents-demo-title" hidden>
           <p class="eyebrow">Materials path preview</p>
           <h1 id="documents-demo-title">I have all documents demo</h1>
-          <p class="demo-flow-intro">Choose sample files to preview the materials path. This demo only displays file names in this page; your files stay on your device and are never uploaded, read, or analyzed.</p>
+          <p class="demo-flow-intro">Choose fictional files to preview the materials path. Document selections stay on this page; an optional offer attachment and notes are stored in this browser. Nothing is sent or analyzed.</p>
           <div class="demo-flow-panel">
             <h2>Select documents</h2>
             <p>Choose PDF or DOCX files. You can add more files or remove a selection before continuing.</p>
@@ -1755,9 +1724,17 @@
             <p id="demo-file-help">Files are not uploaded or saved. Only selected file names are shown here.</p>
             <ul class="demo-file-list" id="demo-file-list" aria-label="Selected files"></ul>
             <p class="demo-file-status" id="demo-file-status" role="status" aria-live="polite"></p>
+            <label><input id="demo-documents-has-offer" type="checkbox"> I have a (counter) offer from the other side</label>
+            <section class="existing-offer-panel" id="demo-documents-offer-panel" aria-label="Existing offer" hidden>
+              <label for="demo-documents-offer-file">Attach the offer (PDF, DOCX, or XLSX, up to 2 MB)</label>
+              <input id="demo-documents-offer-file" type="file" accept=".pdf,.docx,.xlsx">
+              <p id="demo-documents-offer-file-status" role="status" aria-live="polite">No file attached.</p>
+              <label for="demo-documents-offer-notes">Notes about the offer</label>
+              <textarea id="demo-documents-offer-notes" rows="5" maxlength="20000"></textarea>
+              <p>Attach a file or enter at least 100 characters. Fictional data only; the offer stays in this browser and is not sent or analyzed.</p>
+            </section>
             <div class="demo-flow-actions">
               <button class="button button-primary demo-next" id="demo-files-next" type="button" disabled>Next <span class="arrow" aria-hidden="true">→</span></button>
-              <a class="button button-secondary" id="demo-documents-back" data-demo-case-return href="/demo/start?source=demo1">Back to Asset Overview</a>
             </div>
           </div>
         </section>
@@ -2700,7 +2677,6 @@
                   </div>
                   <p class="settlement-scenario-status" id="settlement-demo-export-status" role="status" aria-live="polite">Downloaded drafts reflect the case values and options shown here. They are not sent to an external service.</p>
                   <section class="settlement-response-workflow settlement-demo-response-preview" id="settlement-demo-response-preview" aria-labelledby="settlement-demo-response-preview-title">
-                    <p class="settlement-attempt-banner" id="settlement-demo-attempt-status" role="status" aria-live="polite">First sample attempt</p>
                     <h4 id="settlement-demo-response-preview-title">Preview what happens after you send an offer</h4>
                     <p>These sent-document filenames are fictional. You can optionally attach a fictional counteroffer below; it stays in this browser and is not sent or analyzed.</p>
                     <p><strong>Fictional preview only: review the sample and imagine delivering it to your mediator yourself, then continue here.</strong></p>
@@ -2740,7 +2716,7 @@
                     <label for="settlement-demo-counteroffer-file">Attach the counteroffer (PDF, DOCX, or XLSX, up to 2 MB)</label>
                     <input id="settlement-demo-counteroffer-file" type="file" accept=".pdf,.docx,.xlsx">
                     <p id="settlement-demo-counteroffer-file-status" role="status" aria-live="polite">No file attached.</p>
-                    <p class="offer-intake-help" id="settlement-demo-counteroffer-help">Enter notes or attach a file to continue. Fictional preview only: files stay in this browser and are not sent or analyzed. Do not use real case information.</p>
+                    <p class="offer-intake-help" id="settlement-demo-counteroffer-help">Enter at least 100 characters of notes or attach a file to continue. Fictional preview only: files stay in this browser and are not sent or analyzed. Do not use real case information.</p>
                     <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" disabled hidden>Next</button>
                   </section>
                 </section>
@@ -3120,7 +3096,6 @@
         const settlementDemoExportStatus = document.getElementById("settlement-demo-export-status");
         const settlementDemoMarkSent = document.getElementById("settlement-demo-mark-sent");
         const settlementDemoResponseFiles = document.getElementById("settlement-demo-response-files");
-        const settlementDemoAttemptStatus = document.getElementById("settlement-demo-attempt-status");
         const settlementDemoResponseStatus = document.getElementById("settlement-demo-response-status");
         const settlementDemoAddCounteroffer = document.getElementById("settlement-demo-add-counteroffer");
         const settlementDemoCounterofferLimit = document.getElementById("settlement-demo-counteroffer-limit");
@@ -3362,6 +3337,13 @@
         const demoFileList = document.getElementById("demo-file-list");
         const demoFileStatus = document.getElementById("demo-file-status");
         const demoFilesNext = document.getElementById("demo-files-next");
+        const demoDocumentsHasOffer = document.getElementById("demo-documents-has-offer");
+        const demoDocumentsOfferPanel = document.getElementById("demo-documents-offer-panel");
+        const demoDocumentsOfferFile = document.getElementById("demo-documents-offer-file");
+        const demoDocumentsOfferFileStatus = document.getElementById("demo-documents-offer-file-status");
+        const demoDocumentsOfferNotes = document.getElementById("demo-documents-offer-notes");
+        let demoDocumentsOfferFileSaved = false;
+        let demoDocumentsOfferBusy = false;
         const wizardDemoPage = document.getElementById("wizard-demo");
         const wizardFiledQuestion = document.getElementById("wizard-filed-question");
         const wizardRoleQuestion = document.getElementById("wizard-role-question");
@@ -3747,9 +3729,45 @@
             item.append(name, remove);
             demoFileList.append(item);
           });
-          demoFilesNext.disabled = demoSelectedFiles.length === 0;
+          updateDemoDocumentsNext();
           if (!demoSelectedFiles.length && !demoFileStatus.textContent) {
             demoFileStatus.textContent = "No files selected.";
+          }
+        }
+
+        function hasMinimumOfferNotes(value) {
+          return Array.from(value.trim()).length >= 100;
+        }
+
+        function updateDemoDocumentsNext() {
+          demoFilesNext.disabled = demoSelectedFiles.length === 0 || demoDocumentsOfferBusy
+            || (demoDocumentsHasOffer.checked
+              && !demoDocumentsOfferFileSaved && !hasMinimumOfferNotes(demoDocumentsOfferNotes.value));
+        }
+
+        function demoDocumentsOfferKey() {
+          return `existing-offer:${demoSource}:${demoCurrentCaseId}`;
+        }
+
+        async function loadDemoDocumentsOffer() {
+          demoDocumentsOfferBusy = true;
+          updateDemoDocumentsNext();
+          const offer = demoCaseData?.documents_offer;
+          demoDocumentsHasOffer.checked = Boolean(offer?.exists);
+          demoDocumentsOfferNotes.value = offer?.notes || "";
+          demoDocumentsOfferPanel.hidden = !demoDocumentsHasOffer.checked;
+          try {
+            const records = await runDemoFilesTransaction("readonly", (store) =>
+              store.index("caseId").getAll(demoDocumentsOfferKey()));
+            const file = records[records.length - 1];
+            demoDocumentsOfferFileSaved = Boolean(file);
+            demoDocumentsOfferFileStatus.textContent = file ? `Attached in this browser: ${file.name}` : "No file attached.";
+          } catch (error) {
+            demoDocumentsOfferFileStatus.textContent = error instanceof Error ? error.message : "The offer file could not be loaded.";
+            demoDocumentsOfferFileStatus.dataset.kind = "error";
+          } finally {
+            demoDocumentsOfferBusy = false;
+            updateDemoDocumentsNext();
           }
         }
 
@@ -6039,7 +6057,7 @@
         }
 
         function demoCounterofferHasDetails() {
-          return Boolean(document.getElementById("settlement-demo-counteroffer-notes").value.trim())
+          return hasMinimumOfferNotes(document.getElementById("settlement-demo-counteroffer-notes").value)
             || settlementDemoCounterofferFileOrdinal === settlementDemoViewingOrdinal;
         }
 
@@ -6133,7 +6151,6 @@
           updateDemoCounterofferNext();
           settlementDemoResponseNext.disabled = settlementDemoResponseOutcome !== "accepted";
           setSettlementDemoAttemptFrozen(past || Boolean(snapshot.sent));
-          settlementDemoAttemptStatus.textContent = `${settlementAttemptOrdinalLabel(ordinal)} sample attempt${past ? " — read-only" : ""}`;
           renderDemoAttemptProgress();
           void renderDemoCounterofferFile(ordinal);
           if (navigate) {
@@ -9966,7 +9983,7 @@
             || settlementDemoCounterofferSaving
           ) return;
           if (settlementDemoResponseOutcome === "counteroffer" && !demoCounterofferHasDetails()) {
-            settlementDemoResponseStatus.textContent = "Enter counteroffer notes or attach a file before continuing.";
+            settlementDemoResponseStatus.textContent = "Enter at least 100 characters of counteroffer notes or attach a file before continuing.";
             settlementDemoResponseStatus.dataset.kind = "error";
             updateDemoCounterofferNext();
             return;
@@ -10024,13 +10041,11 @@
           settlementDemoCounterofferLimit.hidden = true;
           settlementDemoRejectionChoices.hidden = true;
           settlementDemoResponsePlaceholder.hidden = true;
-          settlementDemoAttemptStatus.textContent =
-            `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
           settlementDemoResponseStatus.textContent =
             `Attempt ${settlementDemoAttemptOrdinal} of ${demoAttemptLimit}. Review the sample, then mark the fictional documents as sent to continue.`;
           setSettlementDemoAttemptFrozen(false);
           renderDemoAttemptProgress();
-          settlementDemoMarkSent.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          window.scrollTo({ top: 0, behavior: "instant" });
         }
 
         settlementScenarioResults.addEventListener("change", (event) => {
@@ -12045,8 +12060,6 @@
               settlementDemoResponseOutcome !== "accepted";
             settlementDemoResponseNext.hidden =
               ["counteroffer", "rejected"].includes(settlementDemoResponseOutcome);
-            settlementDemoAttemptStatus.textContent =
-              `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
             settlementDemoResponseNext.textContent = "Next";
             settlementDemoResponseStatus.textContent = settlementDemoResponseOutcome === "counteroffer"
               ? canContinue
@@ -12360,8 +12373,61 @@
           demoFileStatus.textContent = `${file.name} removed. Selected files remain on this page only.`;
           renderDemoFileSelection();
         });
+        demoDocumentsHasOffer.addEventListener("change", () => {
+          demoDocumentsOfferPanel.hidden = !demoDocumentsHasOffer.checked;
+          updateDemoDocumentsNext();
+        });
+        demoDocumentsOfferNotes.addEventListener("input", updateDemoDocumentsNext);
+        demoDocumentsOfferFile.addEventListener("change", async () => {
+          const file = demoDocumentsOfferFile.files[0];
+          if (!file) return;
+          const extension = file.name.split(".").pop()?.toLowerCase();
+          if (!["pdf", "docx", "xlsx"].includes(extension) || file.size > 2 * 1024 * 1024) {
+            demoDocumentsOfferFileStatus.textContent = "Choose a PDF, DOCX, or XLSX file no larger than 2 MB.";
+            demoDocumentsOfferFileStatus.dataset.kind = "error";
+            demoDocumentsOfferFile.value = "";
+            return;
+          }
+          demoDocumentsOfferBusy = true;
+          demoDocumentsOfferFile.disabled = true;
+          updateDemoDocumentsNext();
+          demoDocumentsOfferFileStatus.textContent = "Saving the file in this browser…";
+          demoDocumentsOfferFileStatus.removeAttribute("data-kind");
+          try {
+            const existing = await runDemoFilesTransaction("readonly", (store) =>
+              store.index("caseId").getAll(demoDocumentsOfferKey()));
+            const record = { caseId: demoDocumentsOfferKey(), name: file.name, size: file.size, file };
+            const previous = existing[existing.length - 1];
+            if (previous) record.id = previous.id;
+            await runDemoFilesTransaction("readwrite", (store) => store.put(record));
+            demoDocumentsOfferFileSaved = true;
+            demoDocumentsOfferFileStatus.textContent = `Attached in this browser: ${file.name}`;
+          } catch (error) {
+            demoDocumentsOfferFileStatus.textContent = error instanceof Error ? error.message : "The offer file could not be saved.";
+            demoDocumentsOfferFileStatus.dataset.kind = "error";
+          } finally {
+            demoDocumentsOfferBusy = false;
+            demoDocumentsOfferFile.disabled = false;
+            demoDocumentsOfferFile.value = "";
+            updateDemoDocumentsNext();
+          }
+        });
         demoFilesNext.addEventListener("click", () => {
-          if (demoSelectedFiles.length) {
+          updateDemoDocumentsNext();
+          if (!demoFilesNext.disabled) {
+            try {
+              saveDemoCaseData({
+                ...demoCaseData,
+                documents_offer: {
+                  exists: demoDocumentsHasOffer.checked,
+                  notes: demoDocumentsOfferNotes.value,
+                },
+              });
+            } catch (error) {
+              demoFileStatus.textContent = error instanceof Error ? error.message : "The offer details could not be saved.";
+              demoFileStatus.dataset.kind = "error";
+              return;
+            }
             window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });
@@ -12550,8 +12616,6 @@
             demoCaseData = loadDemoCaseData();
             if (Number.isInteger(demoCaseData?.attempt_ordinal) && demoCaseData.attempt_ordinal > 0) {
               settlementDemoAttemptOrdinal = demoCaseData.attempt_ordinal;
-              settlementDemoAttemptStatus.textContent =
-                `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
               settlementDemoResponseStatus.textContent =
                 `Attempt ${settlementDemoAttemptOrdinal} of ${demoAttemptLimit}. Review the sample, then mark the fictional documents as sent to continue.`;
             }
@@ -12645,6 +12709,7 @@
           document.body.dataset.demoPage = "documents";
           documentsDemoPage.hidden = false;
           renderDemoFileSelection();
+          void loadDemoDocumentsOffer();
         } else if (demoWizardMode) {
           document.body.dataset.demoPage = "wizard";
           wizardDemoPage.hidden = false;
