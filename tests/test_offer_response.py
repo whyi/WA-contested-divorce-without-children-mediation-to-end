@@ -1319,6 +1319,26 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertNotIn("settlementDemoAttemptOrdinal +=", transition)
         self.assertIn("settlementDemoAttemptOrdinal += 1", html)
 
+    def test_demo_attempt_ordinal_is_saved_with_the_single_case(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "settlementDemoAttemptOrdinal = demoCaseData.attempt_ordinal;",
+            html,
+        )
+        continue_attempt = html.split(
+            "function continueSettlementDemoAttempt()", 1
+        )[1].split("settlementScenarioResults.addEventListener", 1)[0]
+        self.assertIn(
+            "saveDemoCaseData({ ...demoCaseData, attempt_ordinal: nextOrdinal });",
+            continue_attempt,
+        )
+        self.assertLess(
+            continue_attempt.index("saveDemoCaseData("),
+            continue_attempt.index("settlementDemoAttemptOrdinal += 1;"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

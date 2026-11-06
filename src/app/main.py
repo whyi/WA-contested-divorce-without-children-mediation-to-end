@@ -469,9 +469,26 @@ def home() -> HTMLResponse:
 
 
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/dashboard", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/1/dashboard", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/demo/2/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def demo_asset_overview(request: Request) -> Response:
+    source = request.query_params.get("source", "demo2")
+    case_id = request.query_params.get("demo_case_id")
+    if source == "demo1" and not case_id:
+        return RedirectResponse("/demo/start?source=demo1")
+    if source not in {"demo1", "demo2"}:
+        raise HTTPException(status_code=400, detail="Invalid demo source.")
+    return home()
+
+
+@app.get("/demo/start", response_class=HTMLResponse, include_in_schema=False)
+def demo_start_page(request: Request) -> Response:
+    source = request.query_params.get("source", "demo1")
+    if source == "demo2":
+        return RedirectResponse("/demo?source=demo2&demo_case_id=sample-case")
+    if source != "demo1":
+        raise HTTPException(status_code=400, detail="Invalid demo source.")
+    return home()
+
+
 @app.get(
     "/demo/settlement-completion",
     response_class=HTMLResponse,
@@ -494,13 +511,16 @@ def onboarding_page() -> HTMLResponse:
 
 
 @app.get("/demo/1", include_in_schema=False)
+@app.get("/demo/1/dashboard", include_in_schema=False)
 def demo_one_entry() -> RedirectResponse:
-    return RedirectResponse("/demo/1/dashboard")
+    return RedirectResponse("/demo/start?source=demo1")
 
 
 @app.get("/demo/2", include_in_schema=False)
+@app.get("/demo/2/dashboard", include_in_schema=False)
+@app.get("/demo/dashboard", include_in_schema=False)
 def demo_two_entry() -> RedirectResponse:
-    return RedirectResponse("/demo/2/dashboard")
+    return RedirectResponse("/demo?source=demo2&demo_case_id=sample-case")
 
 
 @app.get("/api/v1/dashboard/status", response_model=DashboardStatus)
