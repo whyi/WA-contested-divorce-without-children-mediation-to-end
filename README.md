@@ -82,10 +82,16 @@ AI analysis is a separate, asynchronous workflow. It remains disabled unless
 `AI_ANALYSIS_NOTICE_VERSION`, and `AI_ANALYSIS_DATA_HANDLING_NOTICE` are
 configured. Before a request can be queued, the user sees the provider/model,
 purpose, selected document data sent, and deployment-supplied handling notice
-and must explicitly consent. Analysis reads only completed extracted text;
+with an explicit limitation that vendor-side retention, human access/review,
+product improvement/training, subprocessors, and deletion are not independently
+verified by this application, and must explicitly consent. Analysis reads only
+completed extracted text;
 verified proposals and exact source quotations remain separate from case
 data. The `analysis-worker` service does not call Bedrock while idle or when
-analysis is disabled. Local Compose keeps the feature disabled in demo mode.
+analysis is disabled. Provider-call helpers also fail closed without explicit
+purpose-specific consent. Local Compose keeps the feature disabled in demo mode.
+Generalized training or product-improvement use of case content is not
+implemented in this application and is not authorized by analysis consent.
 
 Authorized case members can review each verified proposal against its source,
 record an accept/edit/reject decision, and explicitly adopt only a selected
@@ -114,7 +120,8 @@ requires a separate, revocable purpose-specific consent. Configure
 `AI_ANALYSIS_ENABLED`, `BEDROCK_MODEL_ID`, `BEDROCK_REGION`, and
 `SETTLEMENT_PLANNING_DATA_HANDLING_NOTICE` before the provider ranking can be
 used. The consent notice lists the configured provider, model, region, data
-sent, and handling notice. Calculated candidates remain available without AI
+sent, and handling notice; its consent is separate from document-analysis
+consent. Calculated candidates remain available without AI
 ranking, and provider or response failures are returned separately from the
 calculated results. After a user selects a current scenario, the case workflow
 can generate an unsigned CR 2A-style DOCX proposal and an editable XLSX
@@ -131,9 +138,14 @@ generation, are blocked when `PRODUCTION_READINESS_REQUIRED=true` until all
 readiness checks pass. That includes
 `COUNSEL_REVIEW_EVIDENCE_VERIFIED=true`, which may be set only after qualified
 counsel has reviewed the exact versioned materials in Spec 51 and the review
-record is retained. The flag is an operator-controlled launch gate, not evidence
-that review occurred. Both readiness settings default off for local/demo use;
-production deployments must explicitly require readiness.
+record is retained. If AI is enabled in production, it additionally requires
+`AI_PROVIDER_REVIEW_EVIDENCE_VERIFIED=true` after current provider evidence is
+reviewed under Spec 52. These distinct flags are operator-controlled gates, not
+evidence that a review occurred or a guarantee of provider behavior. Both
+evidence flags default false; production deployments must explicitly require
+readiness. No signed provider evidence or qualified-counsel review is currently
+recorded; keep AI out of production until both are independently supplied and
+verified.
 
 Migration `0009_cr2a_property_exports` adds encrypted Google Drive/Dropbox
 connections and minimal delivery audit records. Google Drive linking uses the
@@ -243,7 +255,9 @@ Every proposal must match an exact quotation from its source and, for PDFs,
 the cited page. Documents are treated as untrusted data; model output is
 persisted as a suggestion and is never applied to the case profile. Provider
 credentials remain server-side, and document text, prompts, and quotations
-must not be written to logs.
+must not be written to logs. See [Spec 52](specs/52-ai-data-purpose-provider-review/spec-52-ai-data-purpose-provider-review.md)
+and its [provider review checklist](specs/52-ai-data-purpose-provider-review/ai-provider-review-checklist-and-record.md)
+for the code evidence inventory and unverified provider/counsel evidence.
 Offer recommendations, cloud-drive imports, and outbound email are not
 enabled. Existing document-processing code remains available in the codebase;
 case/document and materials-import endpoints fail closed unless authentication
