@@ -51,6 +51,8 @@ class MaterialsConfig(BaseModel):
     max_attachments: int
     attachment_count: int
     supported_extensions: list[str]
+    max_pdf_pages: int
+    ocr_supported: bool
     import_enabled: bool
     providers: ProviderAvailability
 
@@ -166,6 +168,8 @@ def materials_config(
         max_attachments=limit,
         attachment_count=stored,
         supported_extensions=["pdf", "docx"],
+        max_pdf_pages=config.max_pdf_pages,
+        ocr_supported=False,
         import_enabled=(
             config.auth_enabled
             and config.case_data_enabled

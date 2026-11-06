@@ -3133,6 +3133,7 @@
         let materialsMaxAttachments = 0;
         let materialsStoredCount = 0;
         let materialsFormatsText = "";
+        let materialsPageLimitText = "";
         let materialsImportEnabled = false;
         let materialsReady = false;
         let materialsBatchId = null;
@@ -8103,7 +8104,7 @@
 
         function renderMaterialsLimits() {
           materialsLimits.textContent =
-            `${materialsFormatsText} Maximum size: ${formatFileSize(materialsMaxBytes)} per file. ` +
+            `${materialsFormatsText} ${materialsPageLimitText} Maximum size: ${formatFileSize(materialsMaxBytes)} per file. ` +
             `${materialsStoredCount} of ${materialsMaxAttachments} attachments used in this case; ` +
             `${Math.max(materialsMaxAttachments - materialsStoredCount, 0)} remaining. ` +
             "Removing a stored attachment frees a slot.";
@@ -8150,6 +8151,8 @@
               !Number.isInteger(config.attachment_count) ||
               config.attachment_count < 0 ||
               !Array.isArray(config.supported_extensions) ||
+              !Number.isInteger(config.max_pdf_pages) ||
+              config.max_pdf_pages < 1 ||
               typeof config.import_enabled !== "boolean"
             ) {
               throw new Error("Upload settings could not be verified.");
@@ -8160,6 +8163,10 @@
             materialsStoredCount = config.attachment_count;
             materialsFormatsText =
               `Supported formats: ${config.supported_extensions.map((extension) => extension.toUpperCase()).join(", ")}.`;
+            materialsPageLimitText =
+              `PDFs may have up to ${config.max_pdf_pages} pages. ` +
+              "Scanned PDFs are not read (OCR is not supported) and password-protected PDFs must be unprotected before upload. " +
+              "Files that cannot be read stay stored but are not analyzed.";
             renderMaterialsLimits();
             materialsDisabledNote.hidden = materialsImportEnabled;
             materialsReady = true;
@@ -9522,7 +9529,11 @@
               : analysisDocument.extraction_status === "failed"
                 ? "Extraction failed. The original source is still stored; retry is safe."
                 : analysisDocument.extraction_status === "needs_attention" && extractionErrorCode === "ocr_required"
-                  ? "OCR is needed; this source is stored but its text is not available. Use an OCR-capable version if appropriate."
+                  ? "OCR is needed but not supported; this source is stored but its text is not available. Provide a text-based or manually transcribed version."
+                  : analysisDocument.extraction_status === "needs_attention" && extractionErrorCode === "page_limit_exceeded"
+                  ? "This PDF exceeds the page limit; it is stored but was not read or analyzed. Split it or provide a shorter version."
+                  : analysisDocument.extraction_status === "needs_attention" && extractionErrorCode === "password_protected"
+                  ? "This PDF is password-protected; it is stored but was not read. Remove protection and upload an unprotected copy."
                   : analysisDocument.extraction_status === "needs_attention"
                     ? "This stored source needs attention before it can be analyzed."
                     : `Not ready · ${analysisDocument.extraction_status.replaceAll("_", " ")}`;
