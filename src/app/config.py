@@ -242,8 +242,8 @@ class Settings(BaseSettings):
             if not self.ai_provider_review_evidence_verified:
                 errors.append("ai_provider_review_evidence_missing")
 
-        # A restore can predate the in-database tombstone. No independent deletion
-        # ledger or restore reconciliation is implemented in this repository.
+        # Restore reconciliation exists, but production ledger controls and a real
+        # restore exercise require operator evidence not represented by settings.
         errors.append("backup_restore_tombstone_reconciliation_unverified")
         # No monitoring provider, alert route, or alert-delivery test is configured here.
         errors.append("production_alert_delivery_unverified")
