@@ -37,6 +37,17 @@ class RejectionCompletionTests(unittest.TestCase):
         self.assertNotIn('settlementDemoStop.addEventListener', PAGE)
         self.assertIn('settlementDemoNextAttempt.addEventListener("click"', PAGE)
 
+    def test_demo_accepted_completion_returns_to_case_without_auth_actions(self) -> None:
+        initializer = PAGE.split("async function initializeSettlementCompletionPage()", 1)[1]
+        demo_branch = initializer.split("if (demoSettlementCompletionMode) {", 1)[1].split(
+            "\n          }", 1
+        )[0]
+        self.assertIn("settlementCompletionBackToMediation.href = demoAssetOverviewUrl();", demo_branch)
+        self.assertIn("settlementCompletionBackToCases.hidden = true;", demo_branch)
+        self.assertIn("settlementCompletionFinalize.hidden = true;", demo_branch)
+        self.assertIn("if (demoSettlementCompletionMode) return;", PAGE)
+        self.assertIn(".settlement-completion-actions [hidden] { display: none; }", PAGE)
+
     def test_dedicated_authenticated_and_fictional_demo_routes_are_available(self) -> None:
         self.assertIn('@app.get("/rejection-completion"', MAIN)
         self.assertIn('"/demo/rejection-completion"', MAIN)

@@ -1377,7 +1377,12 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('window.addEventListener("popstate", restoreDemoAttemptFromUrl);', html)
         self.assertIn('document.getElementById("demo-attempt-view-status").focus();', html)
         self.assertIn('[aria-current="step"] .demo-attempt-circle', html)
-        self.assertIn('`Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only snapshot.`', html)
+        self.assertGreaterEqual(
+            html.count(
+                '`Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only snapshot.`'
+            ),
+            2,
+        )
         self.assertIn("past && !snapshot", html)
         self.assertIn("attempt_snapshots: { ...demoCaseData.attempt_snapshots", html)
         self.assertIn("current_draft: settlementDemoCurrentView", html)
