@@ -436,8 +436,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;', page)
         self.assertIn("window.sessionStorage.getItem(demoCaseStorageKey)", page)
         self.assertIn("window.sessionStorage.setItem(demoCaseStorageKey, JSON.stringify(data))", page)
-        self.assertIn('performance.getEntriesByType("navigation")[0]?.type === "reload"', page)
-        self.assertIn("if (demoRoute && (demoStartMode || demoReload))", page)
+        self.assertIn('if (demoStartMode && performance.getEntriesByType("navigation")[0]?.type !== "reload")', page)
         self.assertIn("window.sessionStorage.removeItem(demoCaseStorageKey)", page)
         self.assertIn("window.sessionStorage.removeItem(demoFilesStorageKey)", page)
         self.assertIn('if (!event.persisted) return;', page)
@@ -1239,7 +1238,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="wizard-finish" type="button" disabled>Save and view your case', wizard_demo_page)
         self.assertIn('indexedDB.open(wizardDatabaseName, wizardDatabaseVersion)', wizard_demo_page)
         self.assertIn('wizardDatabaseName = "casework-wizard-intake"', wizard_demo_page)
-        self.assertIn("Demo answers are temporary and reset when you leave or reload.", wizard_demo_page)
+        self.assertIn("Demo draft saved for this session. Restarting the demo clears it.", wizard_demo_page)
         self.assertIn("Restored the draft and attached files saved in this browser.", wizard_demo_page)
         wizard_change_handler = wizard_demo_page.split(
             "function handleWizardChange(event)", 1
