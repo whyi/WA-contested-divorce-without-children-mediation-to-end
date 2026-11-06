@@ -64,6 +64,27 @@ class CaseDelegationUiTests(unittest.TestCase):
         self.assertIn("Your account owns one divorce case for one side only", PAGE)
         self.assertIn('accountType === "professional"', PAGE)
 
+    def test_public_pricing_describes_attempt_credits_not_case_quotas(self) -> None:
+        self.assertIn('href="#pricing">Pricing</a>', PAGE)
+        pricing = PAGE.split('<section class="section" id="pricing"', 1)[1].split(
+            '<section class="section steps-section"', 1
+        )[0]
+        self.assertNotRegex(pricing, r"(?i)active cases|monthly plan|case slots")
+        for expected in (
+            "first successful attempt finalization is free",
+            "each successful finalization uses one attempt credit",
+            "5 attempt credits",
+            "USD $5",
+            "10 attempt credits",
+            "USD $8",
+            "No monthly subscription",
+            "within 30 days",
+            "credit balance is zero",
+            "Unused credits do not expire",
+            "the demo does not charge or sell credits",
+        ):
+            self.assertIn(expected, pricing)
+
 
 if __name__ == "__main__":
     unittest.main()
