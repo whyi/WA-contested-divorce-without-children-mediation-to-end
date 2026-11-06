@@ -700,6 +700,12 @@
       }
       .section-heading > p:last-child { margin-bottom: 0; color:var(--muted); font-size: 15px; line-height: 1.65; }
       .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 18px; }
+      .pricing-card { padding: 24px; border: 1px solid var(--line); border-radius: 14px; background:var(--surface-raised); }
+      .pricing-card h3 { margin: 0 0 10px; font-size: 17px; }
+      .pricing-card p, .pricing-terms { color:var(--muted); font-size: 13px; line-height: 1.65; }
+      .pricing-amount { color:var(--text-primary) !important; font-size: 27px !important; font-weight: 700; }
+      .pricing-terms { max-width: 90ch; margin-top: 20px; }
       .mode-card {
         position: relative;
         min-height: 300px;
@@ -1705,6 +1711,7 @@
           <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/start?source=demo1">Demo 1 — Free</a>
           <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/start?source=demo2">Demo 2 — Essential</a>
           <a href="#how-it-works">How it works</a>
+          <a href="#pricing">Pricing</a>
           <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
             <span>Theme</span>
@@ -1864,6 +1871,7 @@
             <div class="hero-actions">
               <a class="button button-primary" id="hero-primary-action" href="#account">Get started <span class="arrow" aria-hidden="true">↑</span></a>
               <a class="button button-secondary" href="#how-it-works">See how it works</a>
+              <a class="button button-secondary" href="#pricing">View attempt pricing</a>
             </div>
             <p class="hero-note">
               <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.5 16 5v4.3c0 3.8-2.6 6.7-6 8.2-3.4-1.5-6-4.4-6-8.2V5l6-2.5Z" stroke="currentColor" stroke-width="1.4"/><path d="m7.4 9.8 1.7 1.7 3.7-3.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2738,6 +2746,32 @@
               <a class="back-to-account" id="demo-back-to-account" href="/#account">Back to your account</a>
             </section>
           </div>
+        </section>
+
+        <section class="section" id="pricing" aria-labelledby="pricing-title">
+          <div class="section-heading">
+            <p class="eyebrow">Attempt pricing</p>
+            <h2 id="pricing-title">Pay for attempts, not cases.</h2>
+            <p>Your first successful attempt finalization is free. After that, each successful finalization uses one attempt credit. No monthly subscription.</p>
+          </div>
+          <div class="pricing-grid">
+            <article class="pricing-card">
+              <h3>First attempt</h3>
+              <p class="pricing-amount">Free</p>
+              <p>One free successful finalization per case.</p>
+            </article>
+            <article class="pricing-card">
+              <h3>5 attempt credits</h3>
+              <p class="pricing-amount">USD $5</p>
+              <p>One-time purchase for five additional attempt finalizations.</p>
+            </article>
+            <article class="pricing-card">
+              <h3>10 attempt credits</h3>
+              <p class="pricing-amount">USD $8</p>
+              <p>One-time purchase for ten additional attempt finalizations.</p>
+            </article>
+          </div>
+          <p class="pricing-terms">Drafting, editing, proposal generation and re-downloading a finalized snapshot are free. Applicable tax is calculated and collected by Stripe Tax; Stripe emails the receipt. A full package refund is available within 30 days of purchase only if no credit from that package has been used. Service-failure credit restoration is separate. Another package may be purchased when the case's credit balance is zero. Unused credits do not expire. Purchases are available in the case workspace when enabled; the demo does not charge or sell credits.</p>
         </section>
 
         <section class="section steps-section" id="how-it-works" aria-labelledby="steps-title">
