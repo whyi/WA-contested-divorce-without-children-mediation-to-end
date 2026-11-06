@@ -222,3 +222,11 @@ Offer recommendations, cloud-drive imports, and outbound email are not
 enabled. Existing document-processing code remains available in the codebase;
 case/document and materials-import endpoints fail closed unless authentication
 and case-membership authorization are explicitly enabled.
+
+## Document processing limits
+
+PDFs are processed up to `MAX_PDF_PAGES` pages (default 200, same for all
+plans; DOCX has no page limit). Larger PDFs stay stored but extraction ends
+`needs_attention`. OCR is not supported, so scanned PDFs need a text-based
+version, and encrypted PDFs must be unprotected before upload. See
+[Spec 46](specs/46-document-processing-limits/spec-46-document-processing-limits.md).
