@@ -1,5 +1,6 @@
 import io
 import unittest
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -204,7 +205,12 @@ class ModifiedOfferParsingTests(unittest.TestCase):
             snapshot_json={},
             frozen_snapshot_json=None,
         )
-        current = SimpleNamespace(sent_documents_complete=True, sent_confirmed=False)
+        current = SimpleNamespace(
+            sent_documents_complete=True,
+            sent_documents_current=True,
+            proposal_downloaded_formats=["docx", "xlsx"],
+            sent_confirmed=False,
+        )
         db = Mock()
         with (
             patch("app.offer_response._require_secure_case_storage"),
@@ -264,7 +270,7 @@ class ModifiedOfferParsingTests(unittest.TestCase):
         ]
         db = Mock()
         db.execute.return_value.all.return_value = rows
-        db.scalar.side_effect = [attempt, None]
+        db.scalar.side_effect = [attempt, None, None]
 
         response_record = SettlementOfferResponse(
             id=uuid4(),
@@ -280,6 +286,57 @@ class ModifiedOfferParsingTests(unittest.TestCase):
             {item.kind for item in result.attachments},
             {"modified_docx", "modified_xlsx"},
         )
+
+    def test_sent_documents_are_stale_when_uploaded_before_current_draft(self) -> None:
+        case_id = uuid4()
+        selection = SimpleNamespace(id=uuid4(), case_id=case_id, scenario_result_json={})
+        updated_at = datetime.now(UTC)
+        attempt = SimpleNamespace(
+            id=uuid4(),
+            proposal_version_ordinal=1,
+            proposal_issued_at=updated_at,
+            proposal_terms_json={},
+            proposal_scenario_result_json={},
+            proposal_draft_unlocked=False,
+            frozen_at=None,
+            sent_confirmed_at=None,
+            attempt_ordinal=1,
+            revision=2,
+            editable_state_json={"sent_offer_mode": "unchanged"},
+            snapshot_json={},
+            frozen_snapshot_json=None,
+        )
+        version = SimpleNamespace(
+            updated_at=updated_at,
+            downloaded_formats=["docx", "xlsx"],
+        )
+        old_upload_time = updated_at - timedelta(seconds=1)
+        rows = [
+            (
+                SimpleNamespace(
+                    id=uuid4(),
+                    kind=kind,
+                    filename=f"final.{extension}",
+                    created_at=old_upload_time,
+                ),
+                SimpleNamespace(extension=extension, size_bytes=20),
+            )
+            for kind, extension in (("sent_docx", "docx"), ("sent_xlsx", "xlsx"))
+        ]
+        db = Mock()
+        db.execute.return_value.all.return_value = rows
+        db.scalar.side_effect = [attempt, version, None]
+
+        result = _read_response(
+            db,
+            selection,
+            SimpleNamespace(id=uuid4(), outcome=None),
+            1,
+        )
+
+        self.assertTrue(result.sent_documents_complete)
+        self.assertFalse(result.sent_documents_current)
+        self.assertEqual(result.proposal_downloaded_formats, ["docx", "xlsx"])
 
     def test_attachment_download_cannot_cross_selection_boundary(self) -> None:
         case_id = uuid4()

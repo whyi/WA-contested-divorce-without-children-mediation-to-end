@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -465,6 +465,7 @@ def _prepare_attempt_offer_export(
     confirm_credit_use: bool,
     finalize: bool = False,
     confirm_finalization: bool = False,
+    download_format: Literal["docx", "xlsx"] | None = None,
 ) -> tuple[SettlementNegotiationAttempt, SettlementProposalVersion]:
     _authorize_case(db, user, case_id, write=True)
     case = _lock_case(db, case_id)
@@ -485,6 +486,8 @@ def _prepare_attempt_offer_export(
     if attempt is None:
         raise HTTPException(status_code=409, detail="Negotiation attempt is unavailable.")
     finalized = is_finalized(attempt)
+    if getattr(attempt, "frozen_at", None) is not None or getattr(attempt, "sent_confirmed_at", None) is not None:
+        raise HTTPException(status_code=409, detail="A confirmed proposal cannot be revised or regenerated.")
     if finalize and not finalized:
         if not confirm_finalization:
             raise HTTPException(
@@ -504,6 +507,41 @@ def _prepare_attempt_offer_export(
             SettlementProposalVersion.version_ordinal == version_ordinal,
         )
     )
+    editable_state = getattr(attempt, "editable_state_json", {}) or {}
+    editable_term_fields = {
+        "offer_from",
+        "offer_to",
+        "county",
+        "cause_number",
+        "proposed_effective_date",
+        "proposed_response_date",
+        "milestones",
+        "proposed_values",
+        "proposal_terms",
+    }
+    if editable_term_fields.issubset(editable_state):
+        try:
+            saved_terms = MediationOfferTerms.model_validate({
+                "offer_from": editable_state["offer_from"],
+                "offer_to": editable_state["offer_to"],
+                "county": editable_state["county"] or None,
+                "court_case_number": editable_state["cause_number"] or None,
+                "effective_date": editable_state["proposed_effective_date"],
+                "response_by_date": editable_state["proposed_response_date"],
+                "milestones": editable_state["milestones"],
+                "proposed_values": editable_state["proposed_values"],
+                "terms": editable_state["proposal_terms"],
+            })
+        except ValidationError as error:
+            raise HTTPException(
+                status_code=409,
+                detail="Save valid current attempt edits before generating proposal documents.",
+            ) from error
+        if saved_terms.model_dump(mode="json") != requested_json:
+            raise HTTPException(
+                status_code=409,
+                detail="Save the current attempt edits before generating proposal documents.",
+            )
     if existing_version is not None:
         if existing_version.terms_json != requested_json:
             raise HTTPException(
@@ -514,6 +552,18 @@ def _prepare_attempt_offer_export(
                     else "This proposal version is immutable. Start a new version before changing its terms."
                 ),
             )
+        downloaded_formats = set(getattr(existing_version, "downloaded_formats", []) or [])
+        proposal_state_changed = False
+        if download_format is not None:
+            if download_format not in downloaded_formats:
+                downloaded_formats.add(download_format)
+                existing_version.downloaded_formats = sorted(downloaded_formats)
+                proposal_state_changed = True
+            if attempt.proposal_issued_at is None:
+                attempt.proposal_issued_at = datetime.now(UTC)
+                proposal_state_changed = True
+            attempt.proposal_version_ordinal = version_ordinal
+            attempt.proposal_draft_unlocked = False
         if finalize and not finalized:
             entitlement_charge = consume_finalization_credit(db, case, user, attempt)
             finalize_attempt(
@@ -523,6 +573,8 @@ def _prepare_attempt_offer_export(
                 user_id=user.id,
                 entitlement_charge=entitlement_charge,
             )
+            _commit_proposal_state(db)
+        elif proposal_state_changed:
             _commit_proposal_state(db)
         return attempt, existing_version
     if finalized:
@@ -579,6 +631,8 @@ def _prepare_attempt_offer_export(
         attempt.proposal_issued_at = datetime.now(UTC)
     attempt.proposal_version_ordinal = version_ordinal
     attempt.proposal_draft_unlocked = False
+    if download_format is not None:
+        version.downloaded_formats = [download_format]
     if finalize:
         entitlement_charge = consume_finalization_credit(db, case, user, attempt)
         finalize_attempt(
@@ -1290,6 +1344,7 @@ def create_settlement_offer(
             confirm_credit_use=payload.confirm_credit_use,
             finalize=payload.finalize,
             confirm_finalization=payload.confirm_finalization,
+            download_format="docx",
         )
         return Response(
             content=version.docx_content,
@@ -1339,6 +1394,7 @@ def create_settlement_property_schedule(
             confirm_credit_use=payload.confirm_credit_use,
             finalize=payload.finalize,
             confirm_finalization=payload.confirm_finalization,
+            download_format="xlsx",
         )
         return Response(
             content=version.xlsx_content,

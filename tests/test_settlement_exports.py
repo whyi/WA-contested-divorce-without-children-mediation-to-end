@@ -8,10 +8,13 @@ from zipfile import ZipFile
 
 from fastapi import HTTPException, Response
 from docx import Document
+from openpyxl import load_workbook
 from pydantic import ValidationError
 
 from app.offer_documents import MediationOfferTerms
 from app.models import DocumentCreditLedgerEntry, SettlementProposalVersion
+from app.offer_response import OfferAttemptStateUpdate, _update_attempt_proposal_documents
+from app.offer_documents import render_mediation_offer_docx, render_property_schedule_xlsx
 from app.settlement_planning import (
     AssetLedger,
     LedgerEvent,
@@ -181,7 +184,35 @@ class SettlementExportRouteTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 409)
         render_docx.assert_not_called()
 
-    def test_issued_terms_are_immutable_across_download_formats_and_case_changes(self) -> None:
+    def test_export_rejects_terms_that_do_not_match_saved_attempt_edits(self) -> None:
+        self.attempt.editable_state_json = {
+            "offer_from": "Party A",
+            "offer_to": "Party B",
+            "county": "",
+            "cause_number": "",
+            "proposed_effective_date": None,
+            "proposed_response_date": None,
+            "milestones": [],
+            "proposed_values": [],
+            "proposal_terms": ["Previously saved terms."],
+        }
+        with (
+            patch("app.settlement_routes.get_settings", return_value=self.settings),
+            patch("app.settlement_routes.render_mediation_offer_docx") as render_docx,
+            self.assertRaises(HTTPException) as raised,
+        ):
+            create_settlement_offer(
+                self.case_id,
+                self.selection_id,
+                OfferCreate(terms=self.terms, confirm_credit_use=True),
+                self.user,
+                self.db,
+            )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        render_docx.assert_not_called()
+
+    def test_issued_terms_remain_editable_until_sent_confirmation(self) -> None:
         with (
             patch("app.settlement_routes.get_settings", return_value=self.settings),
             patch(
@@ -226,6 +257,19 @@ class SettlementExportRouteTests(unittest.TestCase):
             self.assertEqual(workbook.body, b"xlsx")
 
             changed_terms = self.terms.model_copy(update={"offer_to": "Different party"})
+            self.attempt.editable_state_json = {
+                "offer_from": changed_terms.offer_from,
+                "offer_to": changed_terms.offer_to,
+                "county": changed_terms.county or "",
+                "cause_number": changed_terms.court_case_number or "",
+                "proposed_effective_date": changed_terms.effective_date,
+                "proposed_response_date": changed_terms.response_by_date,
+                "milestones": [],
+                "proposed_values": [],
+                "proposal_terms": changed_terms.terms,
+            }
+            version.terms_json = changed_terms.model_dump(mode="json")
+            version.downloaded_formats = []
             self.db.scalar.side_effect = [
                 self.membership,
                 self.case,
@@ -233,18 +277,20 @@ class SettlementExportRouteTests(unittest.TestCase):
                 self.attempt,
                 version,
             ]
-            with self.assertRaises(HTTPException) as raised:
-                create_settlement_offer(
-                    self.case_id,
-                    self.selection_id,
-                    OfferCreate(terms=changed_terms, confirm_credit_use=True),
-                    self.user,
-                    self.db,
-                )
+            updated_docx = create_settlement_offer(
+                self.case_id,
+                self.selection_id,
+                OfferCreate(terms=changed_terms),
+                self.user,
+                self.db,
+            )
 
-        self.assertEqual(raised.exception.status_code, 409)
-        render_docx.assert_called_once()
-        render_xlsx.assert_called_once()
+        self.assertEqual(updated_docx.body, b"docx")
+        self.assertEqual(version.terms_json, changed_terms.model_dump(mode="json"))
+        self.assertEqual(version.downloaded_formats, ["docx"])
+        self.assertEqual(version.credit_cost, 0)
+        self.assertEqual(render_docx.call_count, 1)
+        self.assertEqual(render_xlsx.call_count, 1)
 
     def test_export_has_no_plan_attempt_limit(self) -> None:
         self.attempt.attempt_ordinal = 2
@@ -475,6 +521,85 @@ class SettlementExportRouteTests(unittest.TestCase):
                 end_date="2025-01-01",
                 community_share_bps=6000,
             )
+
+    def test_attempt_details_are_included_in_both_generated_documents(self) -> None:
+        asset_id = self.result.ledgers[0].asset_id
+        terms = MediationOfferTerms.model_validate({
+            **self.terms.model_dump(),
+            "milestones": [{"name": "Refinance deadline", "date": "2027-01-15"}],
+            "proposed_values": [{"asset_id": asset_id, "proposed_amount_cents": 7500}],
+        })
+        docx = render_mediation_offer_docx(terms, self.result)
+        workbook = render_property_schedule_xlsx(terms, self.result)
+
+        document_text = "\n".join(
+            paragraph.text for paragraph in Document(BytesIO(docx)).paragraphs
+        )
+        self.assertIn("Refinance deadline: 2027-01-15", document_text)
+        self.assertIn("$75.00 proposed to Party A", document_text)
+        schedule = load_workbook(BytesIO(workbook), data_only=False)
+        row_number = 6
+        self.assertEqual(schedule["Property Division"].cell(row_number, 8).value, 75)
+        self.assertEqual(schedule["Property Division"].cell(row_number, 9).value, f"=G{row_number}-H{row_number}")
+        self.assertEqual(schedule["Attempt Milestones"]["A2"].value, "Refinance deadline")
+
+    def test_attempt_edits_refresh_saved_documents_and_clear_download_marks(self) -> None:
+        asset_id = self.result.ledgers[0].asset_id
+        previous_timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+        version = SimpleNamespace(
+            terms_json=self.terms.model_dump(mode="json"),
+            scenario_result_json=self.result.model_dump(mode="json"),
+            docx_content=b"old docx",
+            xlsx_content=b"old xlsx",
+            downloaded_formats=["docx", "xlsx"],
+            credit_cost=1,
+            updated_at=previous_timestamp,
+        )
+        attempt = SimpleNamespace(
+            id=uuid4(),
+            proposal_version_ordinal=1,
+            snapshot_json={"settlement_ledger": [{"asset_id": str(asset_id)}]},
+            proposal_terms_json=self.terms.model_dump(mode="json"),
+            proposal_scenario_result_json=self.result.model_dump(mode="json"),
+        )
+        payload = OfferAttemptStateUpdate(
+            expected_revision=3,
+            offer_from="Party A",
+            offer_to="Party B",
+            proposal_terms=["Updated proposal term"],
+            milestones=[{"name": "Refinance deadline", "date": "2027-01-15"}],
+            proposed_values=[{"asset_id": asset_id, "proposed_amount_cents": 7500}],
+        )
+        db = Mock()
+        db.scalar.return_value = version
+        with (
+            patch("app.offer_response.render_mediation_offer_docx", return_value=b"new docx") as render_docx,
+            patch("app.offer_response.render_property_schedule_xlsx", return_value=b"new xlsx") as render_xlsx,
+            patch(
+                "app.offer_response.get_settings",
+                return_value=SimpleNamespace(max_upload_bytes=2_000_000),
+            ),
+        ):
+            updated = _update_attempt_proposal_documents(
+                db,
+                self.user,
+                self.case_id,
+                self.selection,
+                attempt,
+                payload,
+                self.result.model_dump(mode="json"),
+            )
+
+        self.assertTrue(updated)
+        self.assertEqual(version.docx_content, b"new docx")
+        self.assertEqual(version.xlsx_content, b"new xlsx")
+        self.assertEqual(version.downloaded_formats, [])
+        self.assertGreater(version.updated_at, previous_timestamp)
+        self.assertEqual(version.terms_json["terms"], ["Updated proposal term"])
+        rendered_terms = render_docx.call_args.args[0]
+        self.assertEqual(rendered_terms.milestones[0].name, "Refinance deadline")
+        self.assertEqual(rendered_terms.proposed_values[0].proposed_amount_cents, 7500)
+        render_xlsx.assert_called_once()
 
     def test_idempotent_success_returns_existing_result_without_resending(self) -> None:
         payload = OfferDelivery(
