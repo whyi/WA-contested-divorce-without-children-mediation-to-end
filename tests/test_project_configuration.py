@@ -59,6 +59,8 @@ class ProjectConfigurationTests(unittest.TestCase):
 
         self.assertIn('DEMO_MODE_ENABLED: "${DEMO_MODE_ENABLED:-true}"', compose)
         self.assertIn('AUTH_ENABLED: "${AUTH_ENABLED:-true}"', compose)
+        self.assertIn('OWNER_BETA_ENABLED: "${OWNER_BETA_ENABLED:-false}"', compose)
+        self.assertIn('OWNER_BETA_EMAIL: ${OWNER_BETA_EMAIL:-}', compose)
         self.assertIn('CASE_DATA_ENABLED: "${CASE_DATA_ENABLED:-false}"', compose)
         self.assertIn('CASE_MATERIALS_ENABLED: "${CASE_MATERIALS_ENABLED:-false}"', compose)
         self.assertIn('PRODUCTION_READINESS_REQUIRED: "${PRODUCTION_READINESS_REQUIRED:-false}"', compose)
