@@ -2740,8 +2740,8 @@
                     <label for="settlement-demo-counteroffer-file">Attach the counteroffer (PDF, DOCX, or XLSX, up to 2 MB)</label>
                     <input id="settlement-demo-counteroffer-file" type="file" accept=".pdf,.docx,.xlsx">
                     <p id="settlement-demo-counteroffer-file-status" role="status" aria-live="polite">No file attached.</p>
-                    <p class="offer-intake-help" id="settlement-demo-counteroffer-help">Fictional preview only. The file stays in this browser and is not sent or analyzed. Do not use real case information.</p>
-                    <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" hidden>Next</button>
+                    <p class="offer-intake-help" id="settlement-demo-counteroffer-help">Enter notes or attach a file to continue. Fictional preview only: files stay in this browser and are not sent or analyzed. Do not use real case information.</p>
+                    <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" disabled hidden>Next</button>
                   </section>
                 </section>
               </section>
@@ -3155,6 +3155,8 @@
         let settlementDemoViewingOrdinal = 1;
         let settlementDemoCurrentView = null;
         let settlementDemoCounterofferSaving = false;
+        let settlementDemoCounterofferFileOrdinal = null;
+        let settlementDemoCounterofferLoadGeneration = 0;
         let settlementDemoSelectedShareBps = 5000;
         let settlementDemoScenarioAvailable = false;
         const assetMilestoneSelector = document.getElementById("asset-milestone-selector");
@@ -6036,19 +6038,41 @@
           return `counteroffer:${demoSource}:${demoCurrentCaseId}:${ordinal}`;
         }
 
+        function demoCounterofferHasDetails() {
+          return Boolean(document.getElementById("settlement-demo-counteroffer-notes").value.trim())
+            || settlementDemoCounterofferFileOrdinal === settlementDemoViewingOrdinal;
+        }
+
+        function updateDemoCounterofferNext() {
+          settlementDemoAddCounteroffer.disabled =
+            settlementDemoResponseOutcome !== "counteroffer"
+            || settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal
+            || settlementDemoAttemptOrdinal >= demoAttemptLimit
+            || settlementDemoCounterofferSaving
+            || !demoCounterofferHasDetails();
+        }
+
         async function renderDemoCounterofferFile(ordinal) {
           const status = document.getElementById("settlement-demo-counteroffer-file-status");
+          const generation = ++settlementDemoCounterofferLoadGeneration;
+          settlementDemoCounterofferFileOrdinal = null;
+          updateDemoCounterofferNext();
           try {
             const records = await runDemoFilesTransaction("readonly", (store) =>
               store.index("caseId").getAll(demoCounterofferFileKey(ordinal)));
-            if (ordinal !== settlementDemoViewingOrdinal) return;
+            if (generation !== settlementDemoCounterofferLoadGeneration || ordinal !== settlementDemoViewingOrdinal) return;
             const file = records[records.length - 1];
+            if (file) settlementDemoCounterofferFileOrdinal = ordinal;
             status.textContent = file ? `Attached in this browser: ${file.name}` : "No file attached.";
             status.removeAttribute("data-kind");
           } catch (error) {
-            if (ordinal !== settlementDemoViewingOrdinal) return;
+            if (generation !== settlementDemoCounterofferLoadGeneration || ordinal !== settlementDemoViewingOrdinal) return;
             status.textContent = error instanceof Error ? error.message : "The attached file could not be loaded.";
             status.dataset.kind = "error";
+          } finally {
+            if (generation === settlementDemoCounterofferLoadGeneration && ordinal === settlementDemoViewingOrdinal) {
+              updateDemoCounterofferNext();
+            }
           }
         }
 
@@ -6106,7 +6130,7 @@
             ? "This completed attempt is read-only."
             : snapshot.sent ? "Select a response to continue this fictional workflow."
               : "Review the sample and mark the fictional documents as sent to continue.";
-          settlementDemoAddCounteroffer.disabled = false;
+          updateDemoCounterofferNext();
           settlementDemoResponseNext.disabled = settlementDemoResponseOutcome !== "accepted";
           setSettlementDemoAttemptFrozen(past || Boolean(snapshot.sent));
           settlementDemoAttemptStatus.textContent = `${settlementAttemptOrdinalLabel(ordinal)} sample attempt${past ? " — read-only" : ""}`;
@@ -9941,6 +9965,12 @@
             || settlementDemoAttemptOrdinal >= demoAttemptLimit
             || settlementDemoCounterofferSaving
           ) return;
+          if (settlementDemoResponseOutcome === "counteroffer" && !demoCounterofferHasDetails()) {
+            settlementDemoResponseStatus.textContent = "Enter counteroffer notes or attach a file before continuing.";
+            settlementDemoResponseStatus.dataset.kind = "error";
+            updateDemoCounterofferNext();
+            return;
+          }
           const nextOrdinal = settlementDemoAttemptOrdinal + 1;
           try {
             if (!demoCaseData) throw new Error("The demo case could not be loaded.");
@@ -11962,7 +11992,7 @@
           }
           const ordinal = settlementDemoAttemptOrdinal;
           settlementDemoCounterofferSaving = true;
-          settlementDemoAddCounteroffer.disabled = true;
+          updateDemoCounterofferNext();
           settlementDemoNextAttempt.disabled = true;
           input.disabled = true;
           status.textContent = "Saving the file in this browser…";
@@ -11985,12 +12015,13 @@
             status.dataset.kind = "error";
           } finally {
             settlementDemoCounterofferSaving = false;
-            settlementDemoAddCounteroffer.disabled = settlementDemoAttemptOrdinal >= demoAttemptLimit;
+            updateDemoCounterofferNext();
             settlementDemoNextAttempt.disabled = settlementDemoAttemptOrdinal >= demoAttemptLimit;
             input.disabled = false;
             input.value = "";
           }
         });
+        document.getElementById("settlement-demo-counteroffer-notes").addEventListener("input", updateDemoCounterofferNext);
         document.getElementById("settlement-demo-counteroffer-notes").addEventListener("change", saveDemoResponseDraft);
         settlementDemoResponseFiles.querySelectorAll('input[name="settlement-demo-response-outcome"]').forEach((input) => {
           input.addEventListener("change", () => {
@@ -12000,7 +12031,7 @@
             const canContinue = settlementDemoAttemptOrdinal < demoAttemptLimit;
             settlementDemoAddCounteroffer.hidden =
               settlementDemoResponseOutcome !== "counteroffer" || !canContinue;
-            settlementDemoAddCounteroffer.disabled = !canContinue || settlementDemoCounterofferSaving;
+            updateDemoCounterofferNext();
             settlementDemoCounterofferLimit.hidden =
               settlementDemoResponseOutcome !== "counteroffer" || canContinue;
             settlementDemoCounterofferLimit.textContent = demoSource === "demo1"

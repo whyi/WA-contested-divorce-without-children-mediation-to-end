@@ -494,7 +494,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("openSettlementPlanner(item.id)", page)
 
     def test_existing_demo_shows_dynamic_fictional_settlement_scenarios(self) -> None:
-        status, body = asyncio.run(request_app("/demo"))
+        with TestClient(app) as client:
+            response = client.get("/demo?source=demo2&demo_case_id=sample-case")
+        status, body = response.status_code, response.content
 
         self.assertEqual(status, 200)
         page = body.decode()
@@ -540,7 +542,7 @@ class MainWorkflowTests(unittest.TestCase):
             r'settlementDemoResponseNext\.disabled\s*=\s*settlementDemoResponseOutcome\s*!==\s*"accepted"',
         )
         self.assertIn(
-            'id="settlement-demo-add-counteroffer" type="button" hidden',
+            'id="settlement-demo-add-counteroffer" type="button" disabled hidden',
             page,
         )
         self.assertNotIn("Congratulations", table_section)
@@ -691,7 +693,9 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", milestone_logic)
 
     def test_asset_trend_uses_selector_without_duplicate_highlight_list(self) -> None:
-        status, body = asyncio.run(request_app("/demo"))
+        with TestClient(app) as client:
+            response = client.get("/demo?source=demo2&demo_case_id=sample-case")
+        status, body = response.status_code, response.content
 
         self.assertEqual(status, 200)
         page = body.decode()
