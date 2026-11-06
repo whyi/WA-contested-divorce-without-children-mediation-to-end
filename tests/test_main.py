@@ -327,6 +327,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dropbox-picker"', page)
         self.assertIn('id="materials-import"', page)
         self.assertIn('"/api/v1/materials/config"', page)
+        self.assertIn("OCR is needed but not supported", page)
+        self.assertIn("page_limit_exceeded", page)
         self.assertIn('id="analysis-preview-start" type="button">Analyze</button>', page)
         self.assertIn('id="analysis-controls" aria-labelledby="analysis-title" hidden', page)
         self.assertIn('id="proposal-review"', page)

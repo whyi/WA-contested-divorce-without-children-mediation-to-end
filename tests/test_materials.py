@@ -51,6 +51,8 @@ class MaterialsImportTests(unittest.TestCase):
                 "max_attachments": 5,
                 "attachment_count": 0,
                 "supported_extensions": ["pdf", "docx"],
+                "max_pdf_pages": 200,
+                "ocr_supported": False,
                 "import_enabled": False,
                 "providers": {"google_drive": False, "dropbox": False},
             },

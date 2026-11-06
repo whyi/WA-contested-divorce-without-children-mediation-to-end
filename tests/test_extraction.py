@@ -169,6 +169,27 @@ class ExtractionQueueTests(unittest.TestCase):
         self.assertEqual(job.error_code, "ocr_required")
         self.assertEqual(db.commit.call_count, 1)
 
+    def test_over_page_limit_pdf_needs_attention_without_saving_text(self) -> None:
+        job, _, storage, db, lease = self._processing_fixture(
+            create_pdf(["page"] * 201)
+        )
+
+        process_extraction_job(db, storage, lease)
+
+        self.assertEqual(job.status, "needs_attention")
+        self.assertEqual(job.error_code, "page_limit_exceeded")
+        db.add.assert_not_called()
+
+    def test_password_protected_pdf_is_persisted_as_needs_attention(self) -> None:
+        job, _, storage, db, lease = self._processing_fixture(
+            create_pdf(["Private page"], "secret")
+        )
+
+        process_extraction_job(db, storage, lease)
+
+        self.assertEqual(job.status, "needs_attention")
+        self.assertEqual(job.error_code, "password_protected")
+
     def test_storage_failure_is_reported_without_exposing_storage_details(self) -> None:
         job, _, storage, db, lease = self._processing_fixture(b"not used")
         storage.get.side_effect = BotoCoreError()
