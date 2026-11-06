@@ -27,6 +27,20 @@ The integrated browser service was unavailable during this follow-up, so a tempo
 
 The temporary Playwright package and browser were installed outside the repository; no project dependency or production configuration was changed. The evidence is limited to one Chromium build, headless emulation, and fictional demo pages. No approved browser/device support matrix, real-device run, screen reader/assistive technology combination, full keyboard workflow, authenticated case flow, or formal accessibility conformance evaluation was performed.
 
+## Follow-up after PR #173
+
+The following product validation targets were approved: latest stable Chrome, Edge, Firefox, and Safari on desktop; Safari and Chrome on mobile; WCAG 2.2 AA as the accessibility target; NVDA/Firefox on Windows, VoiceOver/Safari on macOS and iOS, and TalkBack/Chrome on Android; and critical or serious accessibility defects block release unless a documented exception is approved. These are targets, not claims that the matrix has passed.
+
+On the merged `a560b44` base, the integrated Chromium browser (Chrome 150 / Electron 43, device scale factor 1.5) inspected the fictional Demo 2 asset overview at 320, 375, 768, and 1280 CSS pixels. At every width, the document scroll width equaled its layout client width (310, 365, 758, and 1270 CSS pixels respectively), so no page-level horizontal overflow was observed. The labeled “Selected-date asset comparison” region remained intentionally scrollable: its client width was 194, 249, and 563 CSS pixels at the first three widths, with 630 CSS pixels of table content. The first 20 keyboard stops were visible and had visible focus outlines; this remains a smoke check, not a complete workflow keyboard audit.
+
+The initial demo page load made an unnecessary billing-entitlement request and received HTTP 503. The startup call was removed while the authenticated dashboard's billing load was retained. After restarting the updated app, a fresh browser reload of Demo 2 made no `/api/billing/` requests. A source regression test verifies the billing load remains inside `loadDashboardStatus`; a live authenticated-dashboard billing flow was not exercised. Focused Python checks (13 tests) and inline JavaScript syntax validation passed after this change.
+
+The Demo 1 start flow failed on the LAN HTTP preview because that insecure context does not expose `crypto.randomUUID()`. Demo-case creation now uses the shared browser-local ID helper, which falls back to `crypto.getRandomValues()` when available. The choice dialog was also nested inside the initially hidden existing-cases section, giving it a zero-sized layout; it is now outside that section, and the dashboard header's hidden state is respected by CSS. On the running LAN preview with `randomUUID` unavailable and `getRandomValues` available, the visible Demo 1 choice dialog opened without an error, generated links for both start modes, and keyboard-selecting “I have documents” saved the fictional case locally and opened the documents preview. The test case was then removed from browser storage. Regression tests cover the shared helper, its Demo 1 use, and dialog placement outside the hidden section.
+
+Demo 2 also started with an internal attempt ordinal of 2 even though its UI said “First sample attempt.” Reproducing the counteroffer path therefore announced attempt 3 of 3 and then reached the plan limit. The default sample case now starts at attempt 1, and its displayed ordinal is initialized from saved case state. A further UI check found that the disabled generic response button still said “Sample ends here,” obscuring the actual next-attempt control. For counteroffer/rejection outcomes that button is now hidden; the enabled action explicitly says “Continue to attempt 2.” In the LAN browser, a fresh Demo 2 started at attempt 1, presented that action, then switched to “Second sample attempt” with the workflow unfrozen after selection. The temporary browser state was removed after the check.
+
+The integrated-browser measurements above do not establish support or conformance. Edge, Firefox, Safari, physical mobile devices, authenticated workflows, and all approved assistive-technology combinations remain untested; issue #136 stays open.
+
 ## Browser and manual checks not completed
 
 The integrated browser could not attach to the local preview at `http://127.0.0.1:8890/demo` or `http://192.168.1.17:8890/demo`; direct local Chromium checks above were used instead. The same preview returned HTTP 200 to local `curl`. Consequently:
@@ -36,7 +50,7 @@ The integrated browser could not attach to the local preview at `http://127.0.0.
 - No screen reader or other assistive technology was run. No AT/browser combinations are asserted.
 - No authenticated case flow, upload, backend persistence, or provider integration was exercised; the local routes were static-preview responses with authentication and demo mode disabled.
 
-These are not passes. Browser-matrix approval, accessibility target approval, AT combinations, and release-blocking policy remain product decisions. WCAG 2.2 AA is recorded in Spec 47 only as a proposed baseline pending approval, not as an achieved or official conformance claim. Issue #136 remains open.
+These are not passes. The browser matrix, accessibility target, AT combinations, and release-blocking policy are now approved targets, but their untested combinations remain open. WCAG 2.2 AA is a target, not an achieved or official conformance claim. Issue #136 remains open.
 
 ## Reproducibility
 

@@ -1323,8 +1323,30 @@ class OfferResponseTransitionTests(unittest.TestCase):
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
             encoding="utf-8"
         )
+        response_handler = html.split(
+            'settlementDemoResponseFiles.querySelectorAll(\'input[name="settlement-demo-response-outcome"]\')',
+            1,
+        )[1].split('settlementDemoAddCounteroffer.addEventListener', 1)[0]
+        self.assertIn(
+            "settlementDemoAddCounteroffer.textContent = canContinue\n"
+            "              ? `Continue to attempt ${settlementDemoAttemptOrdinal + 1}`",
+            response_handler,
+        )
+        self.assertIn(
+            '["counteroffer", "rejected"].includes(settlementDemoResponseOutcome)',
+            response_handler,
+        )
+        self.assertNotIn("Sample ends here", response_handler)
         self.assertIn(
             "settlementDemoAttemptOrdinal = demoCaseData.attempt_ordinal;",
+            html,
+        )
+        self.assertIn("attempt_ordinal: 1,", html.split(
+            "function defaultDemoCaseData(source)", 1
+        )[1].split("function loadDemoCaseData()", 1)[0])
+        self.assertIn(
+            "settlementDemoAttemptStatus.textContent =\n"
+            "                `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;",
             html,
         )
         continue_attempt = html.split(
