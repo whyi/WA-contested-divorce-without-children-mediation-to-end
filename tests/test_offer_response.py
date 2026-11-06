@@ -194,7 +194,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
             proposal_scenario_result_json={"scenario": {"id": "pinned"}},
         )
         db = Mock()
-        db.scalar.side_effect = [attempt, None]
+        db.scalar.side_effect = [attempt, None, None]
 
         result = _read_response(db, selection, None)
 
@@ -913,6 +913,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         )
         current = SimpleNamespace(
             sent_documents_complete=True,
+            sent_documents_current=True,
             outcome=None,
             attachments=[
                 SimpleNamespace(kind="sent_docx", model_dump=lambda **_: {"kind": "sent_docx"}),
@@ -1019,9 +1020,13 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertEqual(attempt.revision, 3)
         db.commit.assert_called_once()
 
-    def test_proposal_issuance_rejects_direct_attempt_content_edits(self) -> None:
+    def test_proposal_issuance_stays_editable_until_finalization_or_sent_confirmation(self) -> None:
         case_id = uuid4()
-        selection = SimpleNamespace(id=uuid4(), case_id=case_id)
+        selection = SimpleNamespace(
+            id=uuid4(),
+            case_id=case_id,
+            scenario_result_json={"scenario": {"id": "scenario-1"}},
+        )
         initial_state = OfferAttemptStateUpdate(expected_revision=0).model_dump(
             mode="json",
             exclude={"expected_revision"},
@@ -1043,18 +1048,18 @@ class OfferResponseTransitionTests(unittest.TestCase):
             patch("app.offer_response._selection", return_value=selection),
             patch("app.offer_response._attempt_for_selection", return_value=attempt),
         ):
-            with self.assertRaises(HTTPException) as raised:
-                update_offer_attempt_state(
-                    case_id,
-                    selection.id,
-                    OfferAttemptStateUpdate(expected_revision=3, offer_to="Changed party"),
-                    Response(),
-                    SimpleNamespace(id=uuid4()),
-                    db,
-                )
+            result = update_offer_attempt_state(
+                case_id,
+                selection.id,
+                OfferAttemptStateUpdate(expected_revision=3, offer_to="Changed party"),
+                Response(),
+                SimpleNamespace(id=uuid4()),
+                db,
+            )
 
-        self.assertEqual(raised.exception.status_code, 409)
-        db.commit.assert_not_called()
+        self.assertEqual(attempt.editable_state_json["offer_to"], "Changed party")
+        self.assertEqual(result.revision, 4)
+        db.commit.assert_called_once()
 
     def test_frozen_attempt_rejects_outcome_correction(self) -> None:
         case_id = uuid4()

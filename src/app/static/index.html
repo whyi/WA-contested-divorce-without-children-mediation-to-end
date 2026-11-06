@@ -2323,8 +2323,8 @@
                       <label>Proposed terms (one per line)<textarea id="settlement-offer-terms" required></textarea></label>
                     </div>
                     <div class="settlement-export-actions" role="group" aria-label="Download proposal drafts">
-                      <button class="materials-import" id="settlement-offer-download" type="button">Download DOCX draft</button>
-                      <button class="materials-import" id="settlement-schedule-download" type="button">Download XLSX draft</button>
+                      <button class="materials-import" id="settlement-offer-download" type="button" disabled>Download DOCX draft</button>
+                      <button class="materials-import" id="settlement-schedule-download" type="button" disabled>Download XLSX draft</button>
                       <button class="dashboard-retry" id="settlement-new-proposal-version" type="button" hidden>Start a new proposal version</button>
                     </div>
                     <div class="settlement-export-actions" role="group" aria-label="Finalize this attempt">
@@ -2375,7 +2375,7 @@
                   <section class="settlement-response-workflow" id="settlement-response-workflow" hidden aria-labelledby="settlement-response-title">
                     <h3 id="settlement-response-title">After you send your final offer</h3>
                     <p id="settlement-response-attempt-status" role="status" aria-live="polite">First Attempt — active and editable</p>
-                    <p>The first proposal download locks its terms and scenario so repeated downloads cannot create alternate offers. After you have actually sent both files, confirm below to freeze the sent attempt. Then record the response. This tracker does not send documents or call AI.</p>
+                    <p>Your proposal remains editable until you finalize the attempt or confirm that you sent it. Each saved edit refreshes both draft files. Download both current files, attach the exact copies you sent to your mediator, then confirm below to freeze the sent attempt. This tracker does not send documents or call AI.</p>
                     <p><strong>Review and edit both drafts, then provide the final files to your mediator.</strong> Attach the exact final DOCX and XLSX files you delivered. Only the explicit confirmation below locks this attempt. This confirmation records your report; it does not verify delivery or receipt.</p>
                     <div class="settlement-response-files">
                       <label for="settlement-response-sent-docx"><span id="settlement-response-sent-docx-label">Final DOCX you sent</span>
@@ -3227,6 +3227,7 @@
         let settlementAttemptStateLoaded = false;
         let settlementAttemptStateDirty = false;
         let settlementAttemptStateSaving = false;
+        let settlementAttemptAutosaveTimer = null;
         let settlementGeneratedFormats = new Set();
         let settlementResponseUploading = false;
         let settlementModifiedOfferParsed = false;
@@ -6323,8 +6324,9 @@
             settlementDocumentCreditStatus.removeAttribute("data-kind");
           }
           const finalized = Boolean(current?.finalized);
-          settlementOfferDownload.disabled = false;
-          settlementScheduleDownload.disabled = false;
+          const canDownload = Boolean(settlementSelectedScenario && settlementAttemptStateLoaded);
+          settlementOfferDownload.disabled = !canDownload;
+          settlementScheduleDownload.disabled = !canDownload;
           settlementFinalizeDownload.disabled = !canFinalize || finalized || !current;
           settlementFinalizeDownload.textContent = finalized
             ? "Attempt finalized — snapshot saved"
@@ -6530,9 +6532,9 @@
           const savedOutcome = current?.outcome || "";
           const frozen = Boolean(current?.frozen);
           const proposalIssued = Boolean(current?.proposal_issued);
-          const proposalDraftUnlocked = Boolean(current?.proposal_draft_unlocked);
-          const inputsLocked = frozen || Boolean(current?.finalized)
-            || (proposalIssued && !proposalDraftUnlocked);
+          const inputsLocked = frozen || Boolean(current?.finalized);
+          const bothCurrentDraftsDownloaded = settlementGeneratedFormats.has("docx")
+            && settlementGeneratedFormats.has("xlsx");
           document.querySelectorAll("#settlement-comparison-table input[data-comparison-proposal-asset]")
             .forEach((input) => { input.disabled = inputsLocked; });
           const modifiedMode = settlementAttemptEditableState.sent_offer_mode === "modified";
@@ -6548,6 +6550,8 @@
             !current?.sent_confirmed || settlementResponseUploading || frozen;
           settlementResponseConfirmSent.disabled = settlementResponseUploading
             || !current?.sent_documents_complete
+            || !current?.sent_documents_current
+            || !bothCurrentDraftsDownloaded
             || (modifiedMode && !modifiedReviewed)
             || Boolean(current?.sent_confirmed)
             || frozen;
@@ -6623,14 +6627,14 @@
               : settlementAttemptOrdinalLabel(current.attempt_ordinal);
             const attemptStatus = current.finalized && !frozen
               ? "finalized; snapshot saved and read-only (not yet recorded as sent)"
-              : proposalIssued && !frozen
-              ? proposalDraftUnlocked
-                ? "new proposal version open; drafts and downloads are free"
-                : "proposal issued; terms and scenario are locked"
               : frozen
               ? "sent and frozen; read-only"
               : current.sent_documents_complete
-                ? "final files attached; still editable until you confirm sending"
+                ? current.sent_documents_current
+                  ? "final files attached; still editable until you confirm sending"
+                  : "proposal changed; attach the latest files before confirming"
+              : proposalIssued
+                ? "draft generated; still editable until finalization"
                 : "active and editable";
             const attemptCountLabel = current.attempt_limit == null
               ? `Attempt ${current.attempt_ordinal}`
@@ -7097,8 +7101,7 @@
             edit.setAttribute("aria-label", `${editLabel.textContent} in dollars`);
             edit.disabled = Boolean(
               response.frozen
-              || response.finalized
-              || (response.proposal_issued && !response.proposal_draft_unlocked),
+              || response.finalized,
             );
             edit.addEventListener("change", () => {
               const raw = edit.value.trim();
@@ -7168,6 +7171,8 @@
         }
 
         async function saveSettlementAttemptState() {
+          window.clearTimeout(settlementAttemptAutosaveTimer);
+          settlementAttemptAutosaveTimer = null;
           if (settlementAttemptStateSaving) {
             await new Promise((resolve) => window.setTimeout(resolve, 50));
             return saveSettlementAttemptState();
@@ -7197,7 +7202,11 @@
               || settlementSelectedScenario?.selection_id !== selectionId
             ) return;
             settlementAttemptEditableState = result.editable_state;
+            settlementGeneratedFormats = new Set(result.proposal_downloaded_formats || []);
             settlementOfferResponseState.attempt_revision = result.revision;
+            settlementOfferResponseState.proposal_downloaded_formats =
+              result.proposal_downloaded_formats || [];
+            settlementOfferResponseState.sent_documents_current = false;
             settlementAttemptStateDirty = false;
             if (result.scenario_recalculated) {
               renderSettlementScenarios(
@@ -7206,12 +7215,18 @@
               );
               settlementScenariosStatus.textContent =
                 "Attempt scenario assumptions were recalculated locally. No AI ranking was requested.";
+            }
+            if (result.proposal_documents_updated) {
               settlementResponseStatus.textContent =
-                "Attempt edits saved; the scenario was recalculated locally without AI or delivery.";
+                "Edits saved. The server refreshed both proposal drafts; download both again and attach the current files before confirming.";
+            } else if (result.scenario_recalculated) {
+              settlementResponseStatus.textContent =
+                "Scenario assumptions were recalculated locally. Complete the party names and proposal terms to refresh both drafts.";
             } else {
               settlementResponseStatus.textContent =
-                "Attempt edits saved. No files were sent and no AI was called.";
+                "Attempt edits saved. Complete the party names and proposal terms to refresh both drafts.";
             }
+            updateSettlementResponseControls();
             return true;
           } catch (error) {
             if (settlementCaseId === caseId && settlementSelectedScenario?.selection_id === selectionId) {
@@ -7260,6 +7275,7 @@
               || settlementSelectedScenario?.selection_id !== selectionId
             ) return;
             settlementOfferResponseState = loadedResponse;
+            settlementGeneratedFormats = new Set(loadedResponse.proposal_downloaded_formats || []);
             settlementAttemptEditableState = loadedResponse.editable_state || {};
             settlementAttemptStateLoaded = true;
             const attemptState = settlementAttemptEditableState;
@@ -7276,7 +7292,10 @@
             settlementOfferValues.value = JSON.stringify(attemptState.proposed_values || [], null, 2);
             settlementOfferTerms.value = (attemptState.proposal_terms || []).join("\n");
             renderSettlementOfferComparison();
-            if (loadedResponse.proposal_terms && !loadedResponse.proposal_draft_unlocked) {
+            if (
+              loadedResponse.proposal_terms
+              && !Object.hasOwn(attemptState, "proposal_terms")
+            ) {
               const issuedTerms = loadedResponse.proposal_terms;
               settlementOfferFrom.value = issuedTerms.offer_from;
               settlementOfferTo.value = issuedTerms.offer_to;
@@ -7383,7 +7402,7 @@
           };
           renderSettlementAttemptProgress();
           settlementOffer.hidden = item.frozen;
-          settlementGeneratedFormats = new Set(["docx", "xlsx"]);
+          settlementGeneratedFormats = new Set();
           void loadSettlementOfferResponse().then((loaded) => {
             if (loaded && scroll) {
               settlementResponseWorkflow.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -7410,6 +7429,7 @@
               || settlementSelectedScenario?.selection_id !== selectionId
             ) return;
             settlementOfferResponseState = uploadedState;
+            settlementGeneratedFormats = new Set(uploadedState.proposal_downloaded_formats || []);
             settlementAttemptEditableState = uploadedState.editable_state || settlementAttemptEditableState;
             settlementAttemptStateDirty = false;
             settlementModifiedOfferParsed = false;
@@ -7507,6 +7527,9 @@
           if (
             !settlementSelectedScenario
             || !settlementOfferResponseState?.sent_documents_complete
+            || !settlementOfferResponseState?.sent_documents_current
+            || !settlementGeneratedFormats.has("docx")
+            || !settlementGeneratedFormats.has("xlsx")
             || settlementOfferResponseState.sent_confirmed
           ) return;
           if (!(await saveSettlementAttemptState())) return;
@@ -7740,7 +7763,7 @@
               };
               settlementResponsePlaceholder.hidden = true;
               settlementResponseChecklist.hidden = true;
-              settlementGeneratedFormats = new Set(["docx", "xlsx"]);
+              settlementGeneratedFormats = new Set();
               await loadSettlementOfferResponse();
               void loadSettlementOfferResponseHistory(caseId);
               return;
@@ -11901,7 +11924,7 @@
           settlementOfferValues,
           settlementOfferTerms,
         ].forEach((input) => {
-          input.addEventListener("change", () => {
+          input.addEventListener("input", () => {
             if (!settlementAttemptStateLoaded || settlementOfferResponseState?.frozen) return;
             if (settlementAttemptEditableState.sent_offer_mode === "modified") {
               settlementAttemptEditableState = {
@@ -11914,7 +11937,11 @@
             }
             settlementAttemptStateDirty = true;
             updateSettlementResponseControls();
-            void saveSettlementAttemptState();
+            window.clearTimeout(settlementAttemptAutosaveTimer);
+            settlementAttemptAutosaveTimer = window.setTimeout(() => {
+              settlementAttemptAutosaveTimer = null;
+              void saveSettlementAttemptState();
+            }, 350);
           });
         });
         settlementDemoDocxDownload.addEventListener("click", () => {

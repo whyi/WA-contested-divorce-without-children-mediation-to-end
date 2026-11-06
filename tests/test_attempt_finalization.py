@@ -257,7 +257,7 @@ class FinalDownloadTests(unittest.TestCase):
         self.assertEqual(self.attempt.revision, revision)
         self.assertEqual(self.case.attempt_credit_balance, 1)
         self.db.add.assert_not_called()
-        self.db.commit.assert_not_called()
+        self.db.commit.assert_called_once()
         self.render_docx.assert_not_called()
 
     def test_repeat_without_confirmation_is_free_and_plain_redownload_works(self) -> None:
@@ -487,7 +487,7 @@ class FinalizationReadModelTests(unittest.TestCase):
             finalized_version_ordinal=2,
         )
         db = Mock()
-        db.scalar.side_effect = [attempt, None]
+        db.scalar.side_effect = [attempt, None, None]
         result = _read_response(db, selection, None)
         self.assertTrue(result.finalized)
         self.assertEqual(result.finalized_at, finalized_at)

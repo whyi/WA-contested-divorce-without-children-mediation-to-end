@@ -19,6 +19,23 @@ class QuickMediatorResponseTests(unittest.TestCase):
         for outcome in ("counteroffer", "rejected", "accepted"):
             self.assertIn(f'name="settlement-response-outcome" value="{outcome}"', PAGE)
 
+    def test_proposal_downloads_and_sent_confirmation_require_current_documents(self) -> None:
+        self.assertIn(
+            'id="settlement-offer-download" type="button" disabled',
+            PAGE,
+        )
+        self.assertIn(
+            'id="settlement-schedule-download" type="button" disabled',
+            PAGE,
+        )
+        self.assertIn('input.addEventListener("input"', PAGE)
+        self.assertIn("}, 350);", PAGE)
+        controls = PAGE.split("function updateSettlementResponseControls()", 1)[1]
+        self.assertIn('settlementGeneratedFormats.has("docx")', controls)
+        self.assertIn('settlementGeneratedFormats.has("xlsx")', controls)
+        self.assertIn("!current?.sent_documents_current", controls)
+        self.assertIn("result.proposal_documents_updated", PAGE)
+
     def test_response_is_user_reported_and_never_delivered_or_verified(self) -> None:
         self.assertEqual(DELIVERY_BOUNDARY["recipient"], "mediator")
         self.assertFalse(DELIVERY_BOUNDARY["delivery_verified_by_app"])

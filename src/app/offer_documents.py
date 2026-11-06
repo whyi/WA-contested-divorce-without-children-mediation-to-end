@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from io import BytesIO
 import re
+from uuid import UUID
 
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
@@ -43,6 +44,8 @@ class MediationOfferTerms(BaseModel):
     effective_date: date | None = None
     response_by_date: date | None = None
     terms: list[str] = Field(min_length=1, max_length=25)
+    milestones: list["ProposalMilestone"] = Field(default_factory=list, max_length=100)
+    proposed_values: list["ProposalValue"] = Field(default_factory=list, max_length=500)
 
     @field_validator("offer_from", "offer_to")
     @classmethod
@@ -94,6 +97,31 @@ class MediationOfferTerms(BaseModel):
         ):
             raise ValueError("Response date must not be before the effective date.")
         return self
+
+
+class ProposalMilestone(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    date: date
+
+    @field_validator("name")
+    @classmethod
+    def milestone_name_is_safe_xml_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Milestone names cannot be blank.")
+        return _validate_xml_text(normalized)
+
+
+class ProposalValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: UUID
+    proposed_amount_cents: int = Field(ge=-1_000_000_000_000, le=1_000_000_000_000)
+
+
+MediationOfferTerms.model_rebuild()
 
 
 def _currency(cents: int) -> str:
@@ -239,6 +267,13 @@ def render_mediation_offer_docx(
     add_clause("4.5", "Proposed terms and additional settlement provisions:")
     for term in terms.terms:
         document.add_paragraph(term, style="List Bullet")
+    if terms.milestones:
+        add_clause("4.6", "Attempt-specific milestones:")
+        for milestone in terms.milestones:
+            document.add_paragraph(
+                f"{milestone.name}: {milestone.date.isoformat()}",
+                style="List Bullet",
+            )
 
     add_section("V. ALLOCATION OF DEBTS")
     add_clause(
@@ -382,6 +417,19 @@ def render_mediation_offer_docx(
     document.add_paragraph(
         f"Net amount still unresolved: {_currency(result.unresolved_cents)}"
     )
+    proposed_values = {
+        str(value.asset_id): value.proposed_amount_cents
+        for value in terms.proposed_values
+    }
+    if proposed_values:
+        document.add_heading("Attempt-specific proposed values", level=2)
+        ledger_names = {str(ledger.asset_id): ledger.name for ledger in result.ledgers}
+        for asset_id, amount_cents in proposed_values.items():
+            document.add_paragraph(
+                f"{ledger_names.get(asset_id, asset_id)}: "
+                f"{_currency(amount_cents)} proposed to {terms.offer_from}",
+                style="List Bullet",
+            )
     document.add_heading("Scenario assumptions", level=1)
     document.add_paragraph(
         f"{result.scenario.relationship_window.label}: "
@@ -479,6 +527,10 @@ def render_property_schedule_xlsx(
 
     first_data_row = header_row + 1
     share = result.scenario.community_share_bps / 10_000
+    proposed_values = {
+        str(value.asset_id): value.proposed_amount_cents
+        for value in terms.proposed_values
+    }
     for row_number, ledger in enumerate(result.ledgers, first_data_row):
         _set_safe_text(sheet.cell(row_number, 1), ledger.name)
         _set_safe_text(sheet.cell(row_number, 2), ledger.kind.title())
@@ -493,8 +545,12 @@ def render_property_schedule_xlsx(
         ):
             sheet.cell(row_number, column, cents / 100)
         sheet.cell(row_number, 7, f"=SUM(C{row_number}:F{row_number})")
-        sheet.cell(row_number, 8, f"=C{row_number}+E{row_number}*'Scenario Assumptions'!$B$6")
-        sheet.cell(row_number, 9, f"=D{row_number}+E{row_number}*(1-'Scenario Assumptions'!$B$6)")
+        proposed_amount = proposed_values.get(str(ledger.asset_id))
+        if proposed_amount is None:
+            sheet.cell(row_number, 8, f"=C{row_number}+E{row_number}*'Scenario Assumptions'!$B$6")
+        else:
+            sheet.cell(row_number, 8, proposed_amount / 100)
+        sheet.cell(row_number, 9, f"=G{row_number}-H{row_number}")
 
     last_data_row = max(first_data_row, first_data_row + len(result.ledgers) - 1)
     total_row = last_data_row + 1
@@ -571,6 +627,21 @@ def render_property_schedule_xlsx(
     assumptions.column_dimensions["A"].width = 38
     assumptions.column_dimensions["B"].width = 56
     assumptions.freeze_panes = "A2"
+
+    if terms.milestones:
+        milestones = workbook.create_sheet("Attempt Milestones")
+        for column, label in enumerate(("Milestone", "Date"), 1):
+            cell = milestones.cell(1, column)
+            _set_safe_text(cell, label)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="527764")
+        for row_number, milestone in enumerate(terms.milestones, 2):
+            _set_safe_text(milestones.cell(row_number, 1), milestone.name)
+            milestones.cell(row_number, 2, milestone.date)
+            milestones.cell(row_number, 2).number_format = "yyyy-mm-dd"
+        milestones.column_dimensions["A"].width = 38
+        milestones.column_dimensions["B"].width = 18
+        milestones.freeze_panes = "A2"
 
     output = BytesIO()
     workbook.save(output)
