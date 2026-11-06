@@ -13,7 +13,7 @@
 - **Accessibility target:** Proposed baseline only, pending product approval: WCAG 2.2 AA. No official WCAG conformance claim is made.
 - **Assistive technology combinations:** Not selected or tested. Product/deployment owners must decide the combinations and manual coverage before declaring the matrix complete.
 - **Release-blocking policy:** Not approved. Findings must be recorded with impact and reproducibility; no issue severity is implicitly a launch blocker.
-- **Integrated browser availability:** The workspace's integrated browser could not connect to either the loopback preview or its LAN address during the latest retry. The local service itself responded on loopback. This is an environment/tooling limitation, not a browser test result.
+- **Integrated browser availability:** The workspace's integrated browser could not connect to either the loopback preview or its LAN address. A temporary local headless Chromium run is recorded in the evidence report; this is one emulated browser only, not a supported-browser decision or manual AT result.
 
 ## Validation scope
 
@@ -48,4 +48,4 @@ For each workflow, record viewport, browser/version, device or emulation details
 
 ## Current validation record
 
-See [Issue 136 validation evidence](../../docs/issue-136-prelaunch-validation-evidence.md). The current record confirms automated test results and a local application health check, but browser viewport, keyboard interaction, and assistive-technology evidence remain incomplete. Keep issue #136 open.
+See [Issue 136 validation evidence](../../docs/issue-136-prelaunch-validation-evidence.md). The current record includes static markup tests and limited headless Chromium measurements for fictional demo views. Approved browser/AT decisions, real-device coverage, full keyboard workflow checks, authenticated flows, and assistive-technology evidence remain incomplete. Keep issue #136 open.
