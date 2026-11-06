@@ -3455,7 +3455,7 @@
             title: "XYZ vs ABC",
             status: "in progress",
             workflow_mode: "wizard",
-            attempt_ordinal: 2,
+            attempt_ordinal: 1,
           };
         }
 
@@ -11981,6 +11981,10 @@
             demoCaseData = loadDemoCaseData();
             if (Number.isInteger(demoCaseData?.attempt_ordinal) && demoCaseData.attempt_ordinal > 0) {
               settlementDemoAttemptOrdinal = demoCaseData.attempt_ordinal;
+              settlementDemoAttemptStatus.textContent =
+                `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;
+              settlementDemoResponseStatus.textContent =
+                `Attempt ${settlementDemoAttemptOrdinal} of ${demoAttemptLimit}. Review the sample, then mark the fictional documents as sent to continue.`;
             }
             initializeDemoCaseReturnLinks();
           } catch (error) {
