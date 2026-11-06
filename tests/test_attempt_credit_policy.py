@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app import attempt_credits, billing_routes
-from app.models import Case, DocumentCreditLedgerEntry
+from app.models import AttemptCreditPackagePurchase, Case, DocumentCreditLedgerEntry
 
 
 class AttemptCreditPolicyTests(unittest.TestCase):
@@ -112,8 +112,12 @@ class AttemptCreditPolicyTests(unittest.TestCase):
             stripe_price_id_attempt_credits_5="price_five",
             auth_public_base_url="https://example.test",
         )
-        actor = SimpleNamespace(id=uuid4(), stripe_customer_id="cus_example")
-        case = SimpleNamespace(id=uuid4(), closed_at=None)
+        actor = SimpleNamespace(
+            id=uuid4(), email="buyer@example.test", stripe_customer_id="cus_example"
+        )
+        case = SimpleNamespace(id=uuid4(), closed_at=None, attempt_credit_balance=0)
+        db = Mock()
+        db.scalar.side_effect = [case, None]
         with (
             patch.object(billing_routes, "get_settings", return_value=settings),
             patch.object(billing_routes, "_stripe_settings_ready", return_value=True),
@@ -121,26 +125,63 @@ class AttemptCreditPolicyTests(unittest.TestCase):
             patch.object(
                 billing_routes.stripe.Price,
                 "retrieve",
-                return_value={"unit_amount": 2000, "currency": "usd", "active": True},
+                return_value={
+                    "unit_amount": 500,
+                    "currency": "usd",
+                    "active": True,
+                    "recurring": None,
+                    "tax_behavior": "exclusive",
+                },
             ),
             patch.object(
                 billing_routes.stripe.checkout.Session,
                 "create",
-                return_value={"url": "https://checkout.stripe.com/session"},
+                return_value={"id": "cs_pending", "url": "https://checkout.stripe.com/session"},
             ) as checkout,
         ):
             result = billing_routes.create_checkout_session(
                 case.id,
                 billing_routes.CheckoutCreate(package_size=5),
                 actor,
-                Mock(),
+                db,
             )
 
         self.assertEqual(result["payment_status"], "pending_webhook_confirmation")
         self.assertEqual(result["checkout_url"], "https://checkout.stripe.com/session")
         self.assertEqual(checkout.call_args.kwargs["mode"], "payment")
         self.assertEqual(checkout.call_args.kwargs["line_items"], [{"price": "price_five", "quantity": 1}])
+        self.assertEqual(checkout.call_args.kwargs["automatic_tax"], {"enabled": True})
         self.assertNotIn("credits", result)
+
+    def test_consumption_is_linked_to_package_and_refund_pending_blocks_use(self) -> None:
+        case = SimpleNamespace(id=uuid4(), first_finalization_used=True, attempt_credit_balance=5)
+        purchase = AttemptCreditPackagePurchase(
+            id=uuid4(),
+            user_id=uuid4(),
+            case_id=case.id,
+            package_size=5,
+            price_amount=500,
+            currency="usd",
+            stripe_price_id="price_five",
+            status="paid",
+            credits_used=0,
+        )
+        db = Mock()
+        db.scalar.return_value = purchase
+        charge = attempt_credits.consume_finalization_credit(
+            db, case, SimpleNamespace(id=purchase.user_id), SimpleNamespace(id=uuid4())
+        )
+        self.assertEqual(purchase.credits_used, 1)
+        self.assertEqual(db.add.call_args.args[0].package_purchase_id, purchase.id)
+        self.assertEqual(charge["credit_cost"], 1)
+
+        purchase.status = "refund_pending"
+        case.attempt_credit_balance = 4
+        with self.assertRaises(HTTPException) as raised:
+            attempt_credits.consume_finalization_credit(
+                db, case, SimpleNamespace(id=purchase.user_id), SimpleNamespace(id=uuid4())
+            )
+        self.assertEqual(raised.exception.status_code, 409)
 
     def test_legacy_price_entitlements_and_case_data_are_reset_additively(self) -> None:
         migration_path = (

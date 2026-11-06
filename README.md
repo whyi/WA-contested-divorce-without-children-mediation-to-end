@@ -174,12 +174,18 @@ email delivery, retention, and account-recovery policies are established.
 Attempt-credit checkout is disabled in demo mode. For a reviewed production
 deployment, configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `STRIPE_PRICE_ID_ATTEMPT_CREDITS_5`, and
-`STRIPE_PRICE_ID_ATTEMPT_CREDITS_10` with active one-time Stripe Prices. Prices
-are read from those configured Stripe Price IDs; this application does not
-set package prices. Register `/api/billing/webhook` in Stripe for completed
-one-time checkout events. Credits are granted only after webhook signature
-verification and idempotent payment processing; a browser redirect alone
-never grants credits. See [Spec 36](specs/36-attempt-credit-packages/spec-36-attempt-credit-packages.md)
+`STRIPE_PRICE_ID_ATTEMPT_CREDITS_10` with active, one-time USD Stripe Prices
+matching the server catalog: 5 credits for USD $5 and 10 credits for USD $8.
+Stripe Tax calculates, displays, and collects applicable tax; Stripe emails
+receipts. There are no monthly subscriptions. A full refund is available within
+30 days only before any credit from the package is used; once used, no package
+refund is available. Service-failure credit restoration remains separate.
+Another package can be purchased only after the case balance reaches zero.
+Register `/api/billing/webhook` for checkout completion, delayed-payment,
+expiration, failure, and refund events. Credits are granted only after webhook
+signature verification and idempotent payment processing; a browser redirect
+alone never grants credits. See [Spec 48](specs/48-credit-package-pricing/spec-48-credit-package-pricing.md)
+for approved terms and [Spec 36](specs/36-attempt-credit-packages/spec-36-attempt-credit-packages.md)
 for the free first successful finalization per case and subsequent credit policy.
 
 Case-material storage is separately gated by `CASE_MATERIALS_ENABLED` and
