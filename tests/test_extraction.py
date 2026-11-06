@@ -70,6 +70,8 @@ class ExtractionQueueTests(unittest.TestCase):
         db.commit.assert_called_once()
 
     def test_claim_uses_skip_locked_and_reclaims_expired_work(self) -> None:
+        case_id = uuid4()
+        case = Mock(id=case_id)
         job = Mock(
             id=uuid4(),
             status="processing",
@@ -78,7 +80,7 @@ class ExtractionQueueTests(unittest.TestCase):
             lease_expires_at=datetime.now(UTC) - timedelta(minutes=1),
         )
         db = Mock()
-        db.scalar.return_value = job
+        db.scalar.side_effect = [case_id, case, 0, job]
         db.scalars.return_value.all.return_value = []
 
         lease = claim_next_extraction_job(db)
@@ -88,14 +90,14 @@ class ExtractionQueueTests(unittest.TestCase):
         self.assertEqual(job.attempts, 2)
         self.assertEqual(job.lease_token, lease.token)
         self.assertIsNotNone(job.lease_expires_at)
-        self.assertTrue(db.scalar.call_args.args[0]._for_update_arg.skip_locked)
+        self.assertTrue(db.scalar.call_args_list[1].args[0]._for_update_arg.skip_locked)
         db.commit.assert_called_once()
 
     def test_expired_job_at_attempt_limit_is_marked_failed(self) -> None:
         job = Mock(
             id=uuid4(),
             status="processing",
-            attempts=3,
+            attempts=4,
             error_code=None,
             lease_token=uuid4(),
             lease_expires_at=datetime.now(UTC) - timedelta(minutes=1),
@@ -112,6 +114,18 @@ class ExtractionQueueTests(unittest.TestCase):
         self.assertEqual(job.error_code, "worker_interrupted")
         self.assertIsNone(job.lease_token)
         db.commit.assert_called_once()
+
+    def test_case_at_concurrency_limit_does_not_claim_another_job(self) -> None:
+        case_id = uuid4()
+        db = Mock()
+        db.scalar.side_effect = [case_id, case_id, 3, None]
+        db.scalars.return_value.all.return_value = []
+
+        lease = claim_next_extraction_job(db)
+
+        self.assertIsNone(lease)
+        self.assertEqual(db.scalar.call_count, 4)
+        db.commit.assert_any_call()
 
     def test_successful_processing_persists_page_provenance(self) -> None:
         content = create_pdf(["First page", "Second page"])
@@ -217,11 +231,23 @@ class ExtractionQueueTests(unittest.TestCase):
 
         self.assertIs(retried, job)
         self.assertEqual(job.status, "queued")
-        self.assertEqual(job.attempts, 0)
+        self.assertEqual(job.attempts, 3)
         self.assertIsNone(job.error_code)
         self.assertIsNone(job.lease_token)
         self.assertIsNone(job.lease_expires_at)
         db.commit.assert_called_once()
+
+    def test_retry_does_not_exceed_three_retries_after_initial_attempt(self) -> None:
+        job = Mock(status="failed", request_id=uuid4(), attempts=4)
+        db = Mock()
+        db.scalar.return_value = job
+
+        retried = retry_failed_extraction_job(db, job.id, job.request_id)
+
+        self.assertIs(retried, job)
+        self.assertEqual(job.status, "failed")
+        self.assertEqual(job.attempts, 4)
+        db.commit.assert_not_called()
 
     def test_retry_does_not_repeat_completed_extraction(self) -> None:
         job = Mock(status="completed", request_id=uuid4())
