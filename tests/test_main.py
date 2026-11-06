@@ -1148,6 +1148,11 @@ class MainWorkflowTests(unittest.TestCase):
                 self.assertIn('id="wizard-finish" type="button" disabled', page)
                 self.assertIn('#wizard-finish { cursor: pointer; }', page)
                 self.assertIn('#wizard-finish:disabled { cursor: not-allowed; }', page)
+                self.assertIn('id="demo-existing-offer-intake"', page)
+                self.assertIn('id="demo-documents-has-offer" type="checkbox"', page)
+                self.assertIn('wizardGatedContent.insertBefore(', page)
+                self.assertIn('demoWizardMode && (demoDocumentsOfferBusy', page)
+                self.assertIn('!demoDocumentsOfferFileSaved && !hasMinimumOfferNotes(demoDocumentsOfferNotes.value)', page)
                 self.assertIn(
                     'window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId))',
                     page,
