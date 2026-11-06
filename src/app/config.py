@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     webauthn_origin: str = "http://localhost:8000"
     auth_rate_limit_window_seconds: int = Field(default=60, gt=0)
     auth_rate_limit_attempts: int = Field(default=10, gt=0)
-    max_upload_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
+    max_upload_bytes: int = Field(default=2 * 1024 * 1024, gt=0)
     max_pdf_pages: int = Field(default=200, gt=0)
     conversion_timeout_seconds: int = Field(default=90, gt=0)
 
