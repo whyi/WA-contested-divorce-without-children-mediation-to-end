@@ -6096,15 +6096,16 @@
           list.replaceChildren();
           for (let ordinal = 1; ordinal <= demoAttemptLimit; ordinal += 1) {
             const past = ordinal < settlementDemoAttemptOrdinal;
+            const completed = Boolean(demoCaseData?.completed) && ordinal === settlementDemoAttemptOrdinal;
             const snapshot = demoCaseData?.attempt_snapshots?.[ordinal];
             const item = document.createElement("li");
             const button = document.createElement("button");
             const circle = document.createElement("span");
             const label = document.createElement("span");
             button.type = "button";
-            button.dataset.state = past ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
+            button.dataset.state = past || completed ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
             button.disabled = ordinal > settlementDemoAttemptOrdinal || (past && !snapshot);
-            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${past && !snapshot ? ", snapshot unavailable" : past ? ", review read-only" : ordinal === settlementDemoAttemptOrdinal ? ", current" : ", future"}`);
+            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${past && !snapshot ? ", snapshot unavailable" : past || completed ? ", review read-only" : ordinal === settlementDemoAttemptOrdinal ? ", current" : ", future"}`);
             if (past && !snapshot) button.title = "No saved snapshot exists for this older attempt.";
             if (ordinal === settlementDemoViewingOrdinal) button.setAttribute("aria-current", "step");
             circle.className = "demo-attempt-circle";
@@ -6121,7 +6122,9 @@
             item.append(button);
             list.append(item);
           }
-          status.textContent = settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal
+          const viewingReadOnly = Boolean(demoCaseData?.completed)
+            || settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal;
+          status.textContent = viewingReadOnly
             ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only snapshot.`
             : `${caseAttemptLabel(settlementDemoAttemptOrdinal)} is current.`;
           if (Array.from({ length: settlementDemoAttemptOrdinal - 1 }, (_, index) => index + 1)
@@ -6129,7 +6132,7 @@
             status.textContent += " Some older snapshots are unavailable.";
           }
           const viewStatus = document.getElementById("demo-attempt-view-status");
-          viewStatus.textContent = settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal
+          viewStatus.textContent = viewingReadOnly
             ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only snapshot.`
             : `Viewing ${caseAttemptLabel(settlementDemoAttemptOrdinal)} — current attempt`;
         }
