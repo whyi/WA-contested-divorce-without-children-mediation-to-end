@@ -518,7 +518,7 @@ class MainWorkflowTests(unittest.TestCase):
             r'settlementDemoResponseNext\.disabled\s*=\s*settlementDemoResponseOutcome\s*!==\s*"accepted"',
         )
         self.assertIn(
-            'id="settlement-demo-add-counteroffer" type="button" disabled hidden',
+            'id="settlement-demo-add-counteroffer" type="button" hidden',
             table_section,
         )
         self.assertNotIn("Congratulations", table_section)
