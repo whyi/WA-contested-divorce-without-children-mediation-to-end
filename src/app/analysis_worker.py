@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.ai import BedrockConverseClient, analyze_document_pages
-from app.analysis import aggregate_analysis_status, is_analysis_available
+from app.analysis import aggregate_analysis_status, analysis_disclosure, is_analysis_available
 from app.config import Settings, get_settings
 from app.database import SessionLocal
 from app.deletion import scope_is_tombstoned
@@ -137,7 +137,8 @@ def process_analysis_job(
             consent.notice_version != settings.ai_analysis_notice_version
             or consent.model_id != settings.bedrock_model_id
             or consent.region != settings.bedrock_region
-            or consent.data_handling_notice != settings.ai_analysis_data_handling_notice
+            or consent.data_handling_notice
+            != analysis_disclosure(settings).data_handling_notice
         ):
             _complete_without_provider(db, job, request, "cancelled", "consent_notice_changed")
             return
@@ -216,6 +217,7 @@ def process_analysis_job(
             page_texts,
             settings,
             client,
+            consent_granted=True,
         )
         if (
             scope_is_tombstoned(db, "account", request.user_id)

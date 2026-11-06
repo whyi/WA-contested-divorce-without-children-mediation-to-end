@@ -5,6 +5,19 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+PROVIDER_HANDLING_LIMITATION = (
+    "Provider-managed retention, human access or review, product improvement, generalized "
+    "model training, subprocessors, and deletion behavior are not independently verified by "
+    "this application. Consult the deployment-specific notice for reviewed provider details."
+)
+
+
+def provider_data_handling_notice(configured_notice: str | None) -> str | None:
+    if not configured_notice or not configured_notice.strip():
+        return None
+    return f"{configured_notice.strip()}\n\n{PROVIDER_HANDLING_LIMITATION}"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -18,6 +31,7 @@ class Settings(BaseSettings):
     bedrock_model_id: str | None = None
     bedrock_region: str | None = None
     ai_analysis_enabled: bool = False
+    ai_provider_review_evidence_verified: bool = False
     ai_analysis_notice_version: str | None = None
     ai_analysis_data_handling_notice: str | None = None
     settlement_planning_data_handling_notice: str | None = None
@@ -220,7 +234,10 @@ class Settings(BaseSettings):
         ):
             errors.append("live_payment_configuration_incomplete")
         if self.ai_analysis_enabled:
-            errors.append("ai_policy_review_not_verified")
+            if not self.counsel_review_evidence_verified:
+                errors.append("ai_qualified_counsel_review_evidence_missing")
+            if not self.ai_provider_review_evidence_verified:
+                errors.append("ai_provider_review_evidence_missing")
 
         # A restore can predate the in-database tombstone. No independent deletion
         # ledger or restore reconciliation is implemented in this repository.
@@ -231,6 +248,12 @@ class Settings(BaseSettings):
         errors.append("payment_provider_test_evidence_unverified")
 
         return tuple(errors)
+
+    def production_ai_readiness_passed(self) -> bool:
+        return (
+            not self.production_readiness_required
+            or not self.production_readiness_errors()
+        )
 
 
 @lru_cache
