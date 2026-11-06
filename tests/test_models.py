@@ -11,6 +11,7 @@ from app.models import (
     CaseProfileFact,
     CaseProfileFactEvent,
     CaseMembership,
+    DeletionTombstone,
     DocumentAnalysisConsent,
     DocumentAnalysisJob,
     DocumentAnalysisProposal,
@@ -53,6 +54,7 @@ class AuthenticationModelTests(unittest.TestCase):
             "case_profile_adoptions",
             "case_profile_facts",
             "case_profile_fact_events",
+            "deletion_tombstones",
         }
         actual = {
             model.__tablename__
@@ -80,6 +82,7 @@ class AuthenticationModelTests(unittest.TestCase):
                 CaseProfileAdoption,
                 CaseProfileFact,
                 CaseProfileFactEvent,
+                DeletionTombstone,
             )
         }
 

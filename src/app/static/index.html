@@ -2060,6 +2060,24 @@
                 <p id="closed-cases-status" role="status" aria-live="polite"></p>
                 <ul class="closed-case-list" id="closed-case-list"></ul>
               </section>
+              <section class="closed-cases" id="account-permanent-deletion" aria-labelledby="account-permanent-deletion-title">
+                <h3 id="account-permanent-deletion-title">Permanently delete account data</h3>
+                <p>This is irreversible and separate from closing a case. It deletes this account and every case you own; your access to other people's cases is removed. Reauthenticate with your password and type the confirmation phrase.</p>
+                <p>Active database records and known S3 object versions are removed. This deployment does not configure or verify provider-managed database backup/snapshot purge or restore reconciliation.</p>
+                <form id="account-permanent-deletion-form" class="account-form">
+                  <label for="account-delete-password">Current password
+                    <input id="account-delete-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required>
+                  </label>
+                  <label for="account-delete-totp">Authenticator or recovery code <span>(if enabled)</span>
+                    <input id="account-delete-totp" name="totp_code" type="text" autocomplete="one-time-code" maxlength="128">
+                  </label>
+                  <label for="account-delete-confirmation">Type DELETE MY ACCOUNT
+                    <input id="account-delete-confirmation" name="confirmation" type="text" autocomplete="off" required>
+                  </label>
+                  <button class="dashboard-retry" id="account-permanent-delete-submit" type="submit">Delete my account permanently</button>
+                </form>
+                <p id="account-permanent-deletion-status" role="status" aria-live="polite"></p>
+              </section>
               <section class="inactive-cases" id="demo-inactive-cases" aria-labelledby="demo-inactive-cases-title" hidden>
                 <h3 id="demo-inactive-cases-title">Inactive cases</h3>
                 <p>Archived case previews are not open yet.</p>
@@ -2146,6 +2164,7 @@
                 <div class="settlement-case-actions" role="group" aria-label="Case actions">
                   <button class="dashboard-retry" id="settlement-case-export" type="button">Export all case data</button>
                   <button class="dashboard-retry" id="settlement-case-close" type="button">Close case</button>
+                  <button class="dashboard-retry" id="settlement-case-delete" type="button">Permanently delete case</button>
                 </div>
                 <p id="settlement-case-action-status" role="status" aria-live="polite"></p>
                 <section class="case-delegation" id="case-delegation" aria-labelledby="case-delegation-title" hidden>
@@ -2894,8 +2913,13 @@
         const closedCases = document.getElementById("closed-cases");
         const closedCaseList = document.getElementById("closed-case-list");
         const closedCasesStatus = document.getElementById("closed-cases-status");
+        const accountDeletionSection = document.getElementById("account-permanent-deletion");
+        const accountDeletionForm = document.getElementById("account-permanent-deletion-form");
+        const accountDeletionStatus = document.getElementById("account-permanent-deletion-status");
+        const accountDeletionSubmit = document.getElementById("account-permanent-delete-submit");
         const settlementCaseExport = document.getElementById("settlement-case-export");
         const settlementCaseClose = document.getElementById("settlement-case-close");
+        const settlementCaseDelete = document.getElementById("settlement-case-delete");
         const settlementCaseActionStatus = document.getElementById("settlement-case-action-status");
         const settlementPlannerStatus = document.getElementById("settlement-planner-status");
         const settlementPlannerContent = document.getElementById("settlement-planner-content");
@@ -4788,6 +4812,34 @@
             settlementCaseActionStatus.textContent = error instanceof Error ? error.message : "The case could not be closed. Please try again.";
           } finally {
             settlementCaseClose.disabled = false;
+          }
+        }
+
+        async function permanentlyDeleteCaseFromWorkspace() {
+          if (!settlementCaseId) return;
+          const caseId = settlementCaseId;
+          const phrase = window.prompt(
+            "Permanent deletion is irreversible and is not case closure. This removes this case's active application data and known S3 object versions. Provider-managed database backup/snapshot purge is not verified by this deployment. Type DELETE CASE to continue.",
+          );
+          if (phrase !== "DELETE CASE") return;
+          settlementCaseDelete.disabled = true;
+          try {
+            await settlementApi(`/cases/${encodeURIComponent(caseId)}/permanent-deletion`, {
+              method: "DELETE",
+              body: JSON.stringify({ confirmation: "DELETE CASE" }),
+            });
+            settlementPlanner.hidden = true;
+            settlementCaseId = null;
+            await loadDashboardStatus();
+            window.alert(
+              "The case was removed from active application data and known S3 object versions. Provider-managed database backups and snapshots are not configured or verified by this deployment.",
+            );
+          } catch (error) {
+            settlementCaseActionStatus.textContent = error instanceof Error
+              ? error.message
+              : "Case deletion is incomplete. Please retry.";
+          } finally {
+            settlementCaseDelete.disabled = false;
           }
         }
 
@@ -9386,6 +9438,18 @@
               ));
               row.append(" ", retry);
             }
+            const deleteMaterial = document.createElement("button");
+            deleteMaterial.className = "dashboard-retry";
+            deleteMaterial.type = "button";
+            deleteMaterial.textContent = "Delete permanently";
+            deleteMaterial.setAttribute(
+              "aria-label",
+              `Permanently delete ${name} and its derived data`,
+            );
+            deleteMaterial.addEventListener("click", () => {
+              void permanentlyDeleteMaterial(analysisDocument.document_id, deleteMaterial);
+            });
+            row.append(" ", deleteMaterial);
             analysisDocumentList.append(row);
           }
           if (analysisDocumentsData.length === 0) {
@@ -9394,6 +9458,43 @@
             analysisDocumentList.append(row);
           }
           updateAnalysisActions();
+        }
+
+        async function permanentlyDeleteMaterial(documentId, button) {
+          if (!analysisCaseId) return;
+          const phrase = window.prompt(
+            "This permanently removes the source material and its extraction and analysis data. This is not case closure. Provider-managed database backup/snapshot purge is not verified by this deployment. Type DELETE MATERIAL to continue.",
+          );
+          if (phrase !== "DELETE MATERIAL") return;
+          const caseId = analysisCaseId;
+          button.disabled = true;
+          try {
+            await settlementApi(
+              `/cases/${encodeURIComponent(caseId)}/materials/${encodeURIComponent(documentId)}/permanent-deletion`,
+              {
+                method: "DELETE",
+                body: JSON.stringify({ confirmation: "DELETE MATERIAL" }),
+              },
+            );
+            analysisDocumentsData = analysisDocumentsData.filter(
+              (item) => item.document_id !== documentId,
+            );
+            if (analysisRequestData?.document_ids) {
+              analysisRequestData.document_ids = analysisRequestData.document_ids.filter(
+                (id) => id !== documentId,
+              );
+            }
+            analysisStatus.textContent =
+              "The source material and its active application-derived data and known S3 object versions were deleted. Provider-managed database backups and snapshots are not verified.";
+            renderAnalysisDocuments();
+            void loadAnalysisStatus();
+          } catch (error) {
+            analysisStatus.textContent = error instanceof Error
+              ? error.message
+              : "Material deletion is incomplete. Please retry.";
+          } finally {
+            button.disabled = false;
+          }
         }
 
         async function retryDocumentExtraction(documentId, jobId) {
@@ -10639,6 +10740,7 @@
                 accountType: account.account_type,
               });
               existingCases.hidden = false;
+              accountDeletionSection.hidden = dashboardDemoMode;
               void loadClosedCases();
             }
           } catch (error) {
@@ -10704,6 +10806,42 @@
         });
         settlementCaseClose.addEventListener("click", () => {
           void closeCaseFromWorkspace();
+        });
+        settlementCaseDelete.addEventListener("click", () => {
+          void permanentlyDeleteCaseFromWorkspace();
+        });
+        accountDeletionForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          if (!accountDeletionForm.reportValidity()) return;
+          const form = new FormData(accountDeletionForm);
+          if (form.get("confirmation") !== "DELETE MY ACCOUNT") {
+            accountDeletionStatus.textContent = 'Type "DELETE MY ACCOUNT" exactly to continue.';
+            return;
+          }
+          if (!window.confirm(
+            "Permanently delete your account and every case you own? This cannot be undone and is separate from case closure.",
+          )) return;
+          accountDeletionSubmit.disabled = true;
+          accountDeletionStatus.textContent = "Removing account data and object versions…";
+          void settlementApi("/api/v1/account/permanent-deletion", {
+            method: "DELETE",
+            body: JSON.stringify({
+              confirmation: "DELETE MY ACCOUNT",
+              password: form.get("password"),
+              totp_code: form.get("totp_code") || null,
+            }),
+          }).then(() => {
+            accountDeletionForm.reset();
+            showSignIn(
+              "Active account data and known S3 object versions were deleted. Provider-managed database backups and snapshots are not configured or verified by this deployment.",
+            );
+          }).catch((error) => {
+            accountDeletionStatus.textContent = error instanceof Error
+              ? error.message
+              : "Account deletion is incomplete. Please retry.";
+          }).finally(() => {
+            accountDeletionSubmit.disabled = false;
+          });
         });
         void loadAttemptCreditPackages();
         settlementConsentGrant.addEventListener("click", grantSettlementConsent);

@@ -175,7 +175,7 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()["case_id"], str(case_id))
         self.assertFalse(any(isinstance(call.args[0], Case) for call in db.add.call_args_list))
-        self.assertEqual(db.scalar.call_count, 1)
+        self.assertEqual(db.scalar.call_count, 5)
         quota.assert_called_once_with(db, case_id)
         object_storage.put.assert_called_once()
 
@@ -224,7 +224,9 @@ class MaterialsImportTests(unittest.TestCase):
             sha256=hashlib.sha256(b"%PDF-1.7\ncontent").hexdigest(),
         )
         db = Mock()
-        db.get.side_effect = lambda model, key: batch if model is MaterialImportBatch else document
+        db.get.side_effect = lambda model, key, **kwargs: (
+            batch if model is MaterialImportBatch else document
+        )
         db.scalar.return_value = item
         settings = Settings(
             auth_enabled=True,
@@ -266,7 +268,7 @@ class MaterialsImportTests(unittest.TestCase):
         db.get.side_effect = lambda model, key, **kwargs: (
             user if model is User else batch if model is MaterialImportBatch else document
         )
-        db.scalar.side_effect = [item, SimpleNamespace(role="owner")]
+        db.scalar.side_effect = [None, item, SimpleNamespace(role="owner"), None]
         settings = Settings(
             auth_enabled=True,
             auth_jwt_secret="materials-test-signing-secret-long-enough",
@@ -321,7 +323,7 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         db.rollback.assert_called_once()
         object_storage.put.assert_called_once()
-        object_storage.delete.assert_called_once()
+        object_storage.delete_all_versions.assert_called_once()
 
     def test_cleanup_failure_logs_no_object_key(self) -> None:
         object_key = "private-case/private-document.pdf"
@@ -329,7 +331,7 @@ class MaterialsImportTests(unittest.TestCase):
             patch("app.materials.storage") as object_storage,
             self.assertLogs("app.materials", level="ERROR") as captured,
         ):
-            object_storage.delete.side_effect = BotoCoreError()
+            object_storage.delete_all_versions.side_effect = BotoCoreError()
             _delete_uploaded_object(object_key)
 
         self.assertNotIn(object_key, "\n".join(captured.output))
