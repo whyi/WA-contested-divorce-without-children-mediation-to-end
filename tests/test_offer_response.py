@@ -1235,7 +1235,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("The Free demo allows one attempt.", html)
         self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", html)
         self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
-        self.assertIn('id="settlement-demo-add-counteroffer" type="button" hidden', html)
+        self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn("counterofferNeedsFile", html)
         self.assertIn('id="settlement-response-confirm-sent"', html)
         self.assertIn("offer-response/confirm-sent", html)
@@ -1304,7 +1304,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
             encoding="utf-8"
         )
-        self.assertIn('id="settlement-demo-add-counteroffer" type="button" hidden', html)
+        self.assertIn('id="settlement-demo-add-counteroffer" type="button" disabled hidden', html)
         self.assertIn("const demoAttemptLimit = demoSource === \"demo1\" ? 1 : 3;", html)
         self.assertIn("settlementDemoAttemptOrdinal >= demoAttemptLimit", html)
         self.assertIn(
@@ -1392,6 +1392,11 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn('["pdf", "docx", "xlsx"].includes(extension)', html)
         self.assertIn("demoCounterofferFileKey(ordinal)", html)
         self.assertIn('settlementDemoCounterofferSaving', html)
+        self.assertIn('function demoCounterofferHasDetails()', html)
+        self.assertIn('document.getElementById("settlement-demo-counteroffer-notes").value.trim()', html)
+        self.assertIn('settlementDemoCounterofferFileOrdinal === settlementDemoViewingOrdinal', html)
+        self.assertIn('settlementDemoResponseOutcome === "counteroffer" && !demoCounterofferHasDetails()', html)
+        self.assertIn('addEventListener("input", updateDemoCounterofferNext)', html)
 
 
 if __name__ == "__main__":
