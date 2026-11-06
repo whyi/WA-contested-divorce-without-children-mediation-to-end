@@ -441,6 +441,20 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("if (demoCaseData) {", start_page)
         self.assertIn("window.location.replace(demoAssetOverviewUrl(demoCaseData.id))", start_page)
 
+    def test_billing_data_loads_only_after_valid_dashboard_status(self) -> None:
+        _, body = asyncio.run(request_app("/"))
+        page = body.decode()
+
+        self.assertEqual(page.count("void loadAttemptCreditPackages();"), 1)
+        dashboard_status = page.split(
+            "async function loadDashboardStatus(", 1
+        )[1].split(
+            "\n        }\n\n        buildAssetTimelineStops();", 1
+        )[0]
+        billing_load = dashboard_status.index("void loadAttemptCreditPackages();")
+        for guard in ("response.status === 401", "if (!response.ok)", "!account"):
+            self.assertLess(dashboard_status.index(guard), billing_load)
+
     def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
         status, body = asyncio.run(request_app("/"))
 
