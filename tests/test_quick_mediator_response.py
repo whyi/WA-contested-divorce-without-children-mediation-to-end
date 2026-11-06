@@ -24,7 +24,8 @@ class QuickMediatorResponseTests(unittest.TestCase):
         self.assertFalse(DELIVERY_BOUNDARY["delivery_verified_by_app"])
         self.assertFalse(DELIVERY_BOUNDARY["response_verified_by_app"])
         self.assertEqual(DELIVERY_BOUNDARY["basis"], "user_reported")
-        self.assertIn("cannot confirm delivery or the response", PAGE)
+        self.assertIn("do not verify mediator receipt or delivery to the other party", PAGE)
+        self.assertIn("This tracker records your report only.", PAGE)
         self.assertIn("This tracker does not send documents or call AI.", PAGE)
 
     def test_no_waiting_reminder_or_time_inference_ui(self) -> None:

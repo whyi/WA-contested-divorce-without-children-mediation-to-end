@@ -73,6 +73,17 @@ async def request_app(
 
 
 class MainWorkflowTests(unittest.TestCase):
+    def test_production_case_data_routes_fail_closed_without_counsel_evidence(self) -> None:
+        settings = Settings(production_readiness_required=True)
+        with patch("app.main.settings", settings):
+            response = TestClient(app).get("/cases")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json(),
+            {"detail": "Production readiness requirements are unmet."},
+        )
+
     def test_party_case_ownership_is_enforced_with_a_user_lock(self) -> None:
         user_id = uuid4()
         user = SimpleNamespace()
@@ -415,7 +426,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="settlement-offer-download"', page)
         self.assertIn("View asset and event tracing detail", page)
         self.assertIn("consent can be revoked at any time", page.lower())
-        self.assertIn("A signed CR 2A agreement may have legal effect", page)
+        self.assertIn("pending qualified counsel review", page.lower())
+        self.assertIn("not legal advice or representation", page.lower())
         self.assertIn('id="settlement-export-confirmation"', page)
         self.assertIn('id="settlement-google-send"', page)
         self.assertIn('id="settlement-dropbox-send"', page)

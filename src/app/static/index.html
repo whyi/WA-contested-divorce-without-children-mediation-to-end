@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f8f6">
-    <meta name="description" content="A guided, AI-assisted way to organize Washington divorce mediation materials and prepare for settlement conversations.">
+    <meta name="description" content="A guided workspace for organizing Washington divorce mediation materials and preparing user-reviewed proposal drafts. Not legal advice; no outcome is guaranteed.">
     <title>Casework — A clearer path through mediation</title>
     <script>
       (() => {
@@ -1915,7 +1915,7 @@
           <div class="expectations-copy">
             <p class="eyebrow">Clear expectations</p>
             <h2 id="expectations-title">Structure, not legal strategy.</h2>
-            <p>Casework is a preparation and organization tool. It does not provide legal advice or representation, and it cannot predict outcomes.</p>
+            <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
           </div>
           <a class="expectations-link" href="#how-it-works">See how it works <span aria-hidden="true">→</span></a>
         </section>
@@ -2127,6 +2127,7 @@
                   <p class="eyebrow">New active case</p>
                   <h2 id="case-create-title">How would you like to start?</h2>
                   <p>Your new case will be saved to your account. Choose the starting point that fits what you have today.</p>
+                  <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
                   <label for="case-title-input">Case label <span>(optional)</span></label>
                   <input id="case-title-input" type="text" maxlength="120" autocomplete="off" placeholder="For example, XYZ vs ABC">
                   <fieldset class="offer-intake" id="case-offer-question" aria-describedby="case-offer-help">
@@ -2159,7 +2160,8 @@
               </dialog>
               <section class="settlement-planner" id="settlement-planner" aria-labelledby="settlement-planner-title" hidden>
                 <h2 id="settlement-planner-title">Evidence-grounded settlement planning</h2>
-                <p>Washington-only decision support. The calculations use your entered assumptions; they are not legal classifications, a predicted result, or legal advice. A Washington attorney or mediator should review the draft.</p>
+                <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
+                <p>Calculations use the assumptions and values you enter. They are arithmetic comparisons, not legal classifications, valuations, findings, or predictions. Missing and unresolved values remain unavailable.</p>
                 <p class="settlement-status" id="settlement-planner-status" role="status" aria-live="polite"></p>
                 <div class="settlement-case-actions" role="group" aria-label="Case actions">
                   <button class="dashboard-retry" id="settlement-case-export" type="button">Export all case data</button>
@@ -2236,7 +2238,7 @@
                   <section id="settlement-offer" hidden aria-labelledby="settlement-offer-title">
                     <h3 id="settlement-offer-title">Prepare a CR 2A proposal draft</h3>
                     <p id="settlement-offer-attempt-status">First Attempt — active and editable</p>
-                    <p>Create editable Word and Excel drafts from the selected calculation and your proposed terms. The Word draft is unsigned and is not filed. A signed CR 2A agreement may have legal effect; review it with qualified Washington counsel before signing or sharing. Nothing is sent unless you explicitly confirm delivery.</p>
+                    <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: These are unsigned drafts based on your entered assumptions and terms, not legal advice or representation; no correctness, fairness, acceptance, or outcome is guaranteed. Review every source, assumption, calculation, and term. Downloading is not delivery or filing. For the mediator workflow, you review the proposal and provide it to your mediator. The product does not automatically deliver it. Any optional external transfer requires your confirmation and does not prove receipt.</p>
                     <p id="settlement-document-credit-status" role="status" aria-live="polite">Preview, editing, and proposal drafts are free. Checking this case's attempt-credit balance…</p>
                     <p id="account-entitlement-status" role="status" aria-live="polite">Checking account purchase status…</p>
                     <div class="settlement-export-actions" id="attempt-credit-packages" aria-label="One-time attempt-credit packages"></div>
@@ -2249,6 +2251,7 @@
                     <p>Milestones and proposed values below belong only to this negotiation attempt. They do not change source facts or the evidence-backed settlement ledger; a later attempt starts with a separate editable copy.</p>
                     <section class="settlement-offer-comparison" id="settlement-offer-comparison" hidden aria-labelledby="settlement-offer-comparison-title">
                      <h4 id="settlement-offer-comparison-title">Offer and asset comparison</h4>
+                     <p>These charts and totals compare saved values arithmetically; they do not classify property, establish rights, predict acceptance, or recommend an outcome. Review the underlying terms and assumptions.</p>
                      <p class="settlement-comparison-context" id="settlement-comparison-context"></p>
                      <p class="settlement-comparison-status" id="settlement-comparison-status" role="status" aria-live="polite"></p>
                      <fieldset class="settlement-comparison-series">
@@ -2303,7 +2306,7 @@
                     <div class="settlement-export-actions" role="group" aria-label="Finalize this attempt">
                       <button class="materials-import" id="settlement-finalize-download" type="button">Finalize attempt and download final proposal</button>
                     </div>
-                    <p id="settlement-finalize-note" role="status" aria-live="polite">Draft downloads above are free and keep this attempt editable. The first successful finalization for this case is free; each later successful finalization uses one attempt credit. Finalizing saves a snapshot of both sides' values and makes this attempt read-only. Finalizing does not mean you sent the files to anyone — attach and confirm what you actually sent separately below.</p>
+                    <p id="settlement-finalize-note" role="status" aria-live="polite">Draft downloads above are free and keep this attempt editable. The first successful finalization for this case is free; each later successful finalization uses one attempt credit. Finalizing saves a snapshot of both sides' values and makes this attempt read-only; it is not legal review, delivery, filing, or proof of receipt. Review the files and terms yourself. For the mediator workflow, download the final files and provide them to your mediator; the product does not automatically deliver them.</p>
                     <section class="settlement-export-destinations" aria-labelledby="settlement-export-destinations-title">
                       <h4 id="settlement-export-destinations-title">Optional: save or send generated drafts</h4>
                       <p>These controls are separate from the response tracker. A delivery action explicitly sends the generated drafts only after confirmation; it does not send your later edits. To track the actual final offer, review and edit the files, send those final versions yourself, and attach the exact files below. The files are never sent to AI.</p>
@@ -2349,7 +2352,7 @@
                     <h3 id="settlement-response-title">After you send your final offer</h3>
                     <p id="settlement-response-attempt-status" role="status" aria-live="polite">First Attempt — active and editable</p>
                     <p>The first proposal download locks its terms and scenario so repeated downloads cannot create alternate offers. After you have actually sent both files, confirm below to freeze the sent attempt. Then record the response. This tracker does not send documents or call AI.</p>
-                    <p><strong>Review and edit both drafts, then send them to the other party yourself.</strong> Attach the exact final DOCX and XLSX files you sent. Only the explicit confirmation below locks this attempt.</p>
+                    <p><strong>Review and edit both drafts, then provide the final files to your mediator.</strong> Attach the exact final DOCX and XLSX files you delivered. Only the explicit confirmation below locks this attempt. This confirmation records your report; it does not verify delivery or receipt.</p>
                     <div class="settlement-response-files">
                       <label for="settlement-response-sent-docx"><span id="settlement-response-sent-docx-label">Final DOCX you sent</span>
                         <input id="settlement-response-sent-docx" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
@@ -2411,7 +2414,7 @@
                         <button class="materials-import" id="settlement-counteroffer-save" type="button" disabled>Save counteroffer values</button>
                         <p id="settlement-counteroffer-status" role="status" aria-live="polite"></p>
                       </section>
-                      <p id="settlement-response-delivery-note">You deliver proposals to the mediator yourself. This app never sends anything to the other party and cannot confirm delivery or the response; what you record here is your own report.</p>
+                      <p id="settlement-response-delivery-note">You are responsible for reviewing your final proposal and delivering it to the mediator. Downloading alone is not delivery. Optional file-transfer controls, if configured, send drafts only to the destination you confirm; they are not automatic and do not verify mediator receipt or delivery to the other party. This tracker records your report only.</p>
                     </div>
                     <section id="settlement-response-rejection-choices" hidden aria-labelledby="settlement-response-rejection-title">
                       <h4 id="settlement-response-rejection-title">What would you like to do after this rejection?</h4>
@@ -2500,6 +2503,7 @@
                 <section class="analysis-controls" id="analysis-controls" aria-labelledby="analysis-title" hidden>
                   <h3 id="analysis-title">Your files are stored, not analyzed</h3>
                   <p id="analysis-explanation">Choose which eligible documents to analyze. No analysis starts until you review the notice and explicitly consent.</p>
+                  <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: AI results are suggestions that may be incomplete or incorrect, are not verified facts or legal advice, and do not guarantee any outcome. Review each source and decide what, if anything, to adopt.</p>
                   <ul class="analysis-documents" id="analysis-documents" aria-label="Documents available for analysis"></ul>
                   <dl class="analysis-notice" id="analysis-notice" hidden>
                     <div><dt>Provider and model</dt><dd id="analysis-provider"></dd></div>
@@ -2521,7 +2525,7 @@
                 </section>
                 <section class="proposal-review" id="proposal-review" aria-labelledby="proposal-review-title" hidden>
                   <h3 id="proposal-review-title">Review AI suggestions</h3>
-                  <p>Each item is an AI suggestion, not legal advice or a verified fact. Review its source and decide what, if anything, belongs in your case profile.</p>
+                  <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Each item is an AI suggestion that may be incomplete or incorrect, not legal advice or a verified fact. Review its cited source and decide what, if anything, belongs in your case profile. No outcome is guaranteed.</p>
                   <p id="review-status" role="status" aria-live="polite"></p>
                   <ul class="review-proposals" id="review-proposals" aria-label="AI suggestions to review"></ul>
                   <section class="source-text-panel" id="source-text-panel" aria-labelledby="source-text-title" tabindex="-1" hidden>
@@ -2673,7 +2677,7 @@
                     <p class="settlement-attempt-banner" id="settlement-demo-attempt-status" role="status" aria-live="polite">First sample attempt</p>
                     <h4 id="settlement-demo-response-preview-title">Preview what happens after you send an offer</h4>
                     <p>This interactive preview uses made-up filenames only. It never opens a file picker, uploads, reads, or saves documents, or accesses Google Drive.</p>
-                    <p><strong>Review and edit your downloaded drafts, send them to the other party yourself, then continue here.</strong></p>
+                    <p><strong>Fictional preview only: review the sample and imagine delivering it to your mediator yourself, then continue here.</strong></p>
                     <button class="materials-import" id="settlement-demo-mark-sent" type="button">I reviewed and sent the final documents</button>
                     <div class="settlement-demo-response-files" id="settlement-demo-response-files" hidden>
                       <p>Example files recorded as sent:</p>
@@ -2739,6 +2743,7 @@
             <p class="eyebrow">Offer accepted</p>
             <h1 id="settlement-completion-title">Congratulations — you’re nearly done.</h1>
             <p class="settlement-completion-thanks">Thanks for choosing Casework to help you organize your next steps.</p>
+            <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. An accepted offer in the workspace does not itself establish legal resolution. Any proposal remains for you to review; downloading it does not deliver it to your mediator, and the product does not automatically deliver proposals.</p>
             <p id="settlement-completion-status" class="settlement-completion-status" role="status" aria-live="polite"></p>
             <div id="settlement-completion-auth-content" hidden>
               <section class="settlement-response-checklist settlement-completion-section" id="settlement-response-checklist" hidden aria-labelledby="settlement-response-checklist-title">
@@ -2762,6 +2767,7 @@
             <div id="settlement-completion-demo-content" class="settlement-completion-section" hidden>
               <h2>Complete and review the remaining documents</h2>
               <p>This fictional preview shows what may come next. In a real case, complete Findings and Conclusions About a Marriage (FL Divorce 231) and attach the document reflecting the accepted offer.</p>
+              <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading does not deliver it to your mediator, and the product does not automatically deliver proposals.</p>
               <p><strong>Demo only:</strong> no real agreement is attached, uploaded, saved, or sent.</p>
               <ul>
                 <li><a href="https://www.courts.wa.gov/forms/?fa=forms.contribute&amp;formID=13" target="_blank" rel="noopener noreferrer">Washington Courts Divorce (Dissolution) forms</a></li>
@@ -2787,6 +2793,7 @@
             <div id="rejection-completion-auth-content" class="settlement-completion-section" hidden>
               <p class="settlement-completion-thanks">Based on the response you recorded, mediation did not produce an accepted agreement in this workflow.</p>
               <p>Only your Casework mediation-preparation workspace is closed. This does not resolve or end your divorce case. It does not file anything with a court. It does not delete data. It does not change your legal status or court record. Your case history and credits are preserved; you can reopen this workspace from Closed cases.</p>
+              <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading does not deliver it to your mediator, and the product does not automatically deliver proposals.</p>
               <h2>Possible next steps</h2>
               <p>Possible next steps depend on your case. You may wish to discuss possible next steps with your mediator, consult qualified Washington counsel, or learn about court processes from official sources. This is not legal advice and does not recommend a particular path.</p>
             </div>
@@ -2794,6 +2801,7 @@
               <p class="settlement-completion-thanks">This fictional preview ends after an offer rejection.</p>
               <p><strong>Demo only:</strong> no real case was closed or changed, and no data was saved.</p>
               <p>In a real case, stopping closes only the Casework mediation-preparation workspace. It does not resolve or end a divorce case. It does not file anything with a court. It does not delete data. It does not change legal status. The case history and credits remain preserved and can be reopened.</p>
+              <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading does not deliver it to your mediator, and the product does not automatically deliver proposals.</p>
               <h2>Possible next steps</h2>
               <p>Possible next steps depend on the case. A person may discuss options with a mediator, consult qualified Washington counsel, or learn about court processes from official sources. This is not legal advice and does not recommend a path.</p>
             </div>
@@ -2806,7 +2814,7 @@
 
       <footer>
         <div class="footer-row"><span class="footer-brand">Casework</span><span>Washington divorce mediation · Product preview</span></div>
-        <p class="disclaimer">Casework is a software project in development, not a law firm or a substitute for an attorney. This preview is not legal advice. Do not enter real case information.</p>
+        <p class="disclaimer product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. No correctness, fairness, acceptance, or outcome is guaranteed. This preview is not an active case; do not enter real case information.</p>
       </footer>
     </div>
     <script>

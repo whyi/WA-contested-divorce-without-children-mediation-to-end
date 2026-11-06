@@ -8,6 +8,8 @@ from pydantic import ValidationError
 
 from app.offer_documents import (
     MediationOfferTerms,
+    PROPOSED_DISCLOSURE_LABEL,
+    PROPOSAL_BOUNDARY_DISCLOSURE,
     render_mediation_offer_docx,
     render_property_schedule_xlsx,
 )
@@ -78,8 +80,13 @@ class MediationOfferDocumentTests(unittest.TestCase):
         all_text = f"{paragraphs}\n{table_text}"
 
         self.assertIn("UNSIGNED PROPOSED DRAFT", paragraphs)
-        self.assertIn("not signed, filed, or legal advice", paragraphs)
-        self.assertIn("may have legal effect", paragraphs)
+        self.assertIn(PROPOSED_DISCLOSURE_LABEL, paragraphs)
+        self.assertIn(PROPOSAL_BOUNDARY_DISCLOSURE, paragraphs)
+        self.assertIn("not legal advice or representation", paragraphs)
+        self.assertIn("not filed", paragraphs)
+        self.assertIn("any particular outcome", paragraphs)
+        self.assertIn("provide it to your mediator", paragraphs)
+        self.assertIn("does not automatically deliver proposals", paragraphs)
         self.assertIn("CR 2A AGREEMENT", all_text)
         self.assertIn("IN THE SUPERIOR COURT OF THE STATE OF WASHINGTON", paragraphs)
         self.assertIn("FOR [COUNTY] COUNTY", paragraphs)
@@ -130,6 +137,7 @@ class MediationOfferDocumentTests(unittest.TestCase):
         workbook = load_workbook(BytesIO(payload), data_only=False)
         sheet = workbook["Property Division"]
         assumptions = workbook["Scenario Assumptions"]
+        review = workbook["Important review"]
 
         self.assertEqual(sheet["A5"].value, "Property or debt")
         self.assertEqual(sheet["B5"].value, "Type")
@@ -146,6 +154,10 @@ class MediationOfferDocumentTests(unittest.TestCase):
         self.assertEqual(sheet["A10"].value, "Net unresolved (assets less debts)")
         self.assertIn("SUMIF", sheet["F10"].value)
         self.assertEqual(sheet.freeze_panes, "A6")
+        self.assertEqual(workbook.active.title, "Important review")
+        self.assertEqual(review["A1"].value, PROPOSED_DISCLOSURE_LABEL)
+        self.assertEqual(review["A2"].value, PROPOSAL_BOUNDARY_DISCLOSURE)
+        self.assertIn("not legal classifications", review["A3"].value)
 
     def test_workbook_treats_user_supplied_asset_names_as_text(self) -> None:
         from app.settlement_planning import AssetLedger, LedgerEvent, calculate_scenario

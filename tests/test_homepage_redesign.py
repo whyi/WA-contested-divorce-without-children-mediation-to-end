@@ -14,10 +14,9 @@ class HomepageRedesignTests(unittest.TestCase):
         self.assertIn('id="hero-title">Clarity for the <em>next chapter.</em></h1>', page)
         self.assertIn('class="homepage-expectations"', page)
         self.assertIn("Structure, not legal strategy.", page)
-        self.assertIn(
-            "It does not provide legal advice or representation, and it cannot predict outcomes.",
-            page,
-        )
+        self.assertIn("pending qualified counsel review", page.lower())
+        self.assertIn("not legal advice or representation", page.lower())
+        self.assertIn("cannot guarantee correctness, fairness, acceptance", page.lower())
 
     def test_redesign_preserves_account_and_demo_entries(self) -> None:
         response = TestClient(app).get("/")

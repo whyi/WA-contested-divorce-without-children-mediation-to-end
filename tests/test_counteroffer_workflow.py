@@ -329,7 +329,7 @@ if __name__ == "__main__":
 
 
 class CounterofferUiTests(unittest.TestCase):
-    def test_page_has_manual_entry_review_gate_and_mediator_only_notice(self) -> None:
+    def test_page_has_manual_entry_review_gate_and_delivery_boundaries(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text()
         for marker in (
             "settlement-counteroffer-rows",
@@ -337,6 +337,8 @@ class CounterofferUiTests(unittest.TestCase):
             "counteroffer-values/suggestions",
             "settlement-response-next-attempt",
             "settlement-response-stop",
-            "never sends anything to the other party",
+            "You are responsible for reviewing your final proposal and delivering it to the mediator",
+            "Optional file-transfer controls",
+            "do not verify mediator receipt or delivery to the other party",
         ):
             self.assertIn(marker, html)
