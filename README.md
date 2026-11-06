@@ -245,6 +245,10 @@ documented in the
 `PRODUCTION_READINESS_REQUIRED=true` keeps `/readyz` and case/document access
 unready while required settings or evidence gates are missing. It does not
 replace operator sign-off or prove a restore, backup purge, or alert delivery.
+The [owner-only beta environment boundaries](docs/owner-beta-environment-boundaries.md)
+define the intended separation for local development, public demos, future
+owner-only UAT, and future production. A hosted UAT deployment is not currently
+defined or verified.
 
 For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,
