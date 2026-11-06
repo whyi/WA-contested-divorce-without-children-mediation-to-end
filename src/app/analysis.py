@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, provider_data_handling_notice
 from app.database import get_db
 from app.failure_logging import log_failure_event
 from app.models import (
@@ -153,6 +153,7 @@ def is_analysis_available(settings: Settings) -> bool:
         and bool((settings.bedrock_region or "").strip())
         and bool((settings.ai_analysis_notice_version or "").strip())
         and bool((settings.ai_analysis_data_handling_notice or "").strip())
+        and settings.production_ai_readiness_passed()
     )
 
 
@@ -166,7 +167,9 @@ def analysis_disclosure(settings: Settings | None = None) -> AnalysisDisclosure:
         notice_version=settings.ai_analysis_notice_version or None,
         purpose=ANALYSIS_PURPOSE,
         data_sent=ANALYSIS_DATA_SENT,
-        data_handling_notice=settings.ai_analysis_data_handling_notice or None,
+        data_handling_notice=provider_data_handling_notice(
+            settings.ai_analysis_data_handling_notice
+        ),
     )
 
 

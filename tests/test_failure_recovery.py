@@ -10,7 +10,7 @@ from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 
 from app.analysis_worker import AnalysisLease, process_analysis_job
-from app.config import Settings
+from app.config import Settings, provider_data_handling_notice
 from app.failure_logging import log_failure_event
 from app.main import app, retry_case_document_extraction, support_configuration
 
@@ -138,7 +138,7 @@ class AnalysisFailureTests(unittest.TestCase):
             notice_version="notice-1",
             model_id="test-model",
             region="us-west-2",
-            data_handling_notice="Retention notice.",
+            data_handling_notice=provider_data_handling_notice("Retention notice."),
         )
         document = SimpleNamespace(id=document_id, case_id=case_id, sha256=digest)
         extraction_job = SimpleNamespace(

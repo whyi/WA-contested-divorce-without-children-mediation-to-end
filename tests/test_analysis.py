@@ -17,6 +17,7 @@ from app.analysis import (
     revoke_analysis_consent,
 )
 from app.config import Settings
+from app.settlement_routes import ConsentCreate
 
 
 class AnalysisConfigurationTests(unittest.TestCase):
@@ -64,7 +65,45 @@ class AnalysisConfigurationTests(unittest.TestCase):
         self.assertEqual(disclosure.model_id, "test-model")
         self.assertEqual(disclosure.region, "us-west-2")
         self.assertIn("documents you select", disclosure.data_sent)
-        self.assertEqual(disclosure.data_handling_notice, "Deployment retention notice.")
+        self.assertIn("Deployment retention notice.", disclosure.data_handling_notice)
+        self.assertIn("human access or review", disclosure.data_handling_notice)
+        self.assertIn("generalized model training", disclosure.data_handling_notice)
+
+    def test_analysis_requires_the_complete_production_readiness_gate(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-analysis-signing-key-that-is-long-enough",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            s3_endpoint_url="https://s3.example.test",
+            s3_kms_key_id="arn:aws:kms:us-west-2:123:key/test",
+            ai_analysis_enabled=True,
+            bedrock_model_id="test-model",
+            bedrock_region="us-west-2",
+            ai_analysis_notice_version="notice-1",
+            ai_analysis_data_handling_notice="Provider-specific facts.",
+            production_readiness_required=True,
+            counsel_review_evidence_verified=True,
+            ai_provider_review_evidence_verified=True,
+        )
+        self.assertFalse(is_analysis_available(settings))
+        self.assertFalse(analysis_disclosure(settings).available)
+
+    def test_analysis_consent_schema_rejects_reuse_as_training_consent(self) -> None:
+        with self.assertRaises(ValidationError):
+            AnalysisRequestCreate(
+                idempotency_key=uuid4(),
+                document_ids=[uuid4()],
+                notice_version="notice-1",
+                consent=True,
+                training_consent=True,
+            )
+        with self.assertRaises(ValidationError):
+            ConsentCreate(
+                confirm=True,
+                notice_version="settlement-planning-v1",
+                training_consent=True,
+            )
 
     def test_analysis_request_persists_consent_and_one_job_per_eligible_file(self) -> None:
         case_id = uuid4()

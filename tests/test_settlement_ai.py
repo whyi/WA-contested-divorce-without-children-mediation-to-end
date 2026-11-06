@@ -14,6 +14,24 @@ from app.settlement_planning import (
 )
 
 
+def enabled_ai_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "auth_enabled": True,
+        "auth_jwt_secret": "secure-test-analysis-signing-key-that-is-long-enough",
+        "case_data_enabled": True,
+        "case_materials_enabled": True,
+        "s3_endpoint_url": "http://localhost:5000",
+        "ai_analysis_enabled": True,
+        "bedrock_model_id": "test-model",
+        "bedrock_region": "us-west-2",
+        "ai_analysis_notice_version": "notice-1",
+        "ai_analysis_data_handling_notice": "Deployment analysis notice.",
+        "settlement_planning_data_handling_notice": "Deployment settlement notice.",
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
 def response_json(value: object) -> dict:
     return {
         "output": {
@@ -89,8 +107,9 @@ class SettlementRankingTests(unittest.TestCase):
             scenarios,
             "Preserve my separate property while reaching a workable agreement.",
             [{"id": fact_id, "field_key": "asset_value", "value": "100"}],
-            Settings(bedrock_model_id="test-model", bedrock_region="us-west-2"),
+            enabled_ai_settings(),
             client,
+            consent_granted=True,
         )
 
         self.assertEqual(result.ranked[0].scenario_id, scenarios[0].scenario.id)
@@ -100,6 +119,20 @@ class SettlementRankingTests(unittest.TestCase):
         provider_input = client.request["messages"][0]["content"][0]["text"]
         self.assertIn("Preserve my separate property", provider_input)
         self.assertNotIn("Do not send this internal source note.", provider_input)
+        self.assertNotIn("training", provider_input.lower())
+        self.assertNotIn("improvement", provider_input.lower())
+
+    def test_provider_is_not_called_without_separate_settlement_consent(self) -> None:
+        client = FakeBedrockClient({"ranked": []})
+        with self.assertRaisesRegex(RuntimeError, "Explicit settlement-planning consent"):
+            rank_settlement_scenarios(
+                scenario_results(),
+                "Preserve assets.",
+                [{"id": uuid4(), "field_key": "asset_value", "value": "100"}],
+                enabled_ai_settings(),
+                client,
+            )
+        self.assertIsNone(client.request)
 
     def test_rejects_references_to_unprovided_scenario_facts_and_law(self) -> None:
         scenarios = scenario_results()
@@ -138,8 +171,9 @@ class SettlementRankingTests(unittest.TestCase):
                         scenarios,
                         "Preserve assets.",
                         [{"id": fact_id, "field_key": "asset_value", "value": "100"}],
-                        Settings(bedrock_model_id="test-model"),
+                        enabled_ai_settings(),
                         FakeBedrockClient(response),
+                        consent_granted=True,
                     )
 
     def test_invalid_ai_json_is_an_explicit_failure(self) -> None:
@@ -149,8 +183,9 @@ class SettlementRankingTests(unittest.TestCase):
                 scenario_results(),
                 "Preserve assets.",
                 [{"id": uuid4(), "field_key": "asset_value", "value": "100"}],
-                Settings(bedrock_model_id="test-model"),
+                enabled_ai_settings(),
                 client,
+                consent_granted=True,
             )
 
     def test_empty_ranking_must_explain_insufficient_evidence(self) -> None:
@@ -166,8 +201,9 @@ class SettlementRankingTests(unittest.TestCase):
             scenarios,
             "Preserve assets.",
             [{"id": fact_id, "field_key": "asset_value", "value": "100"}],
-            Settings(bedrock_model_id="test-model"),
+            enabled_ai_settings(),
             client,
+            consent_granted=True,
         )
         self.assertEqual(result.ranked, [])
         self.assertIn("disputed dates", result.unranked_reason)
@@ -177,8 +213,9 @@ class SettlementRankingTests(unittest.TestCase):
                 scenarios,
                 "Preserve assets.",
                 [{"id": fact_id, "field_key": "asset_value", "value": "100"}],
-                Settings(bedrock_model_id="test-model"),
+                enabled_ai_settings(),
                 FakeBedrockClient({"ranked": []}),
+                consent_granted=True,
             )
 
     def test_provider_is_not_called_without_objective_or_reviewed_facts(self) -> None:
@@ -188,8 +225,9 @@ class SettlementRankingTests(unittest.TestCase):
                 scenario_results(),
                 " ",
                 [{"id": uuid4()}],
-                Settings(bedrock_model_id="test-model"),
+                enabled_ai_settings(),
                 client,
+                consent_granted=True,
             )
         self.assertIsNone(client.request)
 
@@ -200,8 +238,9 @@ class SettlementRankingTests(unittest.TestCase):
                 scenario_results(),
                 "Preserve assets.",
                 [{"field_key": "asset_value", "value": "100"}],
-                Settings(bedrock_model_id="test-model"),
+                enabled_ai_settings(),
                 client,
+                consent_granted=True,
             )
         self.assertIsNone(client.request)
 

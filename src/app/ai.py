@@ -7,6 +7,7 @@ from typing import Literal, Protocol
 import boto3
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
+from app.analysis import is_analysis_available
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -53,8 +54,11 @@ def analyze_case_materials(
     document_texts: Mapping[str, str],
     settings: Settings | None = None,
     client: BedrockConverseClient | None = None,
+    *,
+    consent_granted: bool = False,
 ) -> list[ProposedField]:
     settings = settings or get_settings()
+    _require_analysis_permission(settings, consent_granted)
     model_id = settings.bedrock_model_id
     if not model_id or not model_id.strip():
         raise RuntimeError("BEDROCK_MODEL_ID must be configured before AI extraction is available.")
@@ -82,8 +86,11 @@ def analyze_document_pages(
     page_texts: Mapping[int | None, str],
     settings: Settings | None = None,
     client: BedrockConverseClient | None = None,
+    *,
+    consent_granted: bool = False,
 ) -> VerifiedAnalysis:
     settings = settings or get_settings()
+    _require_analysis_permission(settings, consent_granted)
     if not document_id.strip() or not page_texts or any(
         not isinstance(text, str) or not text.strip() for text in page_texts.values()
     ):
@@ -121,6 +128,13 @@ def analyze_document_pages(
             continue
         proposals.append(field)
     return VerifiedAnalysis(tuple(proposals), rejected_count)
+
+
+def _require_analysis_permission(settings: Settings, consent_granted: bool) -> None:
+    if not consent_granted:
+        raise RuntimeError("Explicit user analysis consent is required before provider processing.")
+    if not is_analysis_available(settings):
+        raise RuntimeError("AI analysis is unavailable under the current configuration.")
 
 
 def _invoke_bedrock(

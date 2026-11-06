@@ -7,6 +7,7 @@ from uuid import UUID
 import boto3
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
+from app.analysis import is_analysis_available
 from app.config import Settings, get_settings
 from app.settlement_planning import SettlementScenarioResult
 
@@ -100,8 +101,16 @@ def rank_settlement_scenarios(
     reviewed_facts: Sequence[dict[str, object]],
     settings: Settings | None = None,
     client: BedrockConverseClient | None = None,
+    *,
+    consent_granted: bool = False,
 ) -> ScenarioRankingResult:
     settings = settings or get_settings()
+    if not consent_granted:
+        raise RuntimeError("Explicit settlement-planning consent is required before provider processing.")
+    if not is_analysis_available(settings) or not (
+        settings.settlement_planning_data_handling_notice or ""
+    ).strip():
+        raise RuntimeError("AI ranking is unavailable under the current configuration.")
     if not settings.bedrock_model_id or not settings.bedrock_model_id.strip():
         raise RuntimeError("BEDROCK_MODEL_ID must be configured before AI ranking is available.")
     if not scenarios:
