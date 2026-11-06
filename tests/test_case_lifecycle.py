@@ -76,6 +76,8 @@ class LifecycleFixture(unittest.TestCase):
         self.case = Case(
             status="settlement",
             metadata_json={"case_title": "Mine", "initial_offer": {"amount": 5}},
+            wizard_intake_json={"schema_version": 1, "filed": "yes", "role": "petitioner"},
+            wizard_intake_revision=2,
             attempt_credit_balance=3,
         )
         self.db.add(self.case)
@@ -279,6 +281,11 @@ class ExportTests(LifecycleFixture):
         names = archive.namelist()
         self.assertIn("README.txt", names)
         self.assertEqual(manifest["case"]["metadata_json"]["initial_offer"], {"amount": 5})
+        self.assertEqual(
+            manifest["case"]["wizard_intake_json"],
+            {"schema_version": 1, "filed": "yes", "role": "petitioner"},
+        )
+        self.assertEqual(manifest["case"]["wizard_intake_revision"], 2)
         self.assertEqual(manifest["tables"]["settlement_negotiation_attempts"][0]["proposal_terms_json"], {"offer": 42})
         self.assertEqual(manifest["tables"]["negotiation_events"][0]["payload"], {"t": "hi"})
         self.assertEqual(manifest["credits"]["balance"], 3)

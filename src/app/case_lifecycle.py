@@ -72,8 +72,9 @@ EXCLUDED_COLUMNS = {
 
 README = """Case data export
 
-manifest.json contains the case profile, notes, negotiation attempts, offers,
-calculations, generated records and this case's attempt-credit balance and ledger.
+manifest.json contains the case profile, wizard intake, notes, negotiation
+attempts, offers, calculations, generated records and this case's attempt-credit
+balance and ledger.
 files/ contains the documents you uploaded and the proposal documents generated
 for this case.
 
@@ -292,6 +293,8 @@ def export_case(
                     "closed_at": case.closed_at,
                     "closed_reason": case.closed_reason,
                     "metadata_json": case.metadata_json,
+                    "wizard_intake_json": case.wizard_intake_json,
+                    "wizard_intake_revision": case.wizard_intake_revision,
                     "asset_liability_inventory": case.asset_liability_inventory,
                     "relationship_milestones": case.relationship_milestones,
                     "property_assets": case.property_assets,
