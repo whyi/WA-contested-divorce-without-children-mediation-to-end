@@ -19,6 +19,7 @@ from app.attempt_credits import consume_finalization_credit
 from app.auth_routes import require_current_user
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.failure_logging import log_failure_event
 from app.models import (
     Case,
     CaseMembership,
@@ -367,7 +368,7 @@ def _asset_ledgers(db: Session, case_id: UUID) -> list[AssetLedger]:
             for asset_id, asset_rows in grouped.items()
         ]
     except ValueError as error:
-        logger.exception("Persisted settlement ledger failed validation.")
+        log_failure_event(logger, "settlement_ledger_invalid", error, severity="SEV1")
         raise HTTPException(status_code=500, detail="The saved settlement ledger is invalid.") from error
 
 
@@ -447,7 +448,7 @@ def _commit_proposal_state(db: Session) -> None:
         db.commit()
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Proposal version, document credit and finalization could not be saved.")
+        log_failure_event(logger, "proposal_generation_failed", error)
         raise HTTPException(
             status_code=503,
             detail="The proposal version could not be confirmed as saved. Reload before retrying.",
@@ -774,7 +775,7 @@ def get_settlement_planning_state(
             ledger_event_count=event_count,
         )
     except SQLAlchemyError as error:
-        logger.exception("Settlement-planning state lookup failed.")
+        log_failure_event(logger, "settlement_state_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement-planning state is unavailable.") from error
 
 
@@ -791,7 +792,7 @@ def get_settlement_planning_disclosure(
         response.headers["Cache-Control"] = "no-store"
         return disclosure
     except SQLAlchemyError as error:
-        logger.exception("Settlement-planning disclosure lookup failed.")
+        log_failure_event(logger, "settlement_disclosure_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement-planning disclosure is unavailable.") from error
 
 
@@ -834,7 +835,7 @@ def grant_settlement_planning_consent(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement-planning consent could not be recorded.")
+        log_failure_event(logger, "settlement_consent_write_failed", error)
         raise HTTPException(status_code=503, detail="Consent could not be saved.") from error
 
 
@@ -869,7 +870,7 @@ def revoke_settlement_planning_consent(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement-planning consent revocation could not be recorded.")
+        log_failure_event(logger, "settlement_consent_revocation_failed", error)
         raise HTTPException(status_code=503, detail="Consent revocation could not be saved.") from error
 
 
@@ -902,7 +903,7 @@ def get_settlement_ledger_events(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Settlement ledger lookup failed.")
+        log_failure_event(logger, "settlement_ledger_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement ledger is unavailable.") from error
 
 
@@ -985,7 +986,7 @@ def add_settlement_ledger_event(
         ) from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement ledger event could not be saved.")
+        log_failure_event(logger, "settlement_ledger_write_failed", error)
         raise HTTPException(status_code=503, detail="Settlement ledger event could not be saved.") from error
 
 
@@ -1043,8 +1044,8 @@ def create_settlement_scenarios(
                     payload.objective,
                     _reviewed_fact_payload(facts),
                 )
-            except (ValueError, RuntimeError, BotoCoreError):
-                logger.exception("AI settlement-scenario ranking failed; calculated candidates are retained.")
+            except (ValueError, RuntimeError, BotoCoreError) as error:
+                log_failure_event(logger, "settlement_ai_ranking_failed", error)
                 ranking_error = (
                     "AI ranking failed. The calculated candidates are still available for review; "
                     "check provider configuration and try again."
@@ -1088,7 +1089,7 @@ def create_settlement_scenarios(
         raise HTTPException(status_code=422, detail=str(error)) from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement scenarios could not be loaded.")
+        log_failure_event(logger, "settlement_scenario_lookup_failed", error)
         raise HTTPException(status_code=503, detail="Settlement scenarios are unavailable.") from error
 
 
@@ -1162,7 +1163,7 @@ def list_settlement_offer_responses(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Settlement offer-response history could not be loaded.")
+        log_failure_event(logger, "settlement_response_history_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Settlement offer-response history is unavailable.",
@@ -1262,7 +1263,7 @@ def select_settlement_scenario(
         raise HTTPException(status_code=422, detail=str(error)) from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement scenario selection could not be saved.")
+        log_failure_event(logger, "settlement_scenario_selection_failed", error)
         raise HTTPException(status_code=503, detail="Scenario selection could not be saved.") from error
 
 
@@ -1300,11 +1301,19 @@ def create_settlement_offer(
         raise
     except ValueError as error:
         db.rollback()
+        log_failure_event(logger, "proposal_generation_invalid", error)
         raise HTTPException(status_code=422, detail="Saved scenario data is invalid.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Selected settlement scenario could not be loaded.")
+        log_failure_event(logger, "proposal_generation_failed", error)
         raise HTTPException(status_code=503, detail="Offer draft could not be generated.") from error
+    except Exception as error:
+        db.rollback()
+        log_failure_event(logger, "proposal_generation_failed", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Offer draft could not be generated. Your saved attempt is unchanged.",
+        ) from error
 
 
 @router.post("/offers/{selection_id}/xlsx")
@@ -1341,11 +1350,19 @@ def create_settlement_property_schedule(
         raise
     except ValueError as error:
         db.rollback()
+        log_failure_event(logger, "proposal_generation_invalid", error)
         raise HTTPException(status_code=422, detail="Saved scenario data is invalid.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Selected settlement scenario could not be loaded for workbook export.")
+        log_failure_event(logger, "proposal_generation_failed", error)
         raise HTTPException(status_code=503, detail="Property schedule could not be generated.") from error
+    except Exception as error:
+        db.rollback()
+        log_failure_event(logger, "proposal_generation_failed", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Property schedule could not be generated. Your saved attempt is unchanged.",
+        ) from error
 
 
 def _destination_digest(destination: str) -> str:
@@ -1474,7 +1491,7 @@ def deliver_settlement_offer(
         raise HTTPException(status_code=409, detail="A delivery request with this key already exists.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Settlement proposal delivery could not be completed.")
+        log_failure_event(logger, "proposal_delivery_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Delivery status could not be confirmed. Verify the destination before retrying.",

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ai_analysis_notice_version: str | None = None
     ai_analysis_data_handling_notice: str | None = None
     settlement_planning_data_handling_notice: str | None = None
+    support_contact_url: str | None = None
     auth_enabled: bool = False
     case_data_enabled: bool = False
     case_materials_enabled: bool = False
@@ -77,6 +78,23 @@ class Settings(BaseSettings):
             is_compose_mock = self.demo_mode_enabled and parsed.hostname.lower() == "s3mock"
             if parsed.scheme != "https" and not (is_local or is_compose_mock):
                 raise ValueError("S3_ENDPOINT_URL must use HTTPS outside loopback development.")
+        return self
+
+    @model_validator(mode="after")
+    def validate_support_contact_url(self) -> "Settings":
+        if self.support_contact_url:
+            parsed = urlparse(self.support_contact_url)
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(
+                    "SUPPORT_CONTACT_URL must be an HTTPS URL without credentials, query, or fragment."
+                )
         return self
 
     @model_validator(mode="after")

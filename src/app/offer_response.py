@@ -18,6 +18,7 @@ from app.attempt_finalization import is_finalized
 from app.auth_routes import require_current_user
 from app.config import get_settings
 from app.database import get_db
+from app.failure_logging import log_failure_event
 from app.models import (
     Case,
     Document,
@@ -907,7 +908,7 @@ def update_offer_attempt_state(
                 raise HTTPException(status_code=422, detail=str(error)) from error
             except SQLAlchemyError as error:
                 db.rollback()
-                logger.exception("Attempt-specific scenario could not be calculated.")
+                log_failure_event(logger, "proposal_scenario_recalculation_failed", error)
                 raise HTTPException(status_code=503, detail="Attempt scenario could not be recalculated.") from error
             new_run = SettlementScenarioRun(
                 id=uuid4(),
@@ -1004,7 +1005,7 @@ def start_new_proposal_version(
             db.refresh(attempt)
         except SQLAlchemyError as error:
             db.rollback()
-            logger.exception("A new proposal version could not be opened.")
+            log_failure_event(logger, "proposal_version_persistence_failed", error)
             raise HTTPException(status_code=503, detail="A new proposal version could not be opened.") from error
     response.headers["Cache-Control"] = "no-store"
     return {

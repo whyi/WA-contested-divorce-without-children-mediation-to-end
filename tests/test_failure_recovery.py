@@ -1,3 +1,5 @@
+import io
+import logging
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -9,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from app.analysis_worker import AnalysisLease, process_analysis_job
 from app.config import Settings
-from app.main import app, retry_case_document_extraction
+from app.failure_logging import log_failure_event
+from app.main import app, retry_case_document_extraction, support_configuration
 
 
 class FailureRecoveryUiTests(unittest.TestCase):
@@ -28,6 +31,79 @@ class FailureRecoveryUiTests(unittest.TestCase):
         self.assertIn("reselect the same file to retry", self.page.lower())
         self.assertIn("!existingOfferRecoveryPending", self.page)
         self.assertIn("file bytes are not retained by the browser", self.page)
+
+    def test_failure_messages_cover_processing_and_final_download_recovery(self) -> None:
+        for recovery_text in (
+            "Upload outcome is uncertain",
+            "Extraction failed. The original source is still stored",
+            "OCR is needed",
+            "analysis failed; successful files remain available",
+            "The final proposal result may be uncertain",
+            "Re-download the same saved proposal snapshot",
+            "Copy safe diagnostic details",
+            "Contact support",
+        ):
+            with self.subTest(recovery_text=recovery_text):
+                self.assertIn(recovery_text, self.page)
+        helper = self.page.split("function addFailureSupportActions", 1)[1].split(
+            "async function settlementApi", 1
+        )[0]
+        self.assertIn("Observed at (UTC)", helper)
+        self.assertIn("HTTP status", helper)
+        self.assertIn("Error code", helper)
+        self.assertNotIn("filename", helper.lower())
+        self.assertNotIn("case_id", helper.lower())
+        self.assertIn("analysisRequestBusy", self.page)
+        self.assertIn("extractionRetryingJobIds", self.page)
+        self.assertIn("imported files were kept", self.page)
+        self.assertIn("Successful sibling results remain available", self.page)
+
+    def test_support_configuration_is_optional_and_not_cached(self) -> None:
+        settings = SimpleNamespace(support_contact_url=None)
+        response = Response()
+
+        with patch("app.main.settings", settings):
+            result = support_configuration(response)
+
+        self.assertEqual(result, {"contact_url": None})
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_support_configuration_route_exposes_only_the_operator_url(self) -> None:
+        settings = SimpleNamespace(
+            support_contact_url="https://support.example.test/contact",
+            auth_enabled=False,
+            case_data_enabled=False,
+        )
+        with patch("app.main.settings", settings):
+            response = TestClient(app).get("/api/v1/support/config")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"contact_url": "https://support.example.test/contact"},
+        )
+        self.assertEqual(response.headers["cache-control"], "no-store")
+
+    def test_failure_log_omits_exception_text_and_sensitive_values(self) -> None:
+        stream = io.StringIO()
+        logger = logging.getLogger(f"failure-test-{uuid4()}")
+        logger.setLevel(logging.ERROR)
+        handler = logging.StreamHandler(stream)
+        logger.addHandler(handler)
+        try:
+            log_failure_event(
+                logger,
+                "proposal_generation_failed",
+                RuntimeError("sensitive.pdf token=private-text"),
+            )
+        finally:
+            logger.removeHandler(handler)
+
+        message = stream.getvalue()
+        self.assertIn("event_code=proposal_generation_failed", message)
+        self.assertIn("error_type=RuntimeError", message)
+        self.assertNotIn("sensitive.pdf", message)
+        self.assertNotIn("private-text", message)
 
 
 class AnalysisFailureTests(unittest.TestCase):

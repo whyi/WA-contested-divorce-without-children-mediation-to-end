@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.deletion import require_scope_active
+from app.failure_logging import log_failure_event
 from app.models import Case, CaseMembership, User
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def require_active_case_slot(db: Session, user_id: UUID) -> User:
             )
         ) or 0
     except SQLAlchemyError as error:
-        logger.exception("Active case limit lookup failed.")
+        log_failure_event(logger, "upload_case_slot_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Active case availability could not be checked. Please try again.",

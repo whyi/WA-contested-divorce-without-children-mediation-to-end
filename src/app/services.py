@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.attachment_limits import enforce_attachment_quota
 from app.deletion import require_scope_active
+from app.failure_logging import log_failure_event
 from app.models import Case, Document, DocumentExtraction
 from app.storage import ObjectStorage
 
@@ -87,5 +88,5 @@ def _delete_uploaded(storage: ObjectStorage, keys: list[str]) -> None:
     for key in keys:
         try:
             storage.delete_all_versions(key)
-        except Exception:
-            logger.exception("Could not clean up object after a failed document transaction: %s", key)
+        except Exception as error:
+            log_failure_event(logger, "upload_object_cleanup_failed", error, severity="SEV1")

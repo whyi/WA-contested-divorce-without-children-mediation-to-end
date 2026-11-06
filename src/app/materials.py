@@ -23,6 +23,7 @@ from app.deletion import (
     require_scope_active,
     scope_tombstone,
 )
+from app.failure_logging import log_failure_event
 from app.models import (
     Case,
     CaseMembership,
@@ -119,7 +120,7 @@ def _existing_item(
         return batch, None
     document = db.get(Document, item.document_id)
     if document is None:
-        logger.error("Material import item references a missing document: %s", item.id)
+        log_failure_event(logger, "upload_document_missing", severity="SEV1")
         raise HTTPException(status_code=503, detail="Import status is unavailable. Please try again.")
     return batch, document
 
@@ -130,10 +131,7 @@ def _delete_uploaded_object(key: str | None) -> None:
     try:
         storage.delete_all_versions(key)
     except Exception as error:
-        logger.error(
-            "Could not clean up an object after a failed material import (%s).",
-            type(error).__name__,
-        )
+        log_failure_event(logger, "upload_object_cleanup_failed", error, severity="SEV1")
 
 
 @router.get("/config", response_model=MaterialsConfig)
@@ -155,7 +153,7 @@ def materials_config(
                 )
             )
         except SQLAlchemyError as error:
-            logger.exception("Case authorization lookup failed for attachment usage.")
+            log_failure_event(logger, "upload_authorization_lookup_failed", error)
             raise HTTPException(
                 status_code=503,
                 detail="Case access could not be verified. Please try again.",
@@ -217,7 +215,7 @@ async def import_material_file(
     try:
         existing = _existing_item(db, batch_id, item_id)
     except SQLAlchemyError as error:
-        logger.exception("Material import status lookup failed.")
+        log_failure_event(logger, "upload_reconciliation_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Import status is unavailable. Please try again.",
@@ -238,7 +236,7 @@ async def import_material_file(
                 )
             )
         except SQLAlchemyError as error:
-            logger.exception("Material import membership lookup failed.")
+            log_failure_event(logger, "upload_authorization_lookup_failed", error)
             raise HTTPException(
                 status_code=503,
                 detail="Import authorization is unavailable. Please try again.",
@@ -280,7 +278,7 @@ async def import_material_file(
                 )
                 case = db.get(Case, case_id, with_for_update=True)
             except SQLAlchemyError as error:
-                logger.exception("Case authorization lookup failed during material import.")
+                log_failure_event(logger, "upload_authorization_lookup_failed", error)
                 raise HTTPException(
                     status_code=503,
                     detail="Case access could not be verified. Please try again.",
@@ -328,10 +326,14 @@ async def import_material_file(
         storage.put(object_key, content, media_type)
         require_scope_active(db, "case", case_id)
         db.commit()
+    except HTTPException:
+        db.rollback()
+        _delete_uploaded_object(object_key if upload_attempted else None)
+        raise
     except (BotoCoreError, RuntimeError) as error:
         db.rollback()
         _delete_uploaded_object(object_key if upload_attempted else None)
-        logger.error("Material object storage failed (%s).", type(error).__name__)
+        log_failure_event(logger, "upload_storage_failed", error)
         raise HTTPException(
             status_code=503,
             detail="This file could not be stored. Please retry it.",
@@ -362,10 +364,18 @@ async def import_material_file(
                     status_code=409,
                     detail="Another file in this import is being saved. Please retry.",
                 ) from error
-        logger.error("Material import database transaction failed (%s).", type(error).__name__)
+        log_failure_event(logger, "upload_persistence_failed", error)
         raise HTTPException(
             status_code=503,
             detail="This file could not be recorded. Please retry it.",
+        ) from error
+    except Exception as error:
+        db.rollback()
+        _delete_uploaded_object(object_key if upload_attempted else None)
+        log_failure_event(logger, "upload_unexpected_failure", error)
+        raise HTTPException(
+            status_code=503,
+            detail="This file could not be confirmed as stored. Check its import status before retrying.",
         ) from error
 
     return _document_response(item_id, case_id, document)
@@ -406,7 +416,7 @@ def import_batch_status(
             .order_by(MaterialImportItem.id)
         ).all()
     except SQLAlchemyError as error:
-        logger.exception("Material import status retrieval failed.")
+        log_failure_event(logger, "upload_reconciliation_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Import status is unavailable. Please try again.",
