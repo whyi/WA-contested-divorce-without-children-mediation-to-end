@@ -1,6 +1,6 @@
 # Spec 46: Document Processing Limits and OCR Support Policy
 
-- **Status:** Implemented for page limit, capability reporting, and user messaging; processing retry ceiling and concurrency limits remain an unset operational gate (see Out of scope)
+- **Status:** Implemented; product policy approved 2026-11-05
 - **Related issue:** [#135 — Approve document page limits and OCR support policy](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/135)
 - **Related issues:** #31 (asynchronous extraction), #32 (consent-based analysis), #125/#141 (failure recovery), #132 (upload limits)
 - **Related specifications:** [Spec 07](../07-asynchronous-document-extraction/spec-07-asynchronous-document-extraction.md), [Spec 08](../08-consent-based-document-analysis/spec-08-consent-based-document-analysis.md), [Spec 42](../42-case-attachment-upload-limits/spec-42-case-attachment-upload-limits.md), [Spec 45](../45-failure-messaging-support-escalation/spec-45-failure-messaging-support-escalation.md)
@@ -17,7 +17,9 @@
 - **FR-46-06 — Other states:** Unreadable or zero-page PDFs use `unreadable_file`; other extensions use `unsupported_file`. Supported formats remain PDF and DOCX only.
 - **FR-46-07 — Visible before analysis:** `GET /api/v1/materials/config` additionally reports `max_pdf_pages` (the server value) and `ocr_supported` (always `false`). The materials page states the page limit, that scanned PDFs are not read, and that encrypted PDFs must be unprotected first. The analysis-selection list gives a specific message for `page_limit_exceeded`, `ocr_required`, and `password_protected`.
 - **FR-46-08 — Stage separation:** Storage, extraction, and consented AI analysis remain distinct (Specs 07/08). Hitting a limit never withdraws storage and never starts or implies analysis; a `needs_attention` file cannot be selected for analysis.
-- **FR-46-09 — Existing runtime bounds:** Only these bounds are currently enforced and are the supported claim: extraction job lease of 10 minutes, and DOCX-to-PDF rendering timeout `CONVERSION_TIMEOUT_SECONDS` (default 90).
+- **FR-46-09 — Retry ceiling:** A document-extraction job permits at most 3 retries after its initial attempt (4 attempts total). Automatic recovery from an expired worker lease and user-requested retries share the same per-job budget. A retry beyond this limit is rejected with an actionable message; retrying does not reset the attempt count.
+- **FR-46-10 — Per-case concurrency:** No more than 3 extraction jobs for one case may hold active processing leases at once. The limit is enforced while claiming jobs with a lock on the case row, so concurrent workers cannot exceed it. Expired leases do not consume a slot and remain eligible for recovery within the retry budget.
+- **FR-46-11 — Other runtime bounds:** An extraction job lease is 10 minutes, and DOCX-to-PDF rendering timeout is `CONVERSION_TIMEOUT_SECONDS` (default 90).
 
 ## Acceptance criteria
 
@@ -25,7 +27,13 @@
 - A job with an over-limit PDF finishes `needs_attention`/`page_limit_exceeded` and saves no extraction.
 - Scanned (`ocr_required`) and encrypted (`password_protected`) PDFs end `needs_attention`.
 - `materials/config` returns `max_pdf_pages` and `ocr_supported: false`; the page text and analysis messages match.
+- A job can be claimed for one initial attempt and at most 3 retries across lease recovery and explicit retry requests; the next retry is rejected without resetting the count.
+- A case with 3 active extraction leases cannot claim another job; concurrent workers serialize claims on that case.
 
-## Out of scope / not decided
+## Product approval
 
-Product approval of the numbers, a per-job retry ceiling, per-case/job concurrency limits, an extraction processing-time SLA, OCR, embedded-image text, and plan-based variants are not implemented or promised. They remain an operational decision gate that must be resolved separately before any such claim is made.
+The product owner approved the current implementation policy on 2026-11-05: a uniform 200-page PDF limit, no OCR, encrypted PDFs require an unprotected copy, no DOCX page limit, up to 3 retries after the initial extraction attempt, and at most 3 concurrent extraction jobs per case. The retry budget is scoped to one extraction job/request; a new request creates a new job with a new budget.
+
+## Out of scope
+
+An extraction processing-time SLA, OCR, embedded-image text, and plan-based variants are not implemented or promised.

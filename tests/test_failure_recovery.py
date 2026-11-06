@@ -226,6 +226,7 @@ class ExtractionRetryRouteTests(unittest.TestCase):
         self.assertIn('extraction_status === "failed"', FailureRecoveryUiTests.page)
         self.assertIn('retry.textContent = "Retry extraction"', FailureRecoveryUiTests.page)
         self.assertIn("extraction-jobs/${jobId}/retry", FailureRecoveryUiTests.page)
+        self.assertIn("retryLimitReached", FailureRecoveryUiTests.page)
 
     def test_retry_requeues_only_matching_failed_source_and_reports_no_store(self) -> None:
         case_id, document_id, job_id, request_id = (uuid4() for _ in range(4))
@@ -276,6 +277,34 @@ class ExtractionRetryRouteTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 409)
         db.commit.assert_not_called()
+
+    def test_retry_limit_returns_actionable_conflict_and_keeps_source(self) -> None:
+        case_id, document_id, job_id = (uuid4() for _ in range(3))
+        digest = "c" * 64
+        document = SimpleNamespace(id=document_id, case_id=case_id, sha256=digest)
+        job = SimpleNamespace(
+            id=job_id,
+            document_id=document_id,
+            source_sha256=digest,
+            request_id=uuid4(),
+            status="failed",
+            attempts=4,
+        )
+        db = Mock()
+        db.get.side_effect = [document, job]
+        response = Response()
+
+        with patch("app.main.retry_failed_extraction_job", return_value=job):
+            with self.assertRaises(HTTPException) as raised:
+                retry_case_document_extraction(
+                    case_id, document_id, job_id, response, db
+                )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertIn("3 retries", raised.exception.detail)
+        self.assertIn("source remains stored", raised.exception.detail)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        db.delete.assert_not_called()
 
 
 if __name__ == "__main__":
