@@ -11,20 +11,435 @@ from starlette.requests import Request
 
 from app.database import get_db
 from app.auth_routes import (
+    EmailRequest,
     LoginRequest,
+    PasskeyAuthenticationOptionsRequest,
+    PasswordResetRequest,
+    SignupRequest,
     _current_user,
+    _owner_beta_allows,
     _decrypt_totp,
     _encrypt_totp,
     _set_auth_cookies,
     _verify_totp,
+    forgot_password,
+    google_oidc_callback,
     login,
+    passkey_authentication_options,
+    refresh,
+    reset_password,
     router,
+    signup,
+    verify_login_totp,
+    verify_email,
+    verify_passkey_authentication,
 )
 from app.config import Settings
 from app.main import app
 
 
 class AuthenticationRouteTests(unittest.TestCase):
+    @staticmethod
+    def owner_beta_settings() -> Settings:
+        return Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            owner_beta_enabled=True,
+            owner_beta_email="owner@example.com",
+        )
+
+    @staticmethod
+    def request(method: str, path: str, headers: list[tuple[bytes, bytes]] | None = None) -> Request:
+        return Request(
+            {
+                "type": "http",
+                "method": method,
+                "path": path,
+                "raw_path": path.encode(),
+                "query_string": b"",
+                "headers": headers or [],
+                "server": ("testserver", 443),
+                "client": ("testclient", 12345),
+                "scheme": "https",
+            }
+        )
+
+    def test_owner_beta_email_matching_is_normalized_and_opt_in(self) -> None:
+        settings = self.owner_beta_settings()
+
+        self.assertTrue(_owner_beta_allows(" OWNER@EXAMPLE.COM ", settings))
+        self.assertFalse(_owner_beta_allows("other@example.com", settings))
+        self.assertTrue(_owner_beta_allows("other@example.com", Settings()))
+
+    def test_owner_beta_signup_suppresses_non_allowlisted_account_creation(self) -> None:
+        db = Mock()
+        request = self.request("POST", "/api/auth/signup")
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._require_email_config"),
+            patch("app.auth_routes._rate_limit"),
+            patch("app.auth_routes.validate_password"),
+            patch("app.auth_routes._send_security_email") as send_email,
+        ):
+            result = signup(
+                SignupRequest(email="other@example.com", password="valid-password"),
+                request,
+                db,
+            )
+
+        self.assertEqual(
+            result,
+            {"message": "If signup can be completed, verification instructions will be sent."},
+        )
+        db.scalar.assert_not_called()
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
+        send_email.assert_not_called()
+
+    def test_owner_beta_password_login_rejects_non_allowlisted_user(self) -> None:
+        db = Mock()
+        db.scalar.return_value = Mock(
+            email="other@example.com",
+            status="active",
+            password_hash="stored-hash",
+            mfa_enabled=False,
+        )
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._rate_limit"),
+            patch("app.auth_routes.verify_password", return_value=True),
+            patch("app.auth_routes._finish_login") as finish_login,
+            self.assertRaises(HTTPException) as raised,
+        ):
+            login(
+                LoginRequest(email="other@example.com", password="valid-password"),
+                self.request("POST", "/api/auth/login"),
+                Response(),
+                db,
+            )
+
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual(raised.exception.detail, "Invalid email or password.")
+        finish_login.assert_not_called()
+
+    def test_owner_beta_password_login_accepts_allowlisted_user(self) -> None:
+        db = Mock()
+        db.scalar.return_value = Mock(
+            email="owner@example.com",
+            status="active",
+            password_hash="stored-hash",
+            mfa_enabled=False,
+        )
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._rate_limit"),
+            patch("app.auth_routes.verify_password", return_value=True),
+            patch("app.auth_routes._finish_login", return_value={"session_id": "owner-session"}),
+        ):
+            result = login(
+                LoginRequest(email=" OWNER@EXAMPLE.COM ", password="valid-password"),
+                self.request("POST", "/api/auth/login"),
+                Response(),
+                db,
+            )
+
+        self.assertEqual(result, {"session_id": "owner-session"})
+
+    def test_owner_beta_rejects_existing_access_sessions(self) -> None:
+        now = datetime.now(UTC)
+        user = SimpleNamespace(id=uuid4(), email="other@example.com", status="active")
+        session = SimpleNamespace(
+            user_id=user.id,
+            revoked_at=None,
+            idle_expires_at=now + timedelta(days=1),
+            absolute_expires_at=now + timedelta(days=2),
+        )
+        db = Mock()
+        db.get.side_effect = lambda model, _key: session if model.__name__ == "AuthSession" else user
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes.verify_token", return_value={"sub": str(user.id), "sid": str(uuid4())}),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            _current_user(
+                self.request(
+                    "GET",
+                    "/api/v1/dashboard/status",
+                    [(b"authorization", b"Bearer access-token")],
+                ),
+                db,
+            )
+
+        self.assertEqual(raised.exception.status_code, 401)
+        db.commit.assert_not_called()
+
+    def test_owner_beta_refresh_rejects_existing_non_allowlisted_session(self) -> None:
+        now = datetime.now(UTC)
+        session = SimpleNamespace(
+            revoked_at=None,
+            idle_expires_at=now + timedelta(days=1),
+            absolute_expires_at=now + timedelta(days=2),
+            last_used_at=None,
+        )
+        stored = SimpleNamespace(
+            used_at=None,
+            revoked_at=None,
+            expires_at=now + timedelta(days=1),
+        )
+        user = SimpleNamespace(id=uuid4(), email="other@example.com", status="active")
+        db = Mock()
+        db.scalar.return_value = stored
+        db.get.side_effect = lambda model, _key: session if model.__name__ == "AuthSession" else user
+        request = self.request(
+            "POST",
+            "/api/auth/refresh",
+            [
+                (b"cookie", b"auth_csrf=csrf-token; auth_refresh=refresh-token"),
+                (b"x-csrf-token", b"csrf-token"),
+            ],
+        )
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes.verify_token", return_value={"sub": str(user.id), "sid": str(uuid4()), "jti": "jti"}),
+            patch("app.auth_routes._rate_limit"),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                refresh(request, Response(), db)
+
+        self.assertEqual(raised.exception.status_code, 401)
+        db.commit.assert_not_called()
+
+    def test_owner_beta_password_recovery_does_not_email_non_allowlisted_accounts(self) -> None:
+        db = Mock()
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._require_email_config"),
+            patch("app.auth_routes._rate_limit"),
+            patch("app.auth_routes._send_security_email") as send_email,
+        ):
+            result = forgot_password(
+                EmailRequest(email="other@example.com"),
+                self.request("POST", "/api/auth/password/forgot"),
+                db,
+            )
+
+        self.assertEqual(
+            result,
+            {"message": "If the account exists, password reset instructions will be sent."},
+        )
+        db.scalar.assert_not_called()
+        send_email.assert_not_called()
+
+    def test_owner_beta_password_reset_does_not_change_non_allowlisted_account(self) -> None:
+        user = SimpleNamespace(
+            id=uuid4(),
+            email="other@example.com",
+            status="active",
+            password_hash="existing-hash",
+        )
+        token = SimpleNamespace(
+            user_id=user.id,
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            used_at=None,
+            revoked_at=None,
+        )
+        db = Mock()
+        db.scalar.return_value = token
+        db.get.return_value = user
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._rate_limit"),
+            patch("app.auth_routes.validate_password"),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                reset_password(
+                    PasswordResetRequest(token="valid-password-reset-token", password="new-valid-password"),
+                    self.request("POST", "/api/auth/password/reset"),
+                    db,
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(user.password_hash, "existing-hash")
+        db.commit.assert_not_called()
+
+    def test_owner_beta_google_signin_rejects_non_allowlisted_provider_email(self) -> None:
+        settings = self.owner_beta_settings().model_copy(
+            update={
+                "google_client_id": "google-client-id",
+                "google_client_secret": "google-client-secret",
+            }
+        )
+        challenge = SimpleNamespace(
+            purpose="google_oidc",
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            context={"verifier": "test-verifier", "nonce": "test-nonce"},
+            consumed_at=None,
+            user_id=None,
+        )
+        db = Mock()
+        db.scalar.return_value = challenge
+        token_response = Mock()
+        token_response.json.return_value = {"id_token": "google-id-token"}
+        certs_response = Mock()
+        certs_response.json.return_value = {"keys": []}
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=settings),
+            patch("app.auth_routes._rate_limit"),
+            patch("app.auth_routes.httpx.post", return_value=token_response),
+            patch("app.auth_routes.httpx.get", return_value=certs_response),
+            patch(
+                "app.auth_routes.jwt.PyJWKSet.from_dict",
+                return_value=Mock(keys=[Mock(key_id="google-key", key=object())]),
+            ),
+            patch("app.auth_routes.jwt.get_unverified_header", return_value={"kid": "google-key"}),
+            patch(
+                "app.auth_routes.jwt.decode",
+                return_value={
+                    "nonce": "test-nonce",
+                    "email_verified": True,
+                    "email": "other@example.com",
+                    "sub": "google-subject",
+                },
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                google_oidc_callback(
+                    self.request("GET", "/api/auth/oidc/google/callback"),
+                    Response(),
+                    db,
+                    state="test-state",
+                    code="authorization-code",
+                )
+
+        self.assertEqual(raised.exception.status_code, 401)
+        db.scalar.assert_called_once()
+        db.add.assert_not_called()
+
+    def test_owner_beta_mfa_challenge_rejects_non_allowlisted_user(self) -> None:
+        user_id = uuid4()
+        record = SimpleNamespace(
+            user_id=user_id,
+            purpose="mfa_login",
+            consumed_at=None,
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            challenge="challenge-hash",
+        )
+        user = SimpleNamespace(id=user_id, email="other@example.com", status="active")
+        db = Mock()
+        db.get.side_effect = lambda model, _key: record if model.__name__ == "AuthChallenge" else user
+        db.scalar.return_value = Mock()
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._rate_limit"),
+            patch("app.auth_routes.hash_token", return_value="challenge-hash"),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                verify_login_totp(
+                    Mock(challenge_id=uuid4(), challenge="challenge", code="123456"),
+                    self.request("POST", "/api/auth/mfa/totp/verify"),
+                    Response(),
+                    db,
+                )
+
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual(raised.exception.detail, "Authentication challenge is invalid.")
+
+    def test_owner_beta_email_verification_rejects_non_allowlisted_account(self) -> None:
+        token = SimpleNamespace(
+            user_id=uuid4(),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+            used_at=None,
+            revoked_at=None,
+        )
+        user = SimpleNamespace(
+            id=token.user_id,
+            email="other@example.com",
+            status="pending_verification",
+        )
+        db = Mock()
+        db.scalar.return_value = token
+        db.get.return_value = user
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            verify_email(Mock(token="valid-verification-token-value"), db)
+
+        self.assertEqual(raised.exception.status_code, 400)
+        db.commit.assert_not_called()
+
+    def test_owner_beta_passkey_options_do_not_disclose_non_allowlisted_credentials(self) -> None:
+        db = Mock()
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._rate_limit"),
+        ):
+            result = passkey_authentication_options(
+                PasskeyAuthenticationOptionsRequest(email="other@example.com"),
+                self.request("POST", "/api/auth/passkeys/authenticate/options"),
+                db,
+            )
+
+        self.assertIn("options", result)
+        db.scalar.assert_not_called()
+        challenge = db.add.call_args.args[0]
+        self.assertIsNone(challenge.user_id)
+
+    def test_owner_beta_passkey_authentication_rejects_non_allowlisted_user(self) -> None:
+        challenge = SimpleNamespace(
+            purpose="passkey_authentication",
+            consumed_at=None,
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            user_id=uuid4(),
+            challenge="Y2hhbGxlbmdl",
+        )
+        credential = SimpleNamespace(
+            credential_id="Y3JlZGVudGlhbA",
+            public_key=b"public-key",
+            sign_count=0,
+            user_id=challenge.user_id,
+            last_used_at=None,
+        )
+        user = SimpleNamespace(
+            id=challenge.user_id,
+            email="other@example.com",
+            status="active",
+        )
+        db = Mock()
+        db.get.side_effect = lambda model, _key: challenge if model.__name__ == "AuthChallenge" else user
+        db.scalar.return_value = credential
+
+        with (
+            patch("app.auth_routes.get_settings", return_value=self.owner_beta_settings()),
+            patch("app.auth_routes._rate_limit"),
+            patch(
+                "app.auth_routes.verify_authentication_response",
+                return_value=SimpleNamespace(new_sign_count=1),
+            ),
+            patch("app.auth_routes._create_session") as create_session,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                verify_passkey_authentication(
+                    Mock(challenge_id=uuid4(), credential={"rawId": "Y3JlZGVudGlhbA"}),
+                    self.request("POST", "/api/auth/passkeys/authenticate/verify"),
+                    Response(),
+                    db,
+                )
+
+        self.assertEqual(raised.exception.status_code, 401)
+        create_session.assert_not_called()
+
     def test_authentication_contract_routes_are_registered(self) -> None:
         paths = {route.path for route in router.routes}
         required = {
@@ -59,7 +474,7 @@ class AuthenticationRouteTests(unittest.TestCase):
     def test_pending_account_deletion_blocks_stale_sessions_except_retry_endpoint(self) -> None:
         user_id, session_id = uuid4(), uuid4()
         now = datetime.now(UTC)
-        user = SimpleNamespace(id=user_id, status="disabled")
+        user = SimpleNamespace(id=user_id, email="owner@example.com", status="disabled")
         session = SimpleNamespace(
             user_id=user_id,
             revoked_at=None,

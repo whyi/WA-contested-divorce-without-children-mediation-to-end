@@ -48,6 +48,40 @@ class SettingsTests(unittest.TestCase):
         self.assertIsNone(settings.google_client_id)
         self.assertIsNone(settings.smtp_host)
 
+    def test_owner_beta_requires_authentication_a_designated_email_and_non_demo_mode(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires AUTH_ENABLED"):
+            Settings(owner_beta_enabled=True, owner_beta_email="owner@example.com")
+
+        with self.assertRaisesRegex(ValueError, "cannot be used with DEMO_MODE_ENABLED"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                owner_beta_enabled=True,
+                owner_beta_email="owner@example.com",
+                demo_mode_enabled=True,
+            )
+
+        with self.assertRaisesRegex(ValueError, "OWNER_BETA_EMAIL is required"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                owner_beta_enabled=True,
+            )
+
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                owner_beta_enabled=True,
+                owner_beta_email="not-an-email",
+            )
+
+    def test_owner_beta_is_opt_in(self) -> None:
+        settings = Settings()
+
+        self.assertFalse(settings.owner_beta_enabled)
+        self.assertIsNone(settings.owner_beta_email)
+
     def test_authentication_configuration_rejects_mismatched_provider_secrets(self) -> None:
         with self.assertRaisesRegex(ValueError, "configured together"):
             Settings(google_client_id="client-id")
