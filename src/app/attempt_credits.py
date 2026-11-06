@@ -4,9 +4,19 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Case, DocumentCreditLedgerEntry, SettlementNegotiationAttempt, User
+from app.models import (
+    AttemptCreditPackagePurchase,
+    Case,
+    DocumentCreditLedgerEntry,
+    SettlementNegotiationAttempt,
+    User,
+)
 
 PACKAGE_SIZES = (5, 10)
+PACKAGE_CATALOG = {
+    5: {"price_amount": 500, "currency": "usd"},
+    10: {"price_amount": 800, "currency": "usd"},
+}
 
 
 def package_size_for_price(settings: object, price_id: str | None) -> int | None:
@@ -43,7 +53,25 @@ def consume_finalization_credit(
             ),
         )
 
+    purchase = db.scalar(
+        select(AttemptCreditPackagePurchase)
+        .where(
+            AttemptCreditPackagePurchase.case_id == case.id,
+            AttemptCreditPackagePurchase.status.in_(("paid", "refund_pending")),
+            AttemptCreditPackagePurchase.credits_used < AttemptCreditPackagePurchase.package_size,
+        )
+        .order_by(AttemptCreditPackagePurchase.created_at)
+        .with_for_update()
+        .limit(1)
+    )
+    if isinstance(purchase, AttemptCreditPackagePurchase) and purchase.status == "refund_pending":
+        raise HTTPException(
+            status_code=409,
+            detail="A package refund is being processed; finalization is temporarily unavailable.",
+        )
     case.attempt_credit_balance -= 1
+    if isinstance(purchase, AttemptCreditPackagePurchase):
+        purchase.credits_used += 1
     entry = DocumentCreditLedgerEntry(
         id=uuid4(),
         user_id=actor.id,
@@ -52,6 +80,7 @@ def consume_finalization_credit(
         idempotency_key=f"finalization:{attempt.id}",
         source_type="attempt_finalization",
         source_reference=str(attempt.id),
+        package_purchase_id=purchase.id if isinstance(purchase, AttemptCreditPackagePurchase) else None,
         delta=-1,
         balance_after=case.attempt_credit_balance,
     )
@@ -71,6 +100,7 @@ def grant_package_credits(
     *,
     package_size: int,
     checkout_session_id: str,
+    purchase: AttemptCreditPackagePurchase | None = None,
 ) -> bool:
     if package_size not in PACKAGE_SIZES:
         return False
@@ -94,6 +124,7 @@ def grant_package_credits(
             idempotency_key=idempotency_key,
             source_type="package_purchase",
             source_reference=checkout_session_id,
+            package_purchase_id=purchase.id if purchase else None,
             delta=package_size,
             balance_after=case.attempt_credit_balance,
         )
