@@ -300,7 +300,10 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn('window.history.back()', page)
             self.assertIn("/offer-response/complete", page)
             self.assertNotIn("casework-demo-case-completed", page)
-            self.assertIn('settlementCompletionFinalize.textContent = "Return to active demo case"', page)
+            self.assertIn("settlementCompletionFinalize.hidden = true;", page)
+            self.assertIn("settlementCompletionBackToCases.hidden = true;", page)
+            self.assertIn("settlementCompletionBackToMediation.href = demoAssetOverviewUrl();", page)
+            self.assertNotIn("settlementCompletionBack.href", page)
 
         page = body.decode()
         self.assertIn(
