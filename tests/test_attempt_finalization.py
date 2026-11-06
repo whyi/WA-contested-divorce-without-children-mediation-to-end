@@ -297,6 +297,17 @@ class FinalDownloadTests(unittest.TestCase):
         self.db.add.assert_not_called()
         self.db.commit.assert_not_called()
 
+    def test_unexpected_render_failure_is_safe_and_leaves_attempt_editable(self) -> None:
+        self.render_docx.side_effect = RuntimeError("private source content")
+        with self.assertRaises(HTTPException) as raised:
+            self._final()
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIn("saved attempt is unchanged", raised.exception.detail)
+        self.assertIsNone(self.attempt.finalized_at)
+        self.assertEqual(self.case.attempt_credit_balance, 1)
+        self.db.add.assert_not_called()
+        self.db.commit.assert_not_called()
+
     def test_persistence_failure_rolls_back_debit_and_finalization(self) -> None:
         self.db.commit.side_effect = SQLAlchemyError("write failed")
         with self.assertRaises(HTTPException) as raised:

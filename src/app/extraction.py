@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.deletion import scope_is_tombstoned
 from app.documents import DocumentExtractionError, extract_document
+from app.failure_logging import log_failure_event
 from app.models import Document, DocumentExtraction, DocumentExtractionJob
 from app.storage import ObjectStorage
 from app.validation import UploadValidationError
@@ -184,7 +185,7 @@ def process_extraction_job(
         except BotoCoreError as error:
             _finish_job(job, "failed", "storage_unavailable")
             db.commit()
-            logger.error("Extraction storage read failed (%s).", type(error).__name__)
+            log_failure_event(logger, "extraction_job_failed", error)
             return
         if hashlib.sha256(content).hexdigest() != job.source_sha256:
             _finish_job(job, "needs_attention", "source_integrity_error")
@@ -196,14 +197,17 @@ def process_extraction_job(
         except DocumentExtractionError as error:
             _finish_job(job, "needs_attention", error.error_code)
             db.commit()
+            log_failure_event(logger, "extraction_needs_attention")
             return
         except UploadValidationError as error:
             _finish_job(job, "needs_attention", error.error_code)
             db.commit()
+            log_failure_event(logger, "extraction_needs_attention")
             return
         except ValueError:
             _finish_job(job, "needs_attention", "unreadable_file")
             db.commit()
+            log_failure_event(logger, "extraction_needs_attention")
             return
 
         extraction = db.scalar(
@@ -241,9 +245,11 @@ def process_extraction_job(
             extracted.error_code,
         )
         db.commit()
+        if extracted.needs_attention:
+            log_failure_event(logger, "extraction_needs_attention")
     except SQLAlchemyError as error:
         db.rollback()
-        logger.error("Extraction job persistence failed (%s).", type(error).__name__)
+        log_failure_event(logger, "extraction_persistence_failed", error)
 
 
 def _finish_job(job: DocumentExtractionJob, status: str, error_code: str | None) -> None:

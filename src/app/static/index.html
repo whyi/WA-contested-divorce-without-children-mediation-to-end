@@ -3139,6 +3139,9 @@
         let materialsBatchVerified = true;
         let materialsImporting = false;
         let materialsSelecting = false;
+        let failureSupportContactUrl = null;
+        const extractionRetryingJobIds = new Set();
+        const analysisRetryingDocumentIds = new Set();
         let analysisCaseId = null;
         let settlementCaseId = null;
         let settlementState = null;
@@ -4981,6 +4984,69 @@
           else settlementPlannerStatus.removeAttribute("data-kind");
         }
 
+        async function loadFailureSupportConfig() {
+          try {
+            const response = await fetch("/api/v1/support/config", {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (!response.ok) return;
+            const result = await response.json();
+            const contactUrl = new URL(result.contact_url || "");
+            if (contactUrl.protocol === "https:") {
+              failureSupportContactUrl = contactUrl.href;
+            }
+          } catch {
+            failureSupportContactUrl = null;
+          }
+        }
+
+        function addFailureSupportActions(container, operation, { httpStatus = null, errorCode = null } = {}) {
+          container.querySelector(".failure-support-actions")?.remove();
+          const actions = document.createElement("span");
+          actions.className = "failure-support-actions";
+          const reference = crypto.randomUUID?.()
+            || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+          const safeStatus = Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599
+            ? String(httpStatus)
+            : "unavailable";
+          const safeCode = typeof errorCode === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(errorCode)
+            ? errorCode
+            : "unspecified";
+          const diagnostics = [
+            `Operation: ${operation}`,
+            `Observed at (UTC): ${new Date().toISOString()}`,
+            `HTTP status: ${safeStatus}`,
+            `Error code: ${safeCode}`,
+            `Client reference: ${reference}`,
+          ].join("\n");
+          const copy = document.createElement("button");
+          copy.className = "dashboard-retry";
+          copy.type = "button";
+          copy.textContent = "Copy safe diagnostic details";
+          copy.addEventListener("click", async () => {
+            try {
+              await navigator.clipboard.writeText(diagnostics);
+              copy.textContent = "Diagnostic details copied";
+            } catch {
+              window.prompt("Copy these non-sensitive diagnostic details:", diagnostics);
+              copy.textContent = "Select the diagnostic details if not copied";
+            }
+          });
+          actions.append(" ", copy);
+          if (failureSupportContactUrl) {
+            const contact = document.createElement("a");
+            contact.href = failureSupportContactUrl;
+            contact.target = "_blank";
+            contact.rel = "noopener noreferrer";
+            contact.textContent = "Contact support";
+            actions.append(" ", contact);
+          }
+          container.append(actions);
+        }
+
+        void loadFailureSupportConfig();
+
         async function settlementApi(url, options = {}) {
           const response = await fetch(url, {
             credentials: "same-origin",
@@ -4994,14 +5060,18 @@
           });
           if (response.status === 401) {
             showSignIn("Your session has expired. Please sign in again.");
-            throw new Error("Please sign in again to continue.");
+            const error = new Error("Please sign in again to continue.");
+            error.httpStatus = response.status;
+            throw error;
           }
           const result = response.status === 204 ? null : await response.json();
           if (!response.ok) {
             const detail = result?.detail;
-            throw new Error(
+            const error = new Error(
               typeof detail === "string" ? detail : detail?.message || "Settlement planning request failed.",
             );
+            error.httpStatus = response.status;
+            throw error;
           }
           return result;
         }
@@ -6612,6 +6682,10 @@
             settlementResponseStatus.textContent = error instanceof Error
               ? error.message
               : "Saved response status could not be loaded.";
+            addFailureSupportActions(settlementResponseStatus, "proposal status recovery", {
+              httpStatus: error?.httpStatus,
+              errorCode: "proposal_status_unavailable",
+            });
             updateSettlementResponseControls();
             return false;
           }
@@ -7301,6 +7375,7 @@
             )) return false;
           }
           button.disabled = true;
+          let httpStatus = null;
           try {
             const response = await fetch(
               `/cases/${settlementCaseId}/settlement-planning/offers/${settlementSelectedScenario.selection_id}/${format}`,
@@ -7321,6 +7396,7 @@
                 }),
               },
             );
+            httpStatus = response.status;
             if (response.status === 401) {
               showSignIn("Your session has expired. Please sign in again.");
               throw new Error("Please sign in again to continue.");
@@ -7352,7 +7428,29 @@
             void loadSettlementOfferResponseHistory(settlementCaseId);
             return true;
           } catch (error) {
-            setSettlementStatus(error instanceof Error ? error.message : "Proposal document could not be created.", "error");
+            let recoveryMessage = finalize
+              ? "The final proposal result may be uncertain. Your saved work is preserved; checking attempt status before retrying."
+              : "The proposal could not be generated. Your saved attempt remains editable; check status before retrying.";
+            if (finalize) {
+              const statusChecked = await loadSettlementOfferResponse();
+              if (statusChecked && settlementOfferResponseState?.finalized) {
+                recoveryMessage =
+                  "The attempt is finalized. Re-download the same saved proposal snapshot; this is free and does not create another charge.";
+              } else if (statusChecked) {
+                recoveryMessage =
+                  "The attempt is still editable and its saved work is intact. Retry finalization when ready; no credit was used.";
+              } else {
+                recoveryMessage =
+                  "The finalization result could not be verified. Reload the attempt status before retrying; saved work is preserved.";
+              }
+            }
+            setSettlementStatus(recoveryMessage, "error");
+            addFailureSupportActions(settlementPlannerStatus, finalize
+              ? "proposal finalization/download"
+              : "proposal generation/download", {
+              httpStatus,
+              errorCode: finalize ? "proposal_finalization_failed" : "proposal_generation_failed",
+            });
             return false;
           } finally {
             updateSettlementDocumentCreditControls();
@@ -9372,6 +9470,7 @@
         function setAnalysisStatus(message, kind = "") {
           analysisStatus.textContent = message;
           analysisStatus.dataset.kind = kind;
+          if (kind !== "error") analysisStatus.querySelector(".failure-support-actions")?.remove();
         }
 
         function selectedAnalysisDocumentIds() {
@@ -9417,9 +9516,16 @@
             );
             const name = imported?.file.name ||
               `Imported ${analysisDocument.extension.toUpperCase()} file ${analysisDocument.document_id.slice(0, 8)}`;
+            const extractionErrorCode = analysisDocument.extraction_error_code;
             const details = analysisDocument.eligible
               ? `Ready for analysis · ${analysisDocument.page_count ?? "unknown"} source pages`
-              : `Not ready · ${analysisDocument.extraction_status.replaceAll("_", " ")}`;
+              : analysisDocument.extraction_status === "failed"
+                ? "Extraction failed. The original source is still stored; retry is safe."
+                : analysisDocument.extraction_status === "needs_attention" && extractionErrorCode === "ocr_required"
+                  ? "OCR is needed; this source is stored but its text is not available. Use an OCR-capable version if appropriate."
+                  : analysisDocument.extraction_status === "needs_attention"
+                    ? "This stored source needs attention before it can be analyzed."
+                    : `Not ready · ${analysisDocument.extraction_status.replaceAll("_", " ")}`;
             const text = document.createElement("span");
             text.textContent = `${name} — ${details}`;
             label.append(checkbox, text);
@@ -9432,11 +9538,18 @@
               retry.className = "dashboard-retry";
               retry.type = "button";
               retry.textContent = "Retry extraction";
+              retry.disabled = extractionRetryingJobIds.has(analysisDocument.extraction_job_id);
               retry.addEventListener("click", () => retryDocumentExtraction(
                 analysisDocument.document_id,
                 analysisDocument.extraction_job_id,
+                retry,
               ));
               row.append(" ", retry);
+            }
+            if (["failed", "needs_attention"].includes(analysisDocument.extraction_status)) {
+              addFailureSupportActions(row, "extraction/OCR", {
+                errorCode: extractionErrorCode,
+              });
             }
             const deleteMaterial = document.createElement("button");
             deleteMaterial.className = "dashboard-retry";
@@ -9497,9 +9610,12 @@
           }
         }
 
-        async function retryDocumentExtraction(documentId, jobId) {
-          if (!analysisCaseId) return;
+        async function retryDocumentExtraction(documentId, jobId, button) {
+          if (!analysisCaseId || extractionRetryingJobIds.has(jobId)) return;
           const caseId = analysisCaseId;
+          extractionRetryingJobIds.add(jobId);
+          button.disabled = true;
+          let httpStatus = null;
           try {
             const response = await fetch(
               `/cases/${caseId}/documents/${documentId}/extraction-jobs/${jobId}/retry`,
@@ -9509,6 +9625,7 @@
                 headers: csrfHeaders(),
               },
             );
+            httpStatus = response.status;
             if (response.status === 401) {
               showSignIn("Your session has expired. Please sign in again.");
               return;
@@ -9521,7 +9638,7 @@
             if (source) source.extraction_status = result.status;
             renderAnalysisDocuments();
             setAnalysisStatus(
-              "Extraction retry queued. The original source remains stored and unchanged.",
+              "Extraction retry queued. The original source remains stored and unchanged. Wait for its status before trying again.",
               "success",
             );
             const refreshOptions = loadAnalysisOptions;
@@ -9530,9 +9647,16 @@
             }, 2000);
           } catch (error) {
             setAnalysisStatus(
-              error instanceof Error ? error.message : "Document extraction could not be retried.",
+              "Extraction could not be retried. The original source remains stored; check its status before trying again.",
               "error",
             );
+            addFailureSupportActions(analysisStatus, "extraction/OCR retry", {
+              httpStatus,
+              errorCode: "extraction_retry_failed",
+            });
+          } finally {
+            extractionRetryingJobIds.delete(jobId);
+            button.disabled = false;
           }
         }
 
@@ -9556,20 +9680,27 @@
             );
             const file = materialsItems.find((item) => item.documentId === job.document_id);
             details.textContent =
-              `${file?.file.name || `Document ${job.document_id.slice(0, 8)}`} — ${job.status.replaceAll("_", " ")}` +
-              (job.error_code ? ` (${job.error_code.replaceAll("_", " ")})` : "");
+              `${file?.file.name || `Document ${job.document_id.slice(0, 8)}`} — ` +
+              (job.status === "failed"
+                ? "analysis failed; successful files remain available"
+                : job.status.replaceAll("_", " "));
             row.append(details);
             if (
               job.status === "failed" &&
               analysisRequestData?.consent_id &&
-              analysisRequestData.status !== "cancelled"
+              analysisRequestData.status !== "cancelled" &&
+              !analysisRequestData.consent_revoked
             ) {
               const retry = document.createElement("button");
               retry.className = "dashboard-retry";
               retry.type = "button";
               retry.textContent = "Retry this file";
-              retry.addEventListener("click", () => retryAnalysisDocument(job.document_id));
+              retry.disabled = analysisRetryingDocumentIds.has(job.document_id);
+              retry.addEventListener("click", () => retryAnalysisDocument(job.document_id, retry));
               row.append(" ", retry);
+            }
+            if (job.status === "failed") {
+              addFailureSupportActions(row, "AI analysis", { errorCode: job.error_code });
             }
             if (!source && !file) row.dataset.documentId = job.document_id;
             analysisStatusList.append(row);
@@ -9587,6 +9718,7 @@
           const contextVersion = analysisContextVersion;
           const caseId = analysisCaseId;
           const requestId = analysisRequestData.request_id;
+          let httpStatus = null;
           window.clearTimeout(analysisPollTimer);
           try {
             const response = await fetch(
@@ -9596,6 +9728,7 @@
                 headers: { Accept: "application/json" },
               },
             );
+            httpStatus = response.status;
             if (response.status === 401) {
               if (contextVersion !== analysisContextVersion) return;
               showSignIn("Your session has expired. Please sign in again.");
@@ -9627,6 +9760,10 @@
               error instanceof Error ? error.message : "Analysis status is unavailable.",
               "error",
             );
+            addFailureSupportActions(analysisStatus, "AI analysis status", {
+              httpStatus,
+              errorCode: "analysis_status_unavailable",
+            });
           }
         }
 
@@ -9655,11 +9792,13 @@
           analysisControls.hidden = false;
           analysisExplanation.textContent = "Checking analysis availability. Stored files are not sent or analyzed while you wait.";
           setAnalysisStatus("Checking analysis availability…");
+          let httpStatus = null;
           try {
             const response = await fetch(`/cases/${caseId}/analysis/options`, {
               credentials: "same-origin",
               headers: { Accept: "application/json" },
             });
+            httpStatus = response.status;
             if (response.status === 401) {
               if (contextVersion !== analysisContextVersion) return;
               showSignIn("Your session has expired. Please sign in again.");
@@ -9720,6 +9859,10 @@
               error instanceof Error ? error.message : "Analysis options are unavailable.",
               "error",
             );
+            addFailureSupportActions(analysisStatus, "extraction/OCR status", {
+              httpStatus,
+              errorCode: "extraction_status_unavailable",
+            });
           }
         }
 
@@ -9752,6 +9895,7 @@
           setAnalysisStatus("Submitting your consented request…");
           renderAnalysisDocuments();
           updateAnalysisActions();
+          let httpStatus = null;
           try {
             const response = await fetch(`/cases/${analysisCaseId}/analysis-requests`, {
               method: "POST",
@@ -9764,6 +9908,7 @@
                 consent: true,
               }),
             });
+            httpStatus = response.status;
             if (response.status === 401) {
               showSignIn("Your session has expired. Please sign in again.");
               return;
@@ -9787,9 +9932,13 @@
             analysisRequestData.status = "starting";
             persistAnalysisRequest();
             setAnalysisStatus(
-              error instanceof Error ? error.message : "Analysis could not be started. Please retry.",
+              "The analysis request may have reached the server. Its retry identity is saved; check status or retry this same request instead of creating another.",
               "error",
             );
+            addFailureSupportActions(analysisStatus, "AI analysis request", {
+              httpStatus,
+              errorCode: "analysis_request_uncertain",
+            });
           } finally {
             analysisRequestBusy = false;
             renderAnalysisDocuments();
@@ -9797,8 +9946,15 @@
           }
         }
 
-        async function retryAnalysisDocument(documentId) {
-          if (!analysisCaseId || !analysisRequestData?.request_id) return;
+        async function retryAnalysisDocument(documentId, button) {
+          if (
+            !analysisCaseId ||
+            !analysisRequestData?.request_id ||
+            analysisRetryingDocumentIds.has(documentId)
+          ) return;
+          analysisRetryingDocumentIds.add(documentId);
+          button.disabled = true;
+          let httpStatus = null;
           try {
             const response = await fetch(
               `/cases/${analysisCaseId}/analysis-requests/${analysisRequestData.request_id}/documents/${documentId}/retry`,
@@ -9808,15 +9964,23 @@
                 headers: csrfHeaders(),
               },
             );
+            httpStatus = response.status;
             const result = await response.json();
             if (!response.ok) throw new Error(result.detail || "This file could not be retried.");
             setAnalysisStatus("Retry queued for this file.");
             await refreshAnalysisStatus();
           } catch (error) {
             setAnalysisStatus(
-              error instanceof Error ? error.message : "This file could not be retried.",
+              "This file's analysis could not be retried. Successful sibling results remain available; check status before trying again.",
               "error",
             );
+            addFailureSupportActions(analysisStatus, "AI analysis retry", {
+              httpStatus,
+              errorCode: "analysis_retry_failed",
+            });
+          } finally {
+            analysisRetryingDocumentIds.delete(documentId);
+            button.disabled = false;
           }
         }
 
@@ -10552,11 +10716,13 @@
           materialsBatchId = savedBatchId;
           materialsBatchVerified = false;
           materialsStatusRetry.hidden = true;
+          let httpStatus = null;
           try {
             const response = await fetch(`/api/v1/materials/imports/${savedBatchId}`, {
               credentials: "same-origin",
               headers: { Accept: "application/json" },
             });
+            httpStatus = response.status;
             if (response.status === 401) {
               showSignIn("Your session has expired. Please sign in again.");
               return;
@@ -10600,6 +10766,10 @@
               : "Import status is unavailable. Retry the status check before uploading.";
             materialsStatus.dataset.kind = "error";
             materialsStatusRetry.hidden = false;
+            addFailureSupportActions(materialsStatus, "upload reconciliation", {
+              httpStatus,
+              errorCode: "upload_reconciliation_failed",
+            });
           }
         }
 
@@ -10623,6 +10793,7 @@
           materialsStatus.dataset.kind = "";
           renderMaterials();
           let failures = 0;
+          let uploadFailureStatus = null;
           try {
             for (const item of pending) {
               if (materialsStoredCount >= materialsMaxAttachments) {
@@ -10649,6 +10820,7 @@
                     body,
                   },
                 );
+                if (!response.ok) uploadFailureStatus = response.status;
                 const result = await response.json();
                 if (response.status === 401) {
                   showSignIn("Your session has expired. Please sign in again.");
@@ -10669,7 +10841,9 @@
                 } catch {
                   // Keep the original error visible; a later retry will reconcile again.
                 }
-                item.status = error instanceof Error ? error.message : "Import failed. Please retry.";
+                item.status = error instanceof Error && error.message !== "Failed to fetch"
+                  ? error.message
+                  : "Upload outcome is uncertain. Check stored files before retrying; if asked, reselect the same file.";
                 item.error = item.status;
                 failures += 1;
                 if (item.status.includes("allowed attachments")) await refreshMaterialsUsage();
@@ -10681,6 +10855,10 @@
               ? `${importedCount} file(s) imported. ${failures} not imported (see each file's reason); imported files were kept. Remove or retry the others.`
               : `${importedCount} file(s) stored in a draft case. They have not been analyzed or legally reviewed.`;
             materialsStatus.dataset.kind = failures ? "error" : "success";
+            if (failures) addFailureSupportActions(materialsStatus, "upload", {
+              httpStatus: uploadFailureStatus,
+              errorCode: "upload_failed",
+            });
             if (importedCount) updateAnalysisPreviewLaunch();
           } finally {
             materialsImporting = false;

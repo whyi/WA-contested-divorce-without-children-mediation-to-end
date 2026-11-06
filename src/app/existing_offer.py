@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
 from app.database import get_db
+from app.failure_logging import log_failure_event
 from app.models import Case, Document, SettlementNegotiationAttempt, User
 from app.settlement_routes import _authorize_case, _lock_case
 
@@ -208,7 +209,7 @@ def _commit(db: Session) -> None:
         db.commit()
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Existing-offer intake could not be saved.")
+        log_failure_event(logger, "offer_intake_persistence_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Offer details could not be saved. Please try again.",
@@ -231,7 +232,7 @@ def read_existing_offer(
         case = _authorize_case(db, user, case_id, write=False)
         result = _read(db, case)
     except SQLAlchemyError as error:
-        logger.exception("Existing-offer intake lookup failed.")
+        log_failure_event(logger, "offer_intake_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Offer details are unavailable. Please try again.",
@@ -287,7 +288,7 @@ def update_existing_offer(
         return _read(db, case)
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Existing-offer intake update failed.")
+        log_failure_event(logger, "offer_intake_persistence_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Offer details could not be saved. Please try again.",
@@ -332,7 +333,7 @@ def update_asset_terms(
         return _read(db, case)
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Existing-offer asset mapping failed.")
+        log_failure_event(logger, "offer_asset_mapping_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Offer details could not be saved. Please try again.",

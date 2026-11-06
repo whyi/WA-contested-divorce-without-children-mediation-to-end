@@ -19,6 +19,20 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.bedrock_model_id, "us.amazon.nova-lite-v1:0")
         self.assertEqual(settings.bedrock_region, "us-west-2")
 
+    def test_support_contact_must_be_https_without_embedded_data(self) -> None:
+        settings = Settings(support_contact_url="https://support.example.test/help")
+        self.assertEqual(settings.support_contact_url, "https://support.example.test/help")
+
+        for invalid_url in (
+            "http://support.example.test/help",
+            "https://user:password@support.example.test/help",
+            "https://support.example.test/help?token=secret",
+            "https://support.example.test/help#case",
+        ):
+            with self.subTest(invalid_url=invalid_url):
+                with self.assertRaisesRegex(ValueError, "SUPPORT_CONTACT_URL"):
+                    Settings(support_contact_url=invalid_url)
+
     def test_authentication_is_disabled_without_explicit_secrets(self) -> None:
         settings = Settings(
             auth_enabled=False,

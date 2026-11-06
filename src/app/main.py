@@ -42,6 +42,7 @@ from app.documents import (
     render_template,
 )
 from app.extraction import retry_failed_extraction_job
+from app.failure_logging import log_failure_event
 from app.existing_offer import (
     METADATA_KEY as EXISTING_OFFER_METADATA_KEY,
     ExistingOfferCreate,
@@ -264,7 +265,7 @@ async def authenticate_and_authorize_case_data(
         except ValueError:
             return JSONResponse(status_code=404, content={"detail": "Case not found."})
         except SQLAlchemyError:
-            logger.exception("Case authentication or authorization lookup failed.")
+            log_failure_event(logger, "case_authorization_lookup_failed", error)
             return JSONResponse(
                 status_code=503,
                 content={"detail": "Authentication services are unavailable."},
@@ -438,6 +439,12 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/v1/support/config", include_in_schema=False)
+def support_configuration(response: Response) -> dict[str, str | None]:
+    response.headers["Cache-Control"] = "no-store"
+    return {"contact_url": settings.support_contact_url}
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home() -> HTMLResponse:
     return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
@@ -516,7 +523,7 @@ def dashboard_status(
             .order_by(Case.created_at.desc(), Case.id)
         ).all()
     except SQLAlchemyError as error:
-        logger.exception("Dashboard case-status lookup failed.")
+        log_failure_event(logger, "dashboard_case_status_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Dashboard status is unavailable. Please try again.",
@@ -538,7 +545,7 @@ def dashboard_status(
                 ).all()
             )
         except SQLAlchemyError as error:
-            logger.exception("Dashboard delegation lookup failed.")
+            log_failure_event(logger, "dashboard_delegation_status_failed", error)
             raise HTTPException(
                 status_code=503,
                 detail="Dashboard status is unavailable. Please try again.",
@@ -584,10 +591,10 @@ def readiness() -> dict[str, str]:
             db.execute(text("SELECT 1"))
         storage.check_ready()
     except SQLAlchemyError as error:
-        logger.exception("Database readiness check failed.")
+        log_failure_event(logger, "database_readiness_failed", error, severity="SEV1")
         raise HTTPException(status_code=503, detail="Database is unavailable.") from error
     except BotoCoreError as error:
-        logger.exception("Object-storage readiness check failed.")
+        log_failure_event(logger, "object_storage_readiness_failed", error, severity="SEV1")
         raise HTTPException(status_code=503, detail="Object storage is unavailable.") from error
     return {"status": "ready"}
 
@@ -669,7 +676,7 @@ def update_property_tracing(
         db.commit()
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Case property-tracing update failed.")
+        log_failure_event(logger, "case_property_update_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Property-tracing data could not be saved. Please try again.",
@@ -708,7 +715,7 @@ def document_extraction_status(
     except HTTPException:
         raise
     except SQLAlchemyError as error:
-        logger.exception("Document extraction status lookup failed.")
+        log_failure_event(logger, "extraction_status_lookup_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document processing status is unavailable. Please try again.",
@@ -716,7 +723,7 @@ def document_extraction_status(
 
     if job is not None:
         if job.status == "completed" and extraction is None:
-            logger.error("Completed extraction job has no persisted extraction result.")
+            log_failure_event(logger, "extraction_result_missing", severity="SEV1")
             raise HTTPException(
                 status_code=503,
                 detail="Document processing status is unavailable. Please try again.",
@@ -775,7 +782,7 @@ def retry_case_document_extraction(
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        logger.exception("Document extraction retry could not be persisted.")
+        log_failure_event(logger, "extraction_retry_persistence_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document extraction retry is unavailable. Please try again.",
@@ -914,7 +921,7 @@ def download_document(document_id: UUID, db: DbSession) -> Response:
     try:
         document = get_document_or_none(db, document_id)
     except SQLAlchemyError as error:
-        logger.exception("Document metadata lookup failed.")
+        log_failure_event(logger, "document_download_metadata_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document retrieval is unavailable. Please try again.",
@@ -924,7 +931,7 @@ def download_document(document_id: UUID, db: DbSession) -> Response:
     try:
         content = storage.get(document.object_key)
     except BotoCoreError as error:
-        logger.error("Document retrieval from object storage failed (%s).", type(error).__name__)
+        log_failure_event(logger, "document_download_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document retrieval is unavailable. Please try again.",
@@ -941,7 +948,7 @@ def preview_document(document_id: UUID, db: DbSession) -> Response:
     try:
         document = db.get(Document, document_id)
     except SQLAlchemyError as error:
-        logger.exception("Document metadata lookup failed for preview.")
+        log_failure_event(logger, "document_preview_metadata_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document preview is unavailable. Please try again.",
@@ -956,7 +963,7 @@ def preview_document(document_id: UUID, db: DbSession) -> Response:
     try:
         content = storage.get(document.object_key)
     except BotoCoreError as error:
-        logger.error("Document preview from object storage failed (%s).", type(error).__name__)
+        log_failure_event(logger, "document_preview_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document preview is unavailable. Please try again.",
@@ -994,7 +1001,7 @@ def delete_document(
     try:
         document = get_document_or_none(db, document_id)
     except SQLAlchemyError as error:
-        logger.exception("Document metadata lookup failed before deletion.")
+        log_failure_event(logger, "document_deletion_metadata_failed", error)
         raise HTTPException(
             status_code=503,
             detail="Document deletion is unavailable. Please try again.",

@@ -15,6 +15,7 @@ from app.analysis import aggregate_analysis_status, is_analysis_available
 from app.config import Settings, get_settings
 from app.database import SessionLocal
 from app.deletion import scope_is_tombstoned
+from app.failure_logging import log_failure_event
 from app.models import (
     CaseMembership,
     Document,
@@ -248,7 +249,7 @@ def process_analysis_job(
         _fail_job(db, lease.job_id, "invalid_provider_response", type(error).__name__)
     except SQLAlchemyError as error:
         db.rollback()
-        logger.error("Analysis job persistence failed (%s).", type(error).__name__)
+        log_failure_event(logger, "analysis_persistence_failed", error)
 
 
 def run_once(
@@ -268,10 +269,10 @@ def main() -> None:
         try:
             worked = run_once()
         except SQLAlchemyError as error:
-            logger.error("Analysis worker database operation failed (%s).", type(error).__name__)
+            log_failure_event(logger, "analysis_worker_database_failed", error)
             worked = False
         except Exception as error:
-            logger.error("Analysis worker iteration failed (%s).", type(error).__name__)
+            log_failure_event(logger, "analysis_worker_iteration_failed", error)
             worked = False
         if not worked:
             time.sleep(POLL_INTERVAL_SECONDS)
@@ -333,7 +334,7 @@ def _fail_job(db: Session, job_id: UUID, error_code: str, error_type: str) -> No
     if request is not None:
         _refresh_request_status(db, request)
     db.commit()
-    logger.error("Analysis provider request failed (%s).", error_type)
+    log_failure_event(logger, "analysis_job_failed", error_type)
 
 
 def _finish_job(job: DocumentAnalysisJob, status: str, error_code: str | None) -> None:

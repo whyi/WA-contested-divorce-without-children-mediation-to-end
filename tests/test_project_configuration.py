@@ -39,6 +39,10 @@ class ProjectConfigurationTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text()
         self.assertIn("libreoffice-writer", dockerfile)
 
+    def test_docker_http_access_logs_do_not_record_case_resource_ids(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertIn("--no-access-log", dockerfile)
+
     def test_compose_provides_postgres_and_moto_s3(self) -> None:
         compose = (ROOT / "docker-compose.yml").read_text()
         self.assertIn("image: postgres:", compose)
