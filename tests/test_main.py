@@ -1140,6 +1140,17 @@ class MainWorkflowTests(unittest.TestCase):
                     object_storage.get.assert_not_called()
                 app.dependency_overrides.clear()
 
+    def test_demo_wizard_has_no_back_link_and_keeps_completion_navigation(self) -> None:
+        with TestClient(app) as client:
+            for source in ("demo1", "demo2"):
+                page = client.get(f"/demo/wizard?source={source}&demo_case_id=sample").text
+                self.assertNotIn('id="demo-wizard-back"', page)
+                self.assertIn('id="wizard-finish" type="button" disabled', page)
+                self.assertIn(
+                    'window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId))',
+                    page,
+                )
+
     def test_onboarding_paths_serve_the_authenticated_preview_page(self) -> None:
         paths = (
             "/onboarding/upload",
@@ -1206,12 +1217,10 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="demo-documents-offer-file" type="file"', document_demo_page)
         self.assertIn('id="demo-documents-offer-notes"', document_demo_page)
         self.assertIn('hasMinimumOfferNotes(demoDocumentsOfferNotes.value)', document_demo_page)
-        self.assertIn('document.querySelectorAll("[data-demo-case-return]")', document_demo_page)
         self.assertIn("Only PDF and DOCX files are supported.", document_demo_page)
         self.assertIn('window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId))', document_demo_page)
         wizard_demo_page = responses[5].text
-        self.assertIn('id="demo-wizard-back" data-demo-case-return href="/demo/start?source=demo1">Back to Asset Overview</a>', wizard_demo_page)
-        self.assertLess(wizard_demo_page.index('id="demo-wizard-back"'), wizard_demo_page.index('id="wizard-gated-content"'))
+        self.assertNotIn('id="demo-wizard-back"', wizard_demo_page)
         self.assertIn('demoSource === "demo1"', wizard_demo_page)
         self.assertIn('demoSource === "demo2"', wizard_demo_page)
         self.assertIn('const demoRoute = demoStartMode || demoMode || demoOnlyMode || demoSettlementCompletionMode || demoRejectionCompletionMode;', wizard_demo_page)

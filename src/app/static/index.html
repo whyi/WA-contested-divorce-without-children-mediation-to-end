@@ -1748,9 +1748,6 @@
         <section class="demo-flow-page" id="wizard-demo" aria-labelledby="wizard-demo-title" hidden>
           <p class="eyebrow">Guided intake preview</p>
           <h1 id="wizard-demo-title">Wizard demo</h1>
-          <p class="demo-flow-actions">
-            <a class="button button-secondary" id="demo-wizard-back" data-demo-case-return href="/demo/start?source=demo1">Back to Asset Overview</a>
-          </p>
           <p class="demo-flow-intro">Build a mediation-preparation draft at your pace. Demo answers and optional evidence are temporary and reset when you restart the demo. They are never uploaded, analyzed, or used to change a real case.</p>
           <div class="demo-flow-panel">
             <p class="wizard-save-status" id="wizard-save-status" role="status" aria-live="polite">Opening local draft storage…</p>
@@ -3630,9 +3627,6 @@
         }
 
         function initializeDemoCaseReturnLinks() {
-          document.querySelectorAll("[data-demo-case-return]").forEach((link) => {
-            if (demoCurrentCaseId) link.href = demoAssetOverviewUrl();
-          });
           const caseId = demoCurrentCaseId || demoCaseData?.id;
           if (demoMediationLink && caseId) {
             demoMediationLink.href = demoAssetOverviewUrl(caseId);
