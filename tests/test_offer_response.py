@@ -1366,6 +1366,14 @@ class OfferResponseTransitionTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('id="demo-attempt-progress" aria-label="Demo negotiation attempts"', html)
+        case_navigation = html.split('<nav class="demo-case-navigation"', 1)[1].split(
+            '<section class="demo-file-manager"', 1
+        )[0]
+        self.assertLess(case_navigation.index('id="demo-current-case-title"'), case_navigation.index('id="demo-attempt-progress"'))
+        self.assertLess(case_navigation.index('id="demo-attempt-progress"'), case_navigation.index('id="demo-mediation-link"'))
+        self.assertIn('button.addEventListener("click", () => viewDemoAttempt(ordinal, { navigate: true }));', html)
+        self.assertIn('document.getElementById("demo-attempt-view-status").focus();', html)
+        self.assertIn('[aria-current="step"] .demo-attempt-circle', html)
         self.assertIn("past && !snapshot", html)
         self.assertIn("attempt_snapshots: { ...demoCaseData.attempt_snapshots", html)
         self.assertIn("current_draft: settlementDemoCurrentView", html)
