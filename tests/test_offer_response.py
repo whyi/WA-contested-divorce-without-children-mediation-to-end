@@ -1315,6 +1315,28 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertNotIn("settlementDemoAttemptOrdinal +=", transition)
         self.assertIn("settlementDemoAttemptOrdinal += 1", html)
 
+    def test_demo_limit_counteroffer_shows_upgrade_dialog_only_after_validation(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
+            encoding="utf-8"
+        )
+        update = html.split("function updateDemoCounterofferNext()", 1)[1].split(
+            "async function renderDemoCounterofferFile", 1
+        )[0]
+        self.assertIn("|| !demoCounterofferHasDetails()", update)
+        self.assertIn('"demo-limit-ready"', update)
+        self.assertNotIn("|| settlementDemoAttemptOrdinal >= demoAttemptLimit", update)
+        click = html.split('settlementDemoAddCounteroffer.addEventListener("click"', 1)[1].split(
+            'settlementDemoResponseNext.addEventListener("click"', 1
+        )[0]
+        self.assertIn("settlementDemoViewingOrdinal !== settlementDemoAttemptOrdinal", click)
+        self.assertIn("!demoCounterofferHasDetails()", click)
+        self.assertIn("settlementDemoAttemptOrdinal < demoAttemptLimit", click)
+        self.assertIn("demoAttemptLimitDialog.showModal()", click)
+        self.assertIn("You reached maximum attempt of", click)
+        self.assertIn("It's the end of this demo!", click)
+        self.assertIn("demoAttemptLimitDialog.close()", click)
+        self.assertIn('settlementDemoAddCounteroffer.hidden = past || settlementDemoResponseOutcome !== "counteroffer";', html)
+
     def test_demo_attempt_ordinal_is_saved_with_the_single_case(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
             encoding="utf-8"
