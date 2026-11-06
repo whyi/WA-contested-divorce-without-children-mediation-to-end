@@ -1715,7 +1715,7 @@
         <section class="demo-flow-page" id="documents-demo" aria-labelledby="documents-demo-title" hidden>
           <p class="eyebrow">Materials path preview</p>
           <h1 id="documents-demo-title">I have all documents demo</h1>
-          <p class="demo-flow-intro">Choose fictional files to preview the materials path. Document selections stay on this page; an optional offer attachment and notes are stored in this browser. Nothing is sent or analyzed.</p>
+          <p class="demo-flow-intro">Choose fictional files to preview the materials path. Demo data is temporary and resets when you restart or reload. Nothing is sent or analyzed.</p>
           <div class="demo-flow-panel">
             <h2>Select documents</h2>
             <p>Choose PDF or DOCX files. You can add more files or remove a selection before continuing.</p>
@@ -1731,7 +1731,7 @@
               <p id="demo-documents-offer-file-status" role="status" aria-live="polite">No file attached.</p>
               <label for="demo-documents-offer-notes">Notes about the offer</label>
               <textarea id="demo-documents-offer-notes" rows="5" maxlength="20000"></textarea>
-              <p>Attach a file or enter at least 100 characters. Fictional data only; the offer stays in this browser and is not sent or analyzed.</p>
+              <p>Attach a file or enter at least 100 characters. Fictional data only; the offer is temporary and is not sent or analyzed.</p>
             </section>
             <div class="demo-flow-actions">
               <button class="button button-primary demo-next" id="demo-files-next" type="button" disabled>Next <span class="arrow" aria-hidden="true">→</span></button>
@@ -1745,7 +1745,7 @@
           <p class="demo-flow-actions">
             <a class="button button-secondary" id="demo-wizard-back" data-demo-case-return href="/demo/start?source=demo1">Back to Asset Overview</a>
           </p>
-          <p class="demo-flow-intro">Build a mediation-preparation draft at your pace. Your answers and optional evidence are saved only in this browser and are never uploaded, analyzed, or used to change a real case.</p>
+          <p class="demo-flow-intro">Build a mediation-preparation draft at your pace. Demo answers and optional evidence are temporary and reset when you leave or reload. They are never uploaded, analyzed, or used to change a real case.</p>
           <div class="demo-flow-panel">
             <p class="wizard-save-status" id="wizard-save-status" role="status" aria-live="polite">Opening local draft storage…</p>
             <fieldset class="demo-choice-fields" id="wizard-filed-question">
@@ -1822,7 +1822,7 @@
                 <p>This review reflects only what you entered. All sections above remain editable.</p>
                 <ul class="wizard-review-list" id="wizard-review-list"></ul>
               </section>
-              <p class="wizard-storage-note">Your draft and attached files are stored in this browser only. Clearing browser/site data may remove them. Attachments are not uploaded or analyzed.</p>
+              <p class="wizard-storage-note">In the demo, answers and attachments are temporary and reset when you leave or reload. Attachments are not uploaded or analyzed.</p>
               <div class="wizard-bottom-actions">
                 <button class="button button-primary" id="wizard-finish" type="button" disabled>Save and view your case</button>
                 <button class="wizard-clear" id="wizard-clear" type="button">Clear saved draft</button>
@@ -2050,7 +2050,7 @@
               <div class="case-create-content">
                 <p class="eyebrow">Your one demo case</p>
                 <h2 id="demo-case-choice-title">How would you like to start?</h2>
-                <p>Choose a fictional preview. This browser keeps one demo case; available attempts depend on the plan. Nothing is uploaded or saved to an account.</p>
+                <p>Choose a fictional preview. Each demo starts fresh; temporary progress resets when you restart or reload. Nothing is uploaded or saved to an account.</p>
                 <p id="demo-case-choice-status" role="status" aria-live="polite"></p>
                 <div class="case-mode-options">
                   <a class="case-mode-choice" id="demo-case-documents-link" href="/demo/documents">
@@ -2560,7 +2560,7 @@
                   </div>
                 </header>
                 <p class="demo-attempt-view-status" id="demo-attempt-view-status" tabindex="-1" hidden></p>
-                <p class="sample-analysis-notice" role="note"><strong>Fictional example only.</strong> These figures are made up and are not based on your uploaded documents or case facts. Demo snapshots and attached files stay in this browser; nothing is sent to an AI provider. This is not legal advice or a recommendation about how property should be divided.</p>
+                <p class="sample-analysis-notice" role="note"><strong>Fictional example only.</strong> These figures are made up and are not based on your uploaded documents or case facts. Demo snapshots and attached files are temporary and reset on restart or reload; nothing is sent to an AI provider. This is not legal advice or a recommendation about how property should be divided.</p>
                 <p class="settlement-demo-inherited-notice" id="settlement-demo-inherited-notice" role="status" aria-live="polite" hidden></p>
                 <details class="asset-milestone-manager" id="milestone-manager">
                   <summary>Manage milestone dates</summary>
@@ -2716,7 +2716,7 @@
                     <label for="settlement-demo-counteroffer-file">Attach the counteroffer (PDF, DOCX, or XLSX, up to 2 MB)</label>
                     <input id="settlement-demo-counteroffer-file" type="file" accept=".pdf,.docx,.xlsx">
                     <p id="settlement-demo-counteroffer-file-status" role="status" aria-live="polite">No file attached.</p>
-                    <p class="offer-intake-help" id="settlement-demo-counteroffer-help">Enter at least 100 characters of notes or attach a file to continue. Fictional preview only: files stay in this browser and are not sent or analyzed. Do not use real case information.</p>
+                    <p class="offer-intake-help" id="settlement-demo-counteroffer-help">Enter at least 100 characters of notes or attach a file to continue. Fictional preview only: data resets when you restart or reload and is not sent or analyzed. Do not use real case information.</p>
                     <button class="materials-import" id="settlement-demo-add-counteroffer" type="button" disabled hidden>Next</button>
                   </section>
                 </section>
@@ -3314,8 +3314,8 @@
         const demoSource = demoQuery.get("source") === "demo1" ? "demo1" : "demo2";
         const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;
         const demoCurrentCaseId = demoQuery.get("demo_case_id") || "";
-        const demoCaseStorageKey = `casework-demo-case-v2:${demoSource}`;
-        const legacyDemoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`;
+        const demoCaseStorageKey = `casework-demo-session-case:${demoSource}`;
+        const demoFilesStorageKey = `casework-demo-session-files:${demoSource}`;
         const demoCaseFilesCaseId = demoCurrentCaseId;
         let demoCaseData = null;
         let pendingDemoCase = null;
@@ -3330,7 +3330,6 @@
         const demoCaseChoiceStatus = document.getElementById("demo-case-choice-status");
         const demoCaseStateStatus = document.getElementById("demo-case-state-status");
         const demoCurrentCaseTitle = document.querySelector(".demo-case-nav-case strong");
-        let demoFilesDatabasePromise = null;
         let demoManagedFileRecords = new Map();
         const documentsDemoPage = document.getElementById("documents-demo");
         const demoFileInput = document.getElementById("demo-file-input");
@@ -3560,13 +3559,8 @@
 
         function loadDemoCaseData() {
           let serialized;
-          let storageKey = demoCaseStorageKey;
           try {
-            serialized = window.localStorage.getItem(demoCaseStorageKey);
-            if (serialized === null) {
-              serialized = window.localStorage.getItem(legacyDemoCaseStorageKey);
-              storageKey = legacyDemoCaseStorageKey;
-            }
+            serialized = window.sessionStorage.getItem(demoCaseStorageKey);
           } catch {
             throw new Error("The demo case is unavailable because browser storage could not be read.");
           }
@@ -3576,36 +3570,6 @@
             parsed = JSON.parse(serialized);
           } catch {
             throw new Error("Saved demo case data could not be read. Clear this demo's browser data to restart it.");
-          }
-          if (storageKey === legacyDemoCaseStorageKey) {
-            if (!parsed || !Array.isArray(parsed.active) || !Array.isArray(parsed.archived)) {
-              throw new Error("Saved demo case data is invalid. Clear this demo's browser data to restart it.");
-            }
-            const allCases = [...parsed.active, ...parsed.archived];
-            if (allCases.some((item) =>
-              !item
-              || typeof item.id !== "string"
-              || !item.id.trim()
-              || typeof item.title !== "string"
-              || !item.title.trim()
-            )) {
-              throw new Error("Saved demo case data is invalid. Clear this demo's browser data to restart it.");
-            }
-            const sampleCase = demoSource === "demo2"
-              ? allCases.find((item) => item.id === "sample-case")
-              : null;
-            const selectedCase = sampleCase || parsed.active[0] || parsed.archived[0] || null;
-            const migratedCase = selectedCase
-              ? {
-                ...Object.fromEntries(Object.entries(selectedCase).filter(([key]) => key !== "archived_at")),
-                attempt_ordinal: Number.isInteger(selectedCase.attempt_ordinal)
-                  && selectedCase.attempt_ordinal > 0
-                  ? selectedCase.attempt_ordinal
-                  : 1,
-              }
-              : null;
-            if (migratedCase) saveDemoCaseData(migratedCase);
-            return migratedCase;
           }
           if (
             !parsed
@@ -3625,7 +3589,7 @@
 
         function saveDemoCaseData(data) {
           try {
-            window.localStorage.setItem(demoCaseStorageKey, JSON.stringify(data));
+            window.sessionStorage.setItem(demoCaseStorageKey, JSON.stringify(data));
           } catch {
             throw new Error("Demo changes were not saved because browser storage is unavailable or full.");
           }
@@ -3798,58 +3762,61 @@
           renderDemoFileSelection();
         }
 
-        function openDemoFilesDatabase() {
-          if (!window.indexedDB) {
-            return Promise.reject(new Error("This browser does not support local file storage."));
-          }
-          if (demoFilesDatabasePromise) return demoFilesDatabasePromise;
-          demoFilesDatabasePromise = new Promise((resolve, reject) => {
-            const request = window.indexedDB.open("casework-demo-file-manager", 1);
-            request.onupgradeneeded = () => {
-              const store = request.result.createObjectStore("files", {
-                keyPath: "id",
-                autoIncrement: true,
-              });
-              store.createIndex("caseId", "caseId", { unique: false });
-            };
-            request.onsuccess = () => {
-              request.result.onversionchange = () => request.result.close();
-              resolve(request.result);
-            };
-            request.onerror = () => {
-              demoFilesDatabasePromise = null;
-              reject(request.error || new Error("Could not open browser file storage."));
-            };
-            request.onblocked = () => {
-              demoFilesDatabasePromise = null;
-              reject(new Error("Close other demo tabs to update browser file storage, then try again."));
-            };
-          });
-          return demoFilesDatabasePromise;
+        let demoFilesQueue = Promise.resolve();
+        function runDemoFilesTransaction(mode, createRequest) {
+          const operation = demoFilesQueue.then(() => performDemoFilesTransaction(mode, createRequest));
+          demoFilesQueue = operation.then(() => undefined, () => undefined);
+          return operation;
         }
 
-        async function runDemoFilesTransaction(mode, createRequest) {
-          const database = await openDemoFilesDatabase();
-          return new Promise((resolve, reject) => {
-            const transaction = database.transaction("files", mode);
-            let requestError = null;
-            let result;
-            transaction.oncomplete = () => resolve(result);
-            transaction.onerror = () => {
-              reject(requestError || transaction.error || new Error("The browser file operation failed."));
-            };
-            transaction.onabort = () => {
-              reject(requestError || transaction.error || new Error("The browser file operation was canceled."));
-            };
-            try {
-              const request = createRequest(transaction.objectStore("files"));
-              request.onsuccess = () => { result = request.result; };
-              request.onerror = () => { requestError = request.error; };
-            } catch (error) {
-              transaction.abort();
-              reject(error);
-            }
-          });
+        async function performDemoFilesTransaction(mode, createRequest) {
+          let records;
+          try {
+            records = JSON.parse(window.sessionStorage.getItem(demoFilesStorageKey) || "[]");
+          } catch {
+            throw new Error("Temporary demo file storage could not be read.");
+          }
+          const store = {
+            index: () => ({ getAll: (caseId) => ({ operation: "getAll", caseId }) }),
+            add: (record) => ({ operation: "add", record }),
+            put: (record) => ({ operation: "put", record }),
+            delete: (id) => ({ operation: "delete", id }),
+          };
+          const request = createRequest(store);
+          if (request.operation === "getAll") {
+            return Promise.all(records.filter((record) => record.caseId === request.caseId).map(async (record) => {
+              const { dataUrl, blobField, ...metadata } = record;
+              if (!dataUrl) return metadata;
+              const blob = await (await fetch(dataUrl)).blob();
+              return { ...metadata, [blobField]: blob };
+            }));
+          }
+          if (mode !== "readwrite") throw new Error("Demo file storage is read-only.");
+          if (request.operation === "delete") {
+            records = records.filter((record) => record.id !== request.id);
+          } else if (request.operation === "add" || request.operation === "put") {
+            const record = request.record;
+            const blobField = record.file instanceof Blob ? "file" : "blob";
+            const blob = record[blobField];
+            if (!(blob instanceof Blob)) throw new Error("The selected file could not be read.");
+            const dataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(reader.error || new Error("The selected file could not be read."));
+              reader.readAsDataURL(blob);
+            });
+            const { file, blob: ignoredBlob, ...metadata } = record;
+            const id = record.id ?? records.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+            records = records.filter((item) => item.id !== id);
+            records.push({ ...metadata, id, dataUrl, blobField });
+          } else {
+            throw new Error("Unsupported demo file operation.");
+          }
+          try {
+            window.sessionStorage.setItem(demoFilesStorageKey, JSON.stringify(records));
+          } catch {
+            throw new Error("Temporary demo file storage is unavailable or full.");
+          }
         }
 
         function renderDemoCaseFiles(records) {
@@ -4167,6 +4134,10 @@
         }
 
         function saveWizardDraft() {
+          if (demoWizardMode) {
+            setWizardSaveStatus("Demo answers are temporary and reset when you leave or reload.");
+            return Promise.resolve(true);
+          }
           if (!wizardDatabase) {
             setWizardSaveStatus(
               "Not saved: browser-local storage is unavailable. Your changes will be lost if you leave this page.",
@@ -4215,6 +4186,10 @@
         }
 
         function scheduleWizardSave(immediate = false) {
+          if (demoWizardMode) {
+            setWizardSaveStatus("Demo answers are temporary and reset when you leave or reload.");
+            return;
+          }
           window.clearTimeout(wizardSaveTimer);
           wizardDraftRevision += 1;
           setWizardSaveStatus("Unsaved changes — saving in this browser…");
@@ -4225,24 +4200,6 @@
           wizardSaveTimer = window.setTimeout(() => {
             void saveWizardDraft();
           }, 350);
-        }
-
-        function flushWizardDraftOnExit() {
-          if (!demoWizardMode || !wizardDatabase || wizardClearingDraft) return;
-          window.clearTimeout(wizardSaveTimer);
-          try {
-            const transaction = wizardDatabase.transaction("drafts", "readwrite");
-            transaction.objectStore("drafts").put({
-              key: wizardDraftKey,
-              draft: wizardDraft,
-              updatedAt: new Date().toISOString(),
-            });
-          } catch {
-            setWizardSaveStatus(
-              "The latest changes could not be saved before leaving this page.",
-              "error",
-            );
-          }
         }
 
         function escapeWizardHtml(value) {
@@ -4455,6 +4412,11 @@
         }
 
         async function initializeWizardDraft() {
+          if (demoWizardMode) {
+            renderWizardDraft();
+            setWizardSaveStatus("Demo answers are temporary and reset when you leave or reload.");
+            return;
+          }
           setWizardSaveStatus("Loading a draft saved in this browser…");
           try {
             wizardDatabase = await openWizardDatabase();
@@ -4709,10 +4671,10 @@
           window.clearTimeout(wizardSaveTimer);
           await wizardSaveQueue;
           try {
-            if (!wizardDatabase) {
+            if (!demoWizardMode && !wizardDatabase) {
               throw new Error("Browser-local storage is unavailable; the saved draft could not be verified or cleared.");
             }
-            await deleteWizardDraft();
+            if (!demoWizardMode) await deleteWizardDraft();
             wizardDraft = createEmptyWizardDraft();
             renderWizardDraft();
             setWizardSaveStatus("The saved answers and attached evidence were cleared from this browser.");
@@ -12460,7 +12422,6 @@
           }
         });
         wizardFiledQuestion.addEventListener("change", () => updateWizardGate(true, true));
-        window.addEventListener("pagehide", flushWizardDraftOnExit);
         wizardRoleQuestion.addEventListener("change", () => {
           wizardDraft.role = wizardRoleQuestion.querySelector('input[name="wizard-role"]:checked')?.value || "";
           wizardFinish.disabled = wizardDraft.filed !== "yes" || !wizardDraft.role;
@@ -12609,7 +12570,19 @@
           }
         });
 
-        if (demoStartMode || demoMode || demoOnlyMode || demoSettlementCompletionMode || demoRejectionCompletionMode) {
+        const demoRoute = demoStartMode || demoMode || demoOnlyMode || demoSettlementCompletionMode || demoRejectionCompletionMode;
+        const demoReload = demoRoute && performance.getEntriesByType("navigation")[0]?.type === "reload";
+        let demoResetFailed = false;
+        if (demoRoute && (demoStartMode || demoReload)) {
+          try {
+            window.sessionStorage.removeItem(demoCaseStorageKey);
+            window.sessionStorage.removeItem(demoFilesStorageKey);
+          } catch {
+            demoResetFailed = true;
+            showDemoCaseStateError(new Error("Temporary demo state could not be reset. Browser storage is unavailable."));
+          }
+        }
+        if (demoRoute && !demoResetFailed) {
           document.body.dataset.demoAccount = demoSource;
           document.body.dataset.demoPlan = demoSource === "demo2" ? "essential" : "free";
           try {
@@ -12632,7 +12605,12 @@
         const demoPageHasCase = Boolean(
           demoCaseData?.id && demoCaseData.id === demoCurrentCaseId,
         );
-        if (demoPageRequiresCase && !demoPageHasCase) {
+        if (demoResetFailed) {
+          document.body.dataset.demoPage = "case-error";
+          showDashboardShell();
+          dashboardLoading.hidden = true;
+          document.getElementById("dashboard-header").hidden = true;
+        } else if (demoPageRequiresCase && !demoPageHasCase) {
           if (demoCaseData?.id) {
             window.location.replace(demoAssetOverviewUrl(demoCaseData.id));
           } else if (!demoCaseStateStatus.dataset.kind) {
@@ -12716,6 +12694,18 @@
           void initializeWizardDraft();
         } else {
           loadDashboardStatus({ isStartup: true });
+        }
+        if (demoPageRequiresCase) {
+          window.addEventListener("pageshow", (event) => {
+            if (!event.persisted) return;
+            try {
+              if (loadDemoCaseData()?.id !== demoCurrentCaseId) {
+                window.location.replace(`/demo/start?source=${demoSource}`);
+              }
+            } catch (error) {
+              showDemoCaseStateError(error);
+            }
+          });
         }
       })();
     </script>
