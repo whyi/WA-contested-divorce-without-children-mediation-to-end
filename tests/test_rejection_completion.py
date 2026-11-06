@@ -36,16 +36,25 @@ class RejectionCompletionTests(unittest.TestCase):
         demo_stop_handler = PAGE[PAGE.index('settlementDemoStop.addEventListener("click"') :]
         demo_stop_handler = demo_stop_handler[: demo_stop_handler.index("\n        settlementGoogleConnect")]
         self.assertIn("window.confirm(", demo_stop_handler)
-        self.assertIn('window.location.assign("/demo/rejection-completion")', demo_stop_handler)
+        self.assertIn(
+            '`/demo/rejection-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`',
+            demo_stop_handler,
+        )
         self.assertNotIn("settlementApi(", demo_stop_handler)
-        self.assertIn("no next attempt or data was created", PAGE)
+        self.assertIn(
+            "Stop this fictional workflow? No real case will be closed and no data will be saved.",
+            demo_stop_handler,
+        )
 
     def test_dedicated_authenticated_and_fictional_demo_routes_are_available(self) -> None:
         self.assertIn('@app.get("/rejection-completion"', MAIN)
         self.assertIn('"/demo/rejection-completion"', MAIN)
         self.assertIn('window.location.pathname === "/rejection-completion"', PAGE)
         self.assertIn('window.location.pathname === "/demo/rejection-completion"', PAGE)
-        self.assertIn('window.location.assign("/demo/rejection-completion")', PAGE)
+        self.assertIn(
+            '`/demo/rejection-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`',
+            PAGE,
+        )
         self.assertIn("no real case data was closed, changed, or saved", PAGE)
 
     def test_completion_page_is_neutral_accessible_and_distinguishes_product_closure(self) -> None:
