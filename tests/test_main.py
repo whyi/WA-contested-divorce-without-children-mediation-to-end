@@ -446,8 +446,11 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("casework-demo-case-completed", page)
         self.assertNotIn('id="demo-completed-case"', page)
         self.assertIn("} else if (demoStartMode) {", start_page)
-        self.assertIn("if (demoCaseData) {", start_page)
+        self.assertIn('if (demoCaseData && demoSource === "demo1") {', start_page)
         self.assertIn("window.location.replace(demoAssetOverviewUrl(demoCaseData.id))", start_page)
+        self.assertIn('if (existingCase && demoSource === "demo1") {', start_page)
+        self.assertIn("pendingDemoCase = existingCase || {", start_page)
+        self.assertIn('encodeURIComponent(current?.id || pendingDemoCase.id)', start_page)
         self.assertLess(
             start_page.index('id="demo-case-choice-dialog"'),
             start_page.index('id="existing-cases"'),
