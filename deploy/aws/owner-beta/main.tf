@@ -651,7 +651,7 @@ resource "aws_service_discovery_service" "api" {
 
     dns_records {
       ttl  = 10
-      type = "A"
+      type = "SRV"
     }
 
     routing_policy = "MULTIVALUE"
@@ -676,8 +676,11 @@ resource "aws_ecs_service" "app" {
     assign_public_ip = true
   }
 
+  # API Gateway needs the registered port, which ECS publishes only with SRV records.
   service_registries {
-    registry_arn = aws_service_discovery_service.api.arn
+    registry_arn   = aws_service_discovery_service.api.arn
+    container_name = "api"
+    container_port = 8000
   }
 
   deployment_circuit_breaker {
