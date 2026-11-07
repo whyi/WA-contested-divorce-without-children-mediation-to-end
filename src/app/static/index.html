@@ -1448,6 +1448,8 @@
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis, [hidden].analysis-preview-launch { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
+      .account-tools-link[hidden] { display: none; }
+      .authenticated-view .nav a.account-tools-link:not([hidden]) { display: inline-block; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
 
       @media (max-width: 850px) {
@@ -1739,6 +1741,7 @@
               <option value="dark">Dark</option>
             </select>
           </label>
+          <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
           <a class="nav-cta" id="account-entry" href="#account">Sign up / Sign in <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
       </header>
@@ -2085,13 +2088,12 @@
                 </div>
               </div>
             </dialog>
-            <section class="existing-cases" id="existing-cases" aria-labelledby="existing-cases-title" hidden>
+            <section class="account-tools" id="account-tools" aria-labelledby="account-tools-title" hidden>
               <div class="onboarding-heading">
-                <p class="eyebrow">Your workspace</p>
-                <h2 id="existing-cases-title">Active cases</h2>
-                <p id="existing-case-count">Loading your active cases…</p>
+                <p class="eyebrow">Your account</p>
+                <h2 id="account-tools-title">Account</h2>
+                <p><a id="account-tools-back" href="/">Back to your case</a></p>
               </div>
-              <div class="case-grid" id="case-list" aria-live="polite"></div>
               <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
                 <h3 id="closed-cases-title">Closed cases</h3>
                 <p>Closing a case does not delete it. Your materials, attempts and remaining attempt credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
@@ -2116,6 +2118,16 @@
                 </form>
                 <p id="account-permanent-deletion-status" role="status" aria-live="polite"></p>
               </section>
+            </section>
+            <section class="new-case-entry" id="new-case-entry" aria-labelledby="new-case-entry-title" hidden>
+              <div class="onboarding-heading">
+                <p class="eyebrow">Your account</p>
+                <h2 id="new-case-entry-title">Start your case</h2>
+                <p>Choose whether to begin with your documents or a guided wizard.</p>
+              </div>
+              <button class="button button-primary" id="new-case-start" type="button">Start a new case</button>
+            </section>
+            <section class="existing-cases" id="existing-cases" hidden>
               <dialog class="case-create-dialog" id="case-create-dialog" aria-labelledby="case-create-title">
                 <div class="case-create-content">
                   <p class="eyebrow">New active case</p>
@@ -2904,8 +2916,11 @@
         const attemptCreditReceiptNote = document.getElementById("attempt-credit-receipt-note");
         const accountEntitlementStatus = document.getElementById("account-entitlement-status");
         const existingCases = document.getElementById("existing-cases");
-        const existingCaseCount = document.getElementById("existing-case-count");
-        const caseList = document.getElementById("case-list");
+        const accountToolsSection = document.getElementById("account-tools");
+        const accountToolsLink = document.getElementById("account-tools-link");
+        const newCaseEntry = document.getElementById("new-case-entry");
+        const newCaseStart = document.getElementById("new-case-start");
+        const accountToolsMode = new URLSearchParams(window.location.search).get("view") === "account";
         const demoCaseChoiceDialog = document.getElementById("demo-case-choice-dialog");
         const demoCaseDocumentsLink = document.getElementById("demo-case-documents-link");
         const demoCaseWizardLink = document.getElementById("demo-case-wizard-link");
@@ -5277,64 +5292,49 @@
           }
         }
 
-        function renderCases(cases, { activeCaseCount }) {
-          caseList.replaceChildren();
-          for (const item of cases) {
-            const tile = document.createElement("button");
-            tile.className = "case-tile";
-            tile.type = "button";
-            const icon = document.createElement("span");
-            icon.className = "case-tile-icon";
-            icon.setAttribute("aria-hidden", "true");
-            icon.textContent = "▣";
-            const copy = document.createElement("span");
-            copy.className = "case-tile-copy";
-            const title = document.createElement("span");
-            title.className = "case-tile-title";
-            title.textContent = item.title;
-            const meta = document.createElement("span");
-            meta.className = "case-tile-meta";
-            meta.textContent = `${caseAttemptLabel(item.attempt_ordinal)} · ${item.status}`;
-            copy.append(title, meta);
-            tile.append(icon, copy);
-            tile.setAttribute("aria-label", `Open ${item.title}, ${caseAttemptLabel(item.attempt_ordinal)}`);
-            tile.addEventListener("click", () => {
-              if (item.workflow_mode) {
-                window.location.assign(
-                  `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`,
-                );
-              } else {
-                openSettlementPlanner(item.id);
-              }
-            });
-            caseList.append(tile);
+        function openActiveCase(item) {
+          if (item.workflow_mode) {
+            window.location.replace(
+              `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`,
+            );
+            return;
           }
+          dashboardLoading.hidden = true;
+          existingCases.hidden = false;
+          openSettlementPlanner(item.id);
+        }
 
-          existingCaseCount.textContent = activeCaseCount > 0
-            ? "Your account's divorce case"
-            : "No active case yet";
-          if (activeCaseCount > 0) return;
+        function showAccountTools() {
+          dashboardLoading.hidden = true;
+          accountToolsSection.hidden = false;
+        }
 
-          const createTile = document.createElement("button");
-          createTile.type = "button";
-          createTile.className = "case-tile case-tile-new";
-          const addIcon = document.createElement("span");
-          addIcon.className = "case-tile-icon";
-          addIcon.setAttribute("aria-hidden", "true");
-          const copy = document.createElement("span");
-          copy.className = "case-tile-copy";
-          const title = document.createElement("span");
-          title.className = "case-tile-title";
-          const meta = document.createElement("span");
-          meta.className = "case-tile-meta";
-          createTile.setAttribute("aria-label", "Start a new case");
-          addIcon.textContent = "+";
-          title.textContent = "Start a new case";
-          meta.textContent = "Choose documents or a guided wizard";
-          createTile.addEventListener("click", openCaseCreationDialog);
-          copy.append(title, meta);
-          createTile.append(addIcon, copy);
-          caseList.append(createTile);
+        function showNewCaseStart() {
+          dashboardLoading.hidden = true;
+          newCaseEntry.hidden = false;
+          existingCases.hidden = false;
+          openCaseCreationDialog();
+        }
+
+        async function enterSignedInAccount(account) {
+          existingCases.hidden = true;
+          accountToolsSection.hidden = true;
+          newCaseEntry.hidden = true;
+          accountToolsLink.hidden = false;
+          if (accountToolsMode) {
+            await loadClosedCases();
+            showAccountTools();
+            return;
+          }
+          if (account.active_case_count > 0 && account.cases.length > 0) {
+            openActiveCase(account.cases[0]);
+            return;
+          }
+          if (await loadClosedCases() > 0) {
+            showAccountTools();
+            return;
+          }
+          showNewCaseStart();
         }
 
         async function downloadCaseExport(caseId, statusElement, button) {
@@ -5472,10 +5472,12 @@
               closedCaseList.append(row);
             }
             closedCases.hidden = cases.length === 0;
+            return cases.length;
           } catch {
             closedCases.hidden = false;
             closedCaseList.replaceChildren();
             closedCasesStatus.textContent = "Closed cases could not be loaded. Try again from Refresh.";
+            return 0;
           }
         }
 
@@ -7947,7 +7949,7 @@
           if (!caseId) {
             rejectionCompletionStatus.dataset.kind = "error";
             rejectionCompletionStatus.textContent =
-              "The closed case could not be identified. Return to your cases to review closed workspaces.";
+              "The closed case could not be identified. Open Account to review your closed cases.";
             return;
           }
           try {
@@ -8754,10 +8756,13 @@
 
         function showPreparation(mode) {
           offerGateMode = preparationCaseId ? mode : null;
+          if (preparationCaseId) {
+            document.getElementById("demo-back-to-account").href = "/?view=account";
+          }
           const isUpload = mode === "upload";
           const isDemo = mode === "demo";
           if (preparationCaseId && mode === "wizard") {
-            wizardFinish.textContent = "Save draft and return to cases";
+            wizardFinish.textContent = "Save draft";
             preparationNote.textContent =
               "Your case record is saved to your account. Wizard answers and attachments are saved in this browser only and are not uploaded or backed up. Keep your own secure copy.";
             document.getElementById("preparation-description").textContent =
@@ -11716,10 +11721,15 @@
         }
 
         async function loadDashboardStatus({ isStartup = false } = {}) {
+          document.getElementById("dashboard-header").hidden = true;
+          dashboard.removeAttribute("aria-labelledby");
+          dashboard.setAttribute("aria-label", "Your account");
           if (!isStartup || preparationMode) showDashboardShell();
           dashboardLoading.hidden = false;
           dashboardError.hidden = true;
           existingCases.hidden = true;
+          accountToolsSection.hidden = true;
+          newCaseEntry.hidden = true;
           preparationView.hidden = true;
           try {
             const response = await fetch("/api/v1/dashboard/status", {
@@ -11757,16 +11767,13 @@
               throw new Error("Your account status could not be verified. Please try again.");
             }
             showDashboardShell();
-            dashboardLoading.hidden = true;
             void loadAttemptCreditPackages();
             if (preparationMode) {
+              dashboardLoading.hidden = true;
+              accountToolsLink.hidden = false;
               showPreparation(preparationMode);
             } else {
-              renderCases(account.cases, {
-                activeCaseCount: account.active_case_count,
-              });
-              existingCases.hidden = false;
-              void loadClosedCases();
+              await enterSignedInAccount(account);
             }
           } catch (error) {
             showDashboardShell();
@@ -11870,6 +11877,7 @@
             void createCaseFromDashboard(activeCaseStartMode, caseCreateContinue);
           }
         });
+        newCaseStart.addEventListener("click", openCaseCreationDialog);
         settlementCaseExport.addEventListener("click", () => {
           if (settlementCaseId) void downloadCaseExport(settlementCaseId, settlementCaseActionStatus, settlementCaseExport);
         });
@@ -12515,8 +12523,8 @@
           if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
-          if (saved) {
-            window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId));
+          if (saved && !preparationCaseId) {
+            window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
