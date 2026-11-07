@@ -19,6 +19,23 @@ TASK_DEFINITION_MODULE = importlib.util.module_from_spec(TASK_DEFINITION_SPEC)
 TASK_DEFINITION_SPEC.loader.exec_module(TASK_DEFINITION_MODULE)
 task_definition_for_image = TASK_DEFINITION_MODULE.task_definition_for_image
 
+DATABASE_URL_PATH = (
+    Path(__file__).parents[1]
+    / "deploy"
+    / "aws"
+    / "owner-beta"
+    / "database_url.py"
+)
+DATABASE_URL_SPEC = importlib.util.spec_from_file_location(
+    "owner_beta_database_url",
+    DATABASE_URL_PATH,
+)
+if DATABASE_URL_SPEC is None or DATABASE_URL_SPEC.loader is None:
+    raise ImportError(f"Could not load {DATABASE_URL_PATH}")
+DATABASE_URL_MODULE = importlib.util.module_from_spec(DATABASE_URL_SPEC)
+DATABASE_URL_SPEC.loader.exec_module(DATABASE_URL_MODULE)
+build_database_url = DATABASE_URL_MODULE.build_database_url
+
 
 class TaskDefinitionImageTests(unittest.TestCase):
     def test_replaces_all_container_images_and_strips_describe_only_fields(self) -> None:
@@ -61,6 +78,29 @@ class TaskDefinitionImageTests(unittest.TestCase):
                 },
                 "repo:commit-123",
                 "bootstrap",
+            )
+
+
+class DatabaseUrlTests(unittest.TestCase):
+    def test_builds_tls_url_from_rds_secret_and_endpoint(self) -> None:
+        url = build_database_url(
+            {"username": "case@work", "password": "p:a/ss"},
+            {"Address": "db.example.internal", "Port": 5432},
+            "owner_beta_uat",
+        )
+
+        self.assertEqual(
+            url,
+            "postgresql+psycopg://case%40work:p%3Aa%2Fss"
+            "@db.example.internal:5432/owner_beta_uat?sslmode=require",
+        )
+
+    def test_reports_missing_rds_endpoint_without_reading_secret_values(self) -> None:
+        with self.assertRaisesRegex(ValueError, "endpoint is not available"):
+            build_database_url(
+                {"username": "casework", "password": "not-printed"},
+                {},
+                "owner_beta_uat",
             )
 
 
