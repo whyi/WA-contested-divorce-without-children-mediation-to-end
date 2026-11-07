@@ -2,7 +2,7 @@
 
 - **Status:** Implemented; deployment and an actual UAT reset have not been run
 - **Related issue:** [#209 — Set up owner-only private beta and repeatable UAT environment](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/209)
-- **Related pull request:** [#216 — Add AWS infrastructure for owner-only UAT](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/216)
+- **Related pull requests:** [#216 — Add AWS infrastructure for owner-only UAT](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/216), [#219 — Add guarded owner-beta UAT case reset](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/219)
 - **Related specifications:** [Spec 58: Owner-Only Authentication](../58-owner-only-authentication/spec-58-owner-only-authentication.md), [Spec 59: Owner-Beta Deployment Readiness Gate](../59-owner-beta-deployment-readiness/spec-59-owner-beta-deployment-readiness.md), [Spec 60: Owner-Beta AWS Infrastructure](../60-owner-beta-aws-infrastructure/spec-60-owner-beta-aws-infrastructure.md)
 - **Objective:** Let the owner repeat UAT from an empty case baseline while preserving the owner account and permanent-deletion protections.
 
