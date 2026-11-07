@@ -10,6 +10,7 @@ command -v openssl >/dev/null
 region="${AWS_REGION:-$(terraform -chdir="$script_dir" output -raw aws_region)}"
 master_secret_arn="$(terraform -chdir="$script_dir" output -raw rds_master_secret_arn)"
 database_name="$(terraform -chdir="$script_dir" output -raw uat_database_name)"
+database_instance_id="$(terraform -chdir="$script_dir" output -raw ecs_cluster_name)"
 secret_names="$(terraform -chdir="$script_dir" output -json application_secret_names)"
 temporary_directory="$(mktemp -d)"
 chmod 700 "$temporary_directory"
@@ -21,26 +22,17 @@ aws secretsmanager get-secret-value \
   --query SecretString \
   --output text >"$temporary_directory/rds-secret.json"
 
-python3 - "$temporary_directory/rds-secret.json" "$database_name" "$temporary_directory/database-url" <<'PY'
-import json
-import sys
-from urllib.parse import quote
+aws rds describe-db-instances \
+  --region "$region" \
+  --db-instance-identifier "$database_instance_id" \
+  --query 'DBInstances[0].Endpoint' \
+  --output json >"$temporary_directory/rds-endpoint.json"
 
-with open(sys.argv[1], encoding="utf-8") as secret_file:
-    secret = json.load(secret_file)
-
-username = quote(secret["username"], safe="")
-password = quote(secret["password"], safe="")
-host = secret["host"]
-port = secret["port"]
-database = quote(sys.argv[2], safe="")
-database_url = (
-    f"postgresql+psycopg://{username}:{password}@{host}:{port}/{database}"
-    "?sslmode=require"
-)
-with open(sys.argv[3], "w", encoding="utf-8") as output_file:
-    output_file.write(database_url)
-PY
+python3 "$script_dir/database_url.py" \
+  "$temporary_directory/rds-secret.json" \
+  "$temporary_directory/rds-endpoint.json" \
+  "$database_name" \
+  "$temporary_directory/database-url"
 
 put_secret() {
   local secret_name="$1"
