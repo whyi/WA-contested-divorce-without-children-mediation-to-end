@@ -106,6 +106,10 @@ backups, or provider credentials for UAT.
    deletion ledger; it preserves the owner login, credentials, and immutable
    ledger. It refuses to delete an existing case that was not registered by the
    UAT deployment. Use synthetic data only.
+8. Execute and record the scenarios in the
+   [owner-beta UAT runbook](uat-runbook.md). The runbook includes an explicit
+   blocked state for backup restore until an isolated snapshot restore has
+   been reconciled against the initialized deletion ledger.
 
 ## Operations and teardown
 
@@ -129,6 +133,7 @@ backups, or provider credentials for UAT.
   an approved teardown procedure. KMS key deletion is delayed by seven days.
 
 This stack does not create a CI release pipeline, verified email identity,
-SES SMTP user, backup/restore evidence, monitoring/on-call integration,
-synthetic fixtures/reset, or completed UAT record. Those remain explicit
-follow-up work under #209.
+SES SMTP user, backup/restore evidence, monitoring/on-call integration, or a
+completed UAT record. A guarded case reset and repeatable UAT runbook are
+provided, but neither a deployment nor an end-to-end UAT run is claimed.
+Remaining work is tracked under #209.
