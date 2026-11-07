@@ -67,7 +67,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                     self.assertIn("openDemoCaseChoiceDialog()", start_branch)
                     self.assertNotIn("renderCases(", start_branch)
                     self.assertIn(
-                        'id="existing-cases" aria-labelledby="existing-cases-title" hidden',
+                        'id="existing-cases" hidden',
                         page,
                     )
                     self.assertIn(
@@ -186,7 +186,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                     pages["/demo/documents"],
                 )
                 self.assertIn(
-                    'window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId))',
+                    'if (saved && !preparationCaseId) {',
                     pages["/demo/wizard"],
                 )
                 self.assertIn("settlementCompletionBackToMediation.href", pages["/demo/settlement-completion"])
