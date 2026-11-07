@@ -275,7 +275,7 @@ resource "aws_s3_bucket" "documents" {
 }
 
 resource "aws_s3_bucket" "deletion_ledger" {
-  bucket_prefix = "${local.name}-deletion-ledger-"
+  bucket_prefix = "${local.name}-ledger-"
   force_destroy = false
 }
 
