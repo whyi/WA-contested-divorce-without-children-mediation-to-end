@@ -157,6 +157,15 @@ venv/
 .coverage
 htmlcov/
 
+# Terraform state and local deployment inputs
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
 # Local environment and uploaded/generated documents
 .env
 *.docx
