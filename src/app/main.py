@@ -89,13 +89,37 @@ settings = get_settings()
 storage = ObjectStorage(settings)
 
 
-def _production_readiness_errors() -> tuple[str, ...]:
-    if not getattr(settings, "production_readiness_required", False):
-        return ()
-    readiness_check = getattr(settings, "production_readiness_errors", None)
-    if not callable(readiness_check):
-        return ("production_readiness_check_unavailable",)
-    return readiness_check()
+def _deployment_readiness_errors() -> tuple[str, ...]:
+    errors: list[str] = []
+    for enabled_attribute, check_attribute, unavailable_code in (
+        (
+            "production_readiness_required",
+            "production_readiness_errors",
+            "production_readiness_check_unavailable",
+        ),
+        (
+            "owner_beta_readiness_required",
+            "owner_beta_readiness_errors",
+            "owner_beta_readiness_check_unavailable",
+        ),
+    ):
+        if not getattr(settings, enabled_attribute, False):
+            continue
+        readiness_check = getattr(settings, check_attribute, None)
+        if not callable(readiness_check):
+            errors.append(unavailable_code)
+        else:
+            errors.extend(readiness_check())
+    return tuple(errors)
+
+
+def _deployment_readiness_detail() -> str:
+    if (
+        getattr(settings, "owner_beta_readiness_required", False)
+        and not getattr(settings, "production_readiness_required", False)
+    ):
+        return "Owner-beta deployment readiness requirements are unmet."
+    return "Production readiness requirements are unmet."
 
 
 class OAuthCallbackQueryFilter(logging.Filter):
@@ -166,12 +190,20 @@ async def authenticate_and_authorize_case_data(
         or path == "/documents"
         or path.startswith("/documents/")
     )
-    if is_case_data_path:
-        if _production_readiness_errors():
+    is_owner_beta_data_path = (
+        getattr(settings, "owner_beta_readiness_required", False)
+        and (
+            path == "/api/v1/dashboard/status"
+            or path.startswith("/api/billing/")
+        )
+    )
+    if is_case_data_path or is_owner_beta_data_path:
+        if _deployment_readiness_errors():
             return JSONResponse(
                 status_code=503,
-                content={"detail": "Production readiness requirements are unmet."},
+                content={"detail": _deployment_readiness_detail()},
             )
+    if is_case_data_path:
         if (
             not settings.auth_enabled
             or not settings.case_data_enabled
@@ -624,15 +656,15 @@ def dashboard_status(
 
 @app.get("/readyz")
 def readiness() -> dict[str, str]:
-    readiness_errors = _production_readiness_errors()
+    readiness_errors = _deployment_readiness_errors()
     if readiness_errors:
         logger.error(
-            "Production readiness requirements are unmet (checks=%s).",
+            "Deployment readiness requirements are unmet (checks=%s).",
             ",".join(readiness_errors),
         )
         raise HTTPException(
             status_code=503,
-            detail="Production readiness requirements are unmet.",
+            detail=_deployment_readiness_detail(),
         )
     try:
         with SessionLocal() as db:
