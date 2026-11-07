@@ -81,6 +81,124 @@ class SettingsTests(unittest.TestCase):
 
         self.assertFalse(settings.owner_beta_enabled)
         self.assertIsNone(settings.owner_beta_email)
+        self.assertFalse(settings.owner_beta_readiness_required)
+
+    def test_owner_beta_readiness_is_opt_in_and_requires_private_deployment_settings(self) -> None:
+        settings = Settings(owner_beta_readiness_required=True)
+
+        self.assertEqual(
+            set(settings.owner_beta_readiness_errors()),
+            {
+                "owner_beta_mode_disabled",
+                "authentication_disabled",
+                "case_data_disabled",
+                "case_material_storage_disabled",
+                "auth_signing_secret_missing_or_weak",
+                "auth_encryption_key_missing_or_weak",
+                "s3_kms_key_missing",
+                "local_database_host_configured",
+                "database_tls_not_required",
+                "public_auth_origin_must_use_https",
+                "test_email_delivery_not_configured",
+            },
+        )
+
+    def test_complete_owner_beta_readiness_requires_separate_protected_resources(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            auth_encryption_key="secure-encryption-secret-that-is-long-enough",
+            auth_issuer="https://uat.example.test",
+            auth_public_base_url="https://uat.example.test",
+            webauthn_origin="https://uat.example.test",
+            owner_beta_enabled=True,
+            owner_beta_email="owner@example.com",
+            owner_beta_readiness_required=True,
+            database_url=(
+                "postgresql+psycopg://user:pass@db.example.test/mediation"
+                "?sslmode=verify-full"
+            ),
+            s3_bucket="owner-beta-uat-documents",
+            deletion_ledger_bucket="owner-beta-uat-deletion-ledger",
+            s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            demo_mode_enabled=False,
+            smtp_host="email-sink.example.test",
+            auth_email_from="no-reply@example.test",
+        )
+
+        self.assertEqual(settings.owner_beta_readiness_errors(), ())
+
+    def test_owner_beta_readiness_rejects_local_and_insecure_resources(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            auth_encryption_key="secure-encryption-secret-that-is-long-enough",
+            auth_issuer="http://localhost:8000",
+            auth_public_base_url="http://localhost:8000",
+            webauthn_origin="http://localhost:8000",
+            owner_beta_enabled=True,
+            owner_beta_email="owner@example.com",
+            owner_beta_readiness_required=True,
+            database_url="postgresql+psycopg://user:pass@localhost/mediation",
+            s3_endpoint_url="http://localhost:5000",
+            s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            demo_mode_enabled=False,
+            smtp_host="email-sink.example.test",
+            auth_email_from="no-reply@example.test",
+        )
+
+        self.assertIn(
+            "local_object_storage_endpoint_configured",
+            settings.owner_beta_readiness_errors(),
+        )
+        self.assertIn("object_storage_tls_not_required", settings.owner_beta_readiness_errors())
+        self.assertIn("database_tls_not_required", settings.owner_beta_readiness_errors())
+        self.assertIn("local_database_host_configured", settings.owner_beta_readiness_errors())
+        self.assertIn(
+            "public_auth_origin_must_use_https",
+            settings.owner_beta_readiness_errors(),
+        )
+
+    def test_owner_beta_readiness_rejects_live_integrations_and_static_aws_keys(self) -> None:
+        with self.assertRaisesRegex(ValueError, "AI_ANALYSIS_ENABLED"):
+            Settings(owner_beta_readiness_required=True, ai_analysis_enabled=True)
+        for live_key in ("sk_live_example", "rk_live_example"):
+            with self.subTest(live_key=live_key):
+                with self.assertRaisesRegex(ValueError, "Live Stripe credentials"):
+                    Settings(
+                        owner_beta_readiness_required=True,
+                        stripe_secret_key=live_key,
+                    )
+        with self.assertRaisesRegex(ValueError, "Static AWS credentials"):
+            Settings(
+                owner_beta_readiness_required=True,
+                s3_access_key_id="access",
+                s3_secret_access_key="secret",
+            )
+        with self.assertRaisesRegex(ValueError, "Static AWS credentials"):
+            Settings(
+                owner_beta_readiness_required=True,
+                aws_access_key_id="access",
+                aws_secret_access_key="secret",
+            )
+
+    def test_owner_beta_readiness_does_not_mark_analysis_ready_with_missing_controls(self) -> None:
+        settings = Settings(owner_beta_readiness_required=True)
+
+        self.assertFalse(settings.production_ai_readiness_passed())
+
+    def test_owner_beta_worker_readiness_reports_only_safe_check_codes(self) -> None:
+        settings = Settings(owner_beta_readiness_required=True)
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "checks=owner_beta_mode_disabled,authentication_disabled",
+        ):
+            settings.require_owner_beta_readiness()
 
     def test_authentication_configuration_rejects_mismatched_provider_secrets(self) -> None:
         with self.assertRaisesRegex(ValueError, "configured together"):

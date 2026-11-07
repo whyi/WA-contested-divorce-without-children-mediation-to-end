@@ -58,9 +58,13 @@ UAT does not satisfy production backup/restore, legal, payment, AI, alerting, or
 release gates unless the responsible reviewer explicitly verifies the
 production-specific control.
 
-**Status:** Environment boundaries and an opt-in server-side owner email gate
-are implemented. No owner email is configured here, and no hosted UAT,
-isolated resources, guarded reset, test-integration setup, or successful UAT
-evidence is implemented or verified by this change. See
+**Status:** Environment boundaries, an opt-in server-side owner email gate,
+and an opt-in UAT deployment-readiness gate are implemented. The readiness
+gate does not provision resources. No owner email is configured here, and no
+hosted UAT, isolated resources, guarded reset, test-integration setup, or
+successful UAT evidence is implemented or verified. AWS ECS/Fargate with an
+AWS-managed HTTPS endpoint is the selected deployment direction; the cloud
+resources and deployment definition remain outstanding. See
 [Spec 58](../specs/58-owner-only-authentication/spec-58-owner-only-authentication.md)
-for the authentication gate and its deployment requirements.
+and [Spec 59](../specs/59-owner-beta-deployment-readiness/spec-59-owner-beta-deployment-readiness.md)
+for the current application gates.
