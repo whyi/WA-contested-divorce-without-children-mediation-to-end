@@ -43,6 +43,9 @@ describe this as production-grade disaster recovery.
   Secrets Manager, IAM, CloudWatch, and AWS Budgets resources.
 - SES sender identity verified in `us-west-2` and a dedicated SES SMTP
   credential. In SES sandbox, the recipient address must also be verified.
+  The sender may differ from the owner email; use a different address when the
+  owner's mailbox provider drops messages that appear to come from itself. The
+  SMTP IAM user must be allowed `ses:SendRawEmail` for the sender identity.
 - A verified address for AWS Budget alerts. The alert covers the whole AWS
   account because cost-allocation tags are not assumed to be activated.
 
@@ -81,8 +84,9 @@ backups, or provider credentials for UAT.
    ./bootstrap-secrets.sh
    ```
 
-   Provide the owner email and verified SES SMTP username/password when
-   prompted. Do not enable tracing (`set -x`) or capture the prompt session.
+   Provide the owner email, the verified SES sender email (blank reuses the
+   owner email), and the SES SMTP username/password when prompted. Do not enable
+   tracing (`set -x`) or capture the prompt session.
 5. On first deployment only, build/push the image, apply migrations, initialize
    the deletion ledger, and start the service:
 

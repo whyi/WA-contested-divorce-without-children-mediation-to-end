@@ -20,6 +20,7 @@ locals {
     auth_jwt        = "/${local.name}/auth-jwt-secret"
     auth_encryption = "/${local.name}/auth-encryption-key"
     owner_email     = "/${local.name}/owner-email"
+    auth_email_from = "/${local.name}/auth-email-from"
     smtp_username   = "/${local.name}/smtp-username"
     smtp_password   = "/${local.name}/smtp-password"
   }
@@ -53,7 +54,7 @@ locals {
   ]
 
   task_secrets = [
-    { name = "AUTH_EMAIL_FROM", valueFrom = aws_secretsmanager_secret.owner_email.arn },
+    { name = "AUTH_EMAIL_FROM", valueFrom = aws_secretsmanager_secret.auth_email_from.arn },
     { name = "AUTH_ENCRYPTION_KEY", valueFrom = aws_secretsmanager_secret.auth_encryption.arn },
     { name = "AUTH_JWT_SECRET", valueFrom = aws_secretsmanager_secret.auth_jwt.arn },
     { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn },
@@ -474,6 +475,11 @@ resource "aws_secretsmanager_secret" "owner_email" {
   kms_key_id = aws_kms_key.uat.arn
 }
 
+resource "aws_secretsmanager_secret" "auth_email_from" {
+  name       = local.secret_names.auth_email_from
+  kms_key_id = aws_kms_key.uat.arn
+}
+
 resource "aws_secretsmanager_secret" "smtp_username" {
   name       = local.secret_names.smtp_username
   kms_key_id = aws_kms_key.uat.arn
@@ -521,6 +527,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
           aws_secretsmanager_secret.auth_jwt.arn,
           aws_secretsmanager_secret.auth_encryption.arn,
           aws_secretsmanager_secret.owner_email.arn,
+          aws_secretsmanager_secret.auth_email_from.arn,
           aws_secretsmanager_secret.smtp_username.arn,
           aws_secretsmanager_secret.smtp_password.arn,
         ]
