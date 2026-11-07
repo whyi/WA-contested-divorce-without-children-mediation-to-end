@@ -6,7 +6,7 @@ import secrets
 import smtplib
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, TypeAlias
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
@@ -77,7 +77,6 @@ _CSRF_COOKIE = "auth_csrf"
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=1024)
-    account_type: Literal["party", "professional"] = "party"
 
 
 class EmailTokenRequest(BaseModel):
@@ -474,7 +473,6 @@ def signup(payload: SignupRequest, request: Request, db: DbSession) -> dict[str,
         user = User(
             email=email,
             password_hash=hash_password(payload.password),
-            account_type=payload.account_type,
         )
         db.add(user)
         try:
