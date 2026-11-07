@@ -82,6 +82,7 @@ from app.services import (
     store_artifacts,
 )
 from app.storage import ObjectStorage
+from app.uat_fixtures import track_owner_beta_fixture_case
 from app.validation import UploadValidationError, validate_upload
 
 logger = logging.getLogger(__name__)
@@ -708,6 +709,7 @@ def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
     db.add(case)
     db.flush()
     db.add(CaseMembership(case_id=case.id, user_id=request.state.user_id, role="owner"))
+    track_owner_beta_fixture_case(db, request.state.user_id, case, settings)
     db.commit()
     db.refresh(case)
     return case

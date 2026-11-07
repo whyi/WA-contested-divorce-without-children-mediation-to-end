@@ -9,6 +9,7 @@ command -v openssl >/dev/null
 
 region="${AWS_REGION:-$(terraform -chdir="$script_dir" output -raw aws_region)}"
 master_secret_arn="$(terraform -chdir="$script_dir" output -raw rds_master_secret_arn)"
+database_name="$(terraform -chdir="$script_dir" output -raw uat_database_name)"
 secret_names="$(terraform -chdir="$script_dir" output -json application_secret_names)"
 temporary_directory="$(mktemp -d)"
 chmod 700 "$temporary_directory"
@@ -20,7 +21,7 @@ aws secretsmanager get-secret-value \
   --query SecretString \
   --output text >"$temporary_directory/rds-secret.json"
 
-python3 - "$temporary_directory/rds-secret.json" "mediation" "$temporary_directory/database-url" <<'PY'
+python3 - "$temporary_directory/rds-secret.json" "$database_name" "$temporary_directory/database-url" <<'PY'
 import json
 import sys
 from urllib.parse import quote

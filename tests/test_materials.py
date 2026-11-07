@@ -117,6 +117,7 @@ class MaterialsImportTests(unittest.TestCase):
         with (
             patch("app.materials.get_settings", return_value=settings),
             patch("app.materials.storage") as object_storage,
+            patch("app.materials.track_owner_beta_fixture_case") as track_fixture,
         ):
             response = client.post(
                 f"/api/v1/materials/imports/{batch_id}/files/{item_id}",
@@ -139,6 +140,7 @@ class MaterialsImportTests(unittest.TestCase):
         self.assertEqual(len(memberships), 1)
         self.assertEqual(memberships[0].user_id, user_id)
         self.assertEqual(memberships[0].role, "owner")
+        track_fixture.assert_called_once_with(db, user_id, created_case)
         self.assertIsInstance(added[0], MaterialImportBatch)
         self.assertEqual(added[0].user_id, user_id)
         self.assertEqual(added[0].id, batch_id)
