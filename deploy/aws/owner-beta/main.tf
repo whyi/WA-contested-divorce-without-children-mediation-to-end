@@ -573,7 +573,7 @@ resource "aws_iam_role_policy" "task_storage" {
       {
         Sid      = "DeletionLedgerBucket"
         Effect   = "Allow"
-        Action   = ["s3:ListBucket", "s3:ListBucketVersions"]
+        Action   = ["s3:ListBucket", "s3:ListBucketVersions", "s3:GetBucketVersioning"]
         Resource = [aws_s3_bucket.deletion_ledger.arn]
       },
       {
