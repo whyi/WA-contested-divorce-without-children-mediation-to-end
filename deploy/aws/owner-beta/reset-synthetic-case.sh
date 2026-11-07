@@ -23,15 +23,50 @@ fi
 region="${AWS_REGION:-$(terraform -chdir="$script_dir" output -raw aws_region)}"
 account_id="$(terraform -chdir="$script_dir" output -raw aws_account_id)"
 cluster="$(terraform -chdir="$script_dir" output -raw ecs_cluster_name)"
-bootstrap_task="$(terraform -chdir="$script_dir" output -raw bootstrap_task_definition_arn)"
-subnets="$(terraform -chdir="$script_dir" output -raw public_subnet_ids)"
-security_group="$(terraform -chdir="$script_dir" output -raw app_security_group_id)"
+repository="$(terraform -chdir="$script_dir" output -raw ecr_repository_url)"
+bootstrap_family="$(terraform -chdir="$script_dir" output -raw bootstrap_task_family)"
 caller_account="$(aws sts get-caller-identity --query Account --output text)"
-
 if [[ "$caller_account" != "$account_id" ]]; then
   printf 'AWS caller account does not match the Terraform deployment account.\n' >&2
   exit 1
 fi
+
+bootstrap_candidates="$(aws ecs list-task-definitions \
+  --region "$region" \
+  --family-prefix "$bootstrap_family" \
+  --status ACTIVE \
+  --sort DESC \
+  --max-items 100 \
+  --query 'taskDefinitionArns' \
+  --output text)"
+if [[ -z "$bootstrap_candidates" || "$bootstrap_candidates" == "None" ]]; then
+  printf 'No active bootstrap task definition was found.\n' >&2
+  exit 1
+fi
+bootstrap_task=""
+for candidate in $bootstrap_candidates; do
+  image="$(aws ecs describe-task-definition \
+    --region "$region" \
+    --task-definition "$candidate" \
+    --query 'taskDefinition.containerDefinitions[0].image' \
+    --output text)"
+  if [[ "$image" == "$repository":* ]]; then
+    image_tag="${image#"$repository:"}"
+    if aws ecr describe-images \
+      --region "$region" \
+      --repository-name "${repository##*/}" \
+      --image-ids "imageTag=$image_tag" >/dev/null 2>&1; then
+      bootstrap_task="$candidate"
+      break
+    fi
+  fi
+done
+if [[ -z "$bootstrap_task" ]]; then
+  printf 'No deployed bootstrap task definition with a versioned image was found.\n' >&2
+  exit 1
+fi
+subnets="$(terraform -chdir="$script_dir" output -raw public_subnet_ids)"
+security_group="$(terraform -chdir="$script_dir" output -raw app_security_group_id)"
 
 overrides="$(python3 - "$confirmation_phrase" <<'PY'
 import json

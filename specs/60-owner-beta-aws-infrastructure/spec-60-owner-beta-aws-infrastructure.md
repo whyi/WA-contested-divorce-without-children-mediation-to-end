@@ -1,6 +1,6 @@
 # Spec 60: Owner-Beta AWS Infrastructure
 
-- **Status:** Infrastructure as code prepared; AWS resources and end-to-end UAT are not provisioned or verified
+- **Status:** Infrastructure as code and immutable image deployment tooling prepared; AWS resources and end-to-end UAT are not provisioned or verified
 - **Related issue:** [#209 — Set up owner-only private beta and repeatable UAT environment](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/209)
 - **Related specifications:** [Spec 57: Owner-Beta Environment Boundaries](../57-owner-beta-environment-boundaries/spec-57-owner-beta-environment-boundaries.md), [Spec 58: Owner-Only Authentication](../58-owner-only-authentication/spec-58-owner-only-authentication.md), [Spec 59: Owner-Beta Deployment Readiness Gate](../59-owner-beta-deployment-readiness/spec-59-owner-beta-deployment-readiness.md)
 - **Objective:** Define a repeatable, isolated AWS deployment for synthetic-data owner UAT without treating application readiness as evidence that cloud resources or operations have been verified.
@@ -17,7 +17,7 @@
 
 - **INF-60-01 — HTTPS ingress:** API Gateway HTTP API supplies the HTTPS URL and connects to the ECS API through a VPC Link and Cloud Map. The stage applies a modest default request throttle.
 - **INF-60-02 — Network isolation:** PostgreSQL is private and accepts connections only from the application security group. ECS ingress accepts the API port only from the VPC Link. Fargate tasks use public IPs for outbound AWS and SES access; security-group ingress does not permit direct public connections to the task.
-- **INF-60-03 — Application runtime:** A Fargate task hosts the API and extraction/analysis workers. The service starts at desired count zero. The deployment script builds/pushes the image, runs migrations, initializes the deletion ledger only when explicitly requested, then starts the service.
+- **INF-60-03 — Application runtime:** A Fargate task hosts the API and extraction/analysis workers. The service starts at desired count zero. The deployment script requires a clean committed source tree, pushes a unique immutable image tag, registers task-definition revisions for that image, runs migrations, initializes the deletion ledger only when explicitly requested, then starts the service. A confirmed rollback command can deploy a retained image but never reverses database migrations.
 - **INF-60-04 — Persistence and encryption:** PostgreSQL uses managed master credentials, TLS, encryption, and seven-day backups. Document and deletion-ledger S3 buckets are private, versioned, and KMS-encrypted. The application role cannot delete ledger objects or versions.
 - **INF-60-05 — Secrets:** Application runtime values are stored in Secrets Manager and injected into ECS. Bootstrap must avoid printing secret values, must use a private temporary directory, and must preserve already-populated authentication keys when resuming after partial failure. Terraform state and local secret inputs must be excluded from version control.
 - **INF-60-06 — External services:** SES SMTP is configured manually with a verified sender and sandbox recipient. AI and live payment credentials are not provisioned. Do not send real case material to UAT.
@@ -29,6 +29,7 @@
 - Terraform formats and validates locally, and deployment scripts pass shell syntax checks without requiring AWS credentials.
 - Runtime environment and ECS secret names do not overlap; no plaintext secret values or `.tfstate`/`.tfvars` files are committed.
 - The database URL bootstrap uses the configured database name and percent-encodes credentials; partial secret bootstrap can resume without changing existing key values.
+- ECR release images use immutable tags; ECS deployment revisions record the selected image, and the guarded rollback command requires an existing image tag.
 - The API endpoint and VPC Link wiring use HTTPS at the public edge; application authentication remains the server-side owner boundary.
 - The deployment documentation distinguishes the informational $100 monthly alert from a hard cap and states that provisioning can incur charges even while ECS desired count is zero.
 - No AWS resource is applied and no UAT readiness, email delivery, restore exercise, or end-to-end user workflow is claimed as verified by the IaC change alone.
