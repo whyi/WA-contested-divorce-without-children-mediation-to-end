@@ -77,6 +77,21 @@ async def request_app(
 
 
 class MainWorkflowTests(unittest.TestCase):
+    def test_created_account_case_is_registered_for_owner_beta_reset(self) -> None:
+        user_id = uuid4()
+        request = SimpleNamespace(state=SimpleNamespace(user_id=user_id))
+        db = Mock()
+        settings = Settings(owner_beta_fixture_reset_enabled=False)
+        with (
+            patch("app.main.settings", settings),
+            patch("app.main.require_active_case_slot"),
+            patch("app.main.track_owner_beta_fixture_case") as track_fixture,
+        ):
+            created = create_case(CaseCreate(), request, db)
+
+        track_fixture.assert_called_once_with(db, user_id, created, settings)
+        self.assertIsInstance(created, Case)
+
     def test_production_case_data_routes_fail_closed_without_counsel_evidence(self) -> None:
         settings = Settings(production_readiness_required=True)
         with patch("app.main.settings", settings):

@@ -130,6 +130,62 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.owner_beta_readiness_errors(), ())
 
+    def test_owner_beta_fixture_reset_requires_dedicated_uat_resources(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+            auth_encryption_key="secure-encryption-secret-that-is-long-enough",
+            auth_issuer="https://uat.example.test",
+            auth_public_base_url="https://uat.example.test",
+            webauthn_origin="https://uat.example.test",
+            owner_beta_enabled=True,
+            owner_beta_email="owner@example.com",
+            owner_beta_readiness_required=True,
+            owner_beta_fixture_reset_enabled=True,
+            owner_beta_fixture_database_host_prefix="casework-owner-beta-uat",
+            database_url=(
+                "postgresql+psycopg://casework:password@"
+                "casework-owner-beta-uat.abc.us-west-2.rds.amazonaws.com:5432/"
+                "owner_beta_uat?sslmode=require"
+            ),
+            s3_bucket="casework-owner-beta-uat-documents-123",
+            deletion_ledger_bucket="casework-owner-beta-uat-deletion-ledger-123",
+            s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
+            case_data_enabled=True,
+            case_materials_enabled=True,
+            smtp_host="email-smtp.us-west-2.amazonaws.com",
+            auth_email_from="owner@example.com",
+        )
+
+        self.assertEqual(settings.owner_beta_fixture_reset_errors(), ())
+
+    def test_owner_beta_fixture_reset_rejects_non_uat_database_and_storage(self) -> None:
+        with self.assertRaisesRegex(ValueError, "non_uat_database_host_configured"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                owner_beta_enabled=True,
+                owner_beta_email="owner@example.com",
+                owner_beta_readiness_required=True,
+                owner_beta_fixture_reset_enabled=True,
+                owner_beta_fixture_database_host_prefix="casework-owner-beta-uat",
+                database_url=(
+                    "postgresql+psycopg://casework:password@"
+                    "production.example.com:5432/owner_beta_uat?sslmode=require"
+                ),
+                s3_bucket="production-documents",
+                deletion_ledger_bucket="production-deletion-ledger",
+                case_data_enabled=True,
+                case_materials_enabled=True,
+                s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
+            )
+
+    def test_owner_beta_fixture_reset_is_disabled_by_default(self) -> None:
+        settings = Settings()
+
+        self.assertFalse(settings.owner_beta_fixture_reset_enabled)
+        self.assertIsNone(settings.owner_beta_fixture_database_host_prefix)
+
     def test_owner_beta_readiness_rejects_local_and_insecure_resources(self) -> None:
         settings = Settings(
             auth_enabled=True,

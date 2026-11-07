@@ -95,6 +95,17 @@ backups, or provider credentials for UAT.
 6. Confirm the returned URL uses HTTPS. Check `/readyz`, owner-only signup and
    sign-in, email verification, and account-backed workflows using synthetic
    data. A successful `/healthz` is liveness only; it is not UAT sign-off.
+7. After signing in as the designated owner, use
+   `./reset-synthetic-case.sh` to return the account to a clean, no-active-case
+   baseline between UAT runs. The script requires typing an exact confirmation,
+   verifies the AWS account, and runs an ECS task that independently checks the
+   UAT database name/endpoint, storage bucket prefixes, readiness settings,
+   owner identity, and fixture registry. A case is registered automatically
+   when created through the account-backed case or first-upload flows. The reset
+   permanently deletes that case and every stored object version through the
+   deletion ledger; it preserves the owner login, credentials, and immutable
+   ledger. It refuses to delete an existing case that was not registered by the
+   UAT deployment. Use synthetic data only.
 
 ## Operations and teardown
 
@@ -107,6 +118,9 @@ backups, or provider credentials for UAT.
 - RDS backups retain seven days. The UAT deletion ledger has versioning and
   no lifecycle expiration. Record a synthetic restore exercise before using
   the environment for repeated UAT.
+- The reset command restores an empty owner-case baseline, not a database
+  snapshot. It does not erase the permanent-deletion ledger or reset account
+  authentication settings.
 - For teardown, first set the ECS service desired count to zero and wait for
   it to stop. RDS deletion skips a final snapshot; create a separately
   approved snapshot or export first if any synthetic evidence must be retained.
