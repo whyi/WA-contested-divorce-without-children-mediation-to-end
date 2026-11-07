@@ -32,7 +32,7 @@ class DashboardStatusTests(unittest.TestCase):
         case_id = uuid4()
         db = Mock()
         db.execute.return_value.all.return_value = [
-            (case_id, "draft", {"case_title": "XYZ vs ABC", "workflow_mode": "upload"}, 2, "owner", None)
+            (case_id, "draft", {"case_title": "XYZ vs ABC", "workflow_mode": "upload"}, 2, "owner")
         ]
         app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=user_id)
 
@@ -51,14 +51,12 @@ class DashboardStatusTests(unittest.TestCase):
                     "has_cases": True,
                     "case_count": 1,
                     "active_case_count": 1,
-                    "account_type": "party",
                     "cases": [{
                         "id": str(case_id),
                         "status": "draft",
                         "title": "XYZ vs ABC",
                         "workflow_mode": "upload",
                         "attempt_ordinal": 2,
-                        "delegated_to": None,
                     }],
                 },
             },
@@ -71,9 +69,7 @@ class DashboardStatusTests(unittest.TestCase):
     def test_status_returns_empty_case_list_for_new_account(self) -> None:
         db = Mock()
         db.execute.return_value.all.return_value = []
-        app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(
-            id=uuid4(), account_type="party"
-        )
+        app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=uuid4())
 
         def override_db():
             yield db
@@ -88,7 +84,6 @@ class DashboardStatusTests(unittest.TestCase):
                 "has_cases": False,
                 "case_count": 0,
                 "active_case_count": 0,
-                "account_type": "party",
                 "cases": [],
             },
         )
@@ -110,29 +105,12 @@ class DashboardStatusTests(unittest.TestCase):
             "Dashboard status is unavailable. Please try again.",
         )
 
-    def test_delegated_case_is_listed_for_the_party_with_the_delegate(self) -> None:
+    def test_status_does_not_expose_account_types_or_delegation(self) -> None:
         case_id = uuid4()
         db = Mock()
-        db.execute.side_effect = [
-            Mock(all=lambda: [(case_id, "settlement", {"case_title": "Mine"}, 1, "owner", object())]),
-            Mock(all=lambda: [(case_id, "lawyer@example.com")]),
+        db.execute.return_value.all.return_value = [
+            (case_id, "settlement", {"case_title": "Mine"}, 1, "owner")
         ]
-        app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=uuid4())
-
-        def override_db():
-            yield db
-
-        app.dependency_overrides[get_db] = override_db
-        response = TestClient(app).get("/api/v1/dashboard/status")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["cases"][0]["delegated_to"], "lawyer@example.com")
-        statement = str(db.execute.call_args_list[0].args[0])
-        self.assertIn("case_memberships.suspended_at IS NOT NULL", statement)
-
-    def test_professional_account_type_is_reported(self) -> None:
-        db = Mock()
-        db.execute.return_value.all.return_value = []
         app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(
             id=uuid4(), account_type="professional"
         )
@@ -143,7 +121,11 @@ class DashboardStatusTests(unittest.TestCase):
         app.dependency_overrides[get_db] = override_db
         response = TestClient(app).get("/api/v1/dashboard/status")
 
-        self.assertEqual(response.json()["data"]["account_type"], "professional")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("account_type", response.json()["data"])
+        self.assertNotIn("delegated_to", response.json()["data"]["cases"][0])
+        self.assertEqual(db.execute.call_count, 1)
+        self.assertNotIn("suspended_at", str(db.execute.call_args.args[0]))
 
 
 if __name__ == "__main__":

@@ -21,14 +21,6 @@ def require_active_case_slot(db: Session, user_id: UUID) -> User:
         if getattr(user, "status", "active") != "active":
             raise HTTPException(status_code=410, detail="This account is unavailable.")
         require_scope_active(db, "account", user_id)
-        if getattr(user, "account_type", "party") == "professional":
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "Professional accounts operate cases their clients own. "
-                    "Ask the party to invite you to their case."
-                ),
-            )
         owned_case_count = db.scalar(
             select(func.count(Case.id))
             .join(CaseMembership, CaseMembership.case_id == Case.id)
@@ -48,8 +40,7 @@ def require_active_case_slot(db: Session, user_id: UUID) -> User:
         raise HTTPException(
             status_code=409,
             detail=(
-                "A party account can own one divorce case. Open or reopen your existing case, "
-                "or invite a professional to operate it."
+                "An account can own one divorce case. Open or reopen your existing case."
             ),
         )
     return user

@@ -1448,6 +1448,8 @@
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis, [hidden].analysis-preview-launch { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
+      .account-tools-link[hidden] { display: none; }
+      .authenticated-view .nav a.account-tools-link:not([hidden]) { display: inline-block; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
 
       @media (max-width: 850px) {
@@ -1739,6 +1741,7 @@
               <option value="dark">Dark</option>
             </select>
           </label>
+          <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
           <a class="nav-cta" id="account-entry" href="#account">Sign up / Sign in <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
       </header>
@@ -1979,13 +1982,6 @@
                 <label for="signup-password">Password
                   <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="15" maxlength="1024" required aria-describedby="password-hint">
                 </label>
-                <label for="signup-account-type">I am signing up as
-                  <select id="signup-account-type" name="account_type">
-                    <option value="party" selected>A party to my own divorce case</option>
-                    <option value="professional">An attorney or paralegal helping a client</option>
-                  </select>
-                </label>
-                <p class="account-footnote" id="account-type-hint">Professional accounts are self-declared and are not verified. They cannot create cases; a client invites you to theirs.</p>
                 <p class="account-footnote" id="password-hint">Use at least 15 characters. Choose a password you do not use elsewhere.</p>
                 <button class="button button-primary" type="submit">Create account <span class="arrow" aria-hidden="true">→</span></button>
               </form>
@@ -2063,7 +2059,7 @@
               <div>
                 <p class="eyebrow">Your account</p>
                 <h1 id="dashboard-title">Your case workspace</h1>
-                <p id="dashboard-intro">Your account owns one divorce case for one side only. Professionals operate cases their clients invite them to.</p>
+                <p id="dashboard-intro">Your account owns one divorce case for one side only.</p>
               </div>
             </header>
             <p class="dashboard-state" id="dashboard-loading" role="status">Loading your account status…</p>
@@ -2092,24 +2088,12 @@
                 </div>
               </div>
             </dialog>
-            <section class="existing-cases" id="existing-cases" aria-labelledby="existing-cases-title" hidden>
+            <section class="account-tools" id="account-tools" aria-labelledby="account-tools-title" hidden>
               <div class="onboarding-heading">
-                <p class="eyebrow">Your workspace</p>
-                <h2 id="existing-cases-title">Active cases</h2>
-                <p id="existing-case-count">Loading your active cases…</p>
+                <p class="eyebrow">Your account</p>
+                <h2 id="account-tools-title">Account</h2>
+                <p><a id="account-tools-back" href="/">Back to your case</a></p>
               </div>
-              <div class="case-grid" id="case-list" aria-live="polite"></div>
-              <section class="delegation-accept" id="delegation-accept" aria-labelledby="delegation-accept-title">
-                <h3 id="delegation-accept-title">Accept a client's case invitation</h3>
-                <p>For attorney or paralegal accounts. Enter the one-time code from the invitation email sent to this account's address. Accepting is your explicit choice and does not verify your identity or legal authority.</p>
-                <form id="delegation-accept-form">
-                  <label for="delegation-accept-token">Invitation code
-                    <input id="delegation-accept-token" name="token" type="text" autocomplete="off" minlength="20" maxlength="128" required>
-                  </label>
-                  <button class="dashboard-retry" type="submit">Accept invitation</button>
-                </form>
-                <p id="delegation-accept-status" role="status" aria-live="polite"></p>
-              </section>
               <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
                 <h3 id="closed-cases-title">Closed cases</h3>
                 <p>Closing a case does not delete it. Your materials, attempts and remaining attempt credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
@@ -2134,6 +2118,16 @@
                 </form>
                 <p id="account-permanent-deletion-status" role="status" aria-live="polite"></p>
               </section>
+            </section>
+            <section class="new-case-entry" id="new-case-entry" aria-labelledby="new-case-entry-title" hidden>
+              <div class="onboarding-heading">
+                <p class="eyebrow">Your account</p>
+                <h2 id="new-case-entry-title">Start your case</h2>
+                <p>Choose whether to begin with your documents or a guided wizard.</p>
+              </div>
+              <button class="button button-primary" id="new-case-start" type="button">Start a new case</button>
+            </section>
+            <section class="existing-cases" id="existing-cases" hidden>
               <dialog class="case-create-dialog" id="case-create-dialog" aria-labelledby="case-create-title">
                 <div class="case-create-content">
                   <p class="eyebrow">New active case</p>
@@ -2196,18 +2190,6 @@
                   <button class="dashboard-retry" id="settlement-case-delete" type="button">Permanently delete case</button>
                 </div>
                 <p id="settlement-case-action-status" role="status" aria-live="polite"></p>
-                <section class="case-delegation" id="case-delegation" aria-labelledby="case-delegation-title" hidden>
-                  <h3 id="case-delegation-title">Who operates this case</h3>
-                  <p>This case belongs to you, one side only. You may invite one attorney or paralegal by email to operate it instead of you. Only one account can use the case at a time: while your delegate has access you cannot, and revoking access lets you resume immediately. The other party is never invited, never sees this workspace, and is not a recipient of offers from here. Delegation is your explicit permission only; it does not verify anyone's identity or legal authority.</p>
-                  <p id="case-delegation-current" role="status" aria-live="polite">Checking delegation…</p>
-                  <form id="case-delegation-form">
-                    <label for="case-delegation-email">Attorney or paralegal email
-                      <input id="case-delegation-email" name="email" type="email" maxlength="320" autocomplete="off" required>
-                    </label>
-                    <button class="dashboard-retry" id="case-delegation-invite" type="submit">Send invitation</button>
-                  </form>
-                  <button class="dashboard-retry" id="case-delegation-revoke" type="button" hidden>Revoke delegate access</button>
-                </section>
                 <section class="settlement-attempt-progress" aria-labelledby="settlement-attempt-progress-title">
                   <div class="settlement-attempt-progress-heading">
                     <h3 id="settlement-attempt-progress-title">Negotiation progress</h3>
@@ -2934,8 +2916,11 @@
         const attemptCreditReceiptNote = document.getElementById("attempt-credit-receipt-note");
         const accountEntitlementStatus = document.getElementById("account-entitlement-status");
         const existingCases = document.getElementById("existing-cases");
-        const existingCaseCount = document.getElementById("existing-case-count");
-        const caseList = document.getElementById("case-list");
+        const accountToolsSection = document.getElementById("account-tools");
+        const accountToolsLink = document.getElementById("account-tools-link");
+        const newCaseEntry = document.getElementById("new-case-entry");
+        const newCaseStart = document.getElementById("new-case-start");
+        const accountToolsMode = new URLSearchParams(window.location.search).get("view") === "account";
         const demoCaseChoiceDialog = document.getElementById("demo-case-choice-dialog");
         const demoCaseDocumentsLink = document.getElementById("demo-case-documents-link");
         const demoCaseWizardLink = document.getElementById("demo-case-wizard-link");
@@ -5307,110 +5292,49 @@
           }
         }
 
-        function renderDelegatedCase(item) {
-          const wrap = document.createElement("div");
-          wrap.className = "case-tile case-tile-delegated";
-          const copy = document.createElement("span");
-          copy.className = "case-tile-copy";
-          const title = document.createElement("span");
-          title.className = "case-tile-title";
-          title.textContent = item.title;
-          const meta = document.createElement("span");
-          meta.className = "case-tile-meta";
-          meta.id = `delegated-status-${item.id}`;
-          meta.setAttribute("role", "status");
-          meta.setAttribute("aria-live", "polite");
-          meta.textContent = `Operated by ${item.delegated_to}. You cannot use this case until you revoke their access.`;
-          const revoke = document.createElement("button");
-          revoke.type = "button";
-          revoke.className = "dashboard-retry";
-          revoke.textContent = `Revoke delegate access for ${item.title}`;
-          revoke.addEventListener("click", () => revokeDelegatedCase(item, revoke, meta));
-          copy.append(title, meta, revoke);
-          wrap.append(copy);
-          return wrap;
+        function openActiveCase(item) {
+          if (item.workflow_mode) {
+            window.location.replace(
+              `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`,
+            );
+            return;
+          }
+          dashboardLoading.hidden = true;
+          existingCases.hidden = false;
+          openSettlementPlanner(item.id);
         }
 
-        async function revokeDelegatedCase(item, button, statusElement) {
-          const confirmed = window.confirm(
-            `Revoke ${item.delegated_to}'s access? They lose access immediately and you resume operating this case. Nothing is deleted.`,
-          );
-          if (!confirmed) return;
-          button.disabled = true;
-          statusElement.textContent = "Revoking access…";
-          try {
-            await settlementApi(`/cases/${encodeURIComponent(item.id)}/delegation`, { method: "DELETE" });
-            await loadDashboardStatus();
-          } catch (error) {
-            statusElement.textContent = error instanceof Error ? error.message : "Access could not be revoked. Please try again.";
-            button.disabled = false;
-          }
+        function showAccountTools() {
+          dashboardLoading.hidden = true;
+          accountToolsSection.hidden = false;
         }
 
-        function renderCases(cases, { activeCaseCount, accountType }) {
-          caseList.replaceChildren();
-          for (const item of cases) {
-            if (item.delegated_to) {
-              caseList.append(renderDelegatedCase(item));
-              continue;
-            }
-            const tile = document.createElement("button");
-            tile.className = "case-tile";
-            tile.type = "button";
-            const icon = document.createElement("span");
-            icon.className = "case-tile-icon";
-            icon.setAttribute("aria-hidden", "true");
-            icon.textContent = "▣";
-            const copy = document.createElement("span");
-            copy.className = "case-tile-copy";
-            const title = document.createElement("span");
-            title.className = "case-tile-title";
-            title.textContent = item.title;
-            const meta = document.createElement("span");
-            meta.className = "case-tile-meta";
-            meta.textContent = `${caseAttemptLabel(item.attempt_ordinal)} · ${item.status}`;
-            copy.append(title, meta);
-            tile.append(icon, copy);
-            tile.setAttribute("aria-label", `Open ${item.title}, ${caseAttemptLabel(item.attempt_ordinal)}`);
-            tile.addEventListener("click", () => {
-              if (item.workflow_mode) {
-                window.location.assign(
-                  `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`,
-                );
-              } else {
-                openSettlementPlanner(item.id);
-              }
-            });
-            caseList.append(tile);
+        function showNewCaseStart() {
+          dashboardLoading.hidden = true;
+          newCaseEntry.hidden = false;
+          existingCases.hidden = false;
+          openCaseCreationDialog();
+        }
+
+        async function enterSignedInAccount(account) {
+          existingCases.hidden = true;
+          accountToolsSection.hidden = true;
+          newCaseEntry.hidden = true;
+          accountToolsLink.hidden = false;
+          if (accountToolsMode) {
+            await loadClosedCases();
+            showAccountTools();
+            return;
           }
-
-          existingCaseCount.textContent = accountType === "professional"
-            ? `${cases.length} client ${cases.length === 1 ? "case" : "cases"} you operate`
-            : activeCaseCount > 0
-              ? "Your account's divorce case"
-              : "No active case yet";
-          if (accountType === "professional" || activeCaseCount > 0) return;
-
-          const createTile = document.createElement("button");
-          createTile.type = "button";
-          createTile.className = "case-tile case-tile-new";
-          const addIcon = document.createElement("span");
-          addIcon.className = "case-tile-icon";
-          addIcon.setAttribute("aria-hidden", "true");
-          const copy = document.createElement("span");
-          copy.className = "case-tile-copy";
-          const title = document.createElement("span");
-          title.className = "case-tile-title";
-          const meta = document.createElement("span");
-          meta.className = "case-tile-meta";
-          createTile.setAttribute("aria-label", "Start a new case");
-          addIcon.textContent = "+";
-          title.textContent = "Start a new case";
-          meta.textContent = "Choose documents or a guided wizard";
-          createTile.addEventListener("click", openCaseCreationDialog);
-          copy.append(title, meta);
-          createTile.append(addIcon, copy);
-          caseList.append(createTile);
+          if (account.active_case_count > 0 && account.cases.length > 0) {
+            openActiveCase(account.cases[0]);
+            return;
+          }
+          if (await loadClosedCases() > 0) {
+            showAccountTools();
+            return;
+          }
+          showNewCaseStart();
         }
 
         async function downloadCaseExport(caseId, statusElement, button) {
@@ -5495,77 +5419,6 @@
           }
         }
 
-        const caseDelegation = document.getElementById("case-delegation");
-        const caseDelegationCurrent = document.getElementById("case-delegation-current");
-        const caseDelegationForm = document.getElementById("case-delegation-form");
-        const caseDelegationEmail = document.getElementById("case-delegation-email");
-        const caseDelegationRevoke = document.getElementById("case-delegation-revoke");
-        const delegationAcceptForm = document.getElementById("delegation-accept-form");
-        const delegationAcceptStatus = document.getElementById("delegation-accept-status");
-
-        function renderCaseDelegation(state) {
-          const none = state.status === "none";
-          caseDelegationForm.hidden = !none;
-          caseDelegationRevoke.hidden = none;
-          caseDelegationRevoke.textContent = state.status === "accepted" ? "Revoke delegate access and resume" : "Cancel invitation";
-          caseDelegationCurrent.textContent = {
-            none: "You are operating this case. No delegate is invited.",
-            pending: `Invitation sent to ${state.invitee_email}. You still operate the case until they accept.`,
-            accepted: `${state.invitee_email} is operating this case. You cannot use it until you revoke access.`,
-          }[state.status];
-        }
-
-        async function loadCaseDelegation(caseId) {
-          caseDelegation.hidden = true;
-          try {
-            const state = await settlementApi(`/cases/${encodeURIComponent(caseId)}/delegation`);
-            if (settlementCaseId !== caseId) return;
-            renderCaseDelegation(state);
-            caseDelegation.hidden = false;
-          } catch (error) {
-            caseDelegation.hidden = true;
-          }
-        }
-
-        async function inviteCaseDelegate() {
-          if (!settlementCaseId) return;
-          try {
-            const state = await settlementApi(`/cases/${encodeURIComponent(settlementCaseId)}/delegation`, {
-              method: "POST",
-              body: JSON.stringify({ email: caseDelegationEmail.value }),
-            });
-            caseDelegationForm.reset();
-            renderCaseDelegation(state);
-          } catch (error) {
-            caseDelegationCurrent.textContent = error instanceof Error ? error.message : "The invitation could not be sent.";
-          }
-        }
-
-        async function revokeCaseDelegate() {
-          if (!settlementCaseId) return;
-          try {
-            const state = await settlementApi(`/cases/${encodeURIComponent(settlementCaseId)}/delegation`, { method: "DELETE" });
-            renderCaseDelegation(state);
-          } catch (error) {
-            caseDelegationCurrent.textContent = error instanceof Error ? error.message : "Access could not be revoked.";
-          }
-        }
-
-        async function acceptDelegationInvitation(token) {
-          delegationAcceptStatus.textContent = "Accepting…";
-          try {
-            await settlementApi("/api/v1/delegations/accept", {
-              method: "POST",
-              body: JSON.stringify({ token: token.trim() }),
-            });
-            delegationAcceptForm.reset();
-            delegationAcceptStatus.textContent = "Invitation accepted. The case is now available to you.";
-            await loadDashboardStatus();
-          } catch (error) {
-            delegationAcceptStatus.textContent = error instanceof Error ? error.message : "The invitation could not be accepted.";
-          }
-        }
-
         async function reopenClosedCase(item, button) {
           button.disabled = true;
           closedCasesStatus.textContent = `Reopening ${item.title}…`;
@@ -5619,10 +5472,12 @@
               closedCaseList.append(row);
             }
             closedCases.hidden = cases.length === 0;
+            return cases.length;
           } catch {
             closedCases.hidden = false;
             closedCaseList.replaceChildren();
             closedCasesStatus.textContent = "Closed cases could not be loaded. Try again from Refresh.";
+            return 0;
           }
         }
 
@@ -5727,7 +5582,6 @@
         async function openSettlementPlanner(caseId) {
           settlementCaseId = caseId;
           void loadAttemptCreditPurchaseHistory();
-          loadCaseDelegation(caseId);
           settlementSelectedScenario = null;
           settlementRunId = null;
           settlementOfferResponseState = null;
@@ -8095,7 +7949,7 @@
           if (!caseId) {
             rejectionCompletionStatus.dataset.kind = "error";
             rejectionCompletionStatus.textContent =
-              "The closed case could not be identified. Return to your cases to review closed workspaces.";
+              "The closed case could not be identified. Open Account to review your closed cases.";
             return;
           }
           try {
@@ -8902,10 +8756,13 @@
 
         function showPreparation(mode) {
           offerGateMode = preparationCaseId ? mode : null;
+          if (preparationCaseId) {
+            document.getElementById("demo-back-to-account").href = "/?view=account";
+          }
           const isUpload = mode === "upload";
           const isDemo = mode === "demo";
           if (preparationCaseId && mode === "wizard") {
-            wizardFinish.textContent = "Save draft and return to cases";
+            wizardFinish.textContent = "Save draft";
             preparationNote.textContent =
               "Your case record is saved to your account. Wizard answers and attachments are saved in this browser only and are not uploaded or backed up. Keep your own secure copy.";
             document.getElementById("preparation-description").textContent =
@@ -11864,10 +11721,15 @@
         }
 
         async function loadDashboardStatus({ isStartup = false } = {}) {
+          document.getElementById("dashboard-header").hidden = true;
+          dashboard.removeAttribute("aria-labelledby");
+          dashboard.setAttribute("aria-label", "Your account");
           if (!isStartup || preparationMode) showDashboardShell();
           dashboardLoading.hidden = false;
           dashboardError.hidden = true;
           existingCases.hidden = true;
+          accountToolsSection.hidden = true;
+          newCaseEntry.hidden = true;
           preparationView.hidden = true;
           try {
             const response = await fetch("/api/v1/dashboard/status", {
@@ -11905,17 +11767,13 @@
               throw new Error("Your account status could not be verified. Please try again.");
             }
             showDashboardShell();
-            dashboardLoading.hidden = true;
             void loadAttemptCreditPackages();
             if (preparationMode) {
+              dashboardLoading.hidden = true;
+              accountToolsLink.hidden = false;
               showPreparation(preparationMode);
             } else {
-              renderCases(account.cases, {
-                activeCaseCount: account.active_case_count,
-                accountType: account.account_type,
-              });
-              existingCases.hidden = false;
-              void loadClosedCases();
+              await enterSignedInAccount(account);
             }
           } catch (error) {
             showDashboardShell();
@@ -12019,19 +11877,9 @@
             void createCaseFromDashboard(activeCaseStartMode, caseCreateContinue);
           }
         });
+        newCaseStart.addEventListener("click", openCaseCreationDialog);
         settlementCaseExport.addEventListener("click", () => {
           if (settlementCaseId) void downloadCaseExport(settlementCaseId, settlementCaseActionStatus, settlementCaseExport);
-        });
-        caseDelegationForm.addEventListener("submit", (event) => {
-          event.preventDefault();
-          if (caseDelegationForm.reportValidity()) inviteCaseDelegate();
-        });
-        caseDelegationRevoke.addEventListener("click", revokeCaseDelegate);
-        delegationAcceptForm.addEventListener("submit", (event) => {
-          event.preventDefault();
-          if (delegationAcceptForm.reportValidity()) {
-            acceptDelegationInvitation(new FormData(delegationAcceptForm).get("token"));
-          }
         });
         settlementCaseClose.addEventListener("click", () => {
           void closeCaseFromWorkspace();
@@ -12675,8 +12523,8 @@
           if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
-          if (saved) {
-            window.location.assign(preparationCaseId ? "/#account" : demoAssetOverviewUrl(demoCurrentCaseId));
+          if (saved && !preparationCaseId) {
+            window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
