@@ -64,7 +64,7 @@ locals {
 
   api_container = {
     name      = "api"
-    image     = "${aws_ecr_repository.app.repository_url}:latest"
+    image     = "${aws_ecr_repository.app.repository_url}:bootstrap"
     essential = true
     cpu       = 512
     memory    = 2048
@@ -95,7 +95,7 @@ locals {
   worker_containers = [
     {
       name        = "extraction-worker"
-      image       = "${aws_ecr_repository.app.repository_url}:latest"
+      image       = "${aws_ecr_repository.app.repository_url}:bootstrap"
       essential   = true
       cpu         = 256
       memory      = 512
@@ -114,7 +114,7 @@ locals {
     },
     {
       name        = "analysis-worker"
-      image       = "${aws_ecr_repository.app.repository_url}:latest"
+      image       = "${aws_ecr_repository.app.repository_url}:bootstrap"
       essential   = true
       cpu         = 256
       memory      = 512
@@ -420,7 +420,7 @@ resource "aws_db_instance" "uat" {
 
 resource "aws_ecr_repository" "app" {
   name                 = local.name
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
@@ -611,7 +611,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
     name        = "bootstrap"
-    image       = "${aws_ecr_repository.app.repository_url}:latest"
+    image       = "${aws_ecr_repository.app.repository_url}:bootstrap"
     essential   = true
     command     = ["true"]
     environment = local.task_environment
@@ -677,7 +677,7 @@ resource "aws_ecs_service" "app" {
   }
 
   lifecycle {
-    ignore_changes = [desired_count]
+    ignore_changes = [desired_count, task_definition]
   }
 }
 

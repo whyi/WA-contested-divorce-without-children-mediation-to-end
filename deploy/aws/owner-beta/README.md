@@ -90,8 +90,14 @@ backups, or provider credentials for UAT.
    ./deploy.sh --initialize-ledger
    ```
 
-   Later code deployments use `./deploy.sh` without the initialization flag.
-   Never initialize an already initialized ledger or use a production backup.
+   The deploy script requires a clean committed source tree and tags each
+   image with its commit and build timestamp. ECR tags are immutable. Later
+   code deployments use `./deploy.sh` without the initialization flag. Never
+   initialize an already initialized ledger or use a production backup.
+   Preserve the printed image tag with the deployment record. To roll back the
+   application image, use `./rollback.sh <image-tag>` only after confirming
+   that the older application is compatible with the current database schema
+   and taking any required approved backup. Rollback never reverses migrations.
 6. Confirm the returned URL uses HTTPS. Check `/readyz`, owner-only signup and
    sign-in, email verification, and account-backed workflows using synthetic
    data. A successful `/healthz` is liveness only; it is not UAT sign-off.
@@ -121,6 +127,9 @@ backups, or provider credentials for UAT.
 - ECS desired count, RDS size, and monthly alert are Terraform variables; do
   not scale resources without reviewing the cost impact. The cost alert is
   informational and not a hard cap.
+- ECR retains the ten most recent images. An older image may no longer be
+  available for rollback after lifecycle cleanup; the rollback script fails
+  closed if its exact immutable tag is missing.
 - API Gateway access logs contain only request ID, route key, and status.
   Application logs are retained for 14 days. Do not add case bodies, tokens,
   or email addresses to logs.
@@ -139,6 +148,8 @@ backups, or provider credentials for UAT.
 
 This stack does not create a CI release pipeline, verified email identity,
 SES SMTP user, backup/restore evidence, confirmed alert delivery, monitoring
-owner/on-call integration, or a completed UAT record. CloudWatch alarms and
-operator runbooks are defined, but neither a deployment nor an end-to-end UAT
-run is claimed. Remaining work is tracked under #209.
+owner/on-call integration, or a completed UAT record. CloudWatch alarms,
+operator runbooks, immutable image deployments, and a guarded image rollback
+command are defined, but neither a deployment nor an end-to-end UAT run is
+claimed. Rollback does not restore the database schema. Remaining work is
+tracked under #209.
