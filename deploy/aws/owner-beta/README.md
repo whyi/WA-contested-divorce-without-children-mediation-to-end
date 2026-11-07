@@ -113,6 +113,11 @@ backups, or provider credentials for UAT.
 
 ## Operations and teardown
 
+- Operational alarms and first-response guidance are documented in the
+  [owner-beta operations runbook](operations-runbook.md). Confirm the SNS email
+  subscription after the first apply; alarm configuration alone does not prove
+  delivery. The same verified address receives budget notifications and
+  threshold alarms.
 - ECS desired count, RDS size, and monthly alert are Terraform variables; do
   not scale resources without reviewing the cost impact. The cost alert is
   informational and not a hard cap.
@@ -133,7 +138,7 @@ backups, or provider credentials for UAT.
   an approved teardown procedure. KMS key deletion is delayed by seven days.
 
 This stack does not create a CI release pipeline, verified email identity,
-SES SMTP user, backup/restore evidence, monitoring/on-call integration, or a
-completed UAT record. A guarded case reset and repeatable UAT runbook are
-provided, but neither a deployment nor an end-to-end UAT run is claimed.
-Remaining work is tracked under #209.
+SES SMTP user, backup/restore evidence, confirmed alert delivery, monitoring
+owner/on-call integration, or a completed UAT record. CloudWatch alarms and
+operator runbooks are defined, but neither a deployment nor an end-to-end UAT
+run is claimed. Remaining work is tracked under #209.
