@@ -2,7 +2,7 @@
 
 - **Status:** CloudWatch alarms and operator runbook implemented; AWS apply and alert delivery are pending
 - **Related issue:** [#209 — Set up owner-only private beta and repeatable UAT environment](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/209)
-- **Related pull requests:** [#216 — Add AWS infrastructure for owner-only UAT](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/216), [#221 — Add repeatable owner-beta UAT suite](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/221)
+- **Related pull requests:** [#216 — Add AWS infrastructure for owner-only UAT](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/216), [#221 — Add repeatable owner-beta UAT suite](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/221), [#222 — Add owner-beta operational alarms and runbook](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/pull/222)
 - **Related specifications:** [Spec 50: Production Security, Backup, and Restore Readiness](../50-production-security-backup-and-restore-readiness/spec-50-production-security-backup-and-restore-readiness.md), [Spec 60: Owner-Beta AWS Infrastructure](../60-owner-beta-aws-infrastructure/spec-60-owner-beta-aws-infrastructure.md), [Spec 62: Owner-Beta Repeatable UAT Suite](../62-owner-beta-uat-suite/spec-62-owner-beta-uat-suite.md)
 - **Objective:** Add actionable infrastructure alarms and document safe owner-beta deployment, incident, secret-handling, and recovery boundaries without claiming operational evidence that has not been produced.
 
