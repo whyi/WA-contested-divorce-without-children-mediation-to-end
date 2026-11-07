@@ -279,7 +279,7 @@ class Settings(BaseSettings):
             errors.append("custom_object_storage_endpoint_configured")
         if not self.s3_bucket.startswith(f"{prefix}-documents-"):
             errors.append("non_uat_document_bucket_configured")
-        if not self.deletion_ledger_bucket.startswith(f"{prefix}-deletion-ledger-"):
+        if not self.deletion_ledger_bucket.startswith(f"{prefix}-ledger-"):
             errors.append("non_uat_deletion_ledger_bucket_configured")
         return tuple(errors)
 
