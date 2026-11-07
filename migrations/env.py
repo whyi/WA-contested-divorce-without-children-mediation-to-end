@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
-from app.database import Base, alembic_option_value
+from app.database import Base, alembic_option_value, widen_alembic_version_column
 from app import models  # noqa: F401
 
 config = context.config
@@ -37,6 +37,8 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+    with connectable.begin() as connection:
+        widen_alembic_version_column(connection)
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():
