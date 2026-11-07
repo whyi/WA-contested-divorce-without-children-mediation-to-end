@@ -94,7 +94,13 @@ validate_repository() {
     failures=$((failures + 1))
   fi
 
-  if (cd "$ROOT_DIR" && PYTHONPATH="$ROOT_DIR/src" python3 -m unittest discover -s tests -v); then
+  if [[ "${COVERAGE:-0}" == "1" ]]; then
+    test_command=(coverage run --source="$ROOT_DIR/src/app" -m unittest discover -s tests -v)
+  else
+    test_command=(python3 -m unittest discover -s tests -v)
+  fi
+
+  if (cd "$ROOT_DIR" && PYTHONPATH="$ROOT_DIR/src" "${test_command[@]}"); then
     printf 'PASS: Python unit tests passed.\n'
   else
     printf 'FAIL: Python unit tests failed.\n'

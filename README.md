@@ -1,4 +1,5 @@
 ![Tests](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/actions/workflows/test.yml/badge.svg?branch=main)
+![Coverage](coverage.svg)
 
 # WA-contested-divorce-without-children-mediation-to-end
 A preparation and organization workspace for Washington divorce-without-children mediation materials and user-reviewed proposals. It is not legal advice, and no outcome is guaranteed.
