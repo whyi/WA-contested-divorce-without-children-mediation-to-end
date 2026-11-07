@@ -247,7 +247,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertNotIn("fetch(", theme_handler)
 
         css = page.split("<style>", 1)[1].split("</style>", 1)[0]
-        component_css = css.split(".preview-bar {", 1)[1]
+        component_css = css.split(".preview-bar {", 1)[1].split("}", 1)[0]
         declaration = re.compile(
             r"(?P<property>background(?:-color)?|border(?:-(?:top|right|bottom|left|color))?|outline(?:-color)?|accent-color|color|fill|stroke)\s*:\s*(?P<value>[^;{}]+)",
             re.IGNORECASE,
