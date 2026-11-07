@@ -734,6 +734,124 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
   retention_in_days = 14
 }
 
+resource "aws_sns_topic" "operations" {
+  name = "${local.name}-operations-alerts"
+}
+
+resource "aws_sns_topic_subscription" "operations_email" {
+  topic_arn = aws_sns_topic.operations.arn
+  protocol  = "email"
+  endpoint  = var.budget_notification_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_5xx" {
+  alarm_name          = "${local.name}-api-5xx"
+  alarm_description   = "At least five API Gateway HTTP API 5xx responses in five minutes."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "5xx"
+  namespace           = "AWS/ApiGateway"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.operations.arn]
+
+  dimensions = {
+    ApiId = aws_apigatewayv2_api.uat.id
+    Stage = aws_apigatewayv2_stage.default.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ecs_task_shortfall" {
+  alarm_name          = "${local.name}-ecs-task-shortfall"
+  alarm_description   = "Desired ECS tasks have not remained healthy for the configured service."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  datapoints_to_alarm = 2
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.operations.arn]
+
+  metric_query {
+    id          = "desired"
+    return_data = false
+
+    metric {
+      metric_name = "DesiredTaskCount"
+      namespace   = "AWS/ECS"
+      period      = 60
+      stat        = "Maximum"
+
+      dimensions = {
+        ClusterName = aws_ecs_cluster.uat.name
+        ServiceName = aws_ecs_service.app.name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "running"
+    return_data = false
+
+    metric {
+      metric_name = "RunningTaskCount"
+      namespace   = "AWS/ECS"
+      period      = 60
+      stat        = "Minimum"
+
+      dimensions = {
+        ClusterName = aws_ecs_cluster.uat.name
+        ServiceName = aws_ecs_service.app.name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "shortfall"
+    expression  = "desired - running"
+    label       = "Desired tasks not running"
+    return_data = true
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
+  alarm_name          = "${local.name}-rds-high-cpu"
+  alarm_description   = "RDS CPU utilization exceeded 80 percent for at least 15 minutes."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  datapoints_to_alarm = 3
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.operations.arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.uat.identifier
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "rds_free_storage" {
+  alarm_name          = "${local.name}-rds-low-storage"
+  alarm_description   = "RDS free storage fell below 5 GiB."
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "FreeStorageSpace"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Minimum"
+  threshold           = 5368709120
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.operations.arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.uat.identifier
+  }
+}
+
 resource "aws_budgets_budget" "monthly" {
   name         = "${local.name}-monthly-cost-alert"
   budget_type  = "COST"
