@@ -201,9 +201,21 @@ allowlist is enforced on signup, account recovery, password/Google/passkey/MFA
 authentication, refresh, and every authenticated request. Owner-only mode
 requires authentication and cannot be combined with demo mode. Keep it disabled
 for the local Compose demo; enabling it does not provision or certify an
-isolated UAT environment. See
+isolated UAT environment. A hosted UAT deployment must additionally set
+`OWNER_BETA_READINESS_REQUIRED=true`; `/readyz`, case/document, account
+dashboard, and billing routes then remain closed until owner-only
+authentication, HTTPS origins, TLS PostgreSQL, remote HTTPS object storage
+with KMS, case-data access, and email delivery are configured. The gate rejects
+AI processing, live Stripe credentials, and
+static AWS credentials; extraction and analysis workers also refuse to start
+while these readiness checks fail. Email routing still requires an operator
+to verify that delivery is restricted to an approved test sink or owner
+destination. This configuration check does not provision or verify cloud
+resources. See
 [Spec 58](specs/58-owner-only-authentication/spec-58-owner-only-authentication.md)
-for the authentication boundary and its remaining deployment requirements.
+for the authentication boundary and
+[Spec 59](specs/59-owner-beta-deployment-readiness/spec-59-owner-beta-deployment-readiness.md)
+for the UAT runtime gate.
 
 Attempt-credit checkout is disabled in demo mode. For a reviewed production
 deployment, configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
@@ -256,8 +268,9 @@ unready while required settings or evidence gates are missing. It does not
 replace operator sign-off or prove a restore, backup purge, or alert delivery.
 The [owner-only beta environment boundaries](docs/owner-beta-environment-boundaries.md)
 define the intended separation for local development, public demos, future
-owner-only UAT, and future production. A hosted UAT deployment is not currently
-defined or verified.
+owner-only UAT, and future production. AWS ECS/Fargate with an AWS-managed
+HTTPS endpoint is the selected direction, but no account resources, deployment
+definition, domain, or cloud credentials are configured in this repository.
 
 For running the Python app outside Compose, copy `.env.example` to `.env`,
 install the project with `python -m pip install -e .`, and ensure PostgreSQL,

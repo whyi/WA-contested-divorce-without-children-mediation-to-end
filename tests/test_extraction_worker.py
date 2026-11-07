@@ -3,10 +3,24 @@ from unittest.mock import MagicMock, Mock, patch
 from uuid import uuid4
 
 from app.extraction import ExtractionLease
-from app.extraction_worker import run_once
+from app.config import Settings
+from app.extraction_worker import main, run_once
 
 
 class ExtractionWorkerTests(unittest.TestCase):
+    def test_worker_does_not_start_before_owner_beta_is_ready(self) -> None:
+        with (
+            patch(
+                "app.extraction_worker.get_settings",
+                return_value=Settings(owner_beta_readiness_required=True),
+            ),
+            patch("app.extraction_worker.ObjectStorage") as storage,
+            self.assertRaisesRegex(RuntimeError, "owner_beta_mode_disabled"),
+        ):
+            main()
+
+        storage.assert_not_called()
+
     def test_worker_processes_one_claimed_job_in_a_separate_session(self) -> None:
         storage = Mock()
         lease = ExtractionLease(uuid4(), uuid4())

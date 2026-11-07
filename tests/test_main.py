@@ -88,6 +88,31 @@ class MainWorkflowTests(unittest.TestCase):
             {"detail": "Production readiness requirements are unmet."},
         )
 
+    def test_owner_beta_case_data_routes_fail_closed_when_deployment_is_not_ready(self) -> None:
+        settings = Settings(owner_beta_readiness_required=True)
+        with patch("app.main.settings", settings):
+            client = TestClient(app)
+            responses = [
+                client.get("/cases"),
+                client.get("/api/v1/dashboard/status"),
+                client.get("/api/billing/packages"),
+            ]
+            with self.assertRaises(HTTPException) as raised:
+                readiness()
+
+        for response in responses:
+            with self.subTest(path=response.request.url.path):
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(
+                    response.json(),
+                    {"detail": "Owner-beta deployment readiness requirements are unmet."},
+                )
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(
+            raised.exception.detail,
+            "Owner-beta deployment readiness requirements are unmet.",
+        )
+
     def test_case_data_startup_reconciles_external_deletion_ledger(self) -> None:
         async def start_application():
             async with lifespan(app):
