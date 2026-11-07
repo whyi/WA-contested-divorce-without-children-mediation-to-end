@@ -66,18 +66,21 @@ database_url_name="$(secret_name database_url)"
 auth_jwt_name="$(secret_name auth_jwt)"
 auth_encryption_name="$(secret_name auth_encryption)"
 owner_email_name="$(secret_name owner_email)"
+auth_email_from_name="$(secret_name auth_email_from)"
 smtp_username_name="$(secret_name smtp_username)"
 smtp_password_name="$(secret_name smtp_password)"
 database_url_populated=false
 auth_jwt_populated=false
 auth_encryption_populated=false
 owner_email_populated=false
+auth_email_from_populated=false
 smtp_username_populated=false
 smtp_password_populated=false
 secret_is_populated "$database_url_name" && database_url_populated=true
 secret_is_populated "$auth_jwt_name" && auth_jwt_populated=true
 secret_is_populated "$auth_encryption_name" && auth_encryption_populated=true
 secret_is_populated "$owner_email_name" && owner_email_populated=true
+secret_is_populated "$auth_email_from_name" && auth_email_from_populated=true
 secret_is_populated "$smtp_username_name" && smtp_username_populated=true
 secret_is_populated "$smtp_password_name" && smtp_password_populated=true
 
@@ -85,6 +88,7 @@ if [[ "$database_url_populated" == true &&
   "$auth_jwt_populated" == true &&
   "$auth_encryption_populated" == true &&
   "$owner_email_populated" == true &&
+  "$auth_email_from_populated" == true &&
   "$smtp_username_populated" == true &&
   "$smtp_password_populated" == true ]]; then
   printf 'Runtime secrets are already populated; no values were changed.\n'
@@ -93,6 +97,17 @@ fi
 
 if [[ "$owner_email_populated" == false ]]; then
   read -r -p "Verified owner email (must also be verified in SES sandbox): " owner_email
+fi
+if [[ "$auth_email_from_populated" == false ]]; then
+  read -r -p "SES sender email, verified in SES (blank = owner email; use a different address if the mailbox provider drops mail from itself): " auth_email_from
+  auth_email_from="${auth_email_from:-${owner_email:-}}"
+  if [[ -z "$auth_email_from" ]]; then
+    auth_email_from="$(aws secretsmanager get-secret-value \
+      --region "$region" \
+      --secret-id "$owner_email_name" \
+      --query SecretString \
+      --output text)"
+  fi
 fi
 if [[ "$smtp_username_populated" == false ]]; then
   read -r -p "SES SMTP username: " smtp_username
@@ -117,6 +132,9 @@ fi
 if [[ "$owner_email_populated" == false ]]; then
   put_secret "$owner_email_name" "$owner_email"
 fi
+if [[ "$auth_email_from_populated" == false ]]; then
+  put_secret "$auth_email_from_name" "$auth_email_from"
+fi
 if [[ "$smtp_username_populated" == false ]]; then
   put_secret "$smtp_username_name" "$smtp_username"
 fi
@@ -124,5 +142,5 @@ if [[ "$smtp_password_populated" == false ]]; then
   put_secret "$smtp_password_name" "$smtp_password"
 fi
 
-unset owner_email smtp_username smtp_password 2>/dev/null || true
+unset owner_email auth_email_from smtp_username smtp_password 2>/dev/null || true
 printf 'UAT runtime secrets were stored in AWS Secrets Manager; secret values were not printed.\n'
