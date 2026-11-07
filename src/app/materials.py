@@ -34,6 +34,7 @@ from app.models import (
     User,
 )
 from app.storage import ObjectStorage
+from app.uat_fixtures import track_owner_beta_fixture_case
 from app.validation import UploadValidationError, validate_upload
 
 logger = logging.getLogger(__name__)
@@ -270,6 +271,7 @@ async def import_material_file(
             db.flush()
             case_id = case.id
             db.add(CaseMembership(case_id=case_id, user_id=user.id, role="owner"))
+            track_owner_beta_fixture_case(db, user.id, case)
         else:
             try:
                 membership = db.scalar(

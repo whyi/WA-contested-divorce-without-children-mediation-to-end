@@ -36,6 +36,8 @@ locals {
     { name = "MAX_PDF_PAGES", value = "200" },
     { name = "MAX_UPLOAD_BYTES", value = "2097152" },
     { name = "OWNER_BETA_ENABLED", value = "true" },
+    { name = "OWNER_BETA_FIXTURE_RESET_ENABLED", value = "true" },
+    { name = "OWNER_BETA_FIXTURE_DATABASE_HOST_PREFIX", value = local.name },
     { name = "OWNER_BETA_READINESS_REQUIRED", value = "true" },
     { name = "PRODUCTION_READINESS_REQUIRED", value = "false" },
     { name = "S3_BUCKET", value = aws_s3_bucket.documents.bucket },
@@ -398,7 +400,7 @@ resource "aws_db_instance" "uat" {
   storage_type                  = "gp3"
   storage_encrypted             = true
   kms_key_id                    = aws_kms_key.uat.arn
-  db_name                       = "mediation"
+  db_name                       = "owner_beta_uat"
   username                      = "casework"
   manage_master_user_password   = true
   master_user_secret_kms_key_id = aws_kms_key.uat.arn

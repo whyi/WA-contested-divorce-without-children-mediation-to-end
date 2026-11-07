@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     owner_beta_enabled: bool = False
     owner_beta_email: EmailStr | None = None
     owner_beta_readiness_required: bool = False
+    owner_beta_fixture_reset_enabled: bool = False
+    owner_beta_fixture_database_host_prefix: str | None = None
     production_readiness_required: bool = False
     counsel_review_evidence_verified: bool = False
     auth_jwt_secret: str | None = None
@@ -211,6 +213,13 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Static AWS credentials cannot be used with OWNER_BETA_READINESS_REQUIRED."
                 )
+        if self.owner_beta_fixture_reset_enabled:
+            errors = self.owner_beta_fixture_reset_errors()
+            if errors:
+                raise ValueError(
+                    "Owner-beta fixture reset requires a dedicated UAT database and storage "
+                    f"configuration ({', '.join(errors)})."
+                )
         return self
 
     def _uses_local_s3_endpoint(self) -> bool:
@@ -231,6 +240,48 @@ class Settings(BaseSettings):
             (self.stripe_secret_key or "").startswith(prefix)
             for prefix in ("sk_live_", "rk_live_")
         )
+
+    def owner_beta_fixture_reset_errors(self) -> tuple[str, ...]:
+        errors: list[str] = []
+        if not self.owner_beta_fixture_reset_enabled:
+            errors.append("owner_beta_fixture_reset_disabled")
+        if not self.owner_beta_enabled:
+            errors.append("owner_beta_mode_disabled")
+        if not self.owner_beta_readiness_required:
+            errors.append("owner_beta_readiness_gate_disabled")
+        if self.production_readiness_required:
+            errors.append("production_readiness_gate_enabled")
+        if self.demo_mode_enabled:
+            errors.append("demo_mode_enabled")
+        if not self.case_data_enabled or not self.case_materials_enabled:
+            errors.append("case_data_or_material_storage_disabled")
+        if self.ai_analysis_enabled:
+            errors.append("ai_analysis_enabled")
+        if self._has_live_stripe_credentials():
+            errors.append("live_payments_configured")
+        prefix = (self.owner_beta_fixture_database_host_prefix or "").strip().lower()
+        if not prefix or not all(
+            character.isalnum() or character == "-" for character in prefix
+        ):
+            errors.append("uat_database_host_prefix_missing_or_invalid")
+        database = urlparse(self.database_url)
+        if (
+            database.scheme not in {"postgresql", "postgresql+psycopg"}
+            or database.hostname is None
+            or not database.hostname.endswith(".rds.amazonaws.com")
+            or not prefix
+            or not database.hostname.startswith(f"{prefix}.")
+        ):
+            errors.append("non_uat_database_host_configured")
+        if database.path != "/owner_beta_uat":
+            errors.append("non_uat_database_name_configured")
+        if self.s3_endpoint_url:
+            errors.append("custom_object_storage_endpoint_configured")
+        if not self.s3_bucket.startswith(f"{prefix}-documents-"):
+            errors.append("non_uat_document_bucket_configured")
+        if not self.deletion_ledger_bucket.startswith(f"{prefix}-deletion-ledger-"):
+            errors.append("non_uat_deletion_ledger_bucket_configured")
+        return tuple(errors)
 
     def production_readiness_errors(self) -> tuple[str, ...]:
         if not self.production_readiness_required:
