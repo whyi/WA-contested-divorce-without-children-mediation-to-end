@@ -192,6 +192,11 @@ resource "aws_security_group" "vpc_link" {
   description = "API Gateway VPC Link for the owner-beta UAT API."
   vpc_id      = aws_vpc.uat.id
   egress      = []
+
+  lifecycle {
+    # Separate aws_vpc_security_group_egress_rule resources own the egress rules.
+    ignore_changes = [egress]
+  }
 }
 
 resource "aws_security_group" "app" {
@@ -199,6 +204,11 @@ resource "aws_security_group" "app" {
   description = "UAT tasks accept traffic only from the API Gateway VPC Link."
   vpc_id      = aws_vpc.uat.id
   egress      = []
+
+  lifecycle {
+    # Separate aws_vpc_security_group_egress_rule resources own the egress rules.
+    ignore_changes = [egress]
+  }
 }
 
 resource "aws_security_group" "database" {
@@ -385,8 +395,9 @@ resource "aws_db_parameter_group" "uat" {
   family = "postgres16"
 
   parameter {
-    name  = "rds.force_ssl"
-    value = "1"
+    name         = "rds.force_ssl"
+    value        = "1"
+    apply_method = "pending-reboot"
   }
 }
 
@@ -666,9 +677,7 @@ resource "aws_ecs_service" "app" {
   }
 
   service_registries {
-    registry_arn   = aws_service_discovery_service.api.arn
-    container_name = "api"
-    container_port = 8000
+    registry_arn = aws_service_discovery_service.api.arn
   }
 
   deployment_circuit_breaker {
