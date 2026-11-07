@@ -83,7 +83,7 @@ def owner_beta_settings() -> Settings:
             "owner_beta_uat?sslmode=require"
         ),
         s3_bucket="casework-owner-beta-uat-documents-123",
-        deletion_ledger_bucket="casework-owner-beta-uat-deletion-ledger-123",
+        deletion_ledger_bucket="casework-owner-beta-uat-ledger-123",
         s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
         case_data_enabled=True,
         case_materials_enabled=True,

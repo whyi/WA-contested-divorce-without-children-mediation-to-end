@@ -149,7 +149,7 @@ class SettingsTests(unittest.TestCase):
                 "owner_beta_uat?sslmode=require"
             ),
             s3_bucket="casework-owner-beta-uat-documents-123",
-            deletion_ledger_bucket="casework-owner-beta-uat-deletion-ledger-123",
+            deletion_ledger_bucket="casework-owner-beta-uat-ledger-123",
             s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
             case_data_enabled=True,
             case_materials_enabled=True,
@@ -175,6 +175,28 @@ class SettingsTests(unittest.TestCase):
                 ),
                 s3_bucket="production-documents",
                 deletion_ledger_bucket="production-deletion-ledger",
+                case_data_enabled=True,
+                case_materials_enabled=True,
+                s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
+            )
+
+    def test_owner_beta_fixture_reset_requires_terraform_ledger_bucket_prefix(self) -> None:
+        with self.assertRaisesRegex(ValueError, "non_uat_deletion_ledger_bucket_configured"):
+            Settings(
+                auth_enabled=True,
+                auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                owner_beta_enabled=True,
+                owner_beta_email="owner@example.com",
+                owner_beta_readiness_required=True,
+                owner_beta_fixture_reset_enabled=True,
+                owner_beta_fixture_database_host_prefix="casework-owner-beta-uat",
+                database_url=(
+                    "******"
+                    "casework-owner-beta-uat.abc.us-west-2.rds.amazonaws.com:5432/"
+                    "owner_beta_uat?sslmode=require"
+                ),
+                s3_bucket="casework-owner-beta-uat-documents-123",
+                deletion_ledger_bucket="casework-owner-beta-uat-deletion-ledger-123",
                 case_data_enabled=True,
                 case_materials_enabled=True,
                 s3_kms_key_id="arn:aws:kms:us-west-2:123456789012:key/test",
