@@ -32,6 +32,10 @@ output "bootstrap_task_definition_arn" {
   value = aws_ecs_task_definition.bootstrap.arn
 }
 
+output "bootstrap_task_family" {
+  value = aws_ecs_task_definition.bootstrap.family
+}
+
 output "private_subnet_ids" {
   value = join(",", aws_subnet.private[*].id)
 }

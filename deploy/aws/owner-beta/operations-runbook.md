@@ -55,14 +55,24 @@ request bodies, email addresses, or payment data into incident notes.
   deployment. This does not undo a database migration, restore deleted data,
   or prove that the prior application version is compatible with the current
   schema.
-- The current deployment script builds and pushes a mutable `latest` image and
-  applies forward migrations before updating the service. It does not provide
-  an immutable image-promotion or one-command application rollback workflow.
+- The deploy script requires a clean committed source tree, pushes an
+  immutable commit/timestamp image tag, runs forward migrations, and registers
+  new application and bootstrap task-definition revisions before updating the
+  ECS service. Preserve the printed tag and task-definition ARN in the
+  deployment record. Terraform ignores the service's externally selected task
+  definition so a routine infrastructure apply does not silently revert the
+  running application image.
+- `rollback.sh <image-tag>` requires an exact interactive confirmation and an
+  existing immutable ECR tag. It deploys the selected app image without
+  running a migration or changing the database schema. Use it only when the
+  previous app version is known to be schema-compatible; this command is not
+  proof of a tested rollback or database recovery.
+- ECR lifecycle cleanup retains only the ten most recent images. A prior image
+  may therefore be unavailable, in which case rollback refuses to proceed.
 - Do not run Alembic downgrade as an incident shortcut. If a release is
   unhealthy, stop further deployments and writes as appropriate, record the
   current task definition and schema revision, and obtain an operator-reviewed
-  recovery plan. Do not claim rollback readiness until immutable image
-  references and a tested schema-compatible rollback procedure are available.
+  recovery plan.
 - The one-time `--initialize-ledger` flag is for the initial deployment only.
   Never use it to repair or overwrite an initialized deletion ledger.
 
@@ -103,4 +113,4 @@ Follow-up:
 
 No AWS deployment, alert-delivery test, secret rotation, rollback rehearsal,
 backup restore, monitoring owner, or on-call response has been performed by
-adding this runbook or its Terraform alarms.
+adding this runbook or its Terraform alarms and deployment commands.
