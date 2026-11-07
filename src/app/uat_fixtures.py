@@ -68,8 +68,8 @@ def reset_owner_beta_case(
         .where(func.lower(User.email) == owner_email)
         .with_for_update()
     )
-    if owner is None or owner.status != "active" or owner.account_type != "party":
-        raise RuntimeError("The configured owner account is not an active party account.")
+    if owner is None or owner.status != "active":
+        raise RuntimeError("The configured owner account is not an active account.")
     if scope_tombstone(db, "account", owner.id) is not None:
         raise RuntimeError("The configured owner account has a permanent-deletion record.")
 
