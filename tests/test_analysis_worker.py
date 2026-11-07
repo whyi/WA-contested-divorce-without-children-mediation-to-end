@@ -2,12 +2,13 @@ import json
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from app.analysis_worker import (
     AnalysisLease,
     claim_next_analysis_job,
+    main,
     process_analysis_job,
 )
 from app.config import Settings, provider_data_handling_notice
@@ -46,6 +47,16 @@ def enabled_settings() -> Settings:
 
 
 class AnalysisWorkerTests(unittest.TestCase):
+    def test_worker_does_not_start_before_owner_beta_is_ready(self) -> None:
+        with (
+            patch(
+                "app.analysis_worker.get_settings",
+                return_value=Settings(owner_beta_readiness_required=True),
+            ),
+            self.assertRaisesRegex(RuntimeError, "owner_beta_mode_disabled"),
+        ):
+            main()
+
     def test_worker_claims_a_queued_job(self) -> None:
         job = SimpleNamespace(
             id=uuid4(),

@@ -31,8 +31,10 @@ def run_once(
 
 
 def main() -> None:
-    storage = ObjectStorage()
-    if get_settings().case_data_enabled:
+    settings = get_settings()
+    settings.require_owner_beta_readiness()
+    storage = ObjectStorage(settings)
+    if settings.case_data_enabled:
         reconcile_from_environment()
     while True:
         try:

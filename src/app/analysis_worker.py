@@ -267,7 +267,9 @@ def run_once(
 
 
 def main() -> None:
-    if get_settings().case_data_enabled:
+    settings = get_settings()
+    settings.require_owner_beta_readiness()
+    if settings.case_data_enabled:
         from app.deletion_ledger import reconcile_from_environment
 
         reconcile_from_environment()

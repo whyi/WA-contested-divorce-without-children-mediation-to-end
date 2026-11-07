@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     s3_kms_key_id: str | None = None
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_session_token: str | None = None
     bedrock_model_id: str | None = None
     bedrock_region: str | None = None
     ai_analysis_enabled: bool = False
@@ -43,6 +46,7 @@ class Settings(BaseSettings):
     demo_mode_enabled: bool = False
     owner_beta_enabled: bool = False
     owner_beta_email: EmailStr | None = None
+    owner_beta_readiness_required: bool = False
     production_readiness_required: bool = False
     counsel_review_evidence_verified: bool = False
     auth_jwt_secret: str | None = None
@@ -188,6 +192,25 @@ class Settings(BaseSettings):
                 raise ValueError("OWNER_BETA_ENABLED cannot be used with DEMO_MODE_ENABLED.")
             if self.owner_beta_email is None:
                 raise ValueError("OWNER_BETA_EMAIL is required when OWNER_BETA_ENABLED is true.")
+        if self.owner_beta_readiness_required:
+            if self.ai_analysis_enabled:
+                raise ValueError(
+                    "AI_ANALYSIS_ENABLED cannot be used with OWNER_BETA_READINESS_REQUIRED."
+                )
+            if self._has_live_stripe_credentials():
+                raise ValueError(
+                    "Live Stripe credentials cannot be used with OWNER_BETA_READINESS_REQUIRED."
+                )
+            if (
+                self.s3_access_key_id
+                or self.s3_secret_access_key
+                or self.aws_access_key_id
+                or self.aws_secret_access_key
+                or self.aws_session_token
+            ):
+                raise ValueError(
+                    "Static AWS credentials cannot be used with OWNER_BETA_READINESS_REQUIRED."
+                )
         return self
 
     def _uses_local_s3_endpoint(self) -> bool:
@@ -201,6 +224,12 @@ class Settings(BaseSettings):
                 endpoint.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
                 or (self.demo_mode_enabled and endpoint.hostname.lower() == "s3mock")
             )
+        )
+
+    def _has_live_stripe_credentials(self) -> bool:
+        return any(
+            (self.stripe_secret_key or "").startswith(prefix)
+            for prefix in ("sk_live_", "rk_live_")
         )
 
     def production_readiness_errors(self) -> tuple[str, ...]:
@@ -261,11 +290,78 @@ class Settings(BaseSettings):
 
         return tuple(errors)
 
+    def owner_beta_readiness_errors(self) -> tuple[str, ...]:
+        if not self.owner_beta_readiness_required:
+            return ()
+
+        errors: list[str] = []
+        if not self.owner_beta_enabled:
+            errors.append("owner_beta_mode_disabled")
+        if not self.auth_enabled:
+            errors.append("authentication_disabled")
+        if self.demo_mode_enabled:
+            errors.append("demo_mode_enabled")
+        if not self.case_data_enabled:
+            errors.append("case_data_disabled")
+        if not self.case_materials_enabled:
+            errors.append("case_material_storage_disabled")
+        if not self.auth_jwt_secret or len(self.auth_jwt_secret.encode()) < 32:
+            errors.append("auth_signing_secret_missing_or_weak")
+        if not self.auth_encryption_key or len(self.auth_encryption_key.encode()) < 32:
+            errors.append("auth_encryption_key_missing_or_weak")
+        if not (self.s3_kms_key_id or "").strip():
+            errors.append("s3_kms_key_missing")
+        if self.s3_endpoint_url and self._uses_local_s3_endpoint():
+            errors.append("local_object_storage_endpoint_configured")
+        if self.s3_endpoint_url and urlparse(self.s3_endpoint_url).scheme != "https":
+            errors.append("object_storage_tls_not_required")
+
+        parsed_database_url = urlparse(self.database_url)
+        if parsed_database_url.scheme not in {"postgresql", "postgresql+psycopg"}:
+            errors.append("postgresql_database_required")
+        if (
+            parsed_database_url.hostname is None
+            or parsed_database_url.hostname.lower()
+            in {"localhost", "127.0.0.1", "::1", "db"}
+        ):
+            errors.append("local_database_host_configured")
+        database_sslmode = parse_qs(parsed_database_url.query).get("sslmode", [""])[0]
+        if database_sslmode not in {"require", "verify-ca", "verify-full"}:
+            errors.append("database_tls_not_required")
+
+        for value in (self.auth_issuer, self.auth_public_base_url, self.webauthn_origin):
+            parsed_url = urlparse(value)
+            if (
+                parsed_url.scheme != "https"
+                or parsed_url.hostname is None
+                or parsed_url.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
+            ):
+                errors.append("public_auth_origin_must_use_https")
+                break
+
+        if not self.smtp_host or not self.auth_email_from:
+            errors.append("test_email_delivery_not_configured")
+        if self._has_live_stripe_credentials():
+            errors.append("live_payments_configured")
+        if self.ai_analysis_enabled:
+            errors.append("ai_analysis_enabled")
+
+        return tuple(errors)
+
+    def require_owner_beta_readiness(self) -> None:
+        errors = self.owner_beta_readiness_errors()
+        if errors:
+            raise RuntimeError(
+                "Owner-beta deployment readiness requirements are unmet "
+                f"(checks={','.join(errors)})."
+            )
+
     def production_ai_readiness_passed(self) -> bool:
-        return (
-            not self.production_readiness_required
-            or not self.production_readiness_errors()
-        )
+        if self.production_readiness_required:
+            return not self.production_readiness_errors()
+        if self.owner_beta_readiness_required:
+            return not self.owner_beta_readiness_errors()
+        return True
 
 
 @lru_cache
