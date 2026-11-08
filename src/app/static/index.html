@@ -2245,6 +2245,27 @@
                   </p>
                   <ol class="settlement-attempt-progress-list" id="settlement-attempt-progress-list" aria-label="Negotiation attempts" hidden></ol>
                 </section>
+                <section id="settlement-wizard-attempt" hidden aria-labelledby="settlement-wizard-attempt-title">
+                  <h3 id="settlement-wizard-attempt-title">Values from your case information</h3>
+                  <p id="settlement-wizard-attempt-summary"></p>
+                  <ul id="settlement-wizard-included"></ul>
+                  <div id="settlement-wizard-excluded-block" hidden>
+                    <h4>Not included</h4>
+                    <ul id="settlement-wizard-excluded"></ul>
+                  </div>
+                  <p>Attempt 1 keeps these values exactly as entered. Later changes to your case information do not change an attempt that already exists; adjust proposed amounts, terms, dates, and milestones in the attempt itself.</p>
+                  <p><a class="settlement-wizard-edit-link" href="#">Edit case information</a></p>
+                </section>
+                <section id="settlement-wizard-empty" hidden aria-labelledby="settlement-wizard-empty-title">
+                  <h3 id="settlement-wizard-empty-title">Attempt 1 is not created yet</h3>
+                  <p>Attempt 1 uses only what you entered. These items are still needed:</p>
+                  <ul id="settlement-wizard-needs"></ul>
+                  <div class="materials-actions">
+                    <button class="dashboard-retry" id="settlement-wizard-create" type="button">Create Attempt 1 from your case information</button>
+                    <a class="settlement-wizard-edit-link" href="#">Edit case information</a>
+                  </div>
+                  <p id="settlement-wizard-status" role="status" aria-live="polite"></p>
+                </section>
                 <details id="settlement-review-information">
                   <summary>Important review and delivery information</summary>
                   <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
@@ -2982,6 +3003,16 @@
         const startPathDialog = document.getElementById("start-path-dialog");
         const startPathStatus = document.getElementById("start-path-status");
         const settlementEditIntake = document.getElementById("settlement-edit-intake");
+        const settlementWizardAttempt = document.getElementById("settlement-wizard-attempt");
+        const settlementWizardAttemptSummary = document.getElementById("settlement-wizard-attempt-summary");
+        const settlementWizardIncluded = document.getElementById("settlement-wizard-included");
+        const settlementWizardExcludedBlock = document.getElementById("settlement-wizard-excluded-block");
+        const settlementWizardExcluded = document.getElementById("settlement-wizard-excluded");
+        const settlementWizardEmpty = document.getElementById("settlement-wizard-empty");
+        const settlementWizardNeeds = document.getElementById("settlement-wizard-needs");
+        const settlementWizardCreate = document.getElementById("settlement-wizard-create");
+        const settlementWizardStatus = document.getElementById("settlement-wizard-status");
+        let settlementCaseWorkflowMode = null;
         const planName = document.getElementById("plan-name");
         const planSummary = document.getElementById("plan-summary");
         const planAction = document.getElementById("plan-action");
@@ -5367,6 +5398,10 @@
             ? `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`
             : null;
           settlementEditIntake.hidden = !startUrl;
+          settlementCaseWorkflowMode = item.workflow_mode || null;
+          for (const link of document.querySelectorAll(".settlement-wizard-edit-link")) {
+            link.href = startUrl || "#";
+          }
           if (startUrl) {
             settlementEditIntake.href = startUrl;
           }
@@ -5799,6 +5834,9 @@
 
         async function openSettlementPlanner(caseId) {
           settlementCaseId = caseId;
+          settlementWizardAttempt.hidden = true;
+          settlementWizardEmpty.hidden = true;
+          settlementWizardStatus.textContent = "";
           void loadAttemptCreditPurchaseHistory();
           settlementSelectedScenario = null;
           settlementRunId = null;
@@ -5869,6 +5907,7 @@
             renderSettlementFacts();
             renderSavedSettlementLedger(events);
             void loadSettlementOfferResponseHistory(caseId);
+            void loadSettlementWizardAttempt(caseId);
             settlementLedgerJson.value = "[]";
             settlementPlanner.scrollIntoView({ behavior: "smooth", block: "start" });
             setSettlementStatus(
@@ -5883,6 +5922,94 @@
             );
           }
         }
+
+        function formatWizardCents(cents) {
+          const sign = cents < 0 ? "-" : "";
+          const abs = Math.abs(cents);
+          const dollars = Math.floor(abs / 100).toLocaleString("en-US");
+          return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
+        }
+
+        function renderSettlementWizardAttempt(result) {
+          settlementWizardAttempt.hidden = true;
+          settlementWizardEmpty.hidden = true;
+          if (!result.attempt_exists) {
+            settlementPlannerContent.hidden = true;
+            settlementWizardNeeds.replaceChildren(...result.needs.map((need) => {
+              const item = document.createElement("li");
+              item.textContent = need;
+              return item;
+            }));
+            settlementWizardNeeds.hidden = result.needs.length === 0;
+            settlementWizardEmpty.hidden = false;
+            settlementEditIntake.hidden = true;
+            return;
+          }
+          const report = result.report;
+          if (!report) return;
+          const dates = report.dates || {};
+          const role = report.role ? `${report.role[0].toUpperCase()}${report.role.slice(1)}` : "not entered";
+          const startLabel = dates.start_source === "marriage" ? "Marriage" : "Cohabitation start";
+          settlementWizardAttemptSummary.textContent =
+            `Role: ${role}. ${startLabel}: ${dates.start || "not entered"}. Separation: ${dates.separation || "not entered"}. ${report.milestones} milestone${report.milestones === 1 ? "" : "s"} and ${report.terms} proposal term${report.terms === 1 ? "" : "s"} carried over.`;
+          settlementWizardIncluded.replaceChildren(...report.included.map((entry) => {
+            const item = document.createElement("li");
+            item.textContent = `${entry.kind === "debt" ? "Debt" : "Asset"} — ${entry.label}: ${formatWizardCents(entry.amount_cents)}`;
+            return item;
+          }));
+          settlementWizardExcluded.replaceChildren(...report.excluded.map((entry) => {
+            const item = document.createElement("li");
+            item.textContent = `${entry.label} — ${entry.reason}`;
+            return item;
+          }));
+          settlementWizardExcludedBlock.hidden = report.excluded.length === 0;
+          settlementWizardAttempt.hidden = false;
+          settlementEditIntake.hidden = true;
+        }
+
+        async function loadSettlementWizardAttempt(caseId) {
+          if (settlementCaseWorkflowMode !== "wizard") return;
+          try {
+            const result = await settlementApi(`/cases/${encodeURIComponent(caseId)}/wizard-attempt`);
+            if (settlementCaseId !== caseId) return;
+            renderSettlementWizardAttempt(result);
+          } catch (error) {
+            if (settlementCaseId !== caseId) return;
+            setSettlementStatus(
+              error instanceof Error ? error.message : "Your case information could not be loaded.",
+              "error",
+            );
+          }
+        }
+
+        async function createSettlementWizardAttempt() {
+          const caseId = settlementCaseId;
+          if (!caseId) return;
+          settlementWizardCreate.disabled = true;
+          settlementWizardStatus.textContent = "Creating Attempt 1 from your case information…";
+          try {
+            const result = await settlementApi(
+              `/cases/${encodeURIComponent(caseId)}/wizard-attempt`,
+              { method: "POST" },
+            );
+            if (settlementCaseId !== caseId) return;
+            if (result.status === "needs_information") {
+              renderSettlementWizardAttempt(result);
+              settlementWizardStatus.textContent = "Attempt 1 still needs the items above.";
+              return;
+            }
+            await openSettlementPlanner(caseId);
+          } catch (error) {
+            if (settlementCaseId !== caseId) return;
+            settlementWizardStatus.textContent = error instanceof Error
+              ? `Attempt 1 could not be created: ${error.message} Try again.`
+              : "Attempt 1 could not be created. Try again.";
+          } finally {
+            settlementWizardCreate.disabled = false;
+          }
+        }
+
+        settlementWizardCreate.addEventListener("click", () => void createSettlementWizardAttempt());
 
         function renderSettlementFacts() {
           settlementActiveFacts.replaceChildren();
@@ -12759,8 +12886,25 @@
           if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
-          if (saved) {
-            window.location.assign(preparationCaseId ? "/" : demoAssetOverviewUrl(demoCurrentCaseId));
+          if (!saved) return;
+          if (!preparationCaseId) {
+            window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId));
+            return;
+          }
+          wizardFinish.disabled = true;
+          setWizardSaveStatus("Creating Attempt 1 from your case information…");
+          try {
+            await settlementApi(
+              `/cases/${encodeURIComponent(preparationCaseId)}/wizard-attempt`,
+              { method: "POST" },
+            );
+            window.location.assign("/");
+          } catch (error) {
+            wizardFinish.disabled = false;
+            setWizardSaveStatus(
+              `Your draft is saved, but Attempt 1 could not be created: ${error instanceof Error ? error.message : "request failed"}. Try Save and continue again.`,
+              "error",
+            );
           }
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
