@@ -80,8 +80,8 @@ Running requested command.
 ### Exact user prompt
 
 ````text
-이제 여기서 맘에 안드는게 AI audit trail인데 왜 프롬포트는 캡쳐안하냐
-내가 원하는건 prompt 캡쳐한뒤에 그 prompt로 인해서 나오는 모든 아웃풋을 그밑에 같이 캡쳐하라는건데? 아 물론 밑에 시큐리티 관련해서는 가만히 두고
+Now what I don't like here is the AI audit trail: why aren't the prompts captured?
+What I want is to capture the prompt and then capture every output produced by that prompt right underneath it. Of course, leave the security-related part below as it is, and
 ````
 
 ### Initial harness attempt (append failed)
@@ -193,8 +193,8 @@ Running requested command.
 ### Exact user prompt
 
 ````text
-이제 여기서 맘에 안드는게 AI audit trail인데 왜 프롬포트는 캡쳐안하냐
-내가 원하는건 prompt 캡쳐한뒤에 그 prompt로 인해서 나오는 모든 아웃풋을 그밑에 같이 캡쳐하라는건데? 아 물론 밑에 시큐리티 관련해서는 가만히 두고
+Now what I don't like here is the AI audit trail: why aren't the prompts captured?
+What I want is to capture the prompt and then capture every output produced by that prompt right underneath it. Of course, leave the security-related part below as it is, and
 ````
 
 ### Execution - 2026-10-29T03:30:26Z
@@ -259,7 +259,7 @@ Validation: the full repository harness passed (12 tests), the harness rejected 
 ### Exact user prompt
 
 ````text
-자그럼 지금있는거 저위에 이슈제목에 맞게 해서 브랜치 만들고 커밋하고 푸시해 CR만들구로
+OK then, take what we have now, create a branch matching the issue title above, commit, push, and create the CR
 ````
 
 ### Git and pull request outcome
