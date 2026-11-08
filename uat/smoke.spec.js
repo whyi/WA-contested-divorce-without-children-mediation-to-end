@@ -44,7 +44,7 @@ test("SMOKE-04", async ({ page }) => {
   const response = await page.goto("/");
   expect(response.status()).toBe(200);
   await expect(page).toHaveTitle(/Casework/);
-  await page.locator("#login-tab").click();
+  await page.locator("#login-entry").click();
   await expect(page.locator("#login-form")).toBeVisible();
   await expect(page.locator("#login-email")).toBeEditable();
   await expect(page.locator("#login-password")).toHaveAttribute("type", "password");

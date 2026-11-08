@@ -81,7 +81,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
 
 async function signIn(page) {
   await page.goto(origin);
-  await page.locator("#login-tab").click();
+  await page.locator("#login-entry").click();
   await page.locator("#login-email").fill("synthetic@example.invalid");
   await page.locator("#login-password").fill("synthetic-password-not-a-secret");
   await page.locator("#login-form button[type=submit]").click();
@@ -160,6 +160,8 @@ test("expired session does not show a cached attempt on refresh", async ({ page 
   fixture.signOut();
   await page.reload();
   await expect(page.locator("#account-dashboard")).toBeHidden();
+  await expect(page.locator("#login-entry")).toBeVisible();
+  await page.locator("#login-entry").click();
   await expect(page.locator("#login-tab")).toBeVisible();
   await expect(page.locator("#case-create-dialog")).toBeHidden();
   fixture.verify();
