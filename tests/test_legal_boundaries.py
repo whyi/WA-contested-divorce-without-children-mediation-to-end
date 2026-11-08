@@ -87,19 +87,9 @@ class LegalBoundaryDisclosureTests(unittest.TestCase):
         self.assertIn("may be incomplete or incorrect", analysis)
         self.assertIn("not verified facts or legal advice", analysis)
 
-        comparison_start = PAGE.index('id="settlement-offer-comparison"')
-        comparison_end = PAGE.index("</section>", comparison_start)
-        comparison = PAGE[comparison_start:comparison_end]
-        self.assertIn("compare saved values arithmetically", comparison)
-        self.assertIn("do not classify property", comparison)
-        self.assertIn("not legal classifications", PAGE[PAGE.index('id="settlement-planner"'):comparison_start])
-
-        finalization_start = PAGE.index('id="settlement-finalize-note"')
-        finalization_end = PAGE.index("</p>", finalization_start)
-        finalization = PAGE[finalization_start:finalization_end]
-        self.assertIn("not legal review, delivery, filing, or proof of receipt", finalization)
-        self.assertIn("provide them to your mediator", finalization)
-        self.assertIn("does not automatically deliver them", finalization)
+        self.assertNotIn('id="settlement-offer-comparison"', PAGE)
+        self.assertNotIn('id="settlement-finalize-note"', PAGE)
+        self.assertIn("not legal characterizations, advice, or AI-ranked recommendations", PAGE)
 
     def test_completion_guidance_does_not_imply_legal_resolution_or_delivery(self) -> None:
         accepted_start = PAGE.index('id="settlement-completion-page"')
@@ -151,8 +141,7 @@ class LegalBoundaryDisclosureTests(unittest.TestCase):
             re.search(r"\b(?:attorney|counsel)[ -](?:approved|reviewed)\b", product_copy)
         )
         self.assertNotIn("the app never sends anything to the other party", product_copy)
-        self.assertIn("optional file-transfer controls", product_copy)
-        self.assertIn("do not verify mediator receipt", product_copy)
+        self.assertIn("does not automatically deliver proposals", product_copy)
         self.assertIn("downloading is not delivery", product_copy)
         self.assertNotIn("a download means the proposal was delivered", product_copy)
 

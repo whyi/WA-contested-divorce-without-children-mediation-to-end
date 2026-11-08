@@ -520,21 +520,6 @@ class FinalizationReadModelTests(unittest.TestCase):
         self.assertEqual(snapshot["finalization"]["snapshot_sha256"], "abc")
 
 
-class FinalizationUiTests(unittest.TestCase):
-    PAGE = (Path(__file__).parents[1] / "src" / "app" / "static" / "index.html").read_text()
-
-    def test_finalize_control_is_separate_and_requires_confirmation(self) -> None:
-        self.assertIn('id="settlement-finalize-download"', self.PAGE)
-        self.assertIn("Finalize attempt and download final proposal", self.PAGE)
-        self.assertIn("finalize: true", self.PAGE)
-        self.assertIn("confirm_finalization: true", self.PAGE)
-        self.assertIn("window.confirm(", self.PAGE)
-        self.assertIn("read-only", self.PAGE)
-        self.assertIn("does not mean you sent", self.PAGE)
-
-    def test_finalized_state_locks_inputs_and_offers_free_redownload(self) -> None:
-        self.assertIn("current?.finalized", self.PAGE)
-        self.assertIn("Re-downloading this finalized snapshot is free", self.PAGE)
 
 
 class FinalizationModelTests(unittest.TestCase):

@@ -306,7 +306,7 @@ class ExistingOfferUiTests(unittest.TestCase):
     def test_client_validates_offer_source_and_uses_server_endpoint(self) -> None:
         self.assertIn("existing_offer:", self.page)
         self.assertIn("/existing-offer", self.page)
-        self.assertIn("offer_origin", self.page)
+        self.assertNotIn('id="settlement-planner"', self.page)
 
     def test_yes_without_any_source_never_creates_or_advances(self) -> None:
         create = self.page.split("async function createCaseFromDashboard", 1)[1].split(

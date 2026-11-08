@@ -266,7 +266,8 @@ def _plan_for(db: Session, case: Case) -> AttemptPlan:
     )
     if has_ledger is not None and not plan.needs:
         plan.needs.append(
-            "This case already has settlement ledger entries. Open Negotiation attempts to continue."
+            "This case already has settlement ledger entries. Existing attempt data is preserved; "
+            "a new wizard-seeded attempt cannot be created."
         )
     return plan
 

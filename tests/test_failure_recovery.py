@@ -38,8 +38,6 @@ class FailureRecoveryUiTests(unittest.TestCase):
             "Extraction failed. The original source is still stored",
             "OCR is needed",
             "analysis failed; successful files remain available",
-            "The final proposal result may be uncertain",
-            "Re-download the same saved proposal snapshot",
             "Copy safe diagnostic details",
             "Contact support",
         ):

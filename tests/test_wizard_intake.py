@@ -344,7 +344,9 @@ class WizardIntakeFrontendTests(unittest.TestCase):
 
         self.assertIn("const saved = await saveWizardDraft()", finish_handler)
         self.assertIn("if (saved) {", finish_handler)
-        self.assertIn('preparationCaseId ? "/" : demoAssetOverviewUrl', finish_handler)
+        self.assertIn('setWizardSaveStatus("Your case information is saved.")', finish_handler)
+        self.assertIn("window.location.assign(demoAssetOverviewUrl", finish_handler)
+        self.assertNotIn("createWizardAttemptOne", finish_handler)
         self.assertNotIn("/#account", finish_handler)
 
 

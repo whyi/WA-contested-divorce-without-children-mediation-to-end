@@ -326,19 +326,3 @@ class MigrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class CounterofferUiTests(unittest.TestCase):
-    def test_page_has_manual_entry_review_gate_and_delivery_boundaries(self) -> None:
-        html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text()
-        for marker in (
-            "settlement-counteroffer-rows",
-            "settlement-counteroffer-reviewed",
-            "counteroffer-values/suggestions",
-            "settlement-response-next-attempt",
-            "settlement-response-stop",
-            "You are responsible for reviewing your final proposal and delivering it to the mediator",
-            "Optional file-transfer controls",
-            "do not verify mediator receipt or delivery to the other party",
-        ):
-            self.assertIn(marker, html)
