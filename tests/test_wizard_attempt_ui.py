@@ -95,6 +95,7 @@ class WizardAttemptScreenTests(unittest.TestCase):
 
         self.assertIn("settlementPlannerContent.hidden = true", body)
         self.assertIn("result.needs", body)
+        self.assertIn("Your case information is ready.", body)
         self.assertIn("report.included", body)
         self.assertIn("report.excluded", body)
 
@@ -105,6 +106,16 @@ class WizardAttemptScreenTests(unittest.TestCase):
         self.assertIn("openSettlementPlanner(caseId)", body)
         self.assertIn("needs_information", body)
         self.assertIn("Try again.", body)
+
+
+class AttemptCountLabelTests(unittest.TestCase):
+    def test_unlimited_attempts_never_render_of_null(self) -> None:
+        label = _function_body("settlementAttemptCountLabel")
+
+        self.assertIn("item.attempt_limit == null", label)
+        self.assertNotIn("attempt_limit} —", PAGE)
+        self.assertNotIn("of ${selectedItem.attempt_limit}", PAGE)
+        self.assertNotIn("of ${item.attempt_limit}", PAGE.replace(label, ""))
 
 
 if __name__ == "__main__":

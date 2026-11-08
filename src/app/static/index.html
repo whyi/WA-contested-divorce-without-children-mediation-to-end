@@ -1013,6 +1013,8 @@
       .case-create-content h2 { margin:0 0 8px; font-family:Georgia, "Times New Roman", serif; font-size:30px; font-weight:500; }
       .case-create-content h3 { margin:18px 0 7px; font-family:Georgia, "Times New Roman", serif; font-size:24px; font-weight:500; }
       #case-create-choice[hidden], #case-create-offer-intake[hidden] { display:none; }
+      #offer-optional-slot { margin-top:24px; }
+      #existing-offer-toggle-label[hidden], #existing-offer-continue-row[hidden], #existing-offer-save[hidden] { display:none; }
       .case-create-content > p:not(.eyebrow) { color:var(--text-secondary); font-size:14px; line-height:1.6; }
       .case-create-content label { display:block; margin:18px 0 7px; color:var(--text-primary); font-size:13px; font-weight:700; }
       .case-create-content input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--surface-background); font:inherit; }
@@ -2258,7 +2260,7 @@
                 </section>
                 <section id="settlement-wizard-empty" hidden aria-labelledby="settlement-wizard-empty-title">
                   <h3 id="settlement-wizard-empty-title">Attempt 1 is not created yet</h3>
-                  <p>Attempt 1 uses only what you entered. These items are still needed:</p>
+                  <p id="settlement-wizard-needs-intro"></p>
                   <ul id="settlement-wizard-needs"></ul>
                   <div class="materials-actions">
                     <button class="dashboard-retry" id="settlement-wizard-create" type="button">Create Attempt 1 from your case information</button>
@@ -5104,7 +5106,7 @@
             : "Create case and start the wizard";
           caseCreateBack.hidden = Boolean(caseCreateProgress?.caseId);
           if (focus) {
-            (mode === "upload" ? caseTitleInput : caseOfferQuestion.querySelector("input")).focus();
+            (mode === "upload" ? caseCreateContinue : caseOfferQuestion.querySelector("input")).focus();
           }
         }
 
@@ -5169,7 +5171,7 @@
             caseCreateStatus.dataset.kind = "error";
           }
           caseCreateDialog.showModal();
-          if (activeCaseStartMode === "upload") caseTitleInput.focus();
+          if (activeCaseStartMode === "upload") caseCreateContinue.focus();
           else if (activeCaseStartMode) caseOfferQuestion.querySelector("input").focus();
           else document.getElementById("case-start-upload").focus();
         }
@@ -6021,6 +6023,9 @@
               return item;
             }));
             settlementWizardNeeds.hidden = result.needs.length === 0;
+            document.getElementById("settlement-wizard-needs-intro").textContent = result.needs.length
+              ? "Attempt 1 uses only what you entered. These items are still needed:"
+              : "Your case information is ready. Attempt 1 will use only what you entered.";
             settlementWizardEmpty.hidden = false;
             settlementEditIntake.hidden = true;
             return;
@@ -6415,7 +6420,7 @@
           if (selectedItem) {
             const state = selectedItem.outcome || (selectedItem.frozen ? "pending" : "working");
             settlementAttemptProgressStatus.textContent =
-              `Attempt ${selectedItem.attempt_ordinal} of ${selectedItem.attempt_limit} — ${settlementAttemptStatusLabel(state)} — currently viewing`;
+              `${settlementAttemptCountLabel(selectedItem)} — ${settlementAttemptStatusLabel(state)} — currently viewing`;
           } else {
             settlementAttemptProgressStatus.textContent =
               `${items.length} negotiation attempt${items.length === 1 ? "" : "s"} saved.`;
@@ -6448,6 +6453,12 @@
             listItem.append(button);
             settlementAttemptProgressList.append(listItem);
           }
+        }
+
+        function settlementAttemptCountLabel(item) {
+          return item.attempt_limit == null
+            ? `Attempt ${item.attempt_ordinal}`
+            : `Attempt ${item.attempt_ordinal} of ${item.attempt_limit}`;
         }
 
         function settlementAttemptStatusLabel(state) {
@@ -7899,7 +7910,7 @@
               openButton.className = "dashboard-retry";
               const label = settlementAttemptOrdinalLabel(item.attempt_ordinal);
               openButton.textContent =
-                `Attempt ${item.attempt_ordinal} of ${item.attempt_limit} — ${label} — ${item.frozen ? "frozen" : "active"} — ${item.outcome || "response not selected"}`;
+                `${settlementAttemptCountLabel(item)} — ${label} — ${item.frozen ? "frozen" : "active"} — ${item.outcome || "response not selected"}`;
               openButton.addEventListener("click", () => openSettlementHistoryItem(item));
               row.append(openButton);
               for (const attachment of item.attachments) {

@@ -415,21 +415,28 @@ def _require_real_case_exports() -> None:
         )
 
 
-@router.get("/document-credits")
+class DocumentCreditBalanceRead(BaseModel):
+    remaining: int
+    free_first_finalization_available: bool
+    cost_per_finalization: int
+    package_sizes: list[int]
+
+
+@router.get("/document-credits", response_model=DocumentCreditBalanceRead)
 def read_document_credit_balance(
     case_id: UUID,
     response: Response,
     user: Annotated[User, Depends(require_current_user)],
     db: Annotated[Session, Depends(get_db)],
-) -> dict[str, int]:
+) -> DocumentCreditBalanceRead:
     case = _authorize_case(db, user, case_id, write=False)
     response.headers["Cache-Control"] = "no-store"
-    return {
-        "remaining": case.attempt_credit_balance,
-        "free_first_finalization_available": not case.first_finalization_used,
-        "cost_per_finalization": 1,
-        "package_sizes": [5, 10],
-    }
+    return DocumentCreditBalanceRead(
+        remaining=case.attempt_credit_balance,
+        free_first_finalization_available=not case.first_finalization_used,
+        cost_per_finalization=1,
+        package_sizes=[5, 10],
+    )
 
 
 def _require_finalization_credit(case: Case) -> None:

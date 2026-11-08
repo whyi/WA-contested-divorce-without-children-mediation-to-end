@@ -89,6 +89,14 @@ class DocumentsFirstScreenTests(unittest.TestCase):
         self.assertEqual(body.count("window.location.assign"), 1)
         self.assertIn("finally", body)
 
+    def test_hidden_upload_only_controls_stay_hidden_despite_flex_styles(self) -> None:
+        for selector in (
+            "#existing-offer-toggle-label[hidden]",
+            "#existing-offer-continue-row[hidden]",
+            "#existing-offer-save[hidden]",
+        ):
+            self.assertRegex(PAGE, re.escape(selector) + r"[^{]*\{ display:none; \}")
+
     def test_the_wizard_path_keeps_its_offer_gate_and_radio_question(self) -> None:
         gate = _function_body("applyExistingOfferGate")
 
