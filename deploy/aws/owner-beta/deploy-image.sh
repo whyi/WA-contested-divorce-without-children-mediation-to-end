@@ -23,18 +23,18 @@ fi
 image_tag="$1"
 
 command -v aws >/dev/null
-command -v terraform >/dev/null
 command -v python3 >/dev/null
+source "$script_dir/deployment-output.sh"
 
-region="${AWS_REGION:-$(terraform -chdir="$script_dir" output -raw aws_region)}"
-account_id="$(terraform -chdir="$script_dir" output -raw aws_account_id)"
-repository="$(terraform -chdir="$script_dir" output -raw ecr_repository_url)"
-cluster="$(terraform -chdir="$script_dir" output -raw ecs_cluster_name)"
-service="$(terraform -chdir="$script_dir" output -raw ecs_service_name)"
-app_task_base="$(terraform -chdir="$script_dir" output -raw app_task_definition_arn)"
-bootstrap_task_base="$(terraform -chdir="$script_dir" output -raw bootstrap_task_definition_arn)"
-subnets="$(terraform -chdir="$script_dir" output -raw public_subnet_ids)"
-security_group="$(terraform -chdir="$script_dir" output -raw app_security_group_id)"
+region="${AWS_REGION:-$(deployment_output aws_region)}"
+account_id="$(deployment_output aws_account_id)"
+repository="$(deployment_output ecr_repository_url)"
+cluster="$(deployment_output ecs_cluster_name)"
+service="$(deployment_output ecs_service_name)"
+app_task_base="$(deployment_output app_task_definition_arn)"
+bootstrap_task_base="$(deployment_output bootstrap_task_definition_arn)"
+subnets="$(deployment_output public_subnet_ids)"
+security_group="$(deployment_output app_security_group_id)"
 caller_account="$(aws sts get-caller-identity --query Account --output text)"
 
 if [[ "$caller_account" != "$account_id" ]]; then
@@ -166,7 +166,7 @@ if [[ "$deployed_task_definition" != "$app_task_definition" ||
   exit 1
 fi
 
-uat_url="$(terraform -chdir="$script_dir" output -raw uat_url)"
+uat_url="$(deployment_output uat_url)"
 printf 'Owner-beta task definition now references image %s.\n' "$image_tag"
 printf 'Application task definition: %s\n' "$app_task_definition"
 printf 'Bootstrap task definition: %s\n' "$bootstrap_task_definition"

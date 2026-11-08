@@ -1,0 +1,62 @@
+name: Deploy UAT
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owner-beta-uat-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: owner-beta-uat
+      url: ${{ steps.endpoint.outputs.url }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: us-west-2
+      AWS_PAGER: ""
+      UAT_DEPLOYMENT_OUTPUTS_JSON: ${{ vars.UAT_DEPLOYMENT_OUTPUTS_JSON }}
+      UAT_AWS_ROLE_ARN: ${{ vars.UAT_AWS_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Check deployment configuration
+        run: |
+          python3 deploy/aws/owner-beta/deployment_config.py validate
+          test -n "$UAT_AWS_ROLE_ARN" || {
+            echo "::error::Set UAT_AWS_ROLE_ARN in the owner-beta-uat environment."
+            exit 1
+          }
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.UAT_AWS_ROLE_ARN }}
+          aws-region: us-west-2
+          role-duration-seconds: 3600
+          allowed-account-ids: ${{ fromJSON(env.UAT_DEPLOYMENT_OUTPUTS_JSON).aws_account_id }}
+
+      - name: Deploy latest main
+        run: bash deploy/aws/owner-beta/deploy.sh
+
+      - name: Verify deployed endpoint
+        id: endpoint
+        run: |
+          url="$(python3 deploy/aws/owner-beta/deployment_config.py uat_url)"
+          for path in healthz readyz; do
+            curl --fail --silent --show-error --output /dev/null \
+              --connect-timeout 10 --max-time 30 "${url%/}/$path"
+          done
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          printf '[Open UAT](%s)\n' "$url" >> "$GITHUB_STEP_SUMMARY"

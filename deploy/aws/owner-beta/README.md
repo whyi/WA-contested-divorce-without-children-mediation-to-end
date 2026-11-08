@@ -121,6 +121,84 @@ backups, or provider credentials for UAT.
    blocked state for backup restore until an isolated snapshot restore has
    been reconciled against the initialized deletion ledger.
 
+## One-click deployment from GitHub Actions
+
+After the initial local provisioning, **Actions > Deploy UAT > Run workflow**
+deploys the latest `main` to the existing UAT service. It builds an immutable
+image, runs forward migrations, updates ECS, and checks `/healthz` and `/readyz`.
+Only after those checks succeed does the run summary show **Open UAT**.
+It never applies Terraform, resets cases, or initializes the deletion ledger.
+Runs are serialized and cannot be dispatched from another branch. Deployment
+uses GitHub runner minutes and AWS resources; it is manual, not run on every PR.
+
+### One-time connection setup
+
+1. Create the GitHub Environment `owner-beta-uat` under repository Settings.
+   Restrict deployment branches to `main`; add a required reviewer if your
+   GitHub plan supports it. Do not allow untrusted PR code to use this environment.
+2. In the AWS UAT account, configure the GitHub OIDC provider
+   `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
+   Create a dedicated deployment role with this trust policy, replacing
+   `<UAT_ACCOUNT_ID>`:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Principal": {
+         "Federated": "arn:aws:iam::<UAT_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+       },
+       "Action": "sts:AssumeRoleWithWebIdentity",
+       "Condition": {
+         "StringEquals": {
+           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+           "token.actions.githubusercontent.com:sub": "repo:whyi/WA-contested-divorce-without-children-mediation-to-end:environment:owner-beta-uat"
+         }
+       }
+     }]
+   }
+   ```
+
+   Scope its permissions to the existing UAT resources: ECR image upload/read
+   (`GetAuthorizationToken` requires resource `*`; repository actions
+   `BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`,
+   `CompleteLayerUpload`, `PutImage`, `DescribeImages` target only the UAT
+   repository); ECS `DescribeTaskDefinition` and `RegisterTaskDefinition`,
+   `RunTask` on UAT bootstrap task revisions with the UAT cluster condition,
+   `DescribeTasks` for that cluster, and `UpdateService`/`DescribeServices` on
+   the UAT service. Allow `iam:PassRole` only for the existing ECS application,
+   bootstrap, and execution roles, with `iam:PassedToService` equal to
+   `ecs-tasks.amazonaws.com`. Do not grant administrator access, secret-reading
+   access, or access to production resources. Task containers use their existing
+   roles to read runtime secrets. Review the exact resource ARNs in your account.
+3. Store the role ARN as Environment **variable** `UAT_AWS_ROLE_ARN`.
+   This uses short-lived credentials, not an AWS access key stored in GitHub.
+4. On the computer that holds the existing Terraform state, export only the
+   required resource identifiers to Environment variable
+   `UAT_DEPLOYMENT_OUTPUTS_JSON`:
+
+   ```sh
+   cd deploy/aws/owner-beta
+   terraform output -json |
+     python3 deployment_config.py export |
+     gh variable set UAT_DEPLOYMENT_OUTPUTS_JSON \
+       --env owner-beta-uat \
+       --repo whyi/WA-contested-divorce-without-children-mediation-to-end
+   ```
+
+   This does not upload Terraform state or runtime secret values. The variable
+   contains account/resource identifiers and the endpoint; do not treat them as
+   secrets or put private data in it. Repeat this export if infrastructure
+   identifiers change. CLI authentication and environment-management permission
+   are required for this setup.
+
+The button is available once the workflow is on `main`, but it cannot deploy
+until the AWS trust, IAM permissions, and both environment variables are configured.
+Failures remain visible; a failed deployment does not publish a success URL.
+Existing local `./deploy.sh` continues to use Terraform outputs when the
+environment variable is not set.
+
 ## Operations and teardown
 
 - Operational alarms and first-response guidance are documented in the
