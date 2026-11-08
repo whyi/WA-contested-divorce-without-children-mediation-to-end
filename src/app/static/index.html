@@ -5211,21 +5211,22 @@
         function showCaseStartPath(mode, { focus = true } = {}) {
           if (!["upload", "wizard"].includes(mode)) return;
           activeCaseStartMode = mode;
+          if (mode === "upload") {
+            caseCreateChoice.hidden = false;
+            caseCreateOfferIntake.hidden = true;
+            if (focus) document.getElementById("case-start-upload").focus();
+            return;
+          }
           caseCreateChoice.hidden = true;
           caseCreateOfferIntake.hidden = false;
-          caseCreatePathTitle.textContent = mode === "upload"
-            ? "I have documents"
-            : "Guide me step by step";
-          caseOfferQuestion.hidden = mode === "upload";
-          caseCreatePathDescription.textContent = mode === "upload"
-            ? "Create your case, then upload your documents right away."
-            : "Before starting the guided path, tell us whether the other party has already made an offer.";
-          caseCreateContinue.textContent = mode === "upload"
-            ? "Create case and continue to documents"
-            : "Create case and start the wizard";
+          caseCreatePathTitle.textContent = "Guide me step by step";
+          caseOfferQuestion.hidden = false;
+          caseCreatePathDescription.textContent =
+            "Before starting the guided path, tell us whether the other party has already made an offer.";
+          caseCreateContinue.textContent = "Create case and start the wizard";
           caseCreateBack.hidden = Boolean(caseCreateProgress?.caseId);
           if (focus) {
-            (mode === "upload" ? caseCreateContinue : caseOfferQuestion.querySelector("input")).focus();
+            caseOfferQuestion.querySelector("input").focus();
           }
         }
 
@@ -5290,7 +5291,7 @@
             caseCreateStatus.dataset.kind = "error";
           }
           caseCreateDialog.showModal();
-          if (activeCaseStartMode === "upload") caseCreateContinue.focus();
+          if (activeCaseStartMode === "upload") document.getElementById("case-start-upload").focus();
           else if (activeCaseStartMode) caseOfferQuestion.querySelector("input").focus();
           else document.getElementById("case-start-upload").focus();
         }
@@ -5329,7 +5330,12 @@
 
         // The documents path asks no offer question; the offer is an optional checkbox on the upload screen.
         async function createDocumentsCase(button) {
+          if (button.disabled) return;
           button.disabled = true;
+          document.getElementById("case-create-cancel").disabled = true;
+          caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((choice) => {
+            choice.disabled = true;
+          });
           caseCreateBack.disabled = true;
           caseTitleInput.disabled = true;
           caseCreateStatus.textContent = "Creating your case…";
@@ -5349,12 +5355,9 @@
               }
               caseId = result.id;
             }
-            try {
-              sessionStorage.removeItem(caseCreateProgressStorageKey);
-              sessionStorage.removeItem(caseCreateDraftStorageKey);
-            } catch {
-              // A stale draft is harmless: the next dialog open starts from the saved case.
-            }
+            caseCreateProgress = { ...caseCreateProgress, caseId, mode: "upload" };
+            sessionStorage.removeItem(caseCreateProgressStorageKey);
+            sessionStorage.removeItem(caseCreateDraftStorageKey);
             caseCreateProgress = null;
             window.location.assign(`/onboarding/upload?case_id=${encodeURIComponent(caseId)}`);
           } catch (error) {
@@ -5363,6 +5366,10 @@
               : "The case could not be created. Please try again.";
             caseCreateStatus.dataset.kind = "error";
             button.disabled = false;
+            document.getElementById("case-create-cancel").disabled = false;
+            caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((choice) => {
+              choice.disabled = Boolean(caseCreateProgress?.caseId) && choice !== button;
+            });
             caseCreateBack.disabled = Boolean(caseCreateProgress?.caseId);
             caseTitleInput.disabled = Boolean(caseCreateProgress?.caseId);
           }
@@ -12509,6 +12516,9 @@
           if (document.getElementById("case-create-cancel").disabled) return;
           caseCreateDialog.close();
         });
+        caseCreateDialog.addEventListener("cancel", (event) => {
+          if (document.getElementById("case-create-cancel").disabled) event.preventDefault();
+        });
         document.getElementById("demo-case-choice-cancel").addEventListener("click", () => {
           window.location.assign("/");
         });
@@ -12521,7 +12531,11 @@
         caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((button) => {
           button.addEventListener("click", () => {
             showCaseStartPath(button.dataset.startMode);
-            handleCaseCreateDraftChange();
+            if (button.dataset.startMode === "upload") {
+              void createCaseFromDashboard("upload", button);
+            } else {
+              handleCaseCreateDraftChange();
+            }
           });
         });
         caseCreateBack.addEventListener("click", () => {
