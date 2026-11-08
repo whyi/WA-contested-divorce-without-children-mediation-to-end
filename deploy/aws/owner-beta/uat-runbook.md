@@ -10,6 +10,38 @@ approval.
 
 ## Run rules
 
+### Automated anonymous smoke (Spec 69)
+
+The `Deployed UAT smoke` workflow is manually dispatched from GitHub Actions.
+It targets only `https://0w4jgh9j9a.execute-api.us-west-2.amazonaws.com` and
+accepts no credentials. To run locally with Node 22 and Chromium:
+
+```bash
+cd uat
+npm ci
+npm run check
+npx playwright install chromium
+npm run smoke
+```
+
+The sanitized `uat-smoke-results` artifact maps SMOKE-01 to health, SMOKE-02 to
+readiness, SMOKE-03 to anonymous dashboard/session denial, SMOKE-04 to sign-in
+controls, and SMOKE-05/06 to the fictional Demo 1/2 start choices. Tests do not
+submit forms or create a case. Browser writes and third-party requests are
+blocked; attempted same-origin writes fail the test.
+
+The report records the runner commit only. Record the deployed image/commit
+independently under the run rules below. Screenshots, traces, videos, response
+bodies, and raw errors are not retained. Use the scenario ID to reproduce a
+failure in an approved local session; never attach sensitive browser data.
+Missing reports or failed installation are NOT RUN, not PASS.
+
+Authenticated scenarios remain BLOCKED until an approved synthetic owner
+account and secure authentication setup exist. Smoke success is not full UAT
+or evidence of wizard persistence, proposal/download gates, deletion, payments,
+email delivery, infrastructure isolation, or backup restore. Follow the manual
+scenarios below and Spec 69's authenticated follow-up separately.
+
 - Record the deployed commit/image reference and UTC start time before testing.
 - Confirm the AWS caller account matches Terraform state. Confirm the application
   uses the `owner_beta_uat` database, UAT-prefixed document and deletion-ledger
