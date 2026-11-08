@@ -2227,9 +2227,7 @@
               </dialog>
               <section class="settlement-planner" id="settlement-planner" aria-labelledby="settlement-planner-title" hidden>
                 <p><a id="settlement-edit-intake" href="#" hidden>Edit case information</a></p>
-                <h2 id="settlement-planner-title">Evidence-grounded settlement planning</h2>
-                <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
-                <p>Calculations use the assumptions and values you enter. They are arithmetic comparisons, not legal classifications, valuations, findings, or predictions. Missing and unresolved values remain unavailable.</p>
+                <h2 id="settlement-planner-title">Negotiation attempts</h2>
                 <p class="settlement-status" id="settlement-planner-status" role="status" aria-live="polite"></p>
                 <div class="settlement-case-actions" role="group" aria-label="Case actions">
                   <button class="dashboard-retry" id="settlement-case-export" type="button">Export all case data</button>
@@ -2247,12 +2245,19 @@
                   </p>
                   <ol class="settlement-attempt-progress-list" id="settlement-attempt-progress-list" aria-label="Negotiation attempts" hidden></ol>
                 </section>
+                <details id="settlement-review-information">
+                  <summary>Important review and delivery information</summary>
+                  <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
+                  <p>Calculations use the assumptions and values you enter. They are arithmetic comparisons, not legal classifications, valuations, findings, or predictions. Missing and unresolved values remain unavailable.</p>
+                </details>
                 <div id="settlement-planner-content">
                   <section id="settlement-offer-response-history" hidden aria-labelledby="settlement-offer-response-history-title">
                     <h3 id="settlement-offer-response-history-title">Saved offer responses</h3>
                     <p>Open a prior case response to review its saved attachments and continue the appropriate workflow.</p>
                     <ul id="settlement-offer-response-history-list" aria-live="polite"></ul>
                   </section>
+                  <details id="settlement-evidence-tools">
+                  <summary>Advanced evidence and ledger tools</summary>
                   <h3>Separate consent for settlement planning</h3>
                   <p>Local calculations and manual scenario selection do not require AI consent. This purpose is separate from document extraction. If you consent, the configured AI provider receives only the data listed below to rank supplied scenarios. Consent can be revoked at any time.</p>
                   <dl class="analysis-notice" id="settlement-disclosure">
@@ -2280,7 +2285,10 @@
                   <textarea id="settlement-ledger-json" spellcheck="false" aria-describedby="settlement-ledger-example"></textarea>
                   <pre id="settlement-ledger-example">[{"asset_id":"replace-with-uuid","asset_name":"Premarital savings","asset_kind":"asset","event":{"effective_date":"2020-01-01","sequence_number":0,"event_type":"acquisition","amount_cents":100000,"source_allocations":{"user_separate":100000,"other_separate":0,"community":0,"unresolved":0},"provenance":"user_reported","note":"Starting balance"}}]</pre>
                   <button class="materials-import" id="settlement-ledger-add" type="button">Append ledger events</button>
-                  <h3>Compare bounded scenarios</h3>
+                  </details>
+                  <h3>Choose a scenario for this attempt</h3>
+                  <details id="settlement-scenario-assumptions">
+                  <summary>Configure scenario assumptions</summary>
                   <p>Choose explicit dates, tracing conventions, and proposed community shares. The engine does not presume a 50/50 division or decide CIR status.</p>
                   <p>After selection, the selected assumption set is copied into the active attempt. Editing that set locally recalculates only this attempt; it does not change case facts or the append-only settlement ledger, and it does not request AI ranking.</p>
                   <label for="settlement-axes-json">Scenario assumptions JSON</label>
@@ -2288,6 +2296,7 @@
                   <pre id="settlement-axes-example">{"relationship_windows":[{"id":"marriage-only","label":"Marriage-only dates","relationship_type":"marriage_only","start_date":"2020-01-01","separation_date":"2024-01-01","source_fact_ids":[],"assumption_note":"User-provided dates"}],"tracing_methods":["explicit"],"community_share_bps":[5000]}</pre>
                   <label for="settlement-objective">Your negotiation objective</label>
                   <input id="settlement-objective" type="text" maxlength="2000" value="Preserve traceable separate property while reaching a workable settlement.">
+                  </details>
                   <button class="materials-import" id="settlement-generate" type="button">Calculate and rank scenarios</button>
                   <p class="settlement-status" id="settlement-scenarios-status" role="status" aria-live="polite"></p>
                   <div id="settlement-scenarios-table"></div>
@@ -5839,7 +5848,10 @@
             tracing_methods: ["explicit"],
             community_share_bps: [5000],
           }, null, 2);
-          setSettlementStatus("Loading settlement-planning consent, active facts, and ledger…");
+          for (const id of ["settlement-review-information", "settlement-evidence-tools", "settlement-scenario-assumptions"]) {
+            document.getElementById(id).open = false;
+          }
+          setSettlementStatus("Loading your attempt workspace…");
           try {
             const [state, facts, events, disclosure] = await Promise.all([
               settlementApi(`/cases/${caseId}/settlement-planning`),
@@ -5874,7 +5886,7 @@
             settlementLedgerJson.value = "[]";
             settlementPlanner.scrollIntoView({ behavior: "smooth", block: "start" });
             setSettlementStatus(
-              `${events.length} append-only ledger event(s) saved. Case facts revision ${state.profile_revision}; ledger revision ${state.settlement_revision}.`,
+              "Attempt workspace ready. Calculate scenarios, then select one to prepare your proposal.",
               "success",
             );
           } catch (error) {
