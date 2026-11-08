@@ -48,6 +48,18 @@ or evidence of wizard persistence, proposal/download gates, deletion, payments,
 email delivery, infrastructure isolation, or backup restore. Follow the manual
 scenarios below and Spec 69's authenticated follow-up separately.
 
+### Signed-in entry regressions (Spec 71)
+
+Every pull request and main push also runs `entry-regressions` in the `Tests`
+workflow. Run locally with `cd uat && npm ci && npm run entry` after installing
+Chromium. These tests load the actual application HTML, submit its sign-in
+form, and reload its pages with synthetic mocked API responses. They enforce
+new-case choice for no case and direct attempt entry for every active case,
+including incomplete wizard and documents paths, with no automatic preparation
+detour. They also check expired sessions and explicit dashboard errors.
+No deployed credentials or account data are used. These executable UI regression
+tests do not constitute authenticated deployed UAT.
+
 - Record the deployed commit/image reference and UTC start time before testing.
 - Confirm the AWS caller account matches Terraform state. Confirm the application
   uses the `owner_beta_uat` database, UAT-prefixed document and deletion-ledger

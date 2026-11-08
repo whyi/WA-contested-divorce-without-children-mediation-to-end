@@ -5362,31 +5362,17 @@
           }
         }
 
-        async function wizardIntakeComplete(caseId) {
-          try {
-            const saved = await settlementApi(`/cases/${encodeURIComponent(caseId)}/wizard-intake`);
-            return saved?.draft?.filed === "yes" && Boolean(saved?.draft?.role);
-          } catch {
-            return false;
-          }
-        }
-
         async function openActiveCase(item) {
-          const intakeComplete = item.workflow_mode === "wizard" && await wizardIntakeComplete(item.id);
           const startUrl = item.workflow_mode
             ? `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`
             : null;
-          if (startUrl && !intakeComplete) {
-            window.location.replace(startUrl);
-            return;
-          }
+          settlementEditIntake.hidden = !startUrl;
           if (startUrl) {
             settlementEditIntake.href = startUrl;
-            settlementEditIntake.hidden = false;
           }
           dashboardLoading.hidden = true;
           existingCases.hidden = false;
-          openSettlementPlanner(item.id);
+          await openSettlementPlanner(item.id);
         }
 
         function showAccountTools() {
