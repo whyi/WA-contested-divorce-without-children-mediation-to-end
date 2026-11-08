@@ -1723,6 +1723,109 @@
         .expectations-link { grid-column: 2; justify-self: start; }
         .steps-panel { border-radius: 18px; }
       }
+      body[data-public-landing="true"]:not(.authenticated-view) .preview-bar,
+      body[data-public-landing="true"]:not(.authenticated-view) .theme-status,
+      body[data-public-landing="true"]:not(.authenticated-view) footer { display: none; }
+      body[data-public-landing="true"]:not(.authenticated-view) .topbar {
+        height: 84px;
+        min-height: 84px;
+        flex-wrap: nowrap;
+      }
+      body[data-public-landing="true"]:not(.authenticated-view) .nav {
+        width: auto;
+        margin-left: auto;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      body[data-public-landing="true"]:not(.authenticated-view) .nav > :not(.auth-entry) { display: none; }
+      body[data-public-landing="true"]:not(.authenticated-view) .nav .auth-entry { display: inline-flex; }
+      body[data-public-landing="true"]:not(.authenticated-view) main > section:not(.hero) { display: none; }
+      body[data-public-landing="true"]:not(.authenticated-view) .hero {
+        min-height: calc(100svh - var(--landing-header-height));
+        grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+        align-items: center;
+        gap: clamp(24px, 5vw, 64px);
+        padding: clamp(24px, 5vh, 52px) 0;
+      }
+      body[data-public-landing="true"]:not(.authenticated-view) .hero-actions,
+      body[data-public-landing="true"]:not(.authenticated-view) .hero-note { display: none; }
+      body[data-public-landing="true"][data-auth-view="true"]:not(.authenticated-view) main > section { display: none; }
+      body[data-public-landing="true"][data-auth-view="true"]:not(.authenticated-view) main > #account {
+        display: block;
+        min-height: calc(100svh - 84px);
+        padding: 28px 0;
+      }
+      body[data-public-landing="true"][data-auth-view="true"]:not(.authenticated-view) .account-panel {
+        min-height: min(620px, calc(100svh - 140px));
+        align-items: center;
+      }
+      body[data-public-landing="true"].signed-in-home:not(.authenticated-view) .login-entry { display: none; }
+      body[data-public-landing="true"]:not(.authenticated-view) { --landing-header-height: 84px; }
+      @media (max-width: 850px) {
+        body[data-public-landing="true"]:not(.authenticated-view) { --landing-header-height: 68px; }
+        body[data-public-landing="true"]:not(.authenticated-view) .topbar {
+          height: 68px;
+          min-height: 68px;
+          padding: 8px 0;
+        }
+        body[data-public-landing="true"]:not(.authenticated-view) .nav {
+          display: flex;
+          width: auto;
+          flex-wrap: nowrap;
+          gap: 8px;
+        }
+        body[data-public-landing="true"]:not(.authenticated-view) .nav-cta { padding: 9px 12px; }
+        body[data-public-landing="true"]:not(.authenticated-view) #account-entry { grid-column: auto; }
+        body[data-public-landing="true"]:not(.authenticated-view) .hero {
+          min-height: calc(100svh - 68px);
+          grid-template-columns: minmax(0, 1fr);
+          gap: 0;
+          padding: 24px 0;
+        }
+        body[data-public-landing="true"]:not(.authenticated-view) .visual-wrap { display: none; }
+        body[data-public-landing="true"]:not(.authenticated-view) .hero h1 {
+          font-size: clamp(42px, 9vw, 68px);
+        }
+        body[data-public-landing="true"][data-auth-view="true"]:not(.authenticated-view) main > #account {
+          min-height: calc(100svh - 68px);
+          padding: 20px 0;
+        }
+      }
+      @media (max-height: 700px) {
+        body[data-public-landing="true"]:not(.authenticated-view) .hero {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 0;
+          padding: 20px 0;
+        }
+        body[data-public-landing="true"]:not(.authenticated-view) .visual-wrap { display: none; }
+        body[data-public-landing="true"]:not(.authenticated-view) .hero .eyebrow { margin-bottom: 14px; }
+        body[data-public-landing="true"]:not(.authenticated-view) .hero h1 { font-size: clamp(48px, 7vw, 68px); }
+      }
+      @media (max-width: 420px) {
+        body[data-public-landing="true"]:not(.authenticated-view) .brand-name { font-size: 20px; }
+        body[data-public-landing="true"]:not(.authenticated-view) .brand-mark { width: 30px; height: 30px; }
+        body[data-public-landing="true"]:not(.authenticated-view) .nav-cta { padding: 8px 9px; font-size: 11px; }
+        body[data-public-landing="true"]:not(.authenticated-view) .topbar { gap: 8px; }
+      }
+      @media (max-width: 360px) {
+        body[data-public-landing="true"]:not(.authenticated-view) .topbar {
+          height: auto;
+          min-height: 0;
+          flex-wrap: wrap;
+          padding: 8px 0;
+        }
+        body[data-public-landing="true"]:not(.authenticated-view) .nav {
+          width: 100%;
+          justify-content: flex-end;
+        }
+        body[data-public-landing="true"]:not(.authenticated-view) .hero {
+          min-height: 0;
+          padding: 16px 0;
+        }
+        body[data-public-landing="true"]:not(.authenticated-view) .hero .eyebrow,
+        body[data-public-landing="true"]:not(.authenticated-view) .hero-copy { display: none; }
+        body[data-public-landing="true"]:not(.authenticated-view) .hero h1 { font-size: clamp(36px, 14vw, 46px); }
+      }
     </style>
   </head>
   <body>
@@ -1751,7 +1854,8 @@
             </select>
           </label>
           <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
-          <a class="nav-cta" id="account-entry" href="#account">Sign up / Sign in <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
+          <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup">Get started <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
       </header>
       <p class="theme-status" id="theme-status" role="status" aria-live="polite"></p>
@@ -3394,6 +3498,9 @@
         const demoFileManagerMode = window.location.pathname === "/demo/files";
         const demoOnlyMode = demoDocumentsMode || demoWizardMode || demoFileManagerMode;
         const demoQuery = new URLSearchParams(window.location.search);
+        const landingAuthMode = demoMode ? null : new URLSearchParams(window.location.search).get("auth");
+        const publicLandingMode = window.location.pathname === "/";
+        if (publicLandingMode) document.body.dataset.publicLanding = "true";
         const demoSource = demoQuery.get("source") === "demo1" ? "demo1" : "demo2";
         const demoAttemptLimit = demoSource === "demo1" ? 1 : 3;
         const demoCurrentCaseId = demoQuery.get("demo_case_id") || "";
@@ -3626,6 +3733,16 @@
           }
         }
 
+        if (publicLandingMode) {
+          const requestedAuthView = ["signup", "login", "verify"].includes(landingAuthMode)
+            ? landingAuthMode
+            : window.location.hash === "#account" ? "login" : null;
+          if (requestedAuthView) {
+            document.body.dataset.authView = "true";
+            selectForm(requestedAuthView, false);
+          }
+        }
+
         function showPublicPage() {
           dashboard.hidden = true;
           document.body.classList.remove("authenticated-view");
@@ -3773,6 +3890,7 @@
             return;
           }
           showPublicPage();
+          if (publicLandingMode) document.body.dataset.authView = "true";
           selectForm("login", false);
           if (message) {
             status.textContent = message;
@@ -5390,6 +5508,7 @@
 
         function showSignedInHome() {
           showPublicPage();
+          document.body.classList.add("signed-in-home");
           dashboardLoading.hidden = true;
           accountToolsLink.hidden = false;
           for (const [id, label] of [
@@ -12823,6 +12942,10 @@
                 return;
               }
               form.reset();
+              if (publicLandingMode) {
+                window.history.replaceState(null, "", "/");
+                delete document.body.dataset.authView;
+              }
               await loadDashboardStatus();
               return;
             }
