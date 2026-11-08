@@ -285,7 +285,7 @@ const noOffer = { exists: null, notes: null, document_ids: [], documents: [], as
 test("documents start: one click creates a case and opens materials without a confirmation screen", async ({ page }) => {
   const fixture = await installDocumentsFixtures(page, noOffer, { startCase: true });
   await page.goto(origin);
-  await page.locator("#case-title-input").fill("Synthetic document case label");
+  await expect(page.locator("#case-title-input")).toHaveCount(0);
   await page.getByRole("button", { name: "I have documents" }).click();
   await expect(page).toHaveURL(`${origin}/onboarding/upload?case_id=${caseId}`);
   await expect(page.getByRole("heading", { name: "Start with your case materials", exact: true })).toBeVisible();
@@ -293,7 +293,7 @@ test("documents start: one click creates a case and opens materials without a co
   await expect(page.locator("#case-create-dialog")).toBeHidden();
   await expect(page.getByRole("button", { name: "Create case and continue to documents", includeHidden: true })).toHaveCount(0);
   await expect(page.getByRole("checkbox", { name: "The other party has already made an offer" })).not.toBeChecked();
-  expect(fixture.creations).toEqual([{ case_title: "Synthetic document case label", workflow_mode: "upload" }]);
+  expect(fixture.creations).toEqual([{ workflow_mode: "upload" }]);
   expect(fixture.puts).toEqual([]);
   fixture.verify();
 });
@@ -332,8 +332,8 @@ test("documents start: failure stays on the choices and retry opens materials", 
   await expect(page).toHaveURL(`${origin}/onboarding/upload?case_id=${caseId}`);
   await expect(page.getByRole("heading", { name: "Start with your case materials", exact: true })).toBeVisible();
   expect(fixture.creations).toEqual([
-    { case_title: null, workflow_mode: "upload" },
-    { case_title: null, workflow_mode: "upload" },
+    { workflow_mode: "upload" },
+    { workflow_mode: "upload" },
   ]);
   expect(fixture.puts).toEqual([]);
   fixture.verify();
@@ -418,6 +418,27 @@ test("documents save stays on materials and never calls the removed planner", as
   await expect(page).toHaveURL(url);
   await expect(page.locator("#materials-file-input")).toBeEnabled();
   expect(fixture.puts).toEqual([{ exists: false, notes: null, document_ids: [] }]);
+  fixture.verify();
+});
+
+test("materials Back preserves the latest main confirmation and returns to start choices", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  const url = `${origin}/onboarding/upload?case_id=${caseId}`;
+  await page.goto(url);
+  await page.locator("#existing-offer-toggle").check();
+  await page.locator("#existing-offer-notes").fill("Synthetic unsaved offer notes");
+  await page.locator("#materials-back").click();
+  await expect(page.locator("#materials-leave-confirmation")).toBeVisible();
+  await page.locator("#materials-leave-stay").click();
+  await expect(page).toHaveURL(url);
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic unsaved offer notes");
+  await page.locator("#materials-back").click();
+  await page.locator("#materials-leave-confirm").click();
+  await expect(page.locator("#case-create-dialog")).toBeVisible();
+  await expect(page.locator("#case-start-upload")).toBeVisible();
+  await expect(page.locator("#settlement-planner")).toHaveCount(0);
+  await expect(page).toHaveURL(`${origin}/#account`);
+  expect(fixture.puts).toEqual([]);
   fixture.verify();
 });
 

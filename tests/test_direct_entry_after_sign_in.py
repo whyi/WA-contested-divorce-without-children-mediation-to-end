@@ -66,10 +66,11 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
             body.index("accountToolsMode"),
             body.index("openActiveCase(account.cases[0])"),
             body.index("await loadClosedCases() > 0"),
-            body.index("showNewCaseStart()"),
+            body.rindex("showNewCaseStart()"),
         ]
         self.assertEqual(order, sorted(order))
         self.assertIn("account.active_case_count > 0", body)
+        self.assertLess(body.index("startCaseDialogRequested"), body.index("accountToolsMode"))
 
     def test_active_case_opens_its_saved_preparation_path(self) -> None:
         body = _function_body("openActiveCase")
