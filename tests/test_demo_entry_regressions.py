@@ -6,6 +6,23 @@ from app.main import app
 
 
 class DemoEntryRegressionTests(unittest.TestCase):
+    def test_upload_and_demo_pages_remain_available_without_workspace_remnants(self) -> None:
+        with TestClient(app, follow_redirects=False) as client:
+            for path in (
+                "/onboarding/upload?case_id=synthetic",
+                "/demo/documents?source=demo1&demo_case_id=synthetic",
+                "/demo/wizard?source=demo2&demo_case_id=synthetic",
+                "/demo/files?source=demo1&demo_case_id=synthetic",
+            ):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn('id="materials-workflow"', response.text)
+                    self.assertIn('id="documents-demo"', response.text)
+                    self.assertIn('id="wizard-demo"', response.text)
+                    self.assertIn('id="demo-file-manager"', response.text)
+                    self.assertNotIn("Your case workspace", response.text)
+
     def test_legacy_entries_always_redirect_to_the_matching_start_choice(self) -> None:
         legacy_entries = {
             "/demo": "/demo/start?source=demo2",
@@ -60,10 +77,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                     )[0]
 
                     self.assertIn('document.body.dataset.demoPage = "start"', start_branch)
-                    self.assertIn(
-                        'document.getElementById("dashboard-header").hidden = true',
-                        start_branch,
-                    )
+                    self.assertIn('id="demo-workspace-header" hidden', page)
                     self.assertIn("openDemoCaseChoiceDialog()", start_branch)
                     self.assertNotIn("renderCases(", start_branch)
                     self.assertIn(
