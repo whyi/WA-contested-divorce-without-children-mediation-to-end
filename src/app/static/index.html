@@ -1448,6 +1448,13 @@
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis, [hidden].analysis-preview-launch { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
+      .plan-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 24px; margin: 0 0 26px; padding: 20px 22px; border:1px solid var(--line); border-radius: 12px; background:var(--theme-background-f7faf7); }
+      .plan-card h3 { margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; font-size: 24px; }
+      .plan-card-main p { margin: 0; color:var(--muted); font-size: 14px; line-height: 1.65; }
+      .plan-card-action { justify-self: end; }
+      .plan-card-action[hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
+      .plan-packages { grid-column: 1 / -1; padding-top: 14px; border-top:1px solid var(--line); }
+      .plan-packages p { margin: 0 0 10px; color:var(--muted); font-size: 13px; line-height: 1.6; }
       .account-tools-link[hidden] { display: none; }
       .authenticated-view .nav a.account-tools-link:not([hidden]) { display: inline-block; }
       .authenticated-view main > section:not(#account-dashboard) { display: none; }
@@ -1481,6 +1488,8 @@
         .account-panel { gap: 22px; padding: 25px 20px; }
         .dashboard-panel { padding: 25px 20px; }
         .dashboard-header { flex-direction: column; gap: 12px; }
+        .plan-card { grid-template-columns: 1fr; }
+        .plan-card-action { justify-self: start; }
         .onboarding-actions { grid-template-columns: 1fr; }
         .case-grid { grid-template-columns:repeat(auto-fill, minmax(145px, 1fr)); gap:12px; }
         .case-tile { min-height:170px; padding:15px; border-radius:15px; }
@@ -1722,7 +1731,7 @@
     </div>
     <div class="shell">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="Casework home">
+        <a class="brand" id="brand-link" href="/" aria-label="Casework home">
           <span class="brand-mark" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="18" text-anchor="middle" fill="currentColor" font-family="Georgia, serif" font-size="20" font-weight="700">C</text></svg>
           </span>
@@ -1852,9 +1861,10 @@
               </section>
               <p class="wizard-storage-note">Your draft and attached files are stored in this browser only. Clearing browser/site data may remove them. Attachments are not uploaded or analyzed.</p>
               <div class="wizard-bottom-actions">
-                <button class="button button-primary" id="wizard-finish" type="button" disabled>Save and view your case</button>
+                <button class="button button-primary" aria-describedby="wizard-finish-hint" id="wizard-finish" type="button" disabled>Save and view your case</button>
                 <button class="wizard-clear" id="wizard-clear" type="button">Clear saved draft</button>
               </div>
+              <p class="wizard-storage-note" id="wizard-finish-hint">The button above is available once you have answered whether the case has been filed and chosen your role.</p>
             </div>
           </div>
           <dialog class="demo-wizard-dialog" id="wizard-filed-dialog" aria-labelledby="wizard-dialog-title" aria-describedby="wizard-dialog-description">
@@ -2088,12 +2098,48 @@
                 </div>
               </div>
             </dialog>
+            <dialog class="case-create-dialog" id="start-path-dialog" aria-labelledby="start-path-title">
+              <div class="case-create-content">
+                <p class="eyebrow">Your case</p>
+                <h2 id="start-path-title">How would you like to start?</h2>
+                <p>You can change this at any time. Information already saved to your case is kept.</p>
+                <p id="start-path-status" role="status" aria-live="polite"></p>
+                <div class="case-mode-options">
+                  <button class="case-mode-choice" type="button" data-path-mode="upload">
+                    <strong>I have documents</strong>
+                    <span>Start with case materials and upload documents.</span>
+                  </button>
+                  <button class="case-mode-choice" type="button" data-path-mode="wizard">
+                    <strong>Guide me step by step</strong>
+                    <span>Start with the guided case-information wizard.</span>
+                  </button>
+                </div>
+                <div class="case-create-actions">
+                  <button id="start-path-cancel" type="button">Cancel</button>
+                </div>
+              </div>
+            </dialog>
             <section class="account-tools" id="account-tools" aria-labelledby="account-tools-title" hidden>
               <div class="onboarding-heading">
                 <p class="eyebrow">Your account</p>
                 <h2 id="account-tools-title">Account</h2>
                 <p><a id="account-tools-back" href="/">Back to your case</a></p>
               </div>
+              <section class="plan-card" id="plan-card" aria-labelledby="plan-name">
+                <div class="plan-card-main">
+                  <p class="eyebrow">Your plan</p>
+                  <h3 id="plan-name">Checking your plan…</h3>
+                  <p id="plan-summary" role="status" aria-live="polite"></p>
+                </div>
+                <div class="plan-card-action">
+                  <button class="button button-primary" id="plan-action" type="button" aria-expanded="false" aria-controls="plan-packages" hidden>Upgrade</button>
+                </div>
+                <div class="plan-packages" id="plan-packages" hidden>
+                  <p id="plan-packages-note"></p>
+                  <div class="settlement-export-actions" id="plan-package-list"></div>
+                  <p id="plan-packages-status" role="status" aria-live="polite"></p>
+                </div>
+              </section>
               <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
                 <h3 id="closed-cases-title">Closed cases</h3>
                 <p>Closing a case does not delete it. Your materials, attempts and remaining attempt credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
@@ -2180,6 +2226,7 @@
                 </div>
               </dialog>
               <section class="settlement-planner" id="settlement-planner" aria-labelledby="settlement-planner-title" hidden>
+                <p><a id="settlement-edit-intake" href="#" hidden>Edit case information</a></p>
                 <h2 id="settlement-planner-title">Evidence-grounded settlement planning</h2>
                 <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
                 <p>Calculations use the assumptions and values you enter. They are arithmetic comparisons, not legal classifications, valuations, findings, or predictions. Missing and unresolved values remain unavailable.</p>
@@ -2921,6 +2968,20 @@
         const newCaseEntry = document.getElementById("new-case-entry");
         const newCaseStart = document.getElementById("new-case-start");
         const accountToolsMode = new URLSearchParams(window.location.search).get("view") === "account";
+        const homeMode = new URLSearchParams(window.location.search).get("view") === "home";
+        const brandLink = document.getElementById("brand-link");
+        const startPathDialog = document.getElementById("start-path-dialog");
+        const startPathStatus = document.getElementById("start-path-status");
+        const settlementEditIntake = document.getElementById("settlement-edit-intake");
+        const planName = document.getElementById("plan-name");
+        const planSummary = document.getElementById("plan-summary");
+        const planAction = document.getElementById("plan-action");
+        const planPackages = document.getElementById("plan-packages");
+        const planPackagesNote = document.getElementById("plan-packages-note");
+        const planPackageList = document.getElementById("plan-package-list");
+        const planPackagesStatus = document.getElementById("plan-packages-status");
+        let planCaseId = null;
+        let planPackageData = [];
         const demoCaseChoiceDialog = document.getElementById("demo-case-choice-dialog");
         const demoCaseDocumentsLink = document.getElementById("demo-case-documents-link");
         const demoCaseWizardLink = document.getElementById("demo-case-wizard-link");
@@ -5292,12 +5353,27 @@
           }
         }
 
-        function openActiveCase(item) {
-          if (item.workflow_mode) {
-            window.location.replace(
-              `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`,
-            );
+        async function wizardIntakeComplete(caseId) {
+          try {
+            const saved = await settlementApi(`/cases/${encodeURIComponent(caseId)}/wizard-intake`);
+            return saved?.draft?.filed === "yes" && Boolean(saved?.draft?.role);
+          } catch {
+            return false;
+          }
+        }
+
+        async function openActiveCase(item) {
+          const intakeComplete = item.workflow_mode === "wizard" && await wizardIntakeComplete(item.id);
+          const startUrl = item.workflow_mode
+            ? `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`
+            : null;
+          if (startUrl && !intakeComplete) {
+            window.location.replace(startUrl);
             return;
+          }
+          if (startUrl) {
+            settlementEditIntake.href = startUrl;
+            settlementEditIntake.hidden = false;
           }
           dashboardLoading.hidden = true;
           existingCases.hidden = false;
@@ -5307,6 +5383,7 @@
         function showAccountTools() {
           dashboardLoading.hidden = true;
           accountToolsSection.hidden = false;
+          void loadPlanCard();
         }
 
         function showNewCaseStart() {
@@ -5316,18 +5393,35 @@
           openCaseCreationDialog();
         }
 
+        function showSignedInHome() {
+          showPublicPage();
+          dashboardLoading.hidden = true;
+          accountToolsLink.hidden = false;
+          for (const [id, label] of [
+            ["account-entry", "Your case "],
+            ["hero-primary-action", "Open your case "],
+            ["closing-account-cta", "Open your case "],
+          ]) {
+            const link = document.getElementById(id);
+            link.href = "/";
+            link.firstChild.textContent = label;
+          }
+          document.getElementById("account").hidden = true;
+        }
+
         async function enterSignedInAccount(account) {
           existingCases.hidden = true;
           accountToolsSection.hidden = true;
           newCaseEntry.hidden = true;
           accountToolsLink.hidden = false;
+          planCaseId = account.cases[0]?.id ?? null;
           if (accountToolsMode) {
             await loadClosedCases();
             showAccountTools();
             return;
           }
           if (account.active_case_count > 0 && account.cases.length > 0) {
-            openActiveCase(account.cases[0]);
+            await openActiveCase(account.cases[0]);
             return;
           }
           if (await loadClosedCases() > 0) {
@@ -5335,6 +5429,135 @@
             return;
           }
           showNewCaseStart();
+        }
+
+        async function readBillingJson(url) {
+          const response = await fetch(url, {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.detail || "Plan information is unavailable.");
+          return result;
+        }
+
+        async function loadPlanCard() {
+          planName.textContent = "Checking your plan…";
+          planSummary.textContent = "";
+          planAction.hidden = true;
+          planPackages.hidden = true;
+          planAction.setAttribute("aria-expanded", "false");
+          try {
+            const [entitlement, packages] = await Promise.all([
+              readBillingJson("/api/billing/account/entitlement"),
+              readBillingJson("/api/billing/packages").catch(() => ({ packages: [] })),
+            ]);
+            const paid = entitlement.status === "paid";
+            planPackageData = Array.isArray(packages.packages) ? packages.packages : [];
+            planName.textContent = paid ? "Paid plan" : "Free plan";
+            planSummary.textContent = paid
+              ? "You have purchased attempt credits. Your account stays Paid after the credits are used."
+              : "Your case includes one free finalized attempt. Upgrade to buy one-time attempt credits for more.";
+            planAction.textContent = paid ? "Buy more credits" : "Upgrade";
+            planAction.hidden = false;
+          } catch {
+            planName.textContent = "Plan unavailable";
+            planSummary.textContent = "Your plan could not be loaded. Try again later.";
+          }
+        }
+
+        function togglePlanPackages() {
+          const expand = planPackages.hidden;
+          planPackages.hidden = !expand;
+          planAction.setAttribute("aria-expanded", String(expand));
+          if (!expand) return;
+          planPackagesStatus.textContent = "";
+          planPackageList.replaceChildren();
+          if (!planCaseId) {
+            planPackagesNote.textContent =
+              "Attempt credits belong to your case. Create your case first, then come back to upgrade.";
+            return;
+          }
+          if (!planPackageData.some((pack) => pack.available)) {
+            planPackagesNote.textContent = "One-time credit packages are not available yet.";
+            return;
+          }
+          planPackagesNote.textContent =
+            "One-time packages for your case. Prices are shown before applicable tax; Stripe handles checkout.";
+          for (const pack of planPackageData) {
+            const button = document.createElement("button");
+            button.className = "materials-import";
+            button.type = "button";
+            button.disabled = !pack.available;
+            button.textContent = pack.available
+              ? `Buy ${pack.credits} attempt credits${pack.price ? ` — ${pack.price}` : ""}`
+              : `${pack.credits} attempt credits — unavailable`;
+            button.addEventListener("click", () => void startAccountCreditCheckout(pack.credits));
+            planPackageList.append(button);
+          }
+        }
+
+        async function startAccountCreditCheckout(packageSize) {
+          if (!planCaseId) return;
+          planPackagesStatus.textContent = "Opening secure checkout…";
+          try {
+            const response = await fetch(`/api/billing/cases/${planCaseId}/checkout`, {
+              method: "POST",
+              credentials: "same-origin",
+              headers: {
+                ...csrfHeaders(),
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({ package_size: packageSize }),
+            });
+            const result = await response.json();
+            if (response.status === 401) {
+              showSignIn("Sign in before purchasing attempt credits.");
+              return;
+            }
+            if (!response.ok) throw new Error(result.detail || "Checkout could not be started.");
+            const checkout = new URL(result.checkout_url);
+            if (checkout.protocol !== "https:" || checkout.hostname !== "checkout.stripe.com") {
+              throw new Error("The billing provider returned an invalid checkout address.");
+            }
+            window.location.assign(checkout.href);
+          } catch (error) {
+            planPackagesStatus.textContent = error instanceof Error
+              ? error.message
+              : "Checkout could not be started.";
+          }
+        }
+
+        function openStartPathDialog() {
+          startPathStatus.textContent = "";
+          startPathDialog.querySelectorAll("[data-path-mode]").forEach((button) => {
+            button.disabled = false;
+            button.setAttribute("aria-current", String(button.dataset.pathMode === preparationMode));
+          });
+          startPathDialog.showModal();
+        }
+
+        async function chooseStartPath(mode) {
+          if (mode === preparationMode) {
+            startPathDialog.close();
+            return;
+          }
+          const buttons = startPathDialog.querySelectorAll("[data-path-mode]");
+          buttons.forEach((button) => { button.disabled = true; });
+          startPathStatus.textContent = "Changing how you start…";
+          try {
+            await settlementApi(`/cases/${encodeURIComponent(preparationCaseId)}/workflow-mode`, {
+              method: "PUT",
+              body: JSON.stringify({ workflow_mode: mode }),
+            });
+            window.location.assign(`/onboarding/${mode}?case_id=${encodeURIComponent(preparationCaseId)}`);
+          } catch (error) {
+            startPathStatus.textContent = error instanceof Error
+              ? error.message
+              : "The start path could not be changed. Please try again.";
+            buttons.forEach((button) => { button.disabled = false; });
+          }
         }
 
         async function downloadCaseExport(caseId, statusElement, button) {
@@ -8757,17 +8980,20 @@
         function showPreparation(mode) {
           offerGateMode = preparationCaseId ? mode : null;
           if (preparationCaseId) {
-            document.getElementById("demo-back-to-account").href = "/?view=account";
+            const backLink = document.getElementById("demo-back-to-account");
+            backLink.textContent = "Back";
+            backLink.href = "#";
           }
           const isUpload = mode === "upload";
           const isDemo = mode === "demo";
           if (preparationCaseId && mode === "wizard") {
-            wizardFinish.textContent = "Save draft";
+            wizardFinish.textContent = "Save and continue";
             preparationNote.textContent =
               "Your case record is saved to your account. Wizard answers and attachments are saved in this browser only and are not uploaded or backed up. Keep your own secure copy.";
             document.getElementById("preparation-description").textContent =
               "Use the guided sections below to prepare information for this case. Your answers stay in this browser.";
             document.getElementById("wizard-demo-title").textContent = "Guided case wizard";
+            document.getElementById("demo-wizard-back").parentElement.hidden = true;
             wizardDemoPage.querySelector(".demo-flow-intro").textContent =
               "Work through the sections at your own pace. Answers and optional evidence are saved only in this browser and are not uploaded, analyzed, or used to change your case record.";
             preparationView.append(wizardDemoPage);
@@ -11768,10 +11994,13 @@
             }
             showDashboardShell();
             void loadAttemptCreditPackages();
+            brandLink.href = "/?view=home";
             if (preparationMode) {
               dashboardLoading.hidden = true;
               accountToolsLink.hidden = false;
               showPreparation(preparationMode);
+            } else if (homeMode) {
+              showSignedInHome();
             } else {
               await enterSignedInAccount(account);
             }
@@ -11878,6 +12107,16 @@
           }
         });
         newCaseStart.addEventListener("click", openCaseCreationDialog);
+        planAction.addEventListener("click", togglePlanPackages);
+        document.getElementById("demo-back-to-account").addEventListener("click", (event) => {
+          if (!preparationCaseId) return;
+          event.preventDefault();
+          openStartPathDialog();
+        });
+        startPathDialog.querySelectorAll("[data-path-mode]").forEach((button) => {
+          button.addEventListener("click", () => void chooseStartPath(button.dataset.pathMode));
+        });
+        document.getElementById("start-path-cancel").addEventListener("click", () => startPathDialog.close());
         settlementCaseExport.addEventListener("click", () => {
           if (settlementCaseId) void downloadCaseExport(settlementCaseId, settlementCaseActionStatus, settlementCaseExport);
         });
@@ -12523,8 +12762,8 @@
           if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
-          if (saved && !preparationCaseId) {
-            window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId));
+          if (saved) {
+            window.location.assign(preparationCaseId ? "/" : demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
