@@ -57,15 +57,13 @@ class WizardBackAndContinueTests(unittest.TestCase):
         self.assertIn('preparationCaseId ? "/" : demoAssetOverviewUrl', handler)
         self.assertIn('id="wizard-finish-hint"', PAGE)
 
-    def test_entry_opens_the_attempt_screen_once_the_wizard_intake_is_complete(self) -> None:
-        complete = _function_body("wizardIntakeComplete")
-        self.assertIn('saved?.draft?.filed === "yes"', complete)
-        self.assertIn("saved?.draft?.role", complete)
-
+    def test_entry_opens_attempts_regardless_of_wizard_completeness(self) -> None:
         entry = _function_body("openActiveCase")
-        self.assertIn('item.workflow_mode === "wizard" && await wizardIntakeComplete(item.id)', entry)
-        self.assertLess(entry.index("window.location.replace(startUrl)"), entry.index("openSettlementPlanner(item.id)"))
-        self.assertIn("settlementEditIntake.hidden = false", entry)
+        self.assertNotIn("wizardIntakeComplete", PAGE)
+        self.assertNotIn("window.location", entry)
+        self.assertIn("await openSettlementPlanner(item.id)", entry)
+        self.assertIn("settlementEditIntake.hidden = !startUrl", entry)
+        self.assertIn("settlementEditIntake.href = startUrl", entry)
         self.assertRegex(PAGE, r'id="settlement-edit-intake" href="#" hidden>Edit case information</a>')
 
 
