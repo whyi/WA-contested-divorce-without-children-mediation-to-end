@@ -688,6 +688,40 @@ def read_case(case_id: UUID, db: DbSession) -> Case:
     return _require_case(db, case_id)
 
 
+class WorkflowModeUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_mode: Literal["upload", "wizard"]
+
+
+@app.put("/cases/{case_id}/workflow-mode", response_model=CaseRead)
+def update_case_workflow_mode(
+    case_id: UUID,
+    payload: WorkflowModeUpdate,
+    user: Annotated[User, Depends(require_current_user)],
+    db: DbSession,
+) -> Case:
+    case = _require_case(db, case_id)
+    membership = resolve_case_access(db, case_id, user.id)
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    if membership.role != "owner":
+        raise HTTPException(status_code=403, detail="Only the case owner can change how it starts.")
+    try:
+        metadata = dict(case.metadata_json or {})
+        metadata["workflow_mode"] = payload.workflow_mode
+        case.metadata_json = metadata
+        db.commit()
+        db.refresh(case)
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "case_workflow_mode_update_failed", error)
+        raise HTTPException(
+            status_code=503, detail="The start path could not be changed. Please try again."
+        ) from error
+    return case
+
+
 def _property_tracing_response(case: Case) -> PropertyTracingRead:
     milestones = RelationshipMilestones.model_validate(case.relationship_milestones or {})
     assets = [
