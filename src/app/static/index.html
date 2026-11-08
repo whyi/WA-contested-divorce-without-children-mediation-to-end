@@ -1013,6 +1013,8 @@
       .case-create-content h2 { margin:0 0 8px; font-family:Georgia, "Times New Roman", serif; font-size:30px; font-weight:500; }
       .case-create-content h3 { margin:18px 0 7px; font-family:Georgia, "Times New Roman", serif; font-size:24px; font-weight:500; }
       #case-create-choice[hidden], #case-create-offer-intake[hidden] { display:none; }
+      #offer-optional-slot { margin-top:24px; }
+      #existing-offer-toggle-label[hidden], #existing-offer-continue-row[hidden], #existing-offer-save[hidden] { display:none; }
       .case-create-content > p:not(.eyebrow) { color:var(--text-secondary); font-size:14px; line-height:1.6; }
       .case-create-content label { display:block; margin:18px 0 7px; color:var(--text-primary); font-size:13px; font-weight:700; }
       .case-create-content input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--surface-background); font:inherit; }
@@ -2349,6 +2351,27 @@
                   </p>
                   <ol class="settlement-attempt-progress-list" id="settlement-attempt-progress-list" aria-label="Negotiation attempts" hidden></ol>
                 </section>
+                <section id="settlement-wizard-attempt" hidden aria-labelledby="settlement-wizard-attempt-title">
+                  <h3 id="settlement-wizard-attempt-title">Values from your case information</h3>
+                  <p id="settlement-wizard-attempt-summary"></p>
+                  <ul id="settlement-wizard-included"></ul>
+                  <div id="settlement-wizard-excluded-block" hidden>
+                    <h4>Not included</h4>
+                    <ul id="settlement-wizard-excluded"></ul>
+                  </div>
+                  <p>Attempt 1 keeps these values exactly as entered. Later changes to your case information do not change an attempt that already exists; adjust proposed amounts, terms, dates, and milestones in the attempt itself.</p>
+                  <p id="settlement-wizard-edit-slot-values"></p>
+                </section>
+                <section id="settlement-wizard-empty" hidden aria-labelledby="settlement-wizard-empty-title">
+                  <h3 id="settlement-wizard-empty-title">Attempt 1 is not created yet</h3>
+                  <p id="settlement-wizard-needs-intro"></p>
+                  <ul id="settlement-wizard-needs"></ul>
+                  <div class="materials-actions">
+                    <button class="dashboard-retry" id="settlement-wizard-create" type="button">Create Attempt 1 from your case information</button>
+                    <span id="settlement-wizard-edit-slot-empty"></span>
+                  </div>
+                  <p id="settlement-wizard-status" role="status" aria-live="polite"></p>
+                </section>
                 <details id="settlement-review-information">
                   <summary>Important review and delivery information</summary>
                   <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
@@ -2610,6 +2633,9 @@
               <p class="preparation-note" id="preparation-note">This preview does not accept or save case details or documents. No case has been created. Do not enter real case information.</p>
               <section class="existing-offer-panel" id="existing-offer-panel" aria-labelledby="existing-offer-title" hidden>
                 <h3 id="existing-offer-title">Offer from the other party</h3>
+                <label class="offer-choice" id="existing-offer-toggle-label" for="existing-offer-toggle" hidden>
+                  <input type="checkbox" id="existing-offer-toggle"> The other party has already made an offer
+                </label>
                 <fieldset id="existing-offer-question">
                   <legend>Has the other party already made an offer?</legend>
                   <label class="offer-choice"><input type="radio" name="existing-offer" value="yes"> Yes</label>
@@ -2630,6 +2656,10 @@
                 <div class="materials-actions">
                   <button class="materials-import" id="existing-offer-save" type="button">Save offer details</button>
                   <p class="existing-offer-status" id="existing-offer-status" role="status" aria-live="polite"></p>
+                </div>
+                <div class="materials-actions" id="existing-offer-continue-row" hidden>
+                  <button class="materials-import" id="existing-offer-continue" type="button" disabled>Continue</button>
+                  <p class="existing-offer-status" id="existing-offer-continue-status" role="status" aria-live="polite"></p>
                 </div>
                 <section id="existing-offer-asset-terms" aria-labelledby="existing-offer-terms-title" hidden>
                   <h4 id="existing-offer-terms-title">Relate the offer to your assets</h4>
@@ -2663,6 +2693,7 @@
                   <p class="materials-status" id="materials-status" role="status" aria-live="polite"></p>
                 </div>
                 <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
+                <div id="offer-optional-slot"></div>
                 <p class="preparation-note" id="materials-disabled-note">Imports are disabled in this preview. Files stay in your browser and are not uploaded or saved. Do not use real case information.</p>
                 <section class="analysis-preview-launch" id="analysis-preview-launch" aria-labelledby="analysis-preview-launch-title" hidden>
                   <h3 id="analysis-preview-launch-title">Your imported files are ready</h3>
@@ -3086,6 +3117,17 @@
         const startPathDialog = document.getElementById("start-path-dialog");
         const startPathStatus = document.getElementById("start-path-status");
         const settlementEditIntake = document.getElementById("settlement-edit-intake");
+        const settlementEditIntakeHome = settlementEditIntake.parentElement;
+        const settlementWizardAttempt = document.getElementById("settlement-wizard-attempt");
+        const settlementWizardAttemptSummary = document.getElementById("settlement-wizard-attempt-summary");
+        const settlementWizardIncluded = document.getElementById("settlement-wizard-included");
+        const settlementWizardExcludedBlock = document.getElementById("settlement-wizard-excluded-block");
+        const settlementWizardExcluded = document.getElementById("settlement-wizard-excluded");
+        const settlementWizardEmpty = document.getElementById("settlement-wizard-empty");
+        const settlementWizardNeeds = document.getElementById("settlement-wizard-needs");
+        const settlementWizardCreate = document.getElementById("settlement-wizard-create");
+        const settlementWizardStatus = document.getElementById("settlement-wizard-status");
+        let settlementCaseWorkflowMode = null;
         const planName = document.getElementById("plan-name");
         const planSummary = document.getElementById("plan-summary");
         const planAction = document.getElementById("plan-action");
@@ -3117,6 +3159,10 @@
         let activeCaseStartMode = null;
         const existingOfferPanel = document.getElementById("existing-offer-panel");
         const existingOfferDetails = document.getElementById("existing-offer-details");
+        const existingOfferToggle = document.getElementById("existing-offer-toggle");
+        const existingOfferContinue = document.getElementById("existing-offer-continue");
+        const existingOfferContinueStatus = document.getElementById("existing-offer-continue-status");
+        let existingOfferSaved = null;
         const existingOfferNotes = document.getElementById("existing-offer-notes");
         const existingOfferDocumentList = document.getElementById("existing-offer-document-list");
         const existingOfferStatus = document.getElementById("existing-offer-status");
@@ -4437,6 +4483,25 @@
           });
         }
 
+        async function createWizardAttemptOne() {
+          wizardFinish.disabled = true;
+          setWizardSaveStatus("Creating Attempt 1 from your case information…");
+          try {
+            await settlementApi(
+              `/cases/${encodeURIComponent(preparationCaseId)}/wizard-attempt`,
+              { method: "POST" },
+            );
+            return true;
+          } catch (error) {
+            wizardFinish.disabled = false;
+            setWizardSaveStatus(
+              `Your draft is saved, but Attempt 1 could not be created: ${error instanceof Error ? error.message : "request failed"}. Try Save and continue again.`,
+              "error",
+            );
+            return false;
+          }
+        }
+
         function saveWizardDraft() {
           if (!wizardDatabase && !preparationCaseId) {
             setWizardSaveStatus(
@@ -5151,14 +5216,17 @@
           caseCreatePathTitle.textContent = mode === "upload"
             ? "I have documents"
             : "Guide me step by step";
+          caseOfferQuestion.hidden = mode === "upload";
           caseCreatePathDescription.textContent = mode === "upload"
-            ? "Before starting the documents-first path, tell us whether the other party has already made an offer."
+            ? "Create your case, then upload your documents right away."
             : "Before starting the guided path, tell us whether the other party has already made an offer.";
           caseCreateContinue.textContent = mode === "upload"
             ? "Create case and continue to documents"
             : "Create case and start the wizard";
           caseCreateBack.hidden = Boolean(caseCreateProgress?.caseId);
-          if (focus) caseOfferQuestion.querySelector("input").focus();
+          if (focus) {
+            (mode === "upload" ? caseCreateContinue : caseOfferQuestion.querySelector("input")).focus();
+          }
         }
 
         function showCaseStartChoices({ focus = true } = {}) {
@@ -5222,7 +5290,8 @@
             caseCreateStatus.dataset.kind = "error";
           }
           caseCreateDialog.showModal();
-          if (activeCaseStartMode) caseOfferQuestion.querySelector("input").focus();
+          if (activeCaseStartMode === "upload") caseCreateContinue.focus();
+          else if (activeCaseStartMode) caseOfferQuestion.querySelector("input").focus();
           else document.getElementById("case-start-upload").focus();
         }
 
@@ -5258,6 +5327,47 @@
           demoCaseDocumentsLink.focus();
         }
 
+        // The documents path asks no offer question; the offer is an optional checkbox on the upload screen.
+        async function createDocumentsCase(button) {
+          button.disabled = true;
+          caseCreateBack.disabled = true;
+          caseTitleInput.disabled = true;
+          caseCreateStatus.textContent = "Creating your case…";
+          caseCreateStatus.removeAttribute("data-kind");
+          try {
+            let caseId = caseCreateProgress?.caseId || null;
+            if (!caseId) {
+              const result = await settlementApi("/cases", {
+                method: "POST",
+                body: JSON.stringify({
+                  case_title: caseTitleInput.value.trim() || null,
+                  workflow_mode: "upload",
+                }),
+              });
+              if (typeof result?.id !== "string") {
+                throw new Error("The new case could not be verified. Please try again.");
+              }
+              caseId = result.id;
+            }
+            try {
+              sessionStorage.removeItem(caseCreateProgressStorageKey);
+              sessionStorage.removeItem(caseCreateDraftStorageKey);
+            } catch {
+              // A stale draft is harmless: the next dialog open starts from the saved case.
+            }
+            caseCreateProgress = null;
+            window.location.assign(`/onboarding/upload?case_id=${encodeURIComponent(caseId)}`);
+          } catch (error) {
+            caseCreateStatus.textContent = error instanceof Error
+              ? error.message
+              : "The case could not be created. Please try again.";
+            caseCreateStatus.dataset.kind = "error";
+            button.disabled = false;
+            caseCreateBack.disabled = Boolean(caseCreateProgress?.caseId);
+            caseTitleInput.disabled = Boolean(caseCreateProgress?.caseId);
+          }
+        }
+
         async function createCaseFromDashboard(mode, button) {
           if (!["upload", "wizard"].includes(mode)) {
             caseCreateStatus.textContent = "Choose one of the available case-start options.";
@@ -5272,6 +5382,10 @@
           if (caseCreateProgress?.caseId && caseCreateProgress.mode !== mode) {
             caseCreateStatus.textContent = "The created case must continue in its original workflow.";
             caseCreateStatus.dataset.kind = "error";
+            return;
+          }
+          if (mode === "upload") {
+            await createDocumentsCase(button);
             return;
           }
           const offerAnswer = caseOfferQuestion.querySelector('input[name="case-existing-offer"]:checked')?.value;
@@ -5485,6 +5599,7 @@
             ? `/onboarding/${item.workflow_mode}?case_id=${encodeURIComponent(item.id)}`
             : null;
           settlementEditIntake.hidden = !startUrl;
+          settlementCaseWorkflowMode = item.workflow_mode || null;
           if (startUrl) {
             settlementEditIntake.href = startUrl;
           }
@@ -5918,6 +6033,10 @@
 
         async function openSettlementPlanner(caseId) {
           settlementCaseId = caseId;
+          settlementWizardAttempt.hidden = true;
+          settlementWizardEmpty.hidden = true;
+          settlementWizardStatus.textContent = "";
+          settlementEditIntakeHome.append(settlementEditIntake);
           void loadAttemptCreditPurchaseHistory();
           settlementSelectedScenario = null;
           settlementRunId = null;
@@ -5988,6 +6107,7 @@
             renderSettlementFacts();
             renderSavedSettlementLedger(events);
             void loadSettlementOfferResponseHistory(caseId);
+            void loadSettlementWizardAttempt(caseId);
             settlementLedgerJson.value = "[]";
             settlementPlanner.scrollIntoView({ behavior: "smooth", block: "start" });
             setSettlementStatus(
@@ -6002,6 +6122,96 @@
             );
           }
         }
+
+        function formatWizardCents(cents) {
+          const sign = cents < 0 ? "-" : "";
+          const abs = Math.abs(cents);
+          const dollars = Math.floor(abs / 100).toLocaleString("en-US");
+          return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
+        }
+
+        function renderSettlementWizardAttempt(result) {
+          settlementWizardAttempt.hidden = true;
+          settlementWizardEmpty.hidden = true;
+          if (!result.attempt_exists) {
+            settlementWizardNeeds.replaceChildren(...result.needs.map((need) => {
+              const item = document.createElement("li");
+              item.textContent = need;
+              return item;
+            }));
+            settlementWizardNeeds.hidden = result.needs.length === 0;
+            document.getElementById("settlement-wizard-needs-intro").textContent = result.needs.length
+              ? "Attempt 1 uses only what you entered. These items are still needed:"
+              : "Your case information is ready. Attempt 1 will use only what you entered.";
+            document.getElementById("settlement-wizard-edit-slot-empty").append(settlementEditIntake);
+            settlementWizardEmpty.hidden = false;
+            return;
+          }
+          const report = result.report;
+          if (!report) return;
+          const dates = report.dates || {};
+          const role = report.role ? `${report.role[0].toUpperCase()}${report.role.slice(1)}` : "not entered";
+          const startLabel = dates.start_source === "marriage" ? "Marriage" : "Cohabitation start";
+          settlementWizardAttemptSummary.textContent =
+            `Role: ${role}. ${startLabel}: ${dates.start || "not entered"}. Separation: ${dates.separation || "not entered"}. ${report.milestones} milestone${report.milestones === 1 ? "" : "s"} and ${report.terms} proposal term${report.terms === 1 ? "" : "s"} carried over.`;
+          settlementWizardIncluded.replaceChildren(...report.included.map((entry) => {
+            const item = document.createElement("li");
+            item.textContent = `${entry.kind === "debt" ? "Debt" : "Asset"} — ${entry.label}: ${formatWizardCents(entry.amount_cents)}`;
+            return item;
+          }));
+          settlementWizardExcluded.replaceChildren(...report.excluded.map((entry) => {
+            const item = document.createElement("li");
+            item.textContent = `${entry.label} — ${entry.reason}`;
+            return item;
+          }));
+          settlementWizardExcludedBlock.hidden = report.excluded.length === 0;
+          document.getElementById("settlement-wizard-edit-slot-values").append(settlementEditIntake);
+          settlementWizardAttempt.hidden = false;
+        }
+
+        async function loadSettlementWizardAttempt(caseId) {
+          if (settlementCaseWorkflowMode !== "wizard") return;
+          try {
+            const result = await settlementApi(`/cases/${encodeURIComponent(caseId)}/wizard-attempt`);
+            if (settlementCaseId !== caseId) return;
+            renderSettlementWizardAttempt(result);
+          } catch (error) {
+            if (settlementCaseId !== caseId) return;
+            setSettlementStatus(
+              error instanceof Error ? error.message : "Your case information could not be loaded.",
+              "error",
+            );
+          }
+        }
+
+        async function createSettlementWizardAttempt() {
+          const caseId = settlementCaseId;
+          if (!caseId) return;
+          settlementWizardCreate.disabled = true;
+          settlementWizardStatus.textContent = "Creating Attempt 1 from your case information…";
+          try {
+            const result = await settlementApi(
+              `/cases/${encodeURIComponent(caseId)}/wizard-attempt`,
+              { method: "POST" },
+            );
+            if (settlementCaseId !== caseId) return;
+            if (result.status === "needs_information") {
+              renderSettlementWizardAttempt(result);
+              settlementWizardStatus.textContent = "Attempt 1 still needs the items above.";
+              return;
+            }
+            await openSettlementPlanner(caseId);
+          } catch (error) {
+            if (settlementCaseId !== caseId) return;
+            settlementWizardStatus.textContent = error instanceof Error
+              ? `Attempt 1 could not be created: ${error.message} Try again.`
+              : "Attempt 1 could not be created. Try again.";
+          } finally {
+            settlementWizardCreate.disabled = false;
+          }
+        }
+
+        settlementWizardCreate.addEventListener("click", () => void createSettlementWizardAttempt());
 
         function renderSettlementFacts() {
           settlementActiveFacts.replaceChildren();
@@ -6327,7 +6537,7 @@
           if (selectedItem) {
             const state = selectedItem.outcome || (selectedItem.frozen ? "pending" : "working");
             settlementAttemptProgressStatus.textContent =
-              `Attempt ${selectedItem.attempt_ordinal} of ${selectedItem.attempt_limit} — ${settlementAttemptStatusLabel(state)} — currently viewing`;
+              `${settlementAttemptCountLabel(selectedItem)} — ${settlementAttemptStatusLabel(state)} — currently viewing`;
           } else {
             settlementAttemptProgressStatus.textContent =
               `${items.length} negotiation attempt${items.length === 1 ? "" : "s"} saved.`;
@@ -6360,6 +6570,12 @@
             listItem.append(button);
             settlementAttemptProgressList.append(listItem);
           }
+        }
+
+        function settlementAttemptCountLabel(item) {
+          return item.attempt_limit == null
+            ? `Attempt ${item.attempt_ordinal}`
+            : `Attempt ${item.attempt_ordinal} of ${item.attempt_limit}`;
         }
 
         function settlementAttemptStatusLabel(state) {
@@ -7811,7 +8027,7 @@
               openButton.className = "dashboard-retry";
               const label = settlementAttemptOrdinalLabel(item.attempt_ordinal);
               openButton.textContent =
-                `Attempt ${item.attempt_ordinal} of ${item.attempt_limit} — ${label} — ${item.frozen ? "frozen" : "active"} — ${item.outcome || "response not selected"}`;
+                `${settlementAttemptCountLabel(item)} — ${label} — ${item.frozen ? "frozen" : "active"} — ${item.outcome || "response not selected"}`;
               openButton.addEventListener("click", () => openSettlementHistoryItem(item));
               row.append(openButton);
               for (const attachment of item.attachments) {
@@ -8813,13 +9029,46 @@
             existingOfferState !== null &&
             existingOfferState.exists !== null &&
             !existingOfferRecoveryPending;
-          if (offerGateMode === "upload") materialsWorkflow.hidden = !open;
           if (offerGateMode === "wizard") wizardDemoPage.hidden = !open;
         }
 
-        function renderExistingOffer() {
+        function captureExistingOfferSaved() {
           const state = existingOfferState;
-          const answer = state.exists === true ? "yes" : state.exists === false ? "no" : "";
+          existingOfferSaved = {
+            exists: state.exists,
+            hasDetails: Boolean((state.notes || "").trim()) || state.document_ids.length > 0,
+          };
+        }
+
+        function setExistingOfferAnswer(answer) {
+          document.querySelectorAll('input[name="existing-offer"]').forEach((radio) => {
+            radio.checked = radio.value === answer;
+          });
+        }
+
+        // Documents path: the offer is an optional checkbox; only Continue depends on it.
+        function updateExistingOfferUploadControls() {
+          if (offerGateMode !== "upload") return;
+          const checked = existingOfferToggle.checked;
+          existingOfferDetails.hidden = !checked;
+          existingOfferSave.hidden = !checked;
+          let message = "";
+          let ready = existingOfferSaved !== null;
+          if (checked && !(existingOfferSaved?.exists === true && existingOfferSaved.hasDetails)) {
+            ready = false;
+            message = "Save offer notes or an offer document to continue.";
+          }
+          existingOfferContinue.disabled = !ready;
+          existingOfferContinueStatus.textContent = message;
+        }
+
+        function renderExistingOffer(keepToggle = false) {
+          const state = existingOfferState;
+          let answer = state.exists === true ? "yes" : state.exists === false ? "no" : "";
+          if (offerGateMode === "upload") {
+            if (keepToggle) answer = existingOfferToggle.checked ? "yes" : "no";
+            else existingOfferToggle.checked = answer === "yes";
+          }
           document.querySelectorAll('input[name="existing-offer"]').forEach((radio) => {
             radio.checked = radio.value === answer;
           });
@@ -8863,6 +9112,7 @@
           }
           existingOfferAssetTerms.hidden = !(state.exists === true && state.assets.length > 0);
           applyExistingOfferGate();
+          updateExistingOfferUploadControls();
         }
 
         async function restoreExistingOfferRecovery() {
@@ -8958,17 +9208,20 @@
           };
         }
 
-        async function loadExistingOffer() {
+        async function loadExistingOffer({ keepToggle = false } = {}) {
           setExistingOfferStatus("Loading offer details…");
           try {
             existingOfferState = await settlementApi(`/cases/${preparationCaseId}/existing-offer`);
+            captureExistingOfferSaved();
             existingOfferRecoveryPending = false;
             existingOfferUpload = null;
             const recovery = await restoreExistingOfferRecovery();
-            renderExistingOffer();
+            renderExistingOffer(keepToggle);
             setExistingOfferStatus(
               recovery?.message ||
-                (existingOfferState.exists === null ? "Answer the offer question to continue." : ""),
+                (existingOfferState.exists === null && offerGateMode !== "upload"
+                  ? "Answer the offer question to continue."
+                  : ""),
             );
           } catch (error) {
             setExistingOfferStatus(
@@ -9052,6 +9305,7 @@
               }),
             });
             clearExistingOfferRecovery();
+            captureExistingOfferSaved();
             existingOfferRecoveryPending = false;
             existingOfferUpload = null;
             existingOfferFile.value = "";
@@ -9064,6 +9318,49 @@
             );
           } finally {
             existingOfferSave.disabled = false;
+          }
+        }
+
+        async function handleExistingOfferToggle() {
+          if (existingOfferToggle.checked) {
+            setExistingOfferAnswer("yes");
+            updateExistingOfferUploadControls();
+            existingOfferNotes.focus();
+            return;
+          }
+          if (existingOfferSaved?.exists === true) {
+            const confirmed = window.confirm(
+              "Remove the saved offer details? Your offer notes and selected offer documents will no longer be attached to this case.",
+            );
+            if (!confirmed) {
+              existingOfferToggle.checked = true;
+              updateExistingOfferUploadControls();
+              return;
+            }
+            setExistingOfferAnswer("no");
+            await saveExistingOffer();
+            if (existingOfferSaved?.exists === true) {
+              existingOfferToggle.checked = true;
+              setExistingOfferAnswer("yes");
+            }
+            updateExistingOfferUploadControls();
+            return;
+          }
+          setExistingOfferAnswer("no");
+          updateExistingOfferUploadControls();
+        }
+
+        async function continueFromDocuments() {
+          existingOfferContinue.disabled = true;
+          try {
+            if (!existingOfferToggle.checked && existingOfferSaved?.exists !== false) {
+              setExistingOfferAnswer("no");
+              await saveExistingOffer();
+              if (existingOfferSaved?.exists !== false) return;
+            }
+            window.location.assign("/");
+          } finally {
+            updateExistingOfferUploadControls();
           }
         }
 
@@ -9082,7 +9379,8 @@
               method: "PUT",
               body: JSON.stringify({ terms }),
             });
-            renderExistingOffer();
+            captureExistingOfferSaved();
+            renderExistingOffer(true);
             setExistingOfferStatus("Asset terms saved. Your original notes were not changed.", "success");
           } catch (error) {
             setExistingOfferStatus(
@@ -9129,13 +9427,24 @@
               : preparationCaseId
                 ? "Use the guided sections below to prepare information for this case. Your answers stay in this browser."
                 : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
-          materialsWorkflow.hidden = !isUpload || Boolean(preparationCaseId);
+          materialsWorkflow.hidden = !isUpload;
           preparationNote.hidden = isUpload || isDemo;
           preparationView.hidden = false;
           if (preparationCaseId && mode === "wizard") {
             preparationNote.hidden = false;
           }
           if (isUpload) loadMaterialsConfig();
+          if (preparationCaseId && isUpload) {
+            document.getElementById("offer-optional-slot").append(existingOfferPanel);
+            document.getElementById("existing-offer-title").textContent = "Offer from the other party (optional)";
+            document.getElementById("existing-offer-question").hidden = true;
+            document.getElementById("existing-offer-toggle-label").hidden = false;
+            document.getElementById("existing-offer-continue-row").hidden = false;
+            document.getElementById("existing-offer-help").textContent =
+              "Add notes, choose or select an offer document, or both, then save. You can continue once the details are saved.";
+            existingOfferDetails.hidden = true;
+            existingOfferSave.hidden = true;
+          }
           if (preparationCaseId && (isUpload || mode === "wizard")) {
             existingOfferPanel.hidden = false;
             void loadExistingOffer();
@@ -12190,9 +12499,11 @@
           existingOfferDetails.hidden = selectedExistingOfferAnswer() !== "yes";
         });
         existingOfferSave.addEventListener("click", () => { void saveExistingOffer(); });
+        existingOfferToggle.addEventListener("change", () => { void handleExistingOfferToggle(); });
+        existingOfferContinue.addEventListener("click", () => { void continueFromDocuments(); });
         existingOfferTermsSave.addEventListener("click", () => { void saveExistingOfferTerms(); });
         document.getElementById("existing-offer-refresh").addEventListener("click", () => {
-          void loadExistingOffer();
+          void loadExistingOffer({ keepToggle: true });
         });
         document.getElementById("case-create-cancel").addEventListener("click", () => {
           if (document.getElementById("case-create-cancel").disabled) return;
@@ -12879,6 +13190,7 @@
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
           if (saved) {
+            if (preparationCaseId && !(await createWizardAttemptOne())) return;
             window.location.assign(preparationCaseId ? "/" : demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });

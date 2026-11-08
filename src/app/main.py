@@ -73,6 +73,7 @@ from app.materials import router as materials_router
 from app.offer_response import router as offer_response_router
 from app.review import router as review_router
 from app.settlement_routes import demo_export_router, router as settlement_router
+from app.wizard_attempt import router as wizard_attempt_router
 from app.wizard_intake import router as wizard_intake_router
 from app.services import (
     Artifact,
@@ -172,6 +173,7 @@ app.include_router(analysis_router)
 app.include_router(review_router)
 app.include_router(settlement_router)
 app.include_router(wizard_intake_router)
+app.include_router(wizard_attempt_router)
 app.include_router(demo_export_router)
 
 DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
