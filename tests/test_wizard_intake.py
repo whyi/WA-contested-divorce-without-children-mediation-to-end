@@ -343,7 +343,8 @@ class WizardIntakeFrontendTests(unittest.TestCase):
         )[1].split('wizardClearButton.addEventListener', 1)[0]
 
         self.assertIn("const saved = await saveWizardDraft()", finish_handler)
-        self.assertIn("if (saved && !preparationCaseId)", finish_handler)
+        self.assertIn("if (saved) {", finish_handler)
+        self.assertIn('preparationCaseId ? "/" : demoAssetOverviewUrl', finish_handler)
         self.assertNotIn("/#account", finish_handler)
 
 
