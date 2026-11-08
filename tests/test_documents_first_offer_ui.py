@@ -112,12 +112,17 @@ class DocumentsCaseDialogTests(unittest.TestCase):
         create = _function_body("createCaseFromDashboard")
         documents = _function_body("createDocumentsCase")
 
-        self.assertIn('caseOfferQuestion.hidden = mode === "upload"', path)
-        self.assertNotIn("tell us whether the other party has already made an offer.\"\n            : \"Before", path)
+        upload = path.split('if (mode === "upload") {', 1)[1].split("return;", 1)[0]
+        self.assertIn("caseCreateChoice.hidden = false", upload)
+        self.assertIn("caseCreateOfferIntake.hidden = true", upload)
+        self.assertIn('createCaseFromDashboard("upload", button)', PAGE)
+        self.assertNotIn("Create case and continue to documents", PAGE)
+        self.assertNotIn("Create your case, then upload your documents right away.", PAGE)
         self.assertLess(create.index('mode === "upload"'), create.index("case-existing-offer"))
         self.assertIn('workflow_mode: "upload"', documents)
         self.assertNotIn("existing_offer", documents)
         self.assertIn("/onboarding/upload?case_id=", documents)
+        self.assertIn("if (button.disabled) return;", documents)
 
     def test_wizard_path_still_asks_the_offer_question(self) -> None:
         path = _function_body("showCaseStartPath")

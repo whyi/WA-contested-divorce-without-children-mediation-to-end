@@ -225,9 +225,11 @@ test("expired session does not show a cached attempt on refresh", async ({ page 
   fixture.verify();
 });
 
-async function installDocumentsFixtures(page, offer) {
+async function installDocumentsFixtures(page, offer, { startCase = false, creationStatuses = [200], creationGate = null } = {}) {
   const state = { ...offer };
+  let hasCase = !startCase;
   const unexpected = [];
+  const creations = [];
   const puts = [];
   const scriptErrors = [];
   page.on("pageerror", (error) => scriptErrors.push(error.message));
@@ -244,7 +246,18 @@ async function installDocumentsFixtures(page, offer) {
     }
     const path = url.pathname;
     let body;
-    if (path === `/cases/${caseId}/existing-offer` && request.method() === "PUT") {
+    if (startCase && path === "/cases" && request.method() === "POST") {
+      creations.push(JSON.parse(request.postData() || "{}"));
+      if (creationGate) await creationGate;
+      const status = creationStatuses[Math.min(creations.length - 1, creationStatuses.length - 1)];
+      if (status === 200) hasCase = true;
+      await route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify(status === 200 ? { id: caseId } : { detail: "Case creation unavailable. Please retry." }),
+      });
+      return;
+    } else if (path === `/cases/${caseId}/existing-offer` && request.method() === "PUT") {
       const sent = JSON.parse(request.postData() || "{}");
       puts.push(sent);
       Object.assign(state, {
@@ -262,20 +275,28 @@ async function installDocumentsFixtures(page, offer) {
     } else {
       const fixtures = {
         "/api/auth/providers": { google: false },
+        "/api/v1/closed-cases": { cases: [] },
         "/api/v1/support/config": { contact_url: null },
         "/api/billing/packages": { packages: [] },
         "/api/billing/account/entitlement": { status: "free" },
         "/api/v1/dashboard/status": {
           data: {
-            has_cases: true,
-            case_count: 1,
-            active_case_count: 1,
-            cases: [{ id: caseId, title: "Synthetic documents case", workflow_mode: "upload" }],
+            has_cases: hasCase,
+            case_count: hasCase ? 1 : 0,
+            active_case_count: hasCase ? 1 : 0,
+            cases: hasCase ? [{ id: caseId, title: "Synthetic documents case", workflow_mode: "upload" }] : [],
           },
         },
       };
       if (path.startsWith("/api/v1/materials/config")) {
-        body = { enabled: true, max_upload_bytes: 2097152, accepted_extensions: [".pdf", ".docx"], remaining_attachments: 5, attachment_limit: 5, used_attachments: 0 };
+        body = {
+          import_enabled: true,
+          max_upload_bytes: 2097152,
+          supported_extensions: [".pdf", ".docx"],
+          max_attachments: 5,
+          attachment_count: 0,
+          max_pdf_pages: 200,
+        };
       } else if (Object.hasOwn(fixtures, path)) {
         body = fixtures[path];
       } else {
@@ -288,6 +309,7 @@ async function installDocumentsFixtures(page, offer) {
   });
   return {
     puts,
+    creations,
     verify: () => {
       expect(unexpected, "Unexpected API requests must not be silently mocked").toEqual([]);
       expect(scriptErrors, "Full application script must execute without errors").toEqual([]);
@@ -296,6 +318,77 @@ async function installDocumentsFixtures(page, offer) {
 }
 
 const noOffer = { exists: null, notes: null, document_ids: [], documents: [], assets: [], asset_terms: [] };
+
+test("documents start: one click creates a case and opens materials without a confirmation screen", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer, { startCase: true });
+  await page.goto(origin);
+  await page.locator("#case-title-input").fill("Synthetic document case label");
+  await page.getByRole("button", { name: "I have documents" }).click();
+  await expect(page).toHaveURL(`${origin}/onboarding/upload?case_id=${caseId}`);
+  await expect(page.getByRole("heading", { name: "Start with your case materials", exact: true })).toBeVisible();
+  await expect(page.locator("#materials-file-input")).toBeEnabled();
+  await expect(page.locator("#case-create-dialog")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Create case and continue to documents", includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "The other party has already made an offer" })).not.toBeChecked();
+  expect(fixture.creations).toEqual([{ case_title: "Synthetic document case label", workflow_mode: "upload" }]);
+  expect(fixture.puts).toEqual([]);
+  fixture.verify();
+});
+
+test("documents start: pending creation prevents duplicate clicks and workflow switching", async ({ page }) => {
+  let releaseCreation;
+  const creationGate = new Promise((resolve) => { releaseCreation = resolve; });
+  const fixture = await installDocumentsFixtures(page, noOffer, { startCase: true, creationGate });
+  await page.goto(origin);
+  await page.locator("#case-start-upload").click();
+  await expect(page.locator("#case-create-status")).toHaveText("Creating your case…");
+  await expect(page.locator("#case-start-upload")).toBeDisabled();
+  await expect(page.locator("#case-start-wizard")).toBeDisabled();
+  await expect(page.locator("#case-create-cancel")).toBeDisabled();
+  await expect(page.locator("#case-create-offer-intake")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#case-create-dialog")).toBeVisible();
+  expect(fixture.creations).toHaveLength(1);
+  releaseCreation();
+  await expect(page).toHaveURL(`${origin}/onboarding/upload?case_id=${caseId}`);
+  expect(fixture.creations).toHaveLength(1);
+  fixture.verify();
+});
+
+test("documents start: failure stays on the choices and retry opens materials", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer, { startCase: true, creationStatuses: [503, 200] });
+  await page.goto(origin);
+  await page.locator("#case-start-upload").click();
+  await expect(page.locator("#case-create-status")).toHaveText("Case creation unavailable. Please retry.");
+  await expect(page).toHaveURL(`${origin}/`);
+  await expect(page.locator("#case-create-offer-intake")).toBeHidden();
+  await expect(page.locator("#case-start-upload")).toBeEnabled();
+  await expect(page.locator("#case-start-wizard")).toBeEnabled();
+  await expect(page.locator("#case-create-cancel")).toBeEnabled();
+  await page.locator("#case-start-upload").click();
+  await expect(page).toHaveURL(`${origin}/onboarding/upload?case_id=${caseId}`);
+  await expect(page.getByRole("heading", { name: "Start with your case materials", exact: true })).toBeVisible();
+  expect(fixture.creations).toEqual([
+    { case_title: null, workflow_mode: "upload" },
+    { case_title: null, workflow_mode: "upload" },
+  ]);
+  expect(fixture.puts).toEqual([]);
+  fixture.verify();
+});
+
+test("wizard start: the existing offer intake and creation confirmation remain", async ({ page }) => {
+  const fixture = await installFixtures(page, { hasCase: false, authenticated: true });
+  await page.goto(origin);
+  await page.locator("#case-start-wizard").click();
+  await expect(page.locator("#case-create-choice")).toBeHidden();
+  await expect(page.locator("#case-offer-question")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create case and start the wizard" })).toBeVisible();
+  await page.locator("#case-create-continue").click();
+  await expect(page.locator("#case-create-status")).toHaveText("Answer whether the other party has already made an offer.");
+  await expect(page).toHaveURL(`${origin}/`);
+  expect(fixture.requests).not.toContain("POST /cases");
+  fixture.verify();
+});
 
 test("documents path: upload is visible first and the offer is an optional checkbox below it", async ({ page }) => {
   const fixture = await installDocumentsFixtures(page, noOffer);
