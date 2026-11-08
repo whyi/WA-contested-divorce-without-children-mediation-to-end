@@ -74,10 +74,9 @@ class PaidAccountEntitlementTests(unittest.TestCase):
             Path(__file__).parents[1] / "src" / "app" / "static" / "index.html"
         ).read_text()
 
-        self.assertIn('id="account-entitlement-status"', page)
-        self.assertIn('fetch("/api/billing/account/entitlement"', page)
-        self.assertIn("remains Paid after credits are used", page)
-        self.assertIn("does not change case access or credit balances", page)
+        self.assertIn('id="plan-name"', page)
+        self.assertIn('readBillingJson("/api/billing/account/entitlement")', page)
+        self.assertIn("Your account stays Paid after the credits are used.", page)
         self.assertNotIn(">Switch to Free</button>", page)
         self.assertNotIn("subscription_plan", page)
 

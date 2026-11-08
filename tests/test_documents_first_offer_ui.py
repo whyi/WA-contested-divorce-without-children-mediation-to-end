@@ -50,15 +50,17 @@ class DocumentsFirstScreenTests(unittest.TestCase):
 
         self.assertIn("existingOfferDetails.hidden = !checked", controls)
         self.assertIn("existingOfferSaved?.exists === true && existingOfferSaved.hasDetails", controls)
-        self.assertIn("Save offer notes or an offer document to continue.", controls)
+        self.assertIn("Save offer notes or an offer document before saving this choice.", controls)
         self.assertIn("existingOfferContinue.disabled = !ready", controls)
         self.assertIn('role="status" aria-live="polite"', PAGE[PAGE.index("existing-offer-continue-status") - 80 :][:200])
 
-    def test_continue_records_no_offer_when_needed_then_opens_the_attempt_workspace(self) -> None:
+    def test_offer_choice_is_saved_without_opening_a_deleted_page(self) -> None:
         body = _function_body("continueFromDocuments")
 
         self.assertIn("existingOfferSaved?.exists !== false", body)
-        self.assertLess(body.index("await saveExistingOffer()"), body.index('window.location.assign("/")'))
+        self.assertIn("await saveExistingOffer()", body)
+        self.assertNotIn("window.location", body)
+        self.assertIn("Your offer choice is saved.", body)
         self.assertIn("if (existingOfferSaved?.exists !== false) return;", body)
 
     def test_unchecking_a_saved_offer_confirms_removal_and_keeps_it_if_declined(self) -> None:
@@ -86,7 +88,7 @@ class DocumentsFirstScreenTests(unittest.TestCase):
     def test_failed_saves_do_not_navigate(self) -> None:
         body = _function_body("continueFromDocuments")
 
-        self.assertEqual(body.count("window.location.assign"), 1)
+        self.assertNotIn("window.location", body)
         self.assertIn("finally", body)
 
     def test_hidden_upload_only_controls_stay_hidden_despite_flex_styles(self) -> None:

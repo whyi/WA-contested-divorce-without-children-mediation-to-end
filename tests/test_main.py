@@ -345,15 +345,9 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn('settlementCompletionFinalize.textContent = "Return to active demo case"', page)
 
         page = body.decode()
-        self.assertIn(
-            (
-                "`/settlement-completion?case_id=${encodeURIComponent(caseId)}"
-                "&selection_id=${encodeURIComponent(selectionId)}`"
-            ),
-            page,
-        )
-        self.assertIn("loadSettlementOfferResponse({ showWorkflow: false })", page)
-        self.assertIn("settlementOfferResponseState?.sent_confirmed", page)
+        self.assertIn("/offer-response/attachments/accepted_offer", page)
+        self.assertIn('response.outcome !== "accepted" || !response.sent_confirmed', page)
+        self.assertIn("response.sent_confirmed", page)
 
     def test_rejection_completion_routes_serve_the_dedicated_page(self) -> None:
         for path in ("/rejection-completion", "/demo/rejection-completion"):
@@ -498,37 +492,16 @@ class MainWorkflowTests(unittest.TestCase):
         _, body = asyncio.run(request_app("/"))
         page = body.decode()
 
-        self.assertEqual(page.count("void loadAttemptCreditPackages();"), 1)
+        self.assertNotIn("void loadAttemptCreditPackages();", page)
         dashboard_status = page.split(
             "async function loadDashboardStatus(", 1
         )[1].split(
             "\n        }\n\n        buildAssetTimelineStops();", 1
         )[0]
-        billing_load = dashboard_status.index("void loadAttemptCreditPackages();")
+        billing_load = dashboard_status.index("await enterSignedInAccount(account)")
         for guard in ("response.status === 401", "if (!response.ok)", "!account"):
             self.assertLess(dashboard_status.index(guard), billing_load)
 
-    def test_settlement_planner_is_case_scoped_and_consent_aware(self) -> None:
-        status, body = asyncio.run(request_app("/"))
-
-        self.assertEqual(status, 200)
-        page = body.decode()
-        self.assertIn('id="settlement-planner"', page)
-        self.assertIn('id="settlement-consent"', page)
-        self.assertIn('id="settlement-ledger-json"', page)
-        self.assertIn('id="settlement-axes-json"', page)
-        self.assertIn('id="settlement-scenarios-table"', page)
-        self.assertIn('id="settlement-offer-download"', page)
-        self.assertIn("View asset and event tracing detail", page)
-        self.assertIn("consent can be revoked at any time", page.lower())
-        self.assertIn("pending qualified counsel review", page.lower())
-        self.assertIn("not legal advice or representation", page.lower())
-        self.assertIn('id="settlement-export-confirmation"', page)
-        self.assertIn('id="settlement-google-send"', page)
-        self.assertIn('id="settlement-dropbox-send"', page)
-        self.assertIn('id="settlement-email-send"', page)
-        self.assertIn('settlementConsentRevoke.addEventListener("click", revokeSettlementConsent)', page)
-        self.assertIn("openSettlementPlanner(item.id)", page)
 
     def test_existing_demo_shows_dynamic_fictional_settlement_scenarios(self) -> None:
         status, body = asyncio.run(

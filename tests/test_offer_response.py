@@ -1229,8 +1229,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("for garnishment, not a generic divorce judgment", html)
         self.assertIn("signed, filed, or sufficient", html)
         self.assertIn('id="settlement-response-accepted-file"', html)
-        self.assertIn('uploadSettlementResponseFile("accepted_offer", file)', html)
-        self.assertIn("First Attempt — active and editable", html)
+        self.assertIn("uploadAcceptedOfferDocument(file)", html)
         self.assertIn('id="settlement-demo-attempt-status"', html)
         self.assertIn("First sample attempt", html)
         self.assertIn('body[data-demo-page="settlement"] .settlement-attempt-banner', html)
@@ -1241,24 +1240,8 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", html)
         self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" hidden', html)
-        self.assertIn("counterofferNeedsFile", html)
-        self.assertIn('id="settlement-response-confirm-sent"', html)
-        self.assertIn("offer-response/confirm-sent", html)
-        self.assertIn("I reviewed and sent these final documents", html)
-        self.assertIn("I modified the offer", html)
-        self.assertIn("Upload the modified offer here", html)
-        self.assertIn('id="settlement-response-modified-accept"', html)
-        self.assertIn('uploadSettlementResponseFile("modified_docx", file)', html)
-        self.assertIn('uploadSettlementResponseFile("modified_xlsx", file)', html)
-        self.assertIn("offer-response/parse-modified-offer", html)
-        self.assertIn("current?.sent_confirmed", html)
-        attempt_save = html.split("async function saveSettlementAttemptState()", 1)[1].split(
-            "async function loadSettlementOfferResponse", 1
-        )[0]
-        self.assertIn("if (settlementOfferResponseState?.frozen) return false;", attempt_save)
-        self.assertNotIn("settlementOfferResponseState?.sent_documents_complete", attempt_save)
-        self.assertIn("An editable copy was opened as the next attempt", html)
-        self.assertIn("Google Drive Picker is unavailable", html)
+        self.assertNotIn('id="settlement-response-confirm-sent"', html)
+        self.assertNotIn("saveSettlementAttemptState", html)
 
     def test_demo_attempt_freezes_chart_date_dragging(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(

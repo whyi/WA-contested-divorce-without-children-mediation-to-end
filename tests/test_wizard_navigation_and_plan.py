@@ -49,22 +49,21 @@ class WizardBackAndContinueTests(unittest.TestCase):
         self.assertIn('document.getElementById("demo-wizard-back").parentElement.hidden = true', preparation)
 
     def test_finish_saves_then_continues_to_the_case_entry(self) -> None:
-        self.assertIn('wizardFinish.textContent = "Save and continue";', PAGE)
+        self.assertIn('wizardFinish.textContent = "Save case information";', PAGE)
         handler = PAGE.split('wizardFinish.addEventListener("click", async () =>', 1)[1].split(
             "wizardClearButton.addEventListener", 1
         )[0]
         self.assertLess(handler.index("await saveWizardDraft()"), handler.index("window.location.assign("))
-        self.assertIn('preparationCaseId ? "/" : demoAssetOverviewUrl', handler)
+        self.assertIn('setWizardSaveStatus("Your case information is saved.")', handler)
         self.assertIn('id="wizard-finish-hint"', PAGE)
 
-    def test_entry_opens_attempts_regardless_of_wizard_completeness(self) -> None:
+    def test_entry_opens_the_saved_preparation_path(self) -> None:
         entry = _function_body("openActiveCase")
         self.assertNotIn("wizardIntakeComplete", PAGE)
-        self.assertNotIn("window.location", entry)
-        self.assertIn("await openSettlementPlanner(item.id)", entry)
-        self.assertIn("settlementEditIntake.hidden = !startUrl", entry)
-        self.assertIn("settlementEditIntake.href = startUrl", entry)
-        self.assertRegex(PAGE, r'id="settlement-edit-intake" href="#" hidden>Edit case information</a>')
+        self.assertIn("window.location.replace", entry)
+        self.assertIn("/onboarding/${item.workflow_mode}?case_id=", entry)
+        self.assertNotIn("openSettlementPlanner", PAGE)
+        self.assertNotIn('id="settlement-edit-intake"', PAGE)
 
 
 class SignedInHomeTests(unittest.TestCase):

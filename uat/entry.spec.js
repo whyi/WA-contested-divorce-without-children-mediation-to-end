@@ -12,7 +12,7 @@ const missingWizardAttempt = {
   report: null,
 };
 
-async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, intake = {}, wizardAttempt = missingWizardAttempt } = {}) {
+async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, intake = {}, wizardAttempt = missingWizardAttempt, extraReads = {}, mutationHandler = null } = {}) {
   let signedIn = authenticated;
   const unexpected = [];
   const requests = [];
@@ -36,6 +36,15 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
     if (path === "/api/auth/login" && request.method() === "POST") {
       signedIn = true;
       body = { mfa_required: false };
+    } else if (request.method() !== "GET" && mutationHandler) {
+      const result = await mutationHandler(request);
+      if (!result) {
+        unexpected.push(`${request.method()} ${path}`);
+        await route.abort("blockedbyclient");
+        return;
+      }
+      await route.fulfill({ status: result.status || 200, contentType: result.contentType || "application/json", body: typeof result.body === "string" ? result.body : JSON.stringify(result.body) });
+      return;
     } else if (request.method() !== "GET") {
       unexpected.push(`${request.method()} ${path}`);
       await route.abort("blockedbyclient");
@@ -65,9 +74,16 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
           available: false, provider: "disabled", data_sent: "No AI configured.",
         },
         [`/cases/${caseId}/settlement-planning/offer-responses`]: [],
-        [`/cases/${caseId}/wizard-intake`]: { draft: intake },
+        [`/cases/${caseId}/wizard-intake`]: { revision: 1, draft: intake },
+        [`/cases/${caseId}/existing-offer`]: { exists: false, notes: null, document_ids: [], documents: [], assets: [], asset_terms: [] },
         [`/cases/${caseId}/wizard-attempt`]: wizardAttempt,
+        ...extraReads,
       };
+      if (path.startsWith("/api/v1/materials/config")) {
+        body = { import_enabled: true, max_upload_bytes: 2097152, supported_extensions: [".pdf", ".docx"], max_attachments: 5, attachment_count: 0, max_pdf_pages: 200 };
+        await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+        return;
+      }
       if (!Object.hasOwn(fixtures, path)) {
         unexpected.push(`${request.method()} ${path}`);
         await route.abort("blockedbyclient");
@@ -126,80 +142,27 @@ for (const [label, mode, intake] of [
   ["unfiled wizard", "wizard", { filed: "no", role: "" }],
   ["complete wizard", "wizard", { filed: "yes", role: "petitioner" }],
 ]) {
-  test(`active case (${label}): login and refresh go straight to attempts`, async ({ page }) => {
+  test(`active case (${label}): login and refresh never open the deleted planner`, async ({ page }) => {
     const fixture = await installFixtures(page, { mode, intake });
     await signIn(page);
     for (const reload of [false, true]) {
       if (reload) await page.reload();
-      await expect(page.locator("#settlement-planner")).toBeVisible();
-      await expect(page.locator("#settlement-planner-status")).toContainText("Attempt workspace ready.");
-      await expect(page.locator("#settlement-planner-title")).toHaveText("Negotiation attempts");
-      await expect(page.locator("#settlement-attempt-progress-title")).toBeVisible();
-      await expect(page.locator("#settlement-generate")).toBeVisible();
+      await expect(page.locator("#settlement-planner, #settlement-generate, #settlement-ledger-json")).toHaveCount(0);
       await expect(page.locator("#case-create-dialog")).toBeHidden();
-      await expect(page.locator("#settlement-ledger-json")).toBeHidden();
-      await expect(page.locator("#settlement-review-information .product-boundary-disclosure")).toBeHidden();
-      await expect(page.getByRole("heading", { name: "Evidence-grounded settlement planning", exact: true })).toBeHidden();
-      await expectNoDetour(page);
       if (mode) {
-        await expect(page.locator("#settlement-edit-intake")).toBeVisible();
-        await expect(page.locator("#settlement-edit-intake")).toHaveAttribute("href", `/onboarding/${mode}?case_id=${caseId}`);
+        await expect(page).toHaveURL(`${origin}/onboarding/${mode}?case_id=${caseId}`);
+        await expect(page.locator("#preparation-view")).toBeVisible();
+        if (mode === "upload") await expect(page.locator("#materials-file-input")).toBeEnabled();
+      } else {
+        await expect(page.locator("#start-path-dialog")).toBeVisible();
+        await expect(page).toHaveURL(`${origin}/`);
       }
     }
-    expect(fixture.requests.filter((path) => path.endsWith("/wizard-intake"))).toEqual([]);
     expect(fixture.requests.filter((path) => path.startsWith("POST") && path.endsWith("/wizard-attempt"))).toEqual([]);
-    expect(fixture.requests.includes(`GET /cases/${caseId}/wizard-attempt`)).toBe(mode === "wizard");
-    expect(fixture.requests).toContain(`GET /cases/${caseId}/settlement-planning`);
+    expect(fixture.requests.filter((path) => /settlement-planning|profile-facts|wizard-attempt/.test(path))).toEqual([]);
     fixture.verify();
   });
 }
-
-test("wizard case without an attempt: reason, create action and the single edit link, no auto-creation", async ({ page }) => {
-  const fixture = await installFixtures(page, { mode: "wizard" });
-  await signIn(page);
-  await expect(page.locator("#settlement-wizard-empty")).toBeVisible();
-  await expect(page.locator("#settlement-wizard-needs")).toContainText("A separation date.");
-  await expect(page.getByRole("button", { name: "Create Attempt 1 from your case information" })).toBeVisible();
-  await expect(page.locator("#settlement-wizard-empty #settlement-edit-intake")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit case information" })).toHaveCount(1);
-  await expect(page.locator("#settlement-wizard-attempt")).toBeHidden();
-  await expect(page.locator("#settlement-generate")).toBeVisible();
-  expect(fixture.requests.filter((path) => path.startsWith("POST") && path.endsWith("/wizard-attempt"))).toEqual([]);
-  fixture.verify();
-});
-
-test("wizard case with Attempt 1: the entered values are listed exactly with the edit link beside them", async ({ page }) => {
-  const fixture = await installFixtures(page, {
-    mode: "wizard",
-    wizardAttempt: {
-      status: "exists",
-      attempt_exists: true,
-      needs: [],
-      report: {
-        wizard_revision: 3,
-        role: "petitioner",
-        included: [
-          { label: "Family home", kind: "asset", amount_cents: 51234567 },
-          { label: "Home loan", kind: "debt", amount_cents: 30100000 },
-        ],
-        excluded: [{ kind: "asset", label: "Vehicle", reason: "No amount was entered." }],
-        dates: { start: "2015-06-01", start_source: "marriage", separation: "2024-02-15" },
-        milestones: 4,
-        terms: 2,
-      },
-    },
-  });
-  await signIn(page);
-  const panel = page.locator("#settlement-wizard-attempt");
-  await expect(panel).toBeVisible();
-  await expect(panel).toContainText("Asset — Family home: $512,345.67");
-  await expect(panel).toContainText("Debt — Home loan: $301,000.00");
-  await expect(panel).toContainText("Vehicle — No amount was entered.");
-  await expect(panel).toContainText("Role: Petitioner. Marriage: 2015-06-01. Separation: 2024-02-15.");
-  await expect(panel.locator("#settlement-edit-intake")).toBeVisible();
-  await expect(page.locator("#settlement-wizard-empty")).toBeHidden();
-  fixture.verify();
-});
 
 test("failed dashboard after login stays an explicit error, not a start or attempt", async ({ page }) => {
   const fixture = await installFixtures(page, { dashboardStatus: 503 });
@@ -211,10 +174,10 @@ test("failed dashboard after login stays an explicit error, not a start or attem
   fixture.verify();
 });
 
-test("expired session does not show a cached attempt on refresh", async ({ page }) => {
-  const fixture = await installFixtures(page, { authenticated: true });
+test("expired session does not show cached case materials on refresh", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true, mode: "upload" });
   await page.goto(origin);
-  await expect(page.locator("#settlement-planner-status")).toContainText("Attempt workspace ready.");
+  await expect(page.locator("#materials-workflow")).toBeVisible();
   fixture.signOut();
   await page.reload();
   await expect(page.locator("#account-dashboard")).toBeHidden();
@@ -400,7 +363,7 @@ test("documents path: upload is visible first and the offer is an optional check
   await expect(toggle).toBeVisible();
   await expect(toggle).not.toBeChecked();
   await expect(page.locator("#existing-offer-details")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save offer choice", exact: true })).toBeEnabled();
   const upload = await page.locator("#materials-import").boundingBox();
   const box = await toggle.boundingBox();
   expect(upload.y).toBeLessThan(box.y);
@@ -411,12 +374,12 @@ test("documents path: checking the offer requires saved details before Continue"
   const fixture = await installDocumentsFixtures(page, noOffer);
   await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
   const toggle = page.getByRole("checkbox", { name: "The other party has already made an offer" });
-  const next = page.getByRole("button", { name: "Continue", exact: true });
+  const next = page.getByRole("button", { name: "Save offer choice", exact: true });
   await expect(next).toBeEnabled();
   await toggle.check();
   await expect(page.locator("#existing-offer-details")).toBeVisible();
   await expect(next).toBeDisabled();
-  await expect(page.locator("#existing-offer-continue-status")).toContainText("Save offer notes or an offer document to continue.");
+  await expect(page.locator("#existing-offer-continue-status")).toContainText("Save offer notes or an offer document before saving this choice.");
   await page.locator("#existing-offer-notes").fill("House to them, car to me");
   await expect(next).toBeDisabled();
   await page.getByRole("button", { name: "Save offer details" }).click();
@@ -431,7 +394,7 @@ test("documents path: a saved offer restores the checkbox and unchecking asks be
   const toggle = page.getByRole("checkbox", { name: "The other party has already made an offer" });
   await expect(toggle).toBeChecked();
   await expect(page.locator("#existing-offer-notes")).toHaveValue("Saved offer notes");
-  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save offer choice", exact: true })).toBeEnabled();
 
   page.once("dialog", (dialog) => dialog.dismiss());
   await toggle.click();
@@ -446,6 +409,114 @@ test("documents path: a saved offer restores the checkbox and unchecking asks be
   fixture.verify();
 });
 
+test("documents save stays on materials and never calls the removed planner", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  const url = `${origin}/onboarding/upload?case_id=${caseId}`;
+  await page.goto(url);
+  await page.getByRole("button", { name: "Save offer choice", exact: true }).click();
+  await expect(page.locator("#existing-offer-status")).toHaveText("Your offer choice is saved.");
+  await expect(page).toHaveURL(url);
+  await expect(page.locator("#materials-file-input")).toBeEnabled();
+  expect(fixture.puts).toEqual([{ exists: false, notes: null, document_ids: [] }]);
+  fixture.verify();
+});
+
+for (const success of [true, false]) {
+  test(`wizard save ${success ? "success" : "failure"} stays on its preparation screen`, async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true,
+      mode: "wizard",
+      intake: { filed: "yes", role: "petitioner", dates: {}, finances: [], issues: [], agreements: [] },
+      mutationHandler: async (request) => {
+        if (new URL(request.url()).pathname !== `/cases/${caseId}/wizard-intake` || request.method() !== "PUT") return null;
+        const sent = request.postDataJSON();
+        return success
+          ? { body: { revision: sent.expected_revision + 1, draft: sent.draft } }
+          : { status: 503, body: { detail: "Synthetic wizard save unavailable." } };
+      },
+    });
+    const url = `${origin}/onboarding/wizard?case_id=${caseId}`;
+    await page.goto(url);
+    await expect(page.locator("#wizard-finish")).toBeEnabled();
+    await page.getByRole("button", { name: "Save case information", exact: true }).click();
+    await expect(page.locator("#wizard-save-status")).toContainText(success ? "Your case information is saved." : "Synthetic wizard save unavailable.");
+    await expect(page).toHaveURL(url);
+    expect(fixture.requests).toContain(`PUT /cases/${caseId}/wizard-intake`);
+    expect(fixture.requests.filter((request) => /wizard-attempt|settlement-planning/.test(request))).toEqual([]);
+    fixture.verify();
+  });
+}
+
+test("Account retains active-case export, closure and deletion with explicit failure recovery", async ({ page }) => {
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    mode: "upload",
+    extraReads: { [`/cases/${caseId}/export`]: {} },
+    mutationHandler: async (request) => {
+      const path = new URL(request.url()).pathname;
+      if ([`/cases/${caseId}/close`, `/cases/${caseId}/permanent-deletion`].includes(path)) {
+        return { status: 503, body: { detail: "Synthetic case action unavailable." } };
+      }
+      return null;
+    },
+  });
+  await page.goto(`${origin}/?view=account`);
+  const actions = page.locator("#active-case-actions");
+  await expect(actions).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await actions.getByRole("button", { name: "Export all case data" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`case-${caseId}-export.zip`);
+  page.once("dialog", (dialog) => dialog.accept());
+  await actions.getByRole("button", { name: "Close case", exact: true }).click();
+  await expect(page.locator("#settlement-case-action-status")).toHaveText("Synthetic case action unavailable.");
+  await expect(page.locator("#settlement-case-close")).toBeEnabled();
+  page.once("dialog", (dialog) => dialog.accept("DELETE CASE"));
+  await actions.getByRole("button", { name: "Permanently delete case", exact: true }).click();
+  await expect(page.locator("#settlement-case-delete")).toBeEnabled();
+  expect(fixture.requests).toContain(`POST /cases/${caseId}/close`);
+  expect(fixture.requests).toContain(`DELETE /cases/${caseId}/permanent-deletion`);
+  fixture.verify();
+});
+
+for (const accepted of [true, false]) {
+  test(`existing completion ${accepted ? "accepted" : "unconfirmed"} is independent of the deleted planner`, async ({ page }) => {
+    const selectionId = "00000000-0000-4000-8000-000000000076";
+    const fixture = await installFixtures(page, {
+      extraReads: {
+        [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+          outcome: accepted ? "accepted" : null,
+          sent_confirmed: accepted,
+          sent_documents_complete: accepted,
+          attachments: [],
+          frozen: true,
+        },
+      },
+      mutationHandler: async (request) => {
+        if (new URL(request.url()).pathname.endsWith("/offer-response/attachments/accepted_offer") && request.method() === "POST") return { body: {} };
+        return null;
+      },
+    });
+    await page.goto(`${origin}/settlement-completion?case_id=${caseId}&selection_id=${selectionId}`);
+    if (accepted) {
+      await expect(page.locator("#settlement-response-checklist")).toBeVisible();
+      await expect(page.locator("#settlement-completion-finalize")).toBeEnabled();
+      await page.locator("#settlement-response-accepted-file").setInputFiles({
+        name: "synthetic-accepted-offer.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("Synthetic regression attachment"),
+      });
+      await expect(page.locator("#settlement-response-accepted-status")).toContainText("was securely attached");
+    } else {
+      await expect(page.locator("#settlement-completion-status")).toHaveText("This completion page is only available for an accepted, confirmed offer.");
+      await expect(page.locator("#settlement-response-checklist")).toBeHidden();
+      await expect(page.locator("#settlement-completion-finalize")).toBeDisabled();
+    }
+    await expect(page.locator("#settlement-planner")).toHaveCount(0);
+    fixture.verify();
+  });
+}
+
 for (const source of ["demo1", "demo2"]) {
   test(`${source}: demo start choices remain intact after workspace deletion`, async ({ page }) => {
     const fixture = await installFixtures(page);
@@ -455,6 +526,20 @@ for (const source of ["demo1", "demo2"]) {
     await expect(page.locator("#demo-case-wizard-link")).toBeVisible();
     await expect(page.locator("#demo-workspace-header")).toBeHidden();
     await expect(page.locator("#dashboard-header, #dashboard-title, #dashboard-intro")).toHaveCount(0);
+    fixture.verify();
+  });
+
+  test(`${source}: fictional asset scenarios and completion survive planner removal`, async ({ page }) => {
+    const fixture = await installFixtures(page);
+    await page.goto(`${origin}/demo/start?source=${source}`);
+    await page.locator("#demo-case-documents-link").click();
+    const query = new URL(page.url()).search;
+    await page.goto(`${origin}/demo${query}`);
+    await expect(page.locator("#asset-analysis-view")).toBeVisible();
+    await expect(page.locator("#settlement-scenario-results")).toBeVisible();
+    await page.goto(`${origin}/demo/settlement-completion${query}`);
+    await expect(page.locator("#settlement-completion-status")).toContainText("Fictional demo only");
+    await expect(page.locator("#settlement-completion-finalize")).toBeEnabled();
     fixture.verify();
   });
 }

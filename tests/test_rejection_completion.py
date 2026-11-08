@@ -7,34 +7,12 @@ MAIN = (Path(__file__).parents[1] / "src" / "app" / "main.py").read_text()
 
 
 class RejectionCompletionTests(unittest.TestCase):
-    def test_rejection_offers_explicit_continue_and_stop_choices(self) -> None:
-        self.assertIn('id="settlement-response-next-attempt"', PAGE)
-        self.assertIn(">Prepare another attempt</button>", PAGE)
-        self.assertIn('id="settlement-response-stop"', PAGE)
-        self.assertIn(">Stop mediation work and close this product case</button>", PAGE)
-        self.assertIn("A new attempt is created only if you choose to continue.", PAGE)
-        self.assertIn("finalization uses 1 attempt credit", PAGE)
-        self.assertIn("current?.attempts_remaining != null", PAGE)
 
-    def test_stop_requires_confirmation_and_closes_before_navigation(self) -> None:
-        stop_handler = PAGE[PAGE.index("async function stopSettlementAfterRejection") :]
-        stop_handler = stop_handler[: stop_handler.index("\n        async function ")]
-        self.assertIn("window.confirm(", stop_handler)
-        self.assertRegex(stop_handler, r"settlementApi\([\s\S]*?/close")
-        self.assertIn('reason: "stopped"', stop_handler)
-        self.assertLess(
-            stop_handler.index("await settlementApi"),
-            stop_handler.index("window.location.assign("),
-        )
-        self.assertIn("csrfHeaders()", PAGE)
-        self.assertIn("The product workspace could not be closed", stop_handler)
 
     def test_next_attempt_is_user_initiated_and_demo_does_not_persist(self) -> None:
-        self.assertIn('settlementResponseContinue.hidden = savedOutcome === "rejected"', PAGE)
-        self.assertIn('settlementResponseNextAttempt.addEventListener("click"', PAGE)
-        self.assertIn("void continueSettlementOfferResponse();", PAGE)
+        self.assertNotIn("continueSettlementOfferResponse", PAGE)
         demo_stop_handler = PAGE[PAGE.index('settlementDemoStop.addEventListener("click"') :]
-        demo_stop_handler = demo_stop_handler[: demo_stop_handler.index("\n        settlementGoogleConnect")]
+        demo_stop_handler = demo_stop_handler[: demo_stop_handler.index("\n        });") + len("\n        });")]
         self.assertIn("window.confirm(", demo_stop_handler)
         self.assertIn(
             '`/demo/rejection-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`',

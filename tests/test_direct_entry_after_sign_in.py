@@ -71,15 +71,15 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         self.assertEqual(order, sorted(order))
         self.assertIn("account.active_case_count > 0", body)
 
-    def test_active_case_opens_attempts_without_preparation_redirect(self) -> None:
+    def test_active_case_opens_its_saved_preparation_path(self) -> None:
         body = _function_body("openActiveCase")
 
-        self.assertNotIn("window.location", body)
+        self.assertIn("window.location.replace", body)
         self.assertNotIn("wizardIntakeComplete", body)
         self.assertNotIn("wizard-intake", body)
         self.assertIn("/onboarding/${item.workflow_mode}?case_id=", body)
-        self.assertLess(body.index("dashboardLoading.hidden = true"), body.index("await openSettlementPlanner(item.id)"))
-        self.assertIn("settlementEditIntake.hidden = !startUrl", body)
+        self.assertNotIn("openSettlementPlanner", body)
+        self.assertIn("startPathDialog.showModal()", body)
 
     def test_new_case_choice_opens_immediately_and_leaves_a_start_action(self) -> None:
         body = _function_body("showNewCaseStart")
@@ -101,7 +101,7 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
 
         self.assertNotIn("dashboard-header", body)
         self.assertIn("await enterSignedInAccount(account)", body)
-        self.assertEqual(body.count("void loadAttemptCreditPackages();"), 1)
+        self.assertNotIn("loadAttemptCreditPackages", body)
 
     def test_account_tools_are_reachable_without_redirecting(self) -> None:
         self.assertRegex(
@@ -118,11 +118,12 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         self.assertIn('id="closed-cases"', section.group(1))
         self.assertIn('id="account-permanent-deletion"', section.group(1))
         existing = PAGE[PAGE.index('id="existing-cases"') :]
-        self.assertLess(existing.index('id="case-create-dialog"'), existing.index('id="settlement-planner"'))
+        self.assertIn('id="case-create-dialog"', existing)
+        self.assertNotIn('id="settlement-planner"', existing)
         self.assertNotIn('id="closed-cases"', existing)
 
     def test_return_wording_no_longer_refers_to_a_case_list(self) -> None:
-        self.assertIn('wizardFinish.textContent = "Save and continue";', PAGE)
+        self.assertIn('wizardFinish.textContent = "Save case information";', PAGE)
         self.assertNotIn("return to cases", PAGE)
         self.assertNotIn("Return to your cases", PAGE)
 
