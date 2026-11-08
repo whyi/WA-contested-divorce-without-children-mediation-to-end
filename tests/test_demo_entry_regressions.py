@@ -186,7 +186,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                     pages["/demo/documents"],
                 )
                 self.assertIn(
-                    'if (saved && !preparationCaseId) {',
+                    'window.location.assign(preparationCaseId ? "/" : demoAssetOverviewUrl(demoCurrentCaseId))',
                     pages["/demo/wizard"],
                 )
                 self.assertIn("settlementCompletionBackToMediation.href", pages["/demo/settlement-completion"])

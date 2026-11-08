@@ -102,7 +102,7 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         self.assertNotIn('id="closed-cases"', existing)
 
     def test_return_wording_no_longer_refers_to_a_case_list(self) -> None:
-        self.assertIn('wizardFinish.textContent = "Save draft";', PAGE)
+        self.assertIn('wizardFinish.textContent = "Save and continue";', PAGE)
         self.assertNotIn("return to cases", PAGE)
         self.assertNotIn("Return to your cases", PAGE)
 
