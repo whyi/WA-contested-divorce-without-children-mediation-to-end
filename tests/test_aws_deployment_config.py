@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -104,6 +105,43 @@ class DeploymentConfigTests(unittest.TestCase):
             )
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("secret-value", result.stdout + result.stderr)
+
+    def test_deploy_checks_caller_account_before_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            mock_dir = Path(directory)
+            commands = {
+                "git": 'if [[ "$*" == *"rev-parse"* ]]; then echo 0123456789abcdef; fi',
+                "aws": 'if [[ "$1 $2" == "sts get-caller-identity" ]]; then echo "$CALLER_ACCOUNT"; else echo password; fi',
+                "docker": 'echo invoked >> "$DOCKER_CALLS"; exit 1',
+            }
+            for name, body in commands.items():
+                command = mock_dir / name
+                command.write_text(f"#!/usr/bin/env bash\n{body}\n")
+                command.chmod(0o755)
+            calls = mock_dir / "docker-calls"
+            env = {
+                **os.environ,
+                "PATH": f"{mock_dir}:{os.environ['PATH']}",
+                "UAT_DEPLOYMENT_OUTPUTS_JSON": json.dumps(self.config),
+                "DOCKER_CALLS": str(calls),
+                "CALLER_ACCOUNT": "987654321098",
+            }
+            result = subprocess.run(
+                ["bash", str(DEPLOYMENT_DIR / "deploy.sh")],
+                env=env, text=True, capture_output=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("AWS caller account does not match", result.stderr)
+            self.assertFalse(calls.exists())
+
+            env["CALLER_ACCOUNT"] = self.config["aws_account_id"]
+            result = subprocess.run(
+                ["bash", str(DEPLOYMENT_DIR / "deploy.sh")],
+                env=env, text=True, capture_output=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("AWS caller account does not match", result.stderr)
+            self.assertTrue(calls.exists())
 
 
 if __name__ == "__main__":
