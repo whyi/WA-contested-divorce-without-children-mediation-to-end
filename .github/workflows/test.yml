@@ -10,6 +10,28 @@ permissions:
   contents: read
 
 jobs:
+  entry-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: uat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: uat/package-lock.json
+      - name: Install locked browser test dependencies
+        run: npm ci
+      - name: Check UAT safety and runner compatibility
+        run: npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Enforce signed-in entry contract
+        run: npm run entry
+
   test:
     runs-on: ubuntu-latest
     outputs:
