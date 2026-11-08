@@ -330,7 +330,7 @@ class ExistingOfferUiTests(unittest.TestCase):
         )[0]
         self.assertIn("existingOfferState.exists !== null", gate)
         self.assertIn("wizardDemoPage.hidden = !open", gate)
-        # Spec 72: the documents path shows the upload immediately and is no longer gated.
+        # Spec 73: the documents path shows the upload immediately and is no longer gated.
         self.assertNotIn("materialsWorkflow.hidden", gate)
         self.assertIn("materialsWorkflow.hidden = !isUpload;", self.page)
         panel_save = self.page.split("async function saveExistingOffer()", 1)[1].split(

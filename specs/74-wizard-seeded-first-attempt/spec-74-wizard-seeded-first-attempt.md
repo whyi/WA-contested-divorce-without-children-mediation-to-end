@@ -1,4 +1,4 @@
-# Spec 73: Wizard-Seeded First Attempt
+# Spec 74: Wizard-Seeded First Attempt
 
 - **Status:** Specified; implementation and tests in the same pull request
 - **Related issue:** [#261 — Wizard Save and continue must open the attempt screen, not the settlement-planning page](https://github.com/whyi/WA-contested-divorce-without-children-mediation-to-end/issues/261)
@@ -26,17 +26,17 @@
 
 ## Requirements
 
-- **FR-73-01 — Create the first attempt:** `POST /cases/{case_id}/wizard-attempt` (case owner, write access, closed cases refused) reads the saved wizard draft and creates Attempt 1 in one transaction using the existing ledger, scenario, selection, and attempt rules with no AI step and no consent. It returns `status` = `created`, `exists`, or `needs_information`, the list of `needs`, and a `report`.
-- **FR-73-02 — As entered:** The mapping above is the only transformation. Amounts are not rounded or converted beyond dollars to cents, and no classification, tracing, or share is inferred.
-- **FR-73-03 — Needs information, never a fake attempt:** When there is no entry with an amount, or no start date (marriage or cohabitation) or separation date, the call writes nothing, returns `needs_information` with the specific missing items, and creates no attempt.
-- **FR-73-04 — Idempotent and race-safe:** The case is locked; derived IDs and idempotency keys are deterministic; a second or concurrent call returns `exists` and changes nothing. A case that already has an attempt from any path returns `exists`.
-- **FR-73-05 — All or nothing:** A failure leaves no ledger event, scenario run, selection, or attempt behind and returns a retryable error.
-- **FR-73-06 — Report and read:** `GET /cases/{case_id}/wizard-attempt` returns `attempt_exists`, the `needs` that would block creation, and the stored `report` (included assets and debts with their entered amounts, dates used, role, counts, and every excluded item with its reason). The report is stored with the case and never contains more than the user entered.
-- **FR-73-07 — Existing attempts are immutable:** Later wizard edits do not change an existing attempt (Spec 22). The attempt screen says so next to **Edit case information**.
-- **FR-73-08 — Save and continue:** After the draft is saved on the server, the wizard calls the creation endpoint and then opens `/`, which shows the attempt screen, for `created`, `exists`, and `needs_information`. If the call fails, the user stays on the wizard with the error and can retry; the draft stays saved.
-- **FR-73-09 — Attempt screen without an attempt:** A wizard-path case with no attempt shows the reason (the `needs`) and two actions: **Create Attempt 1 from your case information** and **Edit case information**. Entry never creates the attempt on its own.
-- **FR-73-10 — Attempt screen with the values:** Attempt 1 opens with its progress and a "Values from your case information" panel listing each included asset and debt with its entered amount, the dates and role used, and every excluded item with its reason. The offer and asset comparison lists the same assets with the same totals. The user can edit proposed amounts, terms, dates, and milestones, and the edits persist across reload.
-- **FR-73-11 — Security and limits:** Non-members get 404 and non-owner members 403. Entries are bounded by the existing wizard (250 entries) and ledger limits; amounts are never logged.
+- **FR-74-01 — Create the first attempt:** `POST /cases/{case_id}/wizard-attempt` (case owner, write access, closed cases refused) reads the saved wizard draft and creates Attempt 1 in one transaction using the existing ledger, scenario, selection, and attempt rules with no AI step and no consent. It returns `status` = `created`, `exists`, or `needs_information`, the list of `needs`, and a `report`.
+- **FR-74-02 — As entered:** The mapping above is the only transformation. Amounts are not rounded or converted beyond dollars to cents, and no classification, tracing, or share is inferred.
+- **FR-74-03 — Needs information, never a fake attempt:** When there is no entry with an amount, or no start date (marriage or cohabitation) or separation date, the call writes nothing, returns `needs_information` with the specific missing items, and creates no attempt.
+- **FR-74-04 — Idempotent and race-safe:** The case is locked; derived IDs and idempotency keys are deterministic; a second or concurrent call returns `exists` and changes nothing. A case that already has an attempt from any path returns `exists`.
+- **FR-74-05 — All or nothing:** A failure leaves no ledger event, scenario run, selection, or attempt behind and returns a retryable error.
+- **FR-74-06 — Report and read:** `GET /cases/{case_id}/wizard-attempt` returns `attempt_exists`, the `needs` that would block creation, and the stored `report` (included assets and debts with their entered amounts, dates used, role, counts, and every excluded item with its reason). The report is stored with the case and never contains more than the user entered.
+- **FR-74-07 — Existing attempts are immutable:** Later wizard edits do not change an existing attempt (Spec 22). The attempt screen says so next to **Edit case information**.
+- **FR-74-08 — Save and continue:** After the draft is saved on the server, the wizard calls the creation endpoint and then opens `/`, which shows the attempt screen, for `created`, `exists`, and `needs_information`. If the call fails, the user stays on the wizard with the error and can retry; the draft stays saved.
+- **FR-74-09 — Attempt screen without an attempt:** A wizard-path case with no attempt shows the reason (the `needs`) and two actions: **Create Attempt 1 from your case information** and **Edit case information**. Entry never creates the attempt on its own.
+- **FR-74-10 — Attempt screen with the values:** Attempt 1 opens with its progress and a "Values from your case information" panel listing each included asset and debt with its entered amount, the dates and role used, and every excluded item with its reason. The offer and asset comparison lists the same assets with the same totals. The user can edit proposed amounts, terms, dates, and milestones, and the edits persist across reload.
+- **FR-74-11 — Security and limits:** Non-members get 404 and non-owner members 403. Entries are bounded by the existing wizard (250 entries) and ledger limits; amounts are never logged.
 
 ## Acceptance criteria
 
@@ -47,6 +47,13 @@
 5. Entered amounts equal the displayed amounts to the cent, and an entry with no amount is reported as not included.
 6. Editing a proposed amount on Attempt 1 persists after reload; editing the wizard afterwards does not change Attempt 1.
 7. Automated unit, route, and source tests pass, and the full flow was run in a browser against PostgreSQL with object storage.
+
+## Defects fixed because they broke the real attempt screen
+
+Found while exercising Attempt 1 in a browser against PostgreSQL; both existed before this change and affect every real case:
+
+- `GET /cases/{case_id}/settlement-planning/document-credits` returned HTTP 500 because its `dict[str, int]` response model rejected the `package_sizes` list. It now uses a typed response model with the same fields and values.
+- The attempt progress and history labels printed "Attempt 1 of null" for unlimited attempts. They now print "Attempt 1", matching the existing response-workflow label.
 
 ## Implementation boundary
 
