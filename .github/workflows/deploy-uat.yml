@@ -45,7 +45,16 @@ jobs:
           role-to-assume: ${{ env.UAT_AWS_ROLE_ARN }}
           aws-region: us-west-2
           role-duration-seconds: 3600
-          allowed-account-ids: ${{ fromJSON(env.UAT_DEPLOYMENT_OUTPUTS_JSON).aws_account_id }}
+          retry-max-attempts: 2
+
+      - name: Verify AWS deployment account
+        run: |
+          expected="$(python3 deploy/aws/owner-beta/deployment_config.py aws_account_id)"
+          actual="$(aws sts get-caller-identity --query Account --output text)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::AWS caller account does not match the configured UAT account."
+            exit 1
+          fi
 
       - name: Deploy latest main
         run: bash deploy/aws/owner-beta/deploy.sh
