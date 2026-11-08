@@ -5,8 +5,8 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/../../.." && pwd)"
 command -v aws >/dev/null
 command -v docker >/dev/null
-command -v terraform >/dev/null
 command -v git >/dev/null
+source "$script_dir/deployment-output.sh"
 
 initialize_ledger=false
 if [[ "${1:-}" == "--initialize-ledger" ]]; then
@@ -25,9 +25,9 @@ fi
 
 commit="$(git -C "$repo_root" rev-parse --verify HEAD)"
 image_tag="${commit:0:12}-$(date -u '+%Y%m%d%H%M%S%N')"
-region="${AWS_REGION:-$(terraform -chdir="$script_dir" output -raw aws_region)}"
-account_id="$(terraform -chdir="$script_dir" output -raw aws_account_id)"
-repository="$(terraform -chdir="$script_dir" output -raw ecr_repository_url)"
+region="${AWS_REGION:-$(deployment_output aws_region)}"
+account_id="$(deployment_output aws_account_id)"
+repository="$(deployment_output ecr_repository_url)"
 caller_account="$(aws sts get-caller-identity --query Account --output text)"
 
 if [[ "$caller_account" != "$account_id" ]]; then
