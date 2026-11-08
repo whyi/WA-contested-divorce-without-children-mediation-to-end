@@ -9,6 +9,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.formatting.rule import FormulaRule
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -456,6 +457,93 @@ def _set_safe_text(cell, value: str) -> None:
     cell.data_type = "s"
 
 
+OWNERSHIP_BAR_STEPS = 100
+OWNERSHIP_USER_COLOR = "C0392B"
+OWNERSHIP_OTHER_COLOR = "2F6DB5"
+OWNERSHIP_NEUTRAL_COLOR = "D9D9D9"
+
+
+def _add_ownership_bars(sheet, header_row: int, first_row: int, last_row: int) -> None:
+    """Draw one red/blue split bar per row with conditional formatting so it follows edits."""
+    pct_user_col, pct_other_col, bar_first_col = 10, 11, 12
+    bar_last_col = bar_first_col + OWNERSHIP_BAR_STEPS - 1
+    user_letter = get_column_letter(pct_user_col)
+    other_letter = get_column_letter(pct_other_col)
+    bar_first = get_column_letter(bar_first_col)
+    bar_last = get_column_letter(bar_last_col)
+
+    for column, label in ((pct_user_col, "User %"), (pct_other_col, "Other party %")):
+        cell = sheet.cell(header_row, column)
+        _set_safe_text(cell, label)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="527764")
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+    sheet.merge_cells(
+        start_row=header_row,
+        start_column=bar_first_col,
+        end_row=header_row,
+        end_column=bar_last_col,
+    )
+    bar_header = sheet.cell(header_row, bar_first_col)
+    _set_safe_text(bar_header, "Ownership split (red = user, blue = other party)")
+    bar_header.font = Font(bold=True, color="FFFFFF")
+    bar_header.fill = PatternFill("solid", fgColor="527764")
+    bar_header.alignment = Alignment(vertical="center")
+
+    legend_row = header_row - 1
+    sheet.merge_cells(start_row=legend_row, start_column=1, end_row=legend_row, end_column=9)
+    _set_safe_text(
+        sheet.cell(legend_row, 1),
+        "Ownership bars show each row's proposed amount to the user versus the other party "
+        "(Proposed ÷ Total). Grey means no split can be shown. They update when proposed amounts change.",
+    )
+    sheet.row_dimensions[legend_row].height = 32
+    for column, label, color in (
+        (pct_user_col, "User", OWNERSHIP_USER_COLOR),
+        (pct_other_col, "Other party", OWNERSHIP_OTHER_COLOR),
+    ):
+        swatch = sheet.cell(legend_row, column)
+        _set_safe_text(swatch, label)
+        swatch.font = Font(bold=True, color="FFFFFF")
+        swatch.fill = PatternFill("solid", fgColor=color)
+
+    for row_number in range(first_row, last_row + 1):
+        sheet.cell(
+            row_number,
+            pct_user_col,
+            f'=IF(G{row_number}>0,MAX(0,MIN(1,H{row_number}/G{row_number})),"")',
+        )
+        sheet.cell(
+            row_number,
+            pct_other_col,
+            f'=IF(ISNUMBER({user_letter}{row_number}),1-{user_letter}{row_number},"")',
+        )
+        sheet.cell(row_number, pct_user_col).number_format = "0%"
+        sheet.cell(row_number, pct_other_col).number_format = "0%"
+
+    bar_range = f"{bar_first}{first_row}:{bar_last}{last_row}"
+    position = f"(COLUMN()-COLUMN(${bar_first}${first_row})+1)"
+    share = f"ROUND(${user_letter}{first_row}*{OWNERSHIP_BAR_STEPS},0)"
+    rules = (
+        (f"AND(ISNUMBER(${user_letter}{first_row}),{position}<={share})", OWNERSHIP_USER_COLOR),
+        (f"AND(ISNUMBER(${user_letter}{first_row}),{position}>{share})", OWNERSHIP_OTHER_COLOR),
+        (f"NOT(ISNUMBER(${user_letter}{first_row}))", OWNERSHIP_NEUTRAL_COLOR),
+    )
+    for formula, color in rules:
+        sheet.conditional_formatting.add(
+            bar_range,
+            FormulaRule(
+                formula=[formula],
+                fill=PatternFill(start_color=color, end_color=color, fill_type="solid"),
+                stopIfTrue=True,
+            ),
+        )
+    for column in range(bar_first_col, bar_last_col + 1):
+        sheet.column_dimensions[get_column_letter(column)].width = 0.4
+    for column, width in ((pct_user_col, 10), (pct_other_col, 14)):
+        sheet.column_dimensions[get_column_letter(column)].width = width
+
+
 def render_property_schedule_xlsx(
     terms: MediationOfferTerms,
     result: SettlementScenarioResult,
@@ -589,12 +677,13 @@ def render_property_schedule_xlsx(
     for cell in sheet[total_row]:
         cell.font = Font(bold=True)
         cell.fill = PatternFill("solid", fgColor="E7EFE9")
+    _add_ownership_bars(sheet, header_row, first_data_row, last_data_row)
     sheet.freeze_panes = f"A{first_data_row}"
     sheet.auto_filter.ref = f"A{header_row}:I{last_data_row}"
     sheet.row_dimensions[header_row].height = 34
     for column, width in enumerate((34, 14, 17, 20, 17, 17, 17, 19, 22), 1):
         sheet.column_dimensions[get_column_letter(column)].width = width
-    for row in sheet.iter_rows(min_row=1, max_row=total_row + 3):
+    for row in sheet.iter_rows(min_row=1, max_row=total_row + 3, max_col=9):
         for cell in row:
             cell.alignment = Alignment(
                 horizontal=cell.alignment.horizontal,
