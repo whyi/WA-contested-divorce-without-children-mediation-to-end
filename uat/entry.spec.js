@@ -93,7 +93,8 @@ async function expectNoDetour(page) {
   await expect(page.locator("#preparation-view")).toBeHidden();
   await expect(page.locator(".hero")).toBeHidden();
   await expect(page.getByRole("heading", { name: "Active cases", exact: true })).toBeHidden();
-  await expect(page.getByRole("heading", { name: "Your case workspace", exact: true })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Your case workspace", exact: true, includeHidden: true })).toHaveCount(0);
+  await expect(page.locator("#dashboard-header, #dashboard-title, #dashboard-intro")).toHaveCount(0);
 }
 
 test("no case: login and refresh open the start choice, not another page", async ({ page }) => {
@@ -164,3 +165,16 @@ test("expired session does not show a cached attempt on refresh", async ({ page 
   await expect(page.locator("#case-create-dialog")).toBeHidden();
   fixture.verify();
 });
+
+for (const source of ["demo1", "demo2"]) {
+  test(`${source}: demo start choices remain intact after workspace deletion`, async ({ page }) => {
+    const fixture = await installFixtures(page);
+    await page.goto(`${origin}/demo/start?source=${source}`);
+    await expect(page.locator("#demo-case-choice-dialog")).toBeVisible();
+    await expect(page.locator("#demo-case-documents-link")).toBeVisible();
+    await expect(page.locator("#demo-case-wizard-link")).toBeVisible();
+    await expect(page.locator("#demo-workspace-header")).toBeHidden();
+    await expect(page.locator("#dashboard-header, #dashboard-title, #dashboard-intro")).toHaveCount(0);
+    fixture.verify();
+  });
+}
