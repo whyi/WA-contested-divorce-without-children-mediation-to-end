@@ -543,6 +543,38 @@ class SettlementExportRouteTests(unittest.TestCase):
         self.assertEqual(schedule["Property Division"].cell(row_number, 9).value, f"=G{row_number}-H{row_number}")
         self.assertEqual(schedule["Attempt Milestones"]["A2"].value, "Refinance deadline")
 
+    def test_property_schedule_has_ownership_split_bars_driven_by_formulas(self) -> None:
+        schedule = load_workbook(
+            BytesIO(render_property_schedule_xlsx(self.terms, self.result)),
+            data_only=False,
+        )
+        sheet = schedule["Property Division"]
+        row = 6
+        self.assertEqual(sheet.cell(5, 10).value, "User %")
+        self.assertEqual(sheet.cell(5, 11).value, "Other party %")
+        self.assertIn("Ownership split", sheet.cell(5, 12).value)
+        self.assertEqual(
+            sheet.cell(row, 10).value,
+            f'=IF(G{row}>0,MAX(0,MIN(1,H{row}/G{row})),"")',
+        )
+        self.assertEqual(sheet.cell(row, 11).value, f'=IF(ISNUMBER(J{row}),1-J{row},"")')
+
+        last_row = 5 + len(self.result.ledgers)
+        self.assertIsNone(sheet.cell(last_row + 1, 10).value)
+        rules = [
+            rule
+            for ranges in sheet.conditional_formatting
+            for rule in ranges.rules
+        ]
+        self.assertEqual(len(rules), 3)
+        colors = [rule.dxf.fill.bgColor.rgb[-6:] for rule in rules]
+        self.assertEqual(colors, ["C0392B", "2F6DB5", "D9D9D9"])
+        self.assertEqual(
+            {str(ranges.sqref) for ranges in sheet.conditional_formatting},
+            {f"L6:DG{last_row}"},
+        )
+        self.assertEqual(sheet.auto_filter.ref, f"A5:I{last_row}")
+
     def test_attempt_edits_refresh_saved_documents_and_clear_download_marks(self) -> None:
         asset_id = self.result.ledgers[0].asset_id
         previous_timestamp = datetime(2026, 1, 1, tzinfo=UTC)
