@@ -14,7 +14,13 @@ approval.
 
 The `Deployed UAT smoke` workflow is manually dispatched from GitHub Actions.
 It targets only `https://0w4jgh9j9a.execute-api.us-west-2.amazonaws.com` and
-accepts no credentials. To run locally with Node 22 and Chromium:
+accepts no credentials.
+
+The Actions runner is pinned to Ubuntu 24.04, supported by the locked Playwright
+Chromium build. Do not replace it with `ubuntu-latest` without verifying browser
+installation on that release; Ubuntu 26.04 is unsupported by Playwright 1.58.2.
+
+To run locally with Node 22 and Chromium:
 
 ```bash
 cd uat
