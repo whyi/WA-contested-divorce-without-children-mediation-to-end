@@ -12943,6 +12943,10 @@
                 return;
               }
               form.reset();
+              if (publicLandingMode) {
+                window.history.replaceState(null, "", "/");
+                delete document.body.dataset.authView;
+              }
               await loadDashboardStatus();
               return;
             }
