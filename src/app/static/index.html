@@ -802,7 +802,7 @@
       body[data-demo-page="dashboard"] .theme-status { display: none; }
       body[data-demo-page="files"] .theme-status { display: none; }
       body[data-demo-page="files"] #account-dashboard > .dashboard-panel > :not(#demo-case-navigation):not(#demo-file-manager) { display: none; }
-      body[data-demo-page="settlement"] #dashboard-header,
+      body[data-demo-page="settlement"] #demo-workspace-header,
       body[data-demo-page="settlement"] #demo-back-to-account,
       body[data-demo-page="settlement"] #preparation-eyebrow,
       body[data-demo-page="settlement"] #preparation-title,
@@ -874,10 +874,10 @@
         background:var(--paper);
         box-shadow: 0 18px 48px rgba(34, 55, 43, .06);
       }
-      .dashboard-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
-      .dashboard-header[hidden] { display: none; }
-      .dashboard-header h1 { margin-bottom: 10px; font-size: clamp(34px, 5vw, 48px); }
-      .dashboard-header p:last-child { max-width: 620px; margin: 0; color:var(--muted); font-size: 14px; line-height: 1.65; }
+      .demo-workspace-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
+      .demo-workspace-header[hidden] { display: none; }
+      .demo-workspace-header h1 { margin-bottom: 10px; font-size: clamp(34px, 5vw, 48px); }
+      .demo-workspace-header p:last-child { max-width: 620px; margin: 0; color:var(--muted); font-size: 14px; line-height: 1.65; }
       .demo-case-navigation { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(0, 1.8fr); align-items: center; gap: 20px; margin: -8px 0 28px; padding: 15px 0 17px; border-bottom: 1px solid var(--line); }
       body[data-demo-page="settlement"] .demo-case-navigation { grid-template-columns: minmax(150px, 1fr) auto minmax(0, 1fr); }
       .demo-case-navigation[hidden] { display: none; }
@@ -1487,7 +1487,7 @@
         .account-section { padding-bottom: 62px; }
         .account-panel { gap: 22px; padding: 25px 20px; }
         .dashboard-panel { padding: 25px 20px; }
-        .dashboard-header { flex-direction: column; gap: 12px; }
+        .demo-workspace-header { flex-direction: column; gap: 12px; }
         .plan-card { grid-template-columns: 1fr; }
         .plan-card-action { justify-self: start; }
         .onboarding-actions { grid-template-columns: 1fr; }
@@ -2036,7 +2036,7 @@
           </div>
         </section>
 
-        <section class="dashboard-section" id="account-dashboard" aria-labelledby="dashboard-title" hidden>
+        <section class="dashboard-section" id="account-dashboard" aria-label="Your account" hidden>
           <div class="dashboard-panel">
             <nav class="demo-case-navigation" id="demo-case-navigation" aria-label="Demo case navigation" hidden>
               <div class="demo-case-nav-context">
@@ -2065,11 +2065,11 @@
               <p class="demo-file-manager-status" id="demo-case-files-status" role="status" aria-live="polite">Loading files saved in this browser…</p>
               <ul class="demo-case-file-list" id="demo-case-files-list" aria-label="Files saved for this demo case"></ul>
             </section>
-            <header class="dashboard-header" id="dashboard-header">
+            <header class="demo-workspace-header" id="demo-workspace-header" hidden>
               <div>
-                <p class="eyebrow">Your account</p>
-                <h1 id="dashboard-title">Your case workspace</h1>
-                <p id="dashboard-intro">Your account owns one divorce case for one side only.</p>
+                <p class="eyebrow">Fictional demo</p>
+                <h1 id="demo-workspace-title">Demo case</h1>
+                <p id="demo-workspace-intro">Review case details and settlement scenarios.</p>
               </div>
             </header>
             <p class="dashboard-state" id="dashboard-loading" role="status">Loading your account status…</p>
@@ -9022,8 +9022,8 @@
             void loadExistingOffer();
           }
           if (isDemo) {
-            document.getElementById("dashboard-title").textContent = demoCaseData?.title || "Demo case";
-            document.getElementById("dashboard-intro").textContent =
+            document.getElementById("demo-workspace-title").textContent = demoCaseData?.title || "Demo case";
+            document.getElementById("demo-workspace-intro").textContent =
               "Review case details and settlement scenarios.";
             assetAnalysisView.hidden = false;
           }
@@ -11945,7 +11945,6 @@
         }
 
         async function loadDashboardStatus({ isStartup = false } = {}) {
-          document.getElementById("dashboard-header").hidden = true;
           dashboard.removeAttribute("aria-labelledby");
           dashboard.setAttribute("aria-label", "Your account");
           if (!isStartup || preparationMode) showDashboardShell();
@@ -12922,7 +12921,6 @@
             document.body.dataset.demoPage = "case-error";
             showDashboardShell();
             dashboardLoading.hidden = true;
-            document.getElementById("dashboard-header").hidden = true;
             demoCaseNavigation.hidden = false;
             showDemoCaseStateError(new Error(
               demoCaseStateStatus.textContent || "The requested demo case is unavailable.",
@@ -12936,7 +12934,6 @@
           document.body.dataset.demoPage = "start";
           showDashboardShell();
           dashboardLoading.hidden = true;
-          document.getElementById("dashboard-header").hidden = true;
           if (demoCaseData) {
             window.location.replace(demoAssetOverviewUrl(demoCaseData.id));
           } else {

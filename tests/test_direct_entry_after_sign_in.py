@@ -23,6 +23,16 @@ def _function_body(name: str) -> str:
 
 
 class DirectEntryAfterSignInTests(unittest.TestCase):
+    def test_workspace_remnants_are_deleted_not_hidden(self) -> None:
+        for forbidden in ("Your case workspace", "dashboard-header", "dashboard-title", "dashboard-intro"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, PAGE)
+        self.assertIn('id="demo-workspace-header" hidden', PAGE)
+        self.assertIn('id="demo-workspace-title">Demo case</h1>', PAGE)
+        self.assertIn('document.getElementById("demo-workspace-title").textContent = demoCaseData?.title', PAGE)
+        self.assertIn('"/onboarding/upload": "upload"', PAGE)
+        self.assertIn('id="materials-workflow"', PAGE)
+
     def test_ci_requires_executable_chromium_entry_regressions(self) -> None:
         root = Path(__file__).parents[1]
         workflow = (root / ".github/workflows/test.yml").read_text(encoding="utf-8")
@@ -86,13 +96,10 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         )
         self.assertIn('newCaseStart.addEventListener("click", openCaseCreationDialog)', PAGE)
 
-    def test_dashboard_status_routes_through_direct_entry_without_the_header(self) -> None:
+    def test_dashboard_status_routes_through_direct_entry_without_workspace_markup(self) -> None:
         body = _function_body("loadDashboardStatus")
 
-        self.assertLess(
-            body.index('document.getElementById("dashboard-header").hidden = true'),
-            body.index('fetch("/api/v1/dashboard/status"'),
-        )
+        self.assertNotIn("dashboard-header", body)
         self.assertIn("await enterSignedInAccount(account)", body)
         self.assertEqual(body.count("void loadAttemptCreditPackages();"), 1)
 

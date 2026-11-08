@@ -491,7 +491,7 @@ class MainWorkflowTests(unittest.TestCase):
             start_page.index('id="demo-case-choice-dialog"'),
             start_page.index('id="existing-cases"'),
         )
-        self.assertIn(".dashboard-header[hidden] { display: none; }", start_page)
+        self.assertIn(".demo-workspace-header[hidden] { display: none; }", start_page)
 
     def test_billing_data_loads_only_after_valid_dashboard_status(self) -> None:
         _, body = asyncio.run(request_app("/"))
