@@ -1,0 +1,44 @@
+name: Deployed UAT smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owner-beta-uat-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: uat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: uat/package-lock.json
+      - name: Install locked test dependencies
+        run: npm ci
+      - name: Validate safety and reporting
+        run: npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run anonymous deployed smoke
+        env:
+          UAT_BASE_URL: https://0w4jgh9j9a.execute-api.us-west-2.amazonaws.com
+        run: npm run smoke
+      - name: Upload sanitized results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-smoke-results
+          path: uat/results/smoke.json
+          if-no-files-found: warn
+          retention-days: 7
