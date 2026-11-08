@@ -2256,7 +2256,7 @@
                     <ul id="settlement-wizard-excluded"></ul>
                   </div>
                   <p>Attempt 1 keeps these values exactly as entered. Later changes to your case information do not change an attempt that already exists; adjust proposed amounts, terms, dates, and milestones in the attempt itself.</p>
-                  <p><a class="settlement-wizard-edit-link" href="#">Edit case information</a></p>
+                  <p id="settlement-wizard-edit-slot-values"></p>
                 </section>
                 <section id="settlement-wizard-empty" hidden aria-labelledby="settlement-wizard-empty-title">
                   <h3 id="settlement-wizard-empty-title">Attempt 1 is not created yet</h3>
@@ -2264,7 +2264,7 @@
                   <ul id="settlement-wizard-needs"></ul>
                   <div class="materials-actions">
                     <button class="dashboard-retry" id="settlement-wizard-create" type="button">Create Attempt 1 from your case information</button>
-                    <a class="settlement-wizard-edit-link" href="#">Edit case information</a>
+                    <span id="settlement-wizard-edit-slot-empty"></span>
                   </div>
                   <p id="settlement-wizard-status" role="status" aria-live="polite"></p>
                 </section>
@@ -3013,6 +3013,7 @@
         const startPathDialog = document.getElementById("start-path-dialog");
         const startPathStatus = document.getElementById("start-path-status");
         const settlementEditIntake = document.getElementById("settlement-edit-intake");
+        const settlementEditIntakeHome = settlementEditIntake.parentElement;
         const settlementWizardAttempt = document.getElementById("settlement-wizard-attempt");
         const settlementWizardAttemptSummary = document.getElementById("settlement-wizard-attempt-summary");
         const settlementWizardIncluded = document.getElementById("settlement-wizard-included");
@@ -5481,9 +5482,6 @@
             : null;
           settlementEditIntake.hidden = !startUrl;
           settlementCaseWorkflowMode = item.workflow_mode || null;
-          for (const link of document.querySelectorAll(".settlement-wizard-edit-link")) {
-            link.href = startUrl || "#";
-          }
           if (startUrl) {
             settlementEditIntake.href = startUrl;
           }
@@ -5919,6 +5917,7 @@
           settlementWizardAttempt.hidden = true;
           settlementWizardEmpty.hidden = true;
           settlementWizardStatus.textContent = "";
+          settlementEditIntakeHome.append(settlementEditIntake);
           void loadAttemptCreditPurchaseHistory();
           settlementSelectedScenario = null;
           settlementRunId = null;
@@ -6016,7 +6015,6 @@
           settlementWizardAttempt.hidden = true;
           settlementWizardEmpty.hidden = true;
           if (!result.attempt_exists) {
-            settlementPlannerContent.hidden = true;
             settlementWizardNeeds.replaceChildren(...result.needs.map((need) => {
               const item = document.createElement("li");
               item.textContent = need;
@@ -6026,8 +6024,8 @@
             document.getElementById("settlement-wizard-needs-intro").textContent = result.needs.length
               ? "Attempt 1 uses only what you entered. These items are still needed:"
               : "Your case information is ready. Attempt 1 will use only what you entered.";
+            document.getElementById("settlement-wizard-edit-slot-empty").append(settlementEditIntake);
             settlementWizardEmpty.hidden = false;
-            settlementEditIntake.hidden = true;
             return;
           }
           const report = result.report;
@@ -6048,8 +6046,8 @@
             return item;
           }));
           settlementWizardExcludedBlock.hidden = report.excluded.length === 0;
+          document.getElementById("settlement-wizard-edit-slot-values").append(settlementEditIntake);
           settlementWizardAttempt.hidden = false;
-          settlementEditIntake.hidden = true;
         }
 
         async function loadSettlementWizardAttempt(caseId) {

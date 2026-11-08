@@ -5,7 +5,14 @@ const origin = "https://casework-regression.invalid";
 const html = readFileSync(new URL("../src/app/static/index.html", import.meta.url), "utf8");
 const caseId = "00000000-0000-4000-8000-000000000071";
 
-async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, intake = {} } = {}) {
+const missingWizardAttempt = {
+  status: "needs_information",
+  attempt_exists: false,
+  needs: ["A separation date."],
+  report: null,
+};
+
+async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, intake = {}, wizardAttempt = missingWizardAttempt } = {}) {
   let signedIn = authenticated;
   const unexpected = [];
   const requests = [];
@@ -59,6 +66,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
         },
         [`/cases/${caseId}/settlement-planning/offer-responses`]: [],
         [`/cases/${caseId}/wizard-intake`]: { draft: intake },
+        [`/cases/${caseId}/wizard-attempt`]: wizardAttempt,
       };
       if (!Object.hasOwn(fixtures, path)) {
         unexpected.push(`${request.method()} ${path}`);
@@ -139,10 +147,59 @@ for (const [label, mode, intake] of [
       }
     }
     expect(fixture.requests.filter((path) => path.endsWith("/wizard-intake"))).toEqual([]);
+    expect(fixture.requests.filter((path) => path.startsWith("POST") && path.endsWith("/wizard-attempt"))).toEqual([]);
+    expect(fixture.requests.includes(`GET /cases/${caseId}/wizard-attempt`)).toBe(mode === "wizard");
     expect(fixture.requests).toContain(`GET /cases/${caseId}/settlement-planning`);
     fixture.verify();
   });
 }
+
+test("wizard case without an attempt: reason, create action and the single edit link, no auto-creation", async ({ page }) => {
+  const fixture = await installFixtures(page, { mode: "wizard" });
+  await signIn(page);
+  await expect(page.locator("#settlement-wizard-empty")).toBeVisible();
+  await expect(page.locator("#settlement-wizard-needs")).toContainText("A separation date.");
+  await expect(page.getByRole("button", { name: "Create Attempt 1 from your case information" })).toBeVisible();
+  await expect(page.locator("#settlement-wizard-empty #settlement-edit-intake")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit case information" })).toHaveCount(1);
+  await expect(page.locator("#settlement-wizard-attempt")).toBeHidden();
+  await expect(page.locator("#settlement-generate")).toBeVisible();
+  expect(fixture.requests.filter((path) => path.startsWith("POST") && path.endsWith("/wizard-attempt"))).toEqual([]);
+  fixture.verify();
+});
+
+test("wizard case with Attempt 1: the entered values are listed exactly with the edit link beside them", async ({ page }) => {
+  const fixture = await installFixtures(page, {
+    mode: "wizard",
+    wizardAttempt: {
+      status: "exists",
+      attempt_exists: true,
+      needs: [],
+      report: {
+        wizard_revision: 3,
+        role: "petitioner",
+        included: [
+          { label: "Family home", kind: "asset", amount_cents: 51234567 },
+          { label: "Home loan", kind: "debt", amount_cents: 30100000 },
+        ],
+        excluded: [{ kind: "asset", label: "Vehicle", reason: "No amount was entered." }],
+        dates: { start: "2015-06-01", start_source: "marriage", separation: "2024-02-15" },
+        milestones: 4,
+        terms: 2,
+      },
+    },
+  });
+  await signIn(page);
+  const panel = page.locator("#settlement-wizard-attempt");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Asset — Family home: $512,345.67");
+  await expect(panel).toContainText("Debt — Home loan: $301,000.00");
+  await expect(panel).toContainText("Vehicle — No amount was entered.");
+  await expect(panel).toContainText("Role: Petitioner. Marriage: 2015-06-01. Separation: 2024-02-15.");
+  await expect(panel.locator("#settlement-edit-intake")).toBeVisible();
+  await expect(page.locator("#settlement-wizard-empty")).toBeHidden();
+  fixture.verify();
+});
 
 test("failed dashboard after login stays an explicit error, not a start or attempt", async ({ page }) => {
   const fixture = await installFixtures(page, { dashboardStatus: 503 });
@@ -163,6 +220,134 @@ test("expired session does not show a cached attempt on refresh", async ({ page 
   await expect(page.locator("#account-dashboard")).toBeHidden();
   await expect(page.locator("#login-tab")).toBeVisible();
   await expect(page.locator("#case-create-dialog")).toBeHidden();
+  fixture.verify();
+});
+
+async function installDocumentsFixtures(page, offer) {
+  const state = { ...offer };
+  const unexpected = [];
+  const puts = [];
+  const scriptErrors = [];
+  page.on("pageerror", (error) => scriptErrors.push(error.message));
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== origin) {
+      await route.abort("blockedbyclient");
+      return;
+    }
+    if (request.isNavigationRequest()) {
+      await route.fulfill({ contentType: "text/html", body: html });
+      return;
+    }
+    const path = url.pathname;
+    let body;
+    if (path === `/cases/${caseId}/existing-offer` && request.method() === "PUT") {
+      const sent = JSON.parse(request.postData() || "{}");
+      puts.push(sent);
+      Object.assign(state, {
+        exists: sent.exists,
+        notes: sent.notes,
+        document_ids: sent.document_ids || [],
+      });
+      body = state;
+    } else if (request.method() !== "GET") {
+      unexpected.push(`${request.method()} ${path}`);
+      await route.abort("blockedbyclient");
+      return;
+    } else if (path === `/cases/${caseId}/existing-offer`) {
+      body = state;
+    } else {
+      const fixtures = {
+        "/api/auth/providers": { google: false },
+        "/api/v1/support/config": { contact_url: null },
+        "/api/billing/packages": { packages: [] },
+        "/api/billing/account/entitlement": { status: "free" },
+        "/api/v1/dashboard/status": {
+          data: {
+            has_cases: true,
+            case_count: 1,
+            active_case_count: 1,
+            cases: [{ id: caseId, title: "Synthetic documents case", workflow_mode: "upload" }],
+          },
+        },
+      };
+      if (path.startsWith("/api/v1/materials/config")) {
+        body = { enabled: true, max_upload_bytes: 2097152, accepted_extensions: [".pdf", ".docx"], remaining_attachments: 5, attachment_limit: 5, used_attachments: 0 };
+      } else if (Object.hasOwn(fixtures, path)) {
+        body = fixtures[path];
+      } else {
+        unexpected.push(`${request.method()} ${path}`);
+        await route.abort("blockedbyclient");
+        return;
+      }
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+  });
+  return {
+    puts,
+    verify: () => {
+      expect(unexpected, "Unexpected API requests must not be silently mocked").toEqual([]);
+      expect(scriptErrors, "Full application script must execute without errors").toEqual([]);
+    },
+  };
+}
+
+const noOffer = { exists: null, notes: null, document_ids: [], documents: [], assets: [], asset_terms: [] };
+
+test("documents path: upload is visible first and the offer is an optional checkbox below it", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  await expect(page.locator("#materials-workflow")).toBeVisible();
+  await expect(page.locator(".materials-drop")).toBeVisible();
+  await expect(page.locator("#existing-offer-question")).toBeHidden();
+  const toggle = page.getByRole("checkbox", { name: "The other party has already made an offer" });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).not.toBeChecked();
+  await expect(page.locator("#existing-offer-details")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+  const upload = await page.locator("#materials-import").boundingBox();
+  const box = await toggle.boundingBox();
+  expect(upload.y).toBeLessThan(box.y);
+  fixture.verify();
+});
+
+test("documents path: checking the offer requires saved details before Continue", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  const toggle = page.getByRole("checkbox", { name: "The other party has already made an offer" });
+  const next = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(next).toBeEnabled();
+  await toggle.check();
+  await expect(page.locator("#existing-offer-details")).toBeVisible();
+  await expect(next).toBeDisabled();
+  await expect(page.locator("#existing-offer-continue-status")).toContainText("Save offer notes or an offer document to continue.");
+  await page.locator("#existing-offer-notes").fill("House to them, car to me");
+  await expect(next).toBeDisabled();
+  await page.getByRole("button", { name: "Save offer details" }).click();
+  await expect(next).toBeEnabled();
+  expect(fixture.puts).toEqual([{ exists: true, notes: "House to them, car to me", document_ids: [] }]);
+  fixture.verify();
+});
+
+test("documents path: a saved offer restores the checkbox and unchecking asks before removing it", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, { ...noOffer, exists: true, notes: "Saved offer notes" });
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  const toggle = page.getByRole("checkbox", { name: "The other party has already made an offer" });
+  await expect(toggle).toBeChecked();
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Saved offer notes");
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  expect(fixture.puts).toEqual([]);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await toggle.click();
+  await expect(toggle).not.toBeChecked();
+  await expect(page.locator("#existing-offer-details")).toBeHidden();
+  expect(fixture.puts).toEqual([{ exists: false, notes: null, document_ids: [] }]);
   fixture.verify();
 });
 

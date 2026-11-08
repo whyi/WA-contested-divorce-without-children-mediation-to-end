@@ -71,7 +71,9 @@ class WizardAttemptScreenTests(unittest.TestCase):
         self.assertIn("Values from your case information", PAGE)
         self.assertIn('id="settlement-wizard-create"', PAGE)
         self.assertIn("Create Attempt 1 from your case information", PAGE)
-        self.assertEqual(PAGE.count('class="settlement-wizard-edit-link"'), 2)
+        self.assertEqual(PAGE.count('id="settlement-edit-intake"'), 1)
+        self.assertIn('id="settlement-wizard-edit-slot-empty"', PAGE)
+        self.assertIn('id="settlement-wizard-edit-slot-values"', PAGE)
         self.assertIn("do not change an attempt that already exists", PAGE)
 
     def test_only_wizard_cases_read_the_wizard_attempt(self) -> None:
@@ -90,10 +92,14 @@ class WizardAttemptScreenTests(unittest.TestCase):
         self.assertNotIn("/ 100)", body.replace("Math.floor(abs / 100)", ""))
         self.assertIn("abs % 100", body)
 
-    def test_missing_information_hides_scenario_tools_and_lists_the_needs(self) -> None:
+    def test_missing_information_lists_the_needs_and_keeps_the_single_edit_link(self) -> None:
         body = _function_body("renderSettlementWizardAttempt")
 
-        self.assertIn("settlementPlannerContent.hidden = true", body)
+        self.assertNotIn("settlementPlannerContent", body)
+        self.assertNotIn("settlementEditIntake.hidden", body)
+        self.assertIn("settlement-wizard-edit-slot-empty", body)
+        self.assertIn("settlement-wizard-edit-slot-values", body)
+        self.assertIn("settlementEditIntakeHome.append(settlementEditIntake)", _function_body("openSettlementPlanner"))
         self.assertIn("result.needs", body)
         self.assertIn("Your case information is ready.", body)
         self.assertIn("report.included", body)
