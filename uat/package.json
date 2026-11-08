@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "node --test *.test.js",
+    "entry": "playwright test --config entry.config.js",
     "smoke": "playwright test"
   },
   "devDependencies": {

@@ -23,6 +23,19 @@ def _function_body(name: str) -> str:
 
 
 class DirectEntryAfterSignInTests(unittest.TestCase):
+    def test_ci_requires_executable_chromium_entry_regressions(self) -> None:
+        root = Path(__file__).parents[1]
+        workflow = (root / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        browser_job = workflow.split("  entry-regressions:", 1)[1].split("  test:", 1)[0]
+        self.assertIn("runs-on: ubuntu-24.04", browser_job)
+        self.assertIn("run: npm ci", browser_job)
+        self.assertIn("run: npx playwright install --with-deps chromium", browser_job)
+        self.assertIn("run: npm run entry", browser_job)
+        self.assertNotIn("continue-on-error", browser_job)
+        self.assertNotIn("if:", browser_job)
+        self.assertTrue((root / "uat/entry.spec.js").is_file())
+        self.assertIn('testMatch: "entry.spec.js"', (root / "uat/entry.config.js").read_text(encoding="utf-8"))
+
     def test_case_list_page_is_removed(self) -> None:
         for removed in (
             "Active cases",
@@ -48,15 +61,15 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         self.assertEqual(order, sorted(order))
         self.assertIn("account.active_case_count > 0", body)
 
-    def test_active_case_opens_with_replace_navigation_and_keeps_loading_state(self) -> None:
+    def test_active_case_opens_attempts_without_preparation_redirect(self) -> None:
         body = _function_body("openActiveCase")
 
-        self.assertIn("window.location.replace(", body)
-        self.assertNotIn("location.assign", body)
+        self.assertNotIn("window.location", body)
+        self.assertNotIn("wizardIntakeComplete", body)
+        self.assertNotIn("wizard-intake", body)
         self.assertIn("/onboarding/${item.workflow_mode}?case_id=", body)
-        redirect = body.index("window.location.replace(")
-        self.assertLess(redirect, body.index("dashboardLoading.hidden = true"))
-        self.assertIn("openSettlementPlanner(item.id)", body)
+        self.assertLess(body.index("dashboardLoading.hidden = true"), body.index("await openSettlementPlanner(item.id)"))
+        self.assertIn("settlementEditIntake.hidden = !startUrl", body)
 
     def test_new_case_choice_opens_immediately_and_leaves_a_start_action(self) -> None:
         body = _function_body("showNewCaseStart")
