@@ -199,6 +199,32 @@ Failures remain visible; a failed deployment does not publish a success URL.
 Existing local `./deploy.sh` continues to use Terraform outputs when the
 environment variable is not set.
 
+### Troubleshooting OIDC role assumption
+
+If `AssumeRoleWithWebIdentity` is denied, the failure occurs before deployment.
+An AWS administrator should check the live role and OIDC provider in the UAT
+account; changing the workflow alone cannot repair an AWS trust policy:
+
+1. Verify `UAT_AWS_ROLE_ARN` names the intended role in the account exported in
+   `UAT_DEPLOYMENT_OUTPUTS_JSON`. With administrator credentials for that account,
+   run `aws sts get-caller-identity`, then inspect the role with
+   `aws iam get-role --role-name <role-name> --query 'Role.AssumeRolePolicyDocument'`.
+2. Verify its federated principal, `sts:AssumeRoleWithWebIdentity` action,
+   audience and subject match the policy above. An environment job normally
+   uses `environment:owner-beta-uat`, not `ref:refs/heads/main`, as its subject.
+   Check for customized GitHub OIDC subject claims or explicit denies if it
+   still does not match; do not print or share the OIDC token.
+3. Inspect the provider with `aws iam get-open-id-connect-provider
+   --open-id-connect-provider-arn <provider-arn>` and verify its URL and
+   `sts.amazonaws.com` audience. Correct the provider or, after reviewing the
+   existing policy and preserving any required statements, update the role's
+   trust policy using `aws iam update-assume-role-policy --role-name <role-name>
+   --policy-document file://<reviewed-policy.json>`. Do not broaden the subject
+   to a wildcard. Keep the environment restricted to `main`.
+4. Run **Deploy UAT** again from `main`. The deploy script independently checks
+   that the assumed AWS account matches the deployment outputs before pushing.
+   A successful role assumption does not guarantee its resource permissions.
+
 ## Operations and teardown
 
 - Operational alarms and first-response guidance are documented in the

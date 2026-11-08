@@ -40,12 +40,16 @@ jobs:
             exit 1
           }
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - id: aws_credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.UAT_AWS_ROLE_ARN }}
           aws-region: us-west-2
           role-duration-seconds: 3600
-          allowed-account-ids: ${{ fromJSON(env.UAT_DEPLOYMENT_OUTPUTS_JSON).aws_account_id }}
+
+      - name: Diagnose AWS credential failure
+        if: ${{ failure() && steps.aws_credentials.outcome == 'failure' }}
+        run: echo "::error::Check the UAT role's OIDC trust policy and provider; see deploy/aws/owner-beta/README.md#troubleshooting-oidc-role-assumption."
 
       - name: Deploy latest main
         run: bash deploy/aws/owner-beta/deploy.sh
