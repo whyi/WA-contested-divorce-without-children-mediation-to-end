@@ -1018,6 +1018,12 @@
       .case-create-content > p:not(.eyebrow) { color:var(--text-secondary); font-size:14px; line-height:1.6; }
       .case-create-content label { display:block; margin:18px 0 7px; color:var(--text-primary); font-size:13px; font-weight:700; }
       .case-create-content input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--surface-background); font:inherit; }
+      .materials-navigation { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:28px; padding-top:18px; border-top:1px solid var(--line); }
+      .materials-back { min-height:46px; padding:0 17px; border:1px solid var(--theme-border-d5ded6); border-radius:7px; color:var(--green-dark); background:var(--theme-background-fff); cursor:pointer; font:inherit; font-weight:750; }
+      .materials-back:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      .materials-navigation .materials-actions { margin:0; }
+      .materials-leave-confirmation { width:min(560px, calc(100% - 32px)); padding:0; border:1px solid var(--border-color); border-radius:18px; color:var(--text-primary); background:var(--surface-background); box-shadow:0 24px 80px rgba(20, 35, 25, .28); }
+      .materials-leave-confirmation::backdrop { background:rgba(20, 35, 27, .58); }
       .offer-intake { margin:18px 0 0; padding:12px 14px; border:1px solid var(--border-color); border-radius:8px; }
       .offer-intake legend { padding:0 6px; color:var(--text-primary); font-size:13px; font-weight:700; }
       .offer-intake .offer-choice { display:flex; align-items:center; gap:8px; margin:6px 0; font-weight:400; }
@@ -2287,8 +2293,6 @@
                   <p>Your new case will be saved to your account. Choose the starting point that fits what you have today.</p>
                   <section id="case-create-choice" aria-label="Choose a case start path">
                     <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
-                    <label for="case-title-input">Case label <span>(optional)</span></label>
-                    <input id="case-title-input" type="text" maxlength="120" autocomplete="off" placeholder="For example, XYZ vs ABC">
                     <div class="case-mode-options">
                       <button class="case-mode-choice" id="case-start-upload" type="button" data-start-mode="upload">
                         <strong>I have documents</strong>
@@ -2657,10 +2661,6 @@
                   <button class="materials-import" id="existing-offer-save" type="button">Save offer details</button>
                   <p class="existing-offer-status" id="existing-offer-status" role="status" aria-live="polite"></p>
                 </div>
-                <div class="materials-actions" id="existing-offer-continue-row" hidden>
-                  <button class="materials-import" id="existing-offer-continue" type="button" disabled>Continue</button>
-                  <p class="existing-offer-status" id="existing-offer-continue-status" role="status" aria-live="polite"></p>
-                </div>
                 <section id="existing-offer-asset-terms" aria-labelledby="existing-offer-terms-title" hidden>
                   <h4 id="existing-offer-terms-title">Relate the offer to your assets</h4>
                   <p class="offer-intake-help">Your original notes stay unchanged. Add the offered term for any asset.</p>
@@ -2747,7 +2747,25 @@
                     <button class="materials-import" id="adopt-selected-proposals" type="button" disabled>Adopt selected suggestions</button>
                   </section>
                 </section>
+                <div class="materials-navigation">
+                  <button class="materials-back" id="materials-back" type="button">Back</button>
+                  <div class="materials-actions" id="existing-offer-continue-row" hidden>
+                    <button class="materials-import" id="existing-offer-continue" type="button" disabled>Continue</button>
+                    <p class="existing-offer-status" id="existing-offer-continue-status" role="status" aria-live="polite"></p>
+                  </div>
+                </div>
               </div>
+              <dialog class="materials-leave-confirmation" id="materials-leave-confirmation" aria-labelledby="materials-leave-title" aria-describedby="materials-leave-description">
+                <div class="case-create-content">
+                  <h2 id="materials-leave-title">Discard changes and go back?</h2>
+                  <p id="materials-leave-description"></p>
+                  <p id="materials-leave-status" role="status" aria-live="polite"></p>
+                  <div class="case-create-actions">
+                    <button id="materials-leave-stay" type="button">No, stay here</button>
+                    <button class="materials-import" id="materials-leave-confirm" type="button">Yes, go back</button>
+                  </div>
+                </div>
+              </dialog>
               <section class="asset-analysis" id="asset-analysis-view" aria-labelledby="asset-analysis-title" hidden>
                 <button class="asset-analysis-back" id="asset-analysis-back" type="button">← Back to uploaded files</button>
                 <header class="asset-analysis-header">
@@ -3147,7 +3165,6 @@
         const caseCreatePathDescription = document.getElementById("case-create-path-description");
         const caseCreateContinue = document.getElementById("case-create-continue");
         const caseCreateBack = document.getElementById("case-create-back");
-        const caseTitleInput = document.getElementById("case-title-input");
         const caseOfferQuestion = document.getElementById("case-offer-question");
         const caseOfferNotesWrap = document.getElementById("case-offer-notes-wrap");
         const caseOfferNotes = document.getElementById("case-offer-notes");
@@ -3277,6 +3294,12 @@
         const preparationView = document.getElementById("preparation-view");
         const preparationNote = document.getElementById("preparation-note");
         const materialsWorkflow = document.getElementById("materials-workflow");
+        const materialsBack = document.getElementById("materials-back");
+        const materialsLeaveDialog = document.getElementById("materials-leave-confirmation");
+        const materialsLeaveDescription = document.getElementById("materials-leave-description");
+        const materialsLeaveStatus = document.getElementById("materials-leave-status");
+        const materialsLeaveStay = document.getElementById("materials-leave-stay");
+        const materialsLeaveConfirm = document.getElementById("materials-leave-confirm");
         const materialsLimits = document.getElementById("materials-limits");
         const materialsDisabledNote = document.getElementById("materials-disabled-note");
         const materialsInput = document.getElementById("materials-file-input");
@@ -3595,6 +3618,9 @@
         const wizardDatabaseName = "casework-wizard-intake";
         const wizardDatabaseVersion = 1;
         const preparationCaseId = new URLSearchParams(window.location.search).get("case_id");
+        const startCaseDialogRequested =
+          new URLSearchParams(window.location.search).get("start_case") === "1";
+        const materialsNewCaseStorageKey = "materials-new-case-id";
         const caseCreateProgressStorageKey = "case-create-progress";
         const caseCreateDraftStorageKey = "case-create-draft";
         const existingOfferRecoveryKey = preparationCaseId
@@ -3608,6 +3634,9 @@
         const materialsBatchStorageKey = preparationCaseId
           ? `materials-import-batch:${preparationCaseId}`
           : "materials-import-batch";
+        let materialsHaveChanges = false;
+        let materialsLeaveIsNewCase = false;
+        let materialsBackInProgress = false;
         function parseCaseCreateProgress() {
           try {
             const value = JSON.parse(sessionStorage.getItem(caseCreateProgressStorageKey) || "null");
@@ -3661,7 +3690,6 @@
             !draft
             || typeof draft !== "object"
             || ![null, "upload", "wizard"].includes(draft.mode)
-            || typeof draft.caseTitle !== "string"
             || ![null, "yes", "no"].includes(draft.offerAnswer)
             || typeof draft.offerNotes !== "string"
             || (draft.fileIdentity !== null && (
@@ -3680,7 +3708,6 @@
           try {
             sessionStorage.setItem(caseCreateDraftStorageKey, JSON.stringify({
               mode: activeCaseStartMode,
-              caseTitle: caseTitleInput.value,
               offerAnswer: caseOfferQuestion.querySelector(
                 'input[name="case-existing-offer"]:checked',
               )?.value || null,
@@ -5248,8 +5275,6 @@
             caseCreateProgress = parseCaseCreateProgress();
             const draft = caseCreateProgress ? null : parseCaseCreateDraft();
             const restored = caseCreateProgress || draft;
-            caseTitleInput.value = restored?.caseTitle || "";
-            caseTitleInput.disabled = Boolean(caseCreateProgress?.caseId);
             caseCreateDialog.querySelectorAll('input[name="case-existing-offer"]').forEach((radio) => {
               radio.checked = radio.value === restored?.offerAnswer;
             });
@@ -5296,6 +5321,86 @@
           else document.getElementById("case-start-upload").focus();
         }
 
+        function returnToCaseStart() {
+          const target = new URL("/", window.location.origin);
+          target.searchParams.set("start_case", "1");
+          target.hash = "account";
+          window.location.assign(target.href);
+        }
+
+        function isNewMaterialsCase() {
+          return Boolean(
+            preparationCaseId
+            && sessionStorage.getItem(materialsNewCaseStorageKey) === preparationCaseId,
+          );
+        }
+
+        async function deleteNewMaterialsCase() {
+          if (!preparationCaseId) {
+            returnToCaseStart();
+            return;
+          }
+          materialsBackInProgress = true;
+          materialsBack.disabled = true;
+          materialsLeaveConfirm.disabled = true;
+          materialsLeaveStay.disabled = true;
+          const status = materialsLeaveDialog.open ? materialsLeaveStatus : materialsStatus;
+          status.textContent = "Deleting this case and its saved materials…";
+          status.removeAttribute("data-kind");
+          try {
+            await settlementApi(
+              `/cases/${encodeURIComponent(preparationCaseId)}/permanent-deletion`,
+              {
+                method: "DELETE",
+                body: JSON.stringify({ confirmation: "DELETE CASE" }),
+              },
+            );
+            sessionStorage.removeItem(materialsNewCaseStorageKey);
+            sessionStorage.removeItem(materialsBatchStorageKey);
+            sessionStorage.removeItem(caseCreateProgressStorageKey);
+            sessionStorage.removeItem(caseCreateDraftStorageKey);
+            if (existingOfferRecoveryKey) sessionStorage.removeItem(existingOfferRecoveryKey);
+            returnToCaseStart();
+          } catch (error) {
+            status.textContent = error instanceof Error
+              ? error.message
+              : "The case could not be deleted. Please retry.";
+            status.dataset.kind = "error";
+          } finally {
+            materialsBackInProgress = false;
+            materialsBack.disabled = false;
+            materialsLeaveConfirm.disabled = false;
+            materialsLeaveStay.disabled = false;
+          }
+        }
+
+        function requestMaterialsBack() {
+          if (materialsBackInProgress) return;
+          try {
+            materialsLeaveIsNewCase = isNewMaterialsCase();
+            if (!materialsHaveChanges) {
+              if (materialsLeaveIsNewCase) {
+                void deleteNewMaterialsCase();
+              } else {
+                returnToCaseStart();
+              }
+              return;
+            }
+            materialsLeaveDescription.textContent = materialsLeaveIsNewCase
+              ? "Going back permanently deletes this new case, all its saved case materials, and changes you made. This cannot be undone. Do you still want to go back?"
+              : "Files and changes that have not been saved will be discarded. This existing case and its saved materials will remain. Do you still want to go back?";
+            materialsLeaveStatus.textContent = "";
+            materialsLeaveStatus.removeAttribute("data-kind");
+            materialsLeaveDialog.showModal();
+            materialsLeaveStay.focus();
+          } catch (error) {
+            materialsStatus.textContent = error instanceof Error
+              ? error.message
+              : "The case could not be verified before going back.";
+            materialsStatus.dataset.kind = "error";
+          }
+        }
+
         function openDemoCaseChoiceDialog() {
           try {
             const existingCase = demoCaseData || loadDemoCaseData();
@@ -5337,7 +5442,6 @@
             choice.disabled = true;
           });
           caseCreateBack.disabled = true;
-          caseTitleInput.disabled = true;
           caseCreateStatus.textContent = "Creating your case…";
           caseCreateStatus.removeAttribute("data-kind");
           try {
@@ -5346,7 +5450,6 @@
               const result = await settlementApi("/cases", {
                 method: "POST",
                 body: JSON.stringify({
-                  case_title: caseTitleInput.value.trim() || null,
                   workflow_mode: "upload",
                 }),
               });
@@ -5356,6 +5459,7 @@
               caseId = result.id;
             }
             caseCreateProgress = { ...caseCreateProgress, caseId, mode: "upload" };
+            sessionStorage.setItem(materialsNewCaseStorageKey, caseId);
             sessionStorage.removeItem(caseCreateProgressStorageKey);
             sessionStorage.removeItem(caseCreateDraftStorageKey);
             caseCreateProgress = null;
@@ -5371,7 +5475,6 @@
               choice.disabled = Boolean(caseCreateProgress?.caseId) && choice !== button;
             });
             caseCreateBack.disabled = Boolean(caseCreateProgress?.caseId);
-            caseTitleInput.disabled = Boolean(caseCreateProgress?.caseId);
           }
         }
 
@@ -5440,7 +5543,6 @@
           button.disabled = true;
           document.getElementById("case-create-cancel").disabled = true;
           caseCreateBack.disabled = true;
-          caseTitleInput.disabled = true;
           caseOfferQuestion.disabled = true;
           caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((choice) => {
             choice.disabled = true;
@@ -5471,7 +5573,6 @@
               progress.fileIdentity = fileIdentity(offerFile);
             }
             progress.mode = mode;
-            progress.caseTitle = caseTitleInput.value.trim();
             progress.offerAnswer = offerAnswer;
             progress.offerNotes = offerNotes;
             if (!persistCaseCreateProgress()) {
@@ -5489,7 +5590,6 @@
               const result = await settlementApi("/cases", {
                 method: "POST",
                 body: JSON.stringify({
-                  case_title: caseTitleInput.value.trim() || null,
                   workflow_mode: mode,
                   ...(offerAnswer === "no" || offerNotes
                     ? { existing_offer: { exists: offerAnswer === "yes", notes: offerAnswer === "yes" ? offerNotes : null } }
@@ -5593,7 +5693,6 @@
             button.disabled = false;
             document.getElementById("case-create-cancel").disabled = false;
             caseCreateBack.disabled = false;
-            caseTitleInput.disabled = Boolean(caseCreateProgress?.caseId);
             caseOfferQuestion.disabled = false;
             caseCreateDialog.querySelectorAll(".case-mode-choice").forEach((choice) => {
               choice.disabled = false;
@@ -5651,6 +5750,17 @@
           newCaseEntry.hidden = true;
           accountToolsLink.hidden = false;
           planCaseId = account.cases[0]?.id ?? null;
+          if (startCaseDialogRequested) {
+            showNewCaseStart();
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete("start_case");
+            window.history.replaceState(
+              null,
+              "",
+              `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+            );
+            return;
+          }
           if (accountToolsMode) {
             await loadClosedCases();
             showAccountTools();
@@ -9219,6 +9329,16 @@
           setExistingOfferStatus("Loading offer details…");
           try {
             existingOfferState = await settlementApi(`/cases/${preparationCaseId}/existing-offer`);
+            if (
+              isNewMaterialsCase()
+              && (
+                existingOfferState.exists === true
+                || existingOfferState.document_ids.length > 0
+                || existingOfferState.notes
+              )
+            ) {
+              materialsHaveChanges = true;
+            }
             captureExistingOfferSaved();
             existingOfferRecoveryPending = false;
             existingOfferUpload = null;
@@ -9365,6 +9485,7 @@
               await saveExistingOffer();
               if (existingOfferSaved?.exists !== false) return;
             }
+            sessionStorage.removeItem(materialsNewCaseStorageKey);
             window.location.assign("/");
           } finally {
             updateExistingOfferUploadControls();
@@ -9386,6 +9507,7 @@
               method: "PUT",
               body: JSON.stringify({ terms }),
             });
+            materialsHaveChanges = true;
             captureExistingOfferSaved();
             renderExistingOffer(true);
             setExistingOfferStatus("Asset terms saved. Your original notes were not changed.", "success");
@@ -9514,7 +9636,10 @@
               remove.setAttribute("aria-label", `Remove ${item.file.name}`);
               remove.addEventListener("click", () => {
                 const index = materialsItems.indexOf(item);
-                if (index >= 0) materialsItems.splice(index, 1);
+                if (index >= 0) {
+                  materialsItems.splice(index, 1);
+                  materialsHaveChanges = true;
+                }
                 renderMaterials();
               });
               row.append(remove);
@@ -9614,6 +9739,7 @@
 
         async function addMaterials(files) {
           if (!materialsReady || materialsImporting || materialsSelecting) return;
+          if (files.length) materialsHaveChanges = true;
           materialsSelecting = true;
           updateMaterialsControls();
           let duplicates = 0;
@@ -12269,6 +12395,7 @@
                 status: "Imported",
               });
             }
+            if (result.items.length) materialsHaveChanges = true;
             materialsBatchVerified = true;
             materialsStatus.textContent = `${result.items.length} previously imported file(s) recovered.`;
             materialsStatus.dataset.kind = "success";
@@ -12470,7 +12597,6 @@
             || Boolean(caseCreateProgress?.documentId);
           handleCaseCreateDraftChange();
         });
-        caseTitleInput.addEventListener("input", handleCaseCreateDraftChange);
         caseOfferNotes.addEventListener("input", handleCaseCreateDraftChange);
         caseOfferFile.addEventListener("change", () => {
           const file = caseOfferFile.files[0] || null;
@@ -12506,7 +12632,16 @@
           existingOfferDetails.hidden = selectedExistingOfferAnswer() !== "yes";
         });
         existingOfferSave.addEventListener("click", () => { void saveExistingOffer(); });
-        existingOfferToggle.addEventListener("change", () => { void handleExistingOfferToggle(); });
+        existingOfferToggle.addEventListener("change", () => {
+          materialsHaveChanges = true;
+          void handleExistingOfferToggle();
+        });
+        existingOfferNotes.addEventListener("input", () => {
+          materialsHaveChanges = true;
+        });
+        existingOfferFile.addEventListener("change", () => {
+          if (existingOfferFile.files?.length) materialsHaveChanges = true;
+        });
         existingOfferContinue.addEventListener("click", () => { void continueFromDocuments(); });
         existingOfferTermsSave.addEventListener("click", () => { void saveExistingOfferTerms(); });
         document.getElementById("existing-offer-refresh").addEventListener("click", () => {
@@ -13120,6 +13255,18 @@
         materialsDrop.addEventListener("drop", (event) => {
           event.preventDefault();
           void addMaterials(Array.from(event.dataTransfer?.files || []));
+        });
+        materialsBack.addEventListener("click", requestMaterialsBack);
+        materialsLeaveStay.addEventListener("click", () => {
+          materialsLeaveDialog.close();
+          materialsBack.focus();
+        });
+        materialsLeaveConfirm.addEventListener("click", () => {
+          if (materialsLeaveIsNewCase) {
+            void deleteNewMaterialsCase();
+          } else {
+            returnToCaseStart();
+          }
         });
         materialsImportButton.addEventListener("click", importMaterials);
         analysisDocumentList.addEventListener("change", updateAnalysisActions);
