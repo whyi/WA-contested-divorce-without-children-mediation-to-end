@@ -324,14 +324,15 @@ class ExistingOfferUiTests(unittest.TestCase):
         self.assertIn("document_ids: [progress.documentId]", create)
         self.assertIn("caseCreateProgress ||=", create)
 
-    def test_onboarding_stays_closed_until_offer_answer_is_saved(self) -> None:
+    def test_wizard_onboarding_stays_closed_until_offer_answer_is_saved(self) -> None:
         gate = self.page.split("function applyExistingOfferGate", 1)[1].split(
-            "function renderExistingOffer", 1
+            "function captureExistingOfferSaved", 1
         )[0]
         self.assertIn("existingOfferState.exists !== null", gate)
-        self.assertIn("materialsWorkflow.hidden = !open", gate)
         self.assertIn("wizardDemoPage.hidden = !open", gate)
-        self.assertIn("materialsWorkflow.hidden = !isUpload || Boolean(preparationCaseId)", self.page)
+        # Spec 72: the documents path shows the upload immediately and is no longer gated.
+        self.assertNotIn("materialsWorkflow.hidden", gate)
+        self.assertIn("materialsWorkflow.hidden = !isUpload;", self.page)
         panel_save = self.page.split("async function saveExistingOffer()", 1)[1].split(
             "async function saveExistingOfferTerms", 1
         )[0]

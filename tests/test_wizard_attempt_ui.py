@@ -30,27 +30,33 @@ def _finish_handler() -> str:
 class WizardSaveAndContinueTests(unittest.TestCase):
     def test_finish_saves_creates_attempt_one_then_opens_the_attempt_screen(self) -> None:
         handler = _finish_handler()
+        create = _function_body("createWizardAttemptOne")
 
-        self.assertLess(handler.index("saveWizardDraft()"), handler.index("/wizard-attempt"))
-        self.assertLess(handler.index("/wizard-attempt"), handler.index('window.location.assign("/")'))
-        self.assertIn('method: "POST"', handler)
+        self.assertLess(handler.index("saveWizardDraft()"), handler.index("createWizardAttemptOne()"))
+        self.assertLess(
+            handler.index("createWizardAttemptOne()"), handler.index("window.location.assign(")
+        )
+        self.assertIn("/wizard-attempt", create)
+        self.assertIn('method: "POST"', create)
+        self.assertIn('preparationCaseId ? "/"', handler)
 
     def test_a_failed_creation_keeps_the_user_on_the_wizard_with_a_retry(self) -> None:
         handler = _finish_handler()
-        catch = handler[handler.index("catch (error)") :]
+        create = _function_body("createWizardAttemptOne")
+        catch = create[create.index("catch (error)") :]
 
+        self.assertIn("!(await createWizardAttemptOne())) return;", handler)
         self.assertNotIn("location.assign", catch)
         self.assertIn("wizardFinish.disabled = false", catch)
         self.assertIn("Your draft is saved", catch)
+        self.assertIn("return false", catch)
         self.assertIn('"error"', catch)
 
     def test_demo_wizard_keeps_its_own_destination(self) -> None:
         handler = _finish_handler()
 
         self.assertIn("demoAssetOverviewUrl(demoCurrentCaseId)", handler)
-        self.assertLess(
-            handler.index("if (!preparationCaseId)"), handler.index("/wizard-attempt")
-        )
+        self.assertIn("if (preparationCaseId && !(await createWizardAttemptOne()))", handler)
 
     def test_nothing_else_creates_the_attempt_automatically(self) -> None:
         self.assertEqual(PAGE.count("/wizard-attempt`"), 3)

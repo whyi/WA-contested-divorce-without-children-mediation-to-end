@@ -2527,6 +2527,9 @@
               <p class="preparation-note" id="preparation-note">This preview does not accept or save case details or documents. No case has been created. Do not enter real case information.</p>
               <section class="existing-offer-panel" id="existing-offer-panel" aria-labelledby="existing-offer-title" hidden>
                 <h3 id="existing-offer-title">Offer from the other party</h3>
+                <label class="offer-choice" id="existing-offer-toggle-label" for="existing-offer-toggle" hidden>
+                  <input type="checkbox" id="existing-offer-toggle"> The other party has already made an offer
+                </label>
                 <fieldset id="existing-offer-question">
                   <legend>Has the other party already made an offer?</legend>
                   <label class="offer-choice"><input type="radio" name="existing-offer" value="yes"> Yes</label>
@@ -2547,6 +2550,10 @@
                 <div class="materials-actions">
                   <button class="materials-import" id="existing-offer-save" type="button">Save offer details</button>
                   <p class="existing-offer-status" id="existing-offer-status" role="status" aria-live="polite"></p>
+                </div>
+                <div class="materials-actions" id="existing-offer-continue-row" hidden>
+                  <button class="materials-import" id="existing-offer-continue" type="button" disabled>Continue</button>
+                  <p class="existing-offer-status" id="existing-offer-continue-status" role="status" aria-live="polite"></p>
                 </div>
                 <section id="existing-offer-asset-terms" aria-labelledby="existing-offer-terms-title" hidden>
                   <h4 id="existing-offer-terms-title">Relate the offer to your assets</h4>
@@ -2580,6 +2587,7 @@
                   <p class="materials-status" id="materials-status" role="status" aria-live="polite"></p>
                 </div>
                 <button class="dashboard-retry materials-status-retry" id="materials-status-retry" type="button" hidden>Retry status check</button>
+                <div id="offer-optional-slot"></div>
                 <p class="preparation-note" id="materials-disabled-note">Imports are disabled in this preview. Files stay in your browser and are not uploaded or saved. Do not use real case information.</p>
                 <section class="analysis-preview-launch" id="analysis-preview-launch" aria-labelledby="analysis-preview-launch-title" hidden>
                   <h3 id="analysis-preview-launch-title">Your imported files are ready</h3>
@@ -3044,6 +3052,10 @@
         let activeCaseStartMode = null;
         const existingOfferPanel = document.getElementById("existing-offer-panel");
         const existingOfferDetails = document.getElementById("existing-offer-details");
+        const existingOfferToggle = document.getElementById("existing-offer-toggle");
+        const existingOfferContinue = document.getElementById("existing-offer-continue");
+        const existingOfferContinueStatus = document.getElementById("existing-offer-continue-status");
+        let existingOfferSaved = null;
         const existingOfferNotes = document.getElementById("existing-offer-notes");
         const existingOfferDocumentList = document.getElementById("existing-offer-document-list");
         const existingOfferStatus = document.getElementById("existing-offer-status");
@@ -4350,6 +4362,25 @@
           });
         }
 
+        async function createWizardAttemptOne() {
+          wizardFinish.disabled = true;
+          setWizardSaveStatus("Creating Attempt 1 from your case information…");
+          try {
+            await settlementApi(
+              `/cases/${encodeURIComponent(preparationCaseId)}/wizard-attempt`,
+              { method: "POST" },
+            );
+            return true;
+          } catch (error) {
+            wizardFinish.disabled = false;
+            setWizardSaveStatus(
+              `Your draft is saved, but Attempt 1 could not be created: ${error instanceof Error ? error.message : "request failed"}. Try Save and continue again.`,
+              "error",
+            );
+            return false;
+          }
+        }
+
         function saveWizardDraft() {
           if (!wizardDatabase && !preparationCaseId) {
             setWizardSaveStatus(
@@ -5064,14 +5095,17 @@
           caseCreatePathTitle.textContent = mode === "upload"
             ? "I have documents"
             : "Guide me step by step";
+          caseOfferQuestion.hidden = mode === "upload";
           caseCreatePathDescription.textContent = mode === "upload"
-            ? "Before starting the documents-first path, tell us whether the other party has already made an offer."
+            ? "Create your case, then upload your documents right away."
             : "Before starting the guided path, tell us whether the other party has already made an offer.";
           caseCreateContinue.textContent = mode === "upload"
             ? "Create case and continue to documents"
             : "Create case and start the wizard";
           caseCreateBack.hidden = Boolean(caseCreateProgress?.caseId);
-          if (focus) caseOfferQuestion.querySelector("input").focus();
+          if (focus) {
+            (mode === "upload" ? caseTitleInput : caseOfferQuestion.querySelector("input")).focus();
+          }
         }
 
         function showCaseStartChoices({ focus = true } = {}) {
@@ -5135,7 +5169,8 @@
             caseCreateStatus.dataset.kind = "error";
           }
           caseCreateDialog.showModal();
-          if (activeCaseStartMode) caseOfferQuestion.querySelector("input").focus();
+          if (activeCaseStartMode === "upload") caseTitleInput.focus();
+          else if (activeCaseStartMode) caseOfferQuestion.querySelector("input").focus();
           else document.getElementById("case-start-upload").focus();
         }
 
@@ -5171,6 +5206,47 @@
           demoCaseDocumentsLink.focus();
         }
 
+        // The documents path asks no offer question; the offer is an optional checkbox on the upload screen.
+        async function createDocumentsCase(button) {
+          button.disabled = true;
+          caseCreateBack.disabled = true;
+          caseTitleInput.disabled = true;
+          caseCreateStatus.textContent = "Creating your case…";
+          caseCreateStatus.removeAttribute("data-kind");
+          try {
+            let caseId = caseCreateProgress?.caseId || null;
+            if (!caseId) {
+              const result = await settlementApi("/cases", {
+                method: "POST",
+                body: JSON.stringify({
+                  case_title: caseTitleInput.value.trim() || null,
+                  workflow_mode: "upload",
+                }),
+              });
+              if (typeof result?.id !== "string") {
+                throw new Error("The new case could not be verified. Please try again.");
+              }
+              caseId = result.id;
+            }
+            try {
+              sessionStorage.removeItem(caseCreateProgressStorageKey);
+              sessionStorage.removeItem(caseCreateDraftStorageKey);
+            } catch {
+              // A stale draft is harmless: the next dialog open starts from the saved case.
+            }
+            caseCreateProgress = null;
+            window.location.assign(`/onboarding/upload?case_id=${encodeURIComponent(caseId)}`);
+          } catch (error) {
+            caseCreateStatus.textContent = error instanceof Error
+              ? error.message
+              : "The case could not be created. Please try again.";
+            caseCreateStatus.dataset.kind = "error";
+            button.disabled = false;
+            caseCreateBack.disabled = Boolean(caseCreateProgress?.caseId);
+            caseTitleInput.disabled = Boolean(caseCreateProgress?.caseId);
+          }
+        }
+
         async function createCaseFromDashboard(mode, button) {
           if (!["upload", "wizard"].includes(mode)) {
             caseCreateStatus.textContent = "Choose one of the available case-start options.";
@@ -5185,6 +5261,10 @@
           if (caseCreateProgress?.caseId && caseCreateProgress.mode !== mode) {
             caseCreateStatus.textContent = "The created case must continue in its original workflow.";
             caseCreateStatus.dataset.kind = "error";
+            return;
+          }
+          if (mode === "upload") {
+            await createDocumentsCase(button);
             return;
           }
           const offerAnswer = caseOfferQuestion.querySelector('input[name="case-existing-offer"]:checked')?.value;
@@ -8821,13 +8901,46 @@
             existingOfferState !== null &&
             existingOfferState.exists !== null &&
             !existingOfferRecoveryPending;
-          if (offerGateMode === "upload") materialsWorkflow.hidden = !open;
           if (offerGateMode === "wizard") wizardDemoPage.hidden = !open;
         }
 
-        function renderExistingOffer() {
+        function captureExistingOfferSaved() {
           const state = existingOfferState;
-          const answer = state.exists === true ? "yes" : state.exists === false ? "no" : "";
+          existingOfferSaved = {
+            exists: state.exists,
+            hasDetails: Boolean((state.notes || "").trim()) || state.document_ids.length > 0,
+          };
+        }
+
+        function setExistingOfferAnswer(answer) {
+          document.querySelectorAll('input[name="existing-offer"]').forEach((radio) => {
+            radio.checked = radio.value === answer;
+          });
+        }
+
+        // Documents path: the offer is an optional checkbox; only Continue depends on it.
+        function updateExistingOfferUploadControls() {
+          if (offerGateMode !== "upload") return;
+          const checked = existingOfferToggle.checked;
+          existingOfferDetails.hidden = !checked;
+          existingOfferSave.hidden = !checked;
+          let message = "";
+          let ready = existingOfferSaved !== null;
+          if (checked && !(existingOfferSaved?.exists === true && existingOfferSaved.hasDetails)) {
+            ready = false;
+            message = "Save offer notes or an offer document to continue.";
+          }
+          existingOfferContinue.disabled = !ready;
+          existingOfferContinueStatus.textContent = message;
+        }
+
+        function renderExistingOffer(keepToggle = false) {
+          const state = existingOfferState;
+          let answer = state.exists === true ? "yes" : state.exists === false ? "no" : "";
+          if (offerGateMode === "upload") {
+            if (keepToggle) answer = existingOfferToggle.checked ? "yes" : "no";
+            else existingOfferToggle.checked = answer === "yes";
+          }
           document.querySelectorAll('input[name="existing-offer"]').forEach((radio) => {
             radio.checked = radio.value === answer;
           });
@@ -8871,6 +8984,7 @@
           }
           existingOfferAssetTerms.hidden = !(state.exists === true && state.assets.length > 0);
           applyExistingOfferGate();
+          updateExistingOfferUploadControls();
         }
 
         async function restoreExistingOfferRecovery() {
@@ -8966,17 +9080,20 @@
           };
         }
 
-        async function loadExistingOffer() {
+        async function loadExistingOffer({ keepToggle = false } = {}) {
           setExistingOfferStatus("Loading offer details…");
           try {
             existingOfferState = await settlementApi(`/cases/${preparationCaseId}/existing-offer`);
+            captureExistingOfferSaved();
             existingOfferRecoveryPending = false;
             existingOfferUpload = null;
             const recovery = await restoreExistingOfferRecovery();
-            renderExistingOffer();
+            renderExistingOffer(keepToggle);
             setExistingOfferStatus(
               recovery?.message ||
-                (existingOfferState.exists === null ? "Answer the offer question to continue." : ""),
+                (existingOfferState.exists === null && offerGateMode !== "upload"
+                  ? "Answer the offer question to continue."
+                  : ""),
             );
           } catch (error) {
             setExistingOfferStatus(
@@ -9060,6 +9177,7 @@
               }),
             });
             clearExistingOfferRecovery();
+            captureExistingOfferSaved();
             existingOfferRecoveryPending = false;
             existingOfferUpload = null;
             existingOfferFile.value = "";
@@ -9072,6 +9190,49 @@
             );
           } finally {
             existingOfferSave.disabled = false;
+          }
+        }
+
+        async function handleExistingOfferToggle() {
+          if (existingOfferToggle.checked) {
+            setExistingOfferAnswer("yes");
+            updateExistingOfferUploadControls();
+            existingOfferNotes.focus();
+            return;
+          }
+          if (existingOfferSaved?.exists === true) {
+            const confirmed = window.confirm(
+              "Remove the saved offer details? Your offer notes and selected offer documents will no longer be attached to this case.",
+            );
+            if (!confirmed) {
+              existingOfferToggle.checked = true;
+              updateExistingOfferUploadControls();
+              return;
+            }
+            setExistingOfferAnswer("no");
+            await saveExistingOffer();
+            if (existingOfferSaved?.exists === true) {
+              existingOfferToggle.checked = true;
+              setExistingOfferAnswer("yes");
+            }
+            updateExistingOfferUploadControls();
+            return;
+          }
+          setExistingOfferAnswer("no");
+          updateExistingOfferUploadControls();
+        }
+
+        async function continueFromDocuments() {
+          existingOfferContinue.disabled = true;
+          try {
+            if (!existingOfferToggle.checked && existingOfferSaved?.exists !== false) {
+              setExistingOfferAnswer("no");
+              await saveExistingOffer();
+              if (existingOfferSaved?.exists !== false) return;
+            }
+            window.location.assign("/");
+          } finally {
+            updateExistingOfferUploadControls();
           }
         }
 
@@ -9090,7 +9251,8 @@
               method: "PUT",
               body: JSON.stringify({ terms }),
             });
-            renderExistingOffer();
+            captureExistingOfferSaved();
+            renderExistingOffer(true);
             setExistingOfferStatus("Asset terms saved. Your original notes were not changed.", "success");
           } catch (error) {
             setExistingOfferStatus(
@@ -9137,13 +9299,24 @@
               : preparationCaseId
                 ? "Use the guided sections below to prepare information for this case. Your answers stay in this browser."
                 : "The guided questionnaire and progress-saving workflow are not available in this preview yet.";
-          materialsWorkflow.hidden = !isUpload || Boolean(preparationCaseId);
+          materialsWorkflow.hidden = !isUpload;
           preparationNote.hidden = isUpload || isDemo;
           preparationView.hidden = false;
           if (preparationCaseId && mode === "wizard") {
             preparationNote.hidden = false;
           }
           if (isUpload) loadMaterialsConfig();
+          if (preparationCaseId && isUpload) {
+            document.getElementById("offer-optional-slot").append(existingOfferPanel);
+            document.getElementById("existing-offer-title").textContent = "Offer from the other party (optional)";
+            document.getElementById("existing-offer-question").hidden = true;
+            document.getElementById("existing-offer-toggle-label").hidden = false;
+            document.getElementById("existing-offer-continue-row").hidden = false;
+            document.getElementById("existing-offer-help").textContent =
+              "Add notes, choose or select an offer document, or both, then save. You can continue once the details are saved.";
+            existingOfferDetails.hidden = true;
+            existingOfferSave.hidden = true;
+          }
           if (preparationCaseId && (isUpload || mode === "wizard")) {
             existingOfferPanel.hidden = false;
             void loadExistingOffer();
@@ -12198,9 +12371,11 @@
           existingOfferDetails.hidden = selectedExistingOfferAnswer() !== "yes";
         });
         existingOfferSave.addEventListener("click", () => { void saveExistingOffer(); });
+        existingOfferToggle.addEventListener("change", () => { void handleExistingOfferToggle(); });
+        existingOfferContinue.addEventListener("click", () => { void continueFromDocuments(); });
         existingOfferTermsSave.addEventListener("click", () => { void saveExistingOfferTerms(); });
         document.getElementById("existing-offer-refresh").addEventListener("click", () => {
-          void loadExistingOffer();
+          void loadExistingOffer({ keepToggle: true });
         });
         document.getElementById("case-create-cancel").addEventListener("click", () => {
           if (document.getElementById("case-create-cancel").disabled) return;
@@ -12886,25 +13061,9 @@
           if (wizardDraft.filed !== "yes" || !wizardDraft.role) return;
           window.clearTimeout(wizardSaveTimer);
           const saved = await saveWizardDraft();
-          if (!saved) return;
-          if (!preparationCaseId) {
-            window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId));
-            return;
-          }
-          wizardFinish.disabled = true;
-          setWizardSaveStatus("Creating Attempt 1 from your case information…");
-          try {
-            await settlementApi(
-              `/cases/${encodeURIComponent(preparationCaseId)}/wizard-attempt`,
-              { method: "POST" },
-            );
-            window.location.assign("/");
-          } catch (error) {
-            wizardFinish.disabled = false;
-            setWizardSaveStatus(
-              `Your draft is saved, but Attempt 1 could not be created: ${error instanceof Error ? error.message : "request failed"}. Try Save and continue again.`,
-              "error",
-            );
+          if (saved) {
+            if (preparationCaseId && !(await createWizardAttemptOne())) return;
+            window.location.assign(preparationCaseId ? "/" : demoAssetOverviewUrl(demoCurrentCaseId));
           }
         });
         wizardClearButton.addEventListener("click", () => wizardClearDialog.showModal());
