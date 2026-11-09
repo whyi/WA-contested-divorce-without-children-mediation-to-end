@@ -2668,7 +2668,7 @@
               <div class="settlement-completion-actions">
                 <a id="settlement-completion-back-to-cases" href="/#account">Back to your case</a>
                 <button id="settlement-completion-close-case" class="completion-primary" type="button" hidden>Close your case</button>
-                <button id="settlement-completion-open-case" class="completion-primary" type="button" hidden>Open your case</button>
+                <button id="settlement-completion-open-case" class="completion-primary" type="button" hidden>Reopen your case and back to attempt</button>
               </div>
             </article>
           </div>
@@ -9858,6 +9858,7 @@
           settlementCompletionLatestOrdinal = Math.max(1, Number(assetAttempt),
             ...workspace.attempts.map((attempt) => attempt.ordinal));
           settlementCompletionBackToCases.textContent = `Back to attempt #${settlementCompletionLatestOrdinal}`;
+          settlementCompletionOpenCase.textContent = `Reopen your case and back to attempt #${settlementCompletionLatestOrdinal}`;
           settlementCompletionBackToCases.href =
             `/case/assets?case_id=${encodeURIComponent(workspace.case.id)}&attempt=${settlementCompletionLatestOrdinal}`;
           settlementCompletionBackToCases.hidden = settlementCompletionCaseClosed;

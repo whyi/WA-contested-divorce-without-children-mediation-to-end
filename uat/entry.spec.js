@@ -218,7 +218,9 @@ async function expectAcceptedCompletionProgress(page) {
 async function expectClosedCompletionActions(page) {
   const actions = page.locator("#settlement-completion-page .settlement-completion-actions > :visible");
   await expect(actions).toHaveCount(1);
-  await expect(actions).toHaveText(["Open your case"]);
+  const returnTarget = await page.locator("#settlement-completion-back-to-cases").getAttribute("href");
+  const latestOrdinal = new URL(returnTarget, origin).searchParams.get("attempt");
+  await expect(actions).toHaveText([`Reopen your case and back to attempt #${latestOrdinal}`]);
   await expect(page.locator("#settlement-completion-open-case")).toBeEnabled();
   await expect(page.locator("#settlement-completion-close-case")).toBeHidden();
   await expect(page.locator("#settlement-completion-back-to-cases")).toBeHidden();
@@ -611,7 +613,7 @@ for (const kind of ["asset", "selection"]) {
         await page.getByRole("button", { name: "Offer Accepted", exact: true }).click();
         await expectClosedCompletionActions(page);
         expect(reopenRequests).toBe(0);
-        await page.getByRole("button", { name: "Open your case", exact: true }).click();
+        await page.getByRole("button", { name: "Reopen your case and back to attempt #3", exact: true }).click();
         await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
         expect(reopenRequests).toBe(1);
         const latest = page.locator('#demo-attempt-progress-list button[data-ordinal="3"]');
@@ -664,7 +666,7 @@ for (const failure of ["unavailable", "still-closed", "wrong-case"]) {
       },
     });
     await page.goto(`${origin}${completionUrl}&view=closed`);
-    const open = page.getByRole("button", { name: "Open your case", exact: true });
+    const open = page.getByRole("button", { name: "Reopen your case and back to attempt #1", exact: true });
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       await open.click();
       await expect(page.locator("#settlement-completion-status")).toHaveAttribute("data-kind", "error");
@@ -698,7 +700,7 @@ test("completion prevents duplicate reopening while its lifecycle request is pen
     },
   });
   await page.goto(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
-  const open = page.getByRole("button", { name: "Open your case", exact: true });
+  const open = page.getByRole("button", { name: "Reopen your case and back to attempt #1", exact: true });
   await open.click();
   await expect(open).toBeDisabled();
   await open.dispatchEvent("click");
