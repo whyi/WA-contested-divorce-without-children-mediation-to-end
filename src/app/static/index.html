@@ -544,6 +544,7 @@
         font-size: 13px;
       }
       .account-form input:focus { outline:3px solid rgba(47, 102, 82, .17); border-color:var(--green); }
+      .account-form input[readonly] { border-color: transparent; background: transparent; padding-left: 0; box-shadow: none; }
       .account-form .button { width: 100%; margin-top: 3px; cursor: pointer; }
       .account-status { min-height: 18px; margin: 3px 0 0; color:var(--theme-text-526459); font-size: 11px; line-height: 1.5; }
       .account-status[data-kind="error"] { color:var(--theme-text-a1382d); }
@@ -1956,7 +1957,7 @@
               </form>
               <form class="account-form" id="login-form" hidden>
                 <label for="login-email">Email or username
-                  <input id="login-email" name="email" type="text" autocomplete="username" maxlength="320" required>
+                  <input id="login-email" name="email" type="text" autocomplete="username" maxlength="320" readonly required>
                 </label>
                 <label for="login-password">Password
                   <input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required>
@@ -4347,6 +4348,7 @@
           verifyForm.hidden = selected !== "verify";
           document.getElementById("auth-entry-content").hidden = signupSelected || loginSelected || selected === "verify";
           document.getElementById("auth-back").hidden = !signupSelected && !loginSelected && selected !== "verify";
+          document.getElementById("auth-back").textContent = loginSelected ? "Use a different account" : "Back";
           document.getElementById("account-title").textContent = signupSelected
             ? "Sign up for Casework" : loginSelected ? "Log in to Casework"
               : selected === "verify" ? "Verify your email" : "Log in or sign up for free";

@@ -22,7 +22,7 @@ const missingWizardAttempt = {
   report: null,
 };
 
-async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, workspaceStarted = false, intake = {}, wizardAttempt = missingWizardAttempt, extraReads = {}, mutationHandler = null } = {}) {
+async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, loginStatus = 200, workspaceStarted = false, intake = {}, wizardAttempt = missingWizardAttempt, extraReads = {}, mutationHandler = null } = {}) {
   let signedIn = authenticated;
   const unexpected = [];
   const requests = [];
@@ -44,8 +44,9 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
     let status = 200;
     let body;
     if (path === "/api/auth/login" && request.method() === "POST") {
-      signedIn = true;
-      body = { mfa_required: false };
+      status = loginStatus;
+      signedIn = status === 200;
+      body = signedIn ? { mfa_required: false } : { detail: "Invalid email or password." };
     } else if (path === `/cases/${caseId}/workspace-entry` && request.method() === "POST") {
       workspaceStarted = true;
       body = { workspace_started: true };
@@ -136,6 +137,19 @@ async function signIn(page) {
   await page.locator("#login-password").fill("synthetic-password-not-a-secret");
   await page.locator("#login-form button[type=submit]").click();
 }
+
+test("login locks the entered account and permits an explicit account change", async ({ page }) => {
+  const fixture = await installFixtures(page, { loginStatus: 401 });
+  await signIn(page);
+  await expect(page.locator("#account-status")).toHaveText("Invalid email or password.");
+  await expect(page.locator("#login-email")).toHaveAttribute("readonly", "");
+  await expect(page.locator("#login-email")).toHaveValue("synthetic@example.invalid");
+  await page.getByRole("button", { name: "Use a different account", exact: true }).click();
+  await expect(page.locator("#email-entry-form")).toBeVisible();
+  await expect(page.locator("#login-password")).toHaveValue("");
+  await expect(page.locator("#login-form")).toBeHidden();
+  fixture.verify();
+});
 
 test("login entry shows only email-first entry and Google, without old tabs or preview copy", async ({ page }) => {
   const fixture = await installFixtures(page);
