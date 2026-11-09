@@ -34,7 +34,7 @@ class ClosedCaseDashboardTests(unittest.TestCase):
 
     def test_close_requires_confirmation_and_reopen_refreshes_dashboard(self) -> None:
         close_fn = PAGE[PAGE.index("async function closeCaseFromWorkspace") :][:1500]
-        self.assertIn("confirm(", close_fn)
+        self.assertIn("await showAppConfirm(", close_fn)
         self.assertIn("loadDashboardStatus", close_fn)
         reopen_fn = PAGE[PAGE.index("async function reopenClosedCase") :][:1500]
         self.assertIn("loadDashboardStatus", reopen_fn)
@@ -47,7 +47,7 @@ class ClosedCaseDashboardTests(unittest.TestCase):
         ):
             self.assertIn(f'id="{element_id}"', PAGE)
         self.assertIn('Type DELETE MY ACCOUNT', PAGE)
-        self.assertIn('Type DELETE CASE', PAGE)
+        self.assertIn('"DELETE CASE"', PAGE)
         self.assertIn('Permanently delete this saved file? This cannot be undone.', PAGE)
         self.assertIn('confirmation: "DELETE MATERIAL"', PAGE)
         self.assertIn("/permanent-deletion`", PAGE)

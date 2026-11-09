@@ -749,6 +749,30 @@
       .demo-wizard-status[hidden] { display: none; }
       .demo-wizard-dialog { width: min(520px, calc(100% - 32px)); padding: 0; border:1px solid var(--theme-border-d6e0d7); border-radius: 12px; color:var(--ink); box-shadow: 0 24px 80px rgba(20, 35, 25, .28); }
       .demo-wizard-dialog::backdrop { background:rgba(20, 35, 27, .58); }
+      .app-dialog { width:min(560px, calc(100% - 32px)); max-height:min(88vh, 760px); overflow:auto; padding:0; border:1px solid var(--border-color); border-radius:20px; color:var(--text-primary); background:var(--surface-background); box-shadow:0 28px 90px rgba(12, 24, 17, .32); }
+      .app-dialog::backdrop { background:rgba(14, 24, 18, .62); backdrop-filter:blur(3px); }
+      .app-dialog[open] { animation:app-dialog-enter .18s ease-out; }
+      .app-dialog-content { padding:clamp(22px, 5vw, 34px); }
+      .app-dialog-accent { width:48px; height:4px; margin-bottom:22px; border-radius:4px; background:var(--green); }
+      .app-dialog[data-tone="danger"] .app-dialog-accent { background:#b64232; }
+      .app-dialog .eyebrow { margin-bottom:9px; color:var(--green-dark); font-size:11px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+      .app-dialog h2 { margin:0 0 10px; font-family:Georgia, "Times New Roman", serif; font-size:clamp(25px, 5vw, 32px); font-weight:500; line-height:1.15; }
+      .app-dialog-description { margin:0; color:var(--text-secondary); font-size:14px; line-height:1.65; white-space:pre-line; }
+      .app-dialog-field { display:grid; gap:7px; margin-top:20px; color:var(--text-primary); font-size:13px; font-weight:700; }
+      .app-dialog-field input, .app-dialog-field textarea { width:100%; min-height:46px; padding:11px 12px; border:1px solid var(--border-color); border-radius:9px; color:var(--text-primary); background:var(--surface-background); font:inherit; font-size:14px; }
+      .app-dialog-field textarea { min-height:150px; resize:vertical; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; line-height:1.5; }
+      .app-dialog-field input:focus-visible, .app-dialog-field textarea:focus-visible { outline:3px solid color-mix(in srgb, var(--green) 25%, transparent); border-color:var(--green); }
+      .app-dialog-status { min-height:1.4em; margin:9px 0 0; color:var(--text-secondary); font-size:12px; }
+      .app-dialog-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:24px; }
+      .app-dialog-actions button { min-height:44px; padding:0 16px; border:1px solid var(--border-color); border-radius:9px; color:var(--text-primary); background:var(--surface-background); cursor:pointer; font:inherit; font-size:13px; font-weight:750; transition:transform .16s ease, background .16s ease; }
+      .app-dialog-actions button:hover:not(:disabled) { transform:translateY(-1px); background:var(--surface-raised); }
+      .app-dialog-actions button:focus-visible { outline:3px solid color-mix(in srgb, var(--green) 30%, transparent); outline-offset:2px; }
+      .app-dialog-actions .app-dialog-confirm { border-color:var(--green-dark); color:#fff; background:var(--green-dark); }
+      .app-dialog[data-tone="danger"] .app-dialog-actions .app-dialog-confirm { border-color:#9c3228; background:#9c3228; }
+      .app-dialog-actions .app-dialog-confirm:disabled { opacity:.5; cursor:not-allowed; }
+      .app-dialog-actions [hidden] { display:none; }
+      @keyframes app-dialog-enter { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+      @media (prefers-reduced-motion: reduce) { .app-dialog[open] { animation:none; } }
       .demo-wizard-dialog-content { padding: 25px; }
       .demo-wizard-dialog h2 { margin-bottom: 10px; font-family: Georgia, "Times New Roman", serif; font-size: 25px; font-weight: 500; }
       .demo-wizard-dialog p { color:var(--theme-text-536258); font-size: 14px; line-height: 1.65; }
@@ -1659,6 +1683,28 @@
     </style>
   </head>
   <body>
+    <dialog class="app-dialog" id="app-dialog" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-description">
+      <div class="app-dialog-content">
+        <div class="app-dialog-accent" aria-hidden="true"></div>
+        <p class="eyebrow">Casework</p>
+        <h2 id="app-dialog-title"></h2>
+        <p class="app-dialog-description" id="app-dialog-description"></p>
+        <label class="app-dialog-field" id="app-dialog-input-wrap" hidden>
+          <span id="app-dialog-input-label"></span>
+          <input id="app-dialog-input" type="text" aria-label="Confirmation phrase" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="app-dialog-field" id="app-dialog-copy-wrap" hidden>
+          <span>Diagnostic details</span>
+          <textarea id="app-dialog-copy-text" readonly></textarea>
+        </label>
+        <p class="app-dialog-status" id="app-dialog-status" role="status" aria-live="polite"></p>
+        <div class="app-dialog-actions">
+          <button id="app-dialog-cancel" type="button">Cancel</button>
+          <button id="app-dialog-copy" type="button" hidden>Copy details</button>
+          <button class="app-dialog-confirm" id="app-dialog-confirm" type="button">Continue</button>
+        </div>
+      </div>
+    </dialog>
     <div class="preview-bar">
       <strong>Product preview</strong> &nbsp;·&nbsp; Accounts are in preview; case workspaces are not open yet.
     </div>
@@ -2472,6 +2518,20 @@
         const themeSelect = document.getElementById("theme-select");
         const themeStatus = document.getElementById("theme-status");
         const themeRoot = document.documentElement;
+        const appDialog = document.getElementById("app-dialog");
+        const appDialogTitle = document.getElementById("app-dialog-title");
+        const appDialogDescription = document.getElementById("app-dialog-description");
+        const appDialogInputWrap = document.getElementById("app-dialog-input-wrap");
+        const appDialogInputLabel = document.getElementById("app-dialog-input-label");
+        const appDialogInput = document.getElementById("app-dialog-input");
+        const appDialogCopyWrap = document.getElementById("app-dialog-copy-wrap");
+        const appDialogCopyText = document.getElementById("app-dialog-copy-text");
+        const appDialogStatus = document.getElementById("app-dialog-status");
+        const appDialogCancel = document.getElementById("app-dialog-cancel");
+        const appDialogCopy = document.getElementById("app-dialog-copy");
+        const appDialogConfirm = document.getElementById("app-dialog-confirm");
+        const appDialogQueue = [];
+        let activeAppDialog = null;
         const themeColorMeta = document.querySelector('meta[name="theme-color"]');
         const themePreferenceKey = "casework-theme";
         let systemThemeQuery = null;
@@ -2497,6 +2557,121 @@
             themeStatus.textContent = `Theme set to ${preference === "system" ? `System (${resolvedTheme})` : preference}.`;
           }
         }
+
+        function showNextAppDialog() {
+          if (activeAppDialog || appDialogQueue.length === 0) return;
+          const request = appDialogQueue.shift();
+          activeAppDialog = request;
+          const options = request.options;
+          appDialogTitle.textContent = options.title;
+          appDialogDescription.textContent = options.message;
+          appDialogDescription.hidden = !options.message;
+          appDialog.dataset.tone = options.tone === "danger" ? "danger" : "default";
+          appDialogInputWrap.hidden = !options.confirmationPhrase;
+          appDialogInputLabel.textContent = options.confirmationPhrase
+            ? `Type ${options.confirmationPhrase} exactly to continue`
+            : "";
+          appDialogInput.value = "";
+          appDialogCopyWrap.hidden = !options.copyText;
+          appDialogCopyText.value = options.copyText || "";
+          appDialogCopy.hidden = !options.copyText;
+          appDialogStatus.textContent = "";
+          appDialogCancel.hidden = options.allowCancel === false;
+          appDialogCancel.textContent = options.cancelLabel || "Cancel";
+          appDialogConfirm.textContent = options.confirmLabel || "Continue";
+          appDialogConfirm.disabled = Boolean(options.confirmationPhrase);
+          try {
+            appDialog.showModal();
+            if (options.confirmationPhrase) appDialogInput.focus();
+            else appDialogConfirm.focus();
+          } catch (error) {
+            activeAppDialog = null;
+            request.reject(error);
+            showNextAppDialog();
+          }
+        }
+
+        function showAppDialog(options) {
+          return new Promise((resolve, reject) => {
+            appDialogQueue.push({ options, resolve, reject, result: false });
+            showNextAppDialog();
+          });
+        }
+
+        function finishAppDialog(result) {
+          if (!activeAppDialog || !appDialog.open) return;
+          activeAppDialog.result = result;
+          appDialog.close();
+        }
+
+        function showAppConfirm(message, {
+          title = "Please confirm",
+          confirmLabel = "Continue",
+          cancelLabel = "Cancel",
+          tone = "default",
+        } = {}) {
+          return showAppDialog({ title, message, confirmLabel, cancelLabel, tone, allowCancel: true });
+        }
+
+        function showAppPhraseConfirmation(message, confirmationPhrase, {
+          title = "Confirm permanent deletion",
+          confirmLabel = "Delete permanently",
+        } = {}) {
+          return showAppDialog({
+            title,
+            message,
+            confirmationPhrase,
+            confirmLabel,
+            cancelLabel: "Cancel",
+            tone: "danger",
+            allowCancel: true,
+          });
+        }
+
+        function showAppNotice(message, { title = "Notice", confirmLabel = "Got it" } = {}) {
+          return showAppDialog({ title, message, confirmLabel, allowCancel: false });
+        }
+
+        appDialog.addEventListener("cancel", (event) => {
+          event.preventDefault();
+          finishAppDialog(false);
+        });
+        appDialog.addEventListener("click", (event) => {
+          if (event.target === appDialog) finishAppDialog(false);
+        });
+        appDialog.addEventListener("close", () => {
+          if (!activeAppDialog) return;
+          const request = activeAppDialog;
+          activeAppDialog = null;
+          request.resolve(request.result);
+          showNextAppDialog();
+        });
+        appDialogCancel.addEventListener("click", () => finishAppDialog(false));
+        appDialogConfirm.addEventListener("click", () => {
+          if (activeAppDialog?.options.confirmationPhrase
+            && appDialogInput.value !== activeAppDialog.options.confirmationPhrase) return;
+          finishAppDialog(true);
+        });
+        appDialogInput.addEventListener("input", () => {
+          appDialogConfirm.disabled = Boolean(activeAppDialog?.options.confirmationPhrase)
+            && appDialogInput.value !== activeAppDialog.options.confirmationPhrase;
+        });
+        appDialogInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" && !appDialogConfirm.disabled) {
+            event.preventDefault();
+            finishAppDialog(true);
+          }
+        });
+        appDialogCopy.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(appDialogCopyText.value);
+            appDialogStatus.textContent = "Diagnostic details copied.";
+          } catch {
+            appDialogCopyText.focus();
+            appDialogCopyText.select();
+            appDialogStatus.textContent = "Clipboard access is unavailable. The details are selected; copy them manually.";
+          }
+        });
 
         if (themeSelect) {
           const savedPreference = themeRoot.dataset.themePreference || "system";
@@ -3047,7 +3222,10 @@
             }
             if (response.status === 409 && result.detail?.code === "filename_conflict") {
               if (identity.overwriteId) throw new Error("The file with this name changed. Reload before retrying.");
-              if (!window.confirm(`A file named "${file.name}" already exists. Overwrite it?`)) {
+              if (!await showAppConfirm(
+                `A file named "${file.name}" already exists. Replacing it will overwrite the saved copy.`,
+                { title: "File already exists", confirmLabel: "Overwrite file", tone: "danger" },
+              )) {
                 throw new Error(`Upload cancelled: "${file.name}" was not overwritten.`);
               }
               identity.overwriteId = result.detail.document_id;
@@ -3103,7 +3281,10 @@
               return;
             }
             if (existingOfferSaved?.exists === true) {
-              if (!window.confirm("Remove the saved offer or counteroffer from this case? Uploaded files remain in Case file management.")) {
+              if (!await showAppConfirm(
+                "Remove the saved offer or counteroffer from this case? Uploaded files remain in Case file management.",
+                { title: "Remove saved offer details", confirmLabel: "Remove details", tone: "danger" },
+              )) {
                 caseOfferToggle.checked = true;
                 return;
               }
@@ -3862,7 +4043,10 @@
             "Notes and attachments are saved to your case. They are not automatically sent or analyzed.";
           caseAssetElement("settlement-demo-mark-sent").disabled = true;
           caseAssetElement("settlement-demo-mark-sent").addEventListener("click", async () => {
-            if (!window.confirm("Confirm that you reviewed both downloaded documents and delivered them to your mediator? This attempt's proposal values will become read-only.")) return;
+            if (!await showAppConfirm(
+              "Confirm that you reviewed both downloaded documents and delivered them to your mediator? This attempt's proposal values will become read-only.",
+              { title: "Confirm proposal delivery", confirmLabel: "Yes, I reviewed and delivered both", cancelLabel: "Not yet" },
+            )) return;
             if (await saveCaseMediation("sent", { selection:caseMediationSelection(), confirm:true })) {
               await loadCaseWorkspace();
             }
@@ -3881,7 +4065,10 @@
             if (!caseMediationState || caseMediationBusy || caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal
               || caseMediationState.stopped || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized") return;
             if (caseMediationState.attempt_ordinal >= caseMediationState.attempt_limit) {
-              window.alert("Upgrade your plan or purchase attempt credits to prepare another attempt. Your counteroffer notes and files remain saved.");
+              await showAppNotice(
+                "Upgrade your plan or purchase attempt credits to prepare another attempt. Your counteroffer notes and files remain saved.",
+                { title: "More attempts need credits" },
+              );
               return;
             }
             clearTimeout(caseMediationTimer);
@@ -3897,7 +4084,10 @@
             window.location.assign(`/settlement-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`);
           });
           caseAssetElement("settlement-demo-stop").addEventListener("click", async () => {
-            if (!window.confirm("Stop this mediation-preparation workflow? Your case materials remain saved and the case is not permanently deleted.")) return;
+            if (!await showAppConfirm(
+              "Stop this mediation-preparation workflow? Your case materials remain saved and the case is not permanently deleted.",
+              { title: "Stop this workflow?", confirmLabel: "Stop workflow", tone: "danger" },
+            )) return;
             if (await saveCaseMediation("stop", { confirm:true })) {
               window.location.assign(`/rejection-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`);
             }
@@ -4046,7 +4236,10 @@
               result = await response.json();
               if (response.status === 401) showSignIn("Your session has expired. Please sign in again.");
               if (response.status === 409 && result.detail?.code === "filename_conflict" && !identity.overwriteId) {
-                if (!window.confirm(`A file named "${file.name}" already exists. Overwrite it?`)) throw new Error(`Upload cancelled: "${file.name}" was not overwritten.`);
+                if (!await showAppConfirm(
+                  `A file named "${file.name}" already exists. Replacing it will overwrite the saved copy.`,
+                  { title: "File already exists", confirmLabel: "Overwrite file", tone: "danger" },
+                )) throw new Error(`Upload cancelled: "${file.name}" was not overwritten.`);
                 identity.overwriteId = result.detail.document_id;
                 continue;
               }
@@ -4275,7 +4468,10 @@
             remove.className = "demo-file-action";
             remove.textContent = managerMode ? "Delete" : "Permanently delete";
             remove.addEventListener("click", async () => {
-              if (!window.confirm("Permanently delete this saved file? This cannot be undone.")) return;
+              if (!await showAppConfirm(
+                "Permanently delete this saved file? This cannot be undone.",
+                { title: "Delete saved file?", confirmLabel: "Delete permanently", tone: "danger" },
+              )) return;
               remove.disabled = true;
               const status = document.getElementById("case-saved-files-status");
               try {
@@ -4721,7 +4917,10 @@
               const records = await runDemoFilesTransaction("readonly", store =>
                 store.index("caseId").getAll(demoCaseFilesCaseId));
               const duplicate = records.find(record => record.name === file.name);
-              if (duplicate && !window.confirm(`A file named "${file.name}" already exists. Overwrite it?`)) {
+              if (duplicate && !await showAppConfirm(
+                `A file named "${file.name}" already exists. Replacing it will overwrite the saved copy.`,
+                { title: "File already exists", confirmLabel: "Overwrite file", tone: "danger" },
+              )) {
                 throw new Error(`Upload cancelled: "${file.name}" was not overwritten.`);
               }
               const now = new Date().toISOString();
@@ -4762,7 +4961,10 @@
             demoCaseFilesStatus.dataset.kind = "error";
             return;
           }
-          if (!window.confirm(`Delete ${current.name} from this browser?`)) return;
+          if (!await showAppConfirm(
+            `Delete ${current.name} from this browser? This only removes the browser-stored copy.`,
+            { title: "Delete saved file?", confirmLabel: "Delete file", tone: "danger" },
+          )) return;
           demoCaseFilesStatus.textContent = `Deleting ${current.name}…`;
           demoCaseFilesStatus.dataset.kind = "";
           try {
@@ -6306,8 +6508,9 @@
 
         async function closeCaseFromWorkspace() {
           if (!settlementCaseId) return;
-          const confirmed = window.confirm(
+          const confirmed = await showAppConfirm(
             "Close this case? Nothing is deleted, your attempt credits do not expire, and you can reopen it from Closed cases at any time.",
+            { title: "Close this case?", confirmLabel: "Close case" },
           );
           if (!confirmed) return;
           settlementCaseClose.disabled = true;
@@ -6328,10 +6531,12 @@
         async function permanentlyDeleteCaseFromWorkspace() {
           if (!settlementCaseId) return;
           const caseId = settlementCaseId;
-          const phrase = window.prompt(
-            "Permanent deletion is irreversible and is not case closure. This removes this case's active application data and known S3 object versions. Provider-managed database backup/snapshot purge is not verified by this deployment. Type DELETE CASE to continue.",
+          const confirmed = await showAppPhraseConfirmation(
+            "Permanent deletion is irreversible and is not case closure. This removes this case's active application data and known S3 object versions. Provider-managed database backup/snapshot purge is not verified by this deployment.",
+            "DELETE CASE",
+            { title: "Permanently delete this case?" },
           );
-          if (phrase !== "DELETE CASE") return;
+          if (!confirmed) return;
           settlementCaseDelete.disabled = true;
           try {
             await settlementApi(`/cases/${encodeURIComponent(caseId)}/permanent-deletion`, {
@@ -6340,8 +6545,9 @@
             });
             settlementCaseId = null;
             await loadDashboardStatus();
-            window.alert(
+            await showAppNotice(
               "The case was removed from active application data and known S3 object versions. Provider-managed database backups and snapshots are not configured or verified by this deployment.",
+              { title: "Case deletion completed" },
             );
           } catch (error) {
             settlementCaseActionStatus.textContent = error instanceof Error
@@ -6455,13 +6661,13 @@
           copy.type = "button";
           copy.textContent = "Copy safe diagnostic details";
           copy.addEventListener("click", async () => {
-            try {
-              await navigator.clipboard.writeText(diagnostics);
-              copy.textContent = "Diagnostic details copied";
-            } catch {
-              window.prompt("Copy these non-sensitive diagnostic details:", diagnostics);
-              copy.textContent = "Select the diagnostic details if not copied";
-            }
+            await showAppDialog({
+              title: "Safe diagnostic details",
+              message: "Share these non-sensitive details with support. They do not include case documents or account credentials.",
+              copyText: diagnostics,
+              confirmLabel: "Close",
+              allowCancel: false,
+            });
           });
           actions.append(" ", copy);
           if (failureSupportContactUrl) {
@@ -8739,7 +8945,7 @@
         settlementCaseDelete.addEventListener("click", () => {
           void permanentlyDeleteCaseFromWorkspace();
         });
-        accountDeletionForm.addEventListener("submit", (event) => {
+        accountDeletionForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           if (!accountDeletionForm.reportValidity()) return;
           const form = new FormData(accountDeletionForm);
@@ -8747,8 +8953,9 @@
             accountDeletionStatus.textContent = 'Type "DELETE MY ACCOUNT" exactly to continue.';
             return;
           }
-          if (!window.confirm(
+          if (!await showAppConfirm(
             "Permanently delete your account and every case you own? This cannot be undone and is separate from case closure.",
+            { title: "Permanently delete your account?", confirmLabel: "Delete account", tone: "danger" },
           )) return;
           accountDeletionSubmit.disabled = true;
           accountDeletionStatus.textContent = "Removing account data and object versions…";
@@ -8903,10 +9110,11 @@
           if (settlementDemoResponseOutcome !== "rejected") return;
           continueSettlementDemoAttempt();
         });
-        settlementDemoStop.addEventListener("click", () => {
+        settlementDemoStop.addEventListener("click", async () => {
           if (settlementDemoResponseOutcome !== "rejected") return;
-          if (!window.confirm(
+          if (!await showAppConfirm(
             "Stop this fictional workflow? No real case will be closed and no data will be saved.",
+            { title: "Stop this demo workflow?", confirmLabel: "Stop workflow" },
           )) return;
           window.location.assign(
             `/demo/rejection-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`,
@@ -9421,7 +9629,10 @@
             if (!response.ok && response.status !== 401) throw new Error("Log out failed. Please retry.");
             window.location.replace("/");
           } catch (error) {
-            window.alert(error instanceof Error ? error.message : "Log out failed. Please retry.");
+            await showAppNotice(
+              error instanceof Error ? error.message : "Log out failed. Please retry.",
+              { title: "Could not log out" },
+            );
             logoutButton.disabled = false;
           }
         });
