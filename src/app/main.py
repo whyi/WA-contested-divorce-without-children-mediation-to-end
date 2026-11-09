@@ -64,6 +64,7 @@ from app.models import (
     DocumentExtractionJob,
     NegotiationEvent,
     SettlementNegotiationAttempt,
+    SettlementOfferResponse,
     User,
 )
 from app.property_tracing import (
@@ -408,6 +409,7 @@ class CaseWorkspaceRead(BaseModel):
     attempts: list[WorkspaceAttemptRead]
     documents: list[WorkspaceDocumentRead]
     asset_overview: AssetOverviewRead
+    accepted_offer_url: str | None = None
 
 
 class ClassifiedPropertyAsset(PropertyAsset):
@@ -781,6 +783,22 @@ def read_case_workspace(case_id: UUID, response: Response, db: DbSession) -> Cas
             .where(SettlementNegotiationAttempt.case_id == case_id)
             .order_by(SettlementNegotiationAttempt.attempt_ordinal)
         ).all()
+        latest = attempts[-1] if attempts else None
+        ordinal = latest.attempt_ordinal if latest is not None else 1
+        mediation = (case.metadata_json or {}).get("asset_mediation", {}).get(str(ordinal), {})
+        accepted_offer_url = None
+        if case.closed_reason != "stopped" and not mediation.get("stopped"):
+            if mediation.get("sent") and mediation.get("outcome") == "accepted":
+                accepted_offer_url = f"/settlement-completion?case_id={case.id}&asset_attempt={ordinal}"
+            elif latest is not None and latest.sent_confirmed_at is not None:
+                outcome = db.scalar(
+                    select(SettlementOfferResponse.outcome).where(
+                        SettlementOfferResponse.case_id == case.id,
+                        SettlementOfferResponse.selection_id == latest.selection_id,
+                    )
+                )
+                if outcome == "accepted":
+                    accepted_offer_url = f"/settlement-completion?case_id={case.id}&selection_id={latest.selection_id}"
         documents = db.scalars(
             select(Document)
             .where(
@@ -799,6 +817,7 @@ def read_case_workspace(case_id: UUID, response: Response, db: DbSession) -> Cas
             asset_overview=AssetOverviewRead.model_validate(
                 (case.metadata_json or {}).get("asset_overview", {})
             ),
+            accepted_offer_url=accepted_offer_url,
             attempts=[
                 WorkspaceAttemptRead(
                     ordinal=attempt.attempt_ordinal,
