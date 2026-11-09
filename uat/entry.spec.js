@@ -1810,7 +1810,7 @@ for (const outcome of ["accepted", "rejected"]) {
       await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
       expect(state.completed).toBe(false);
     } else {
-      await expect(page.locator("#settlement-demo-next-attempt-case")).toBeDisabled();
+      await expect(page.locator("#settlement-demo-next-attempt-case")).toHaveAttribute("aria-disabled", "true");
       await page.locator("#settlement-demo-stop-case").click();
       await expect(page.locator("#app-dialog")).toBeVisible();
       await expect(page.locator("#app-dialog-title")).toHaveText("Stop this workflow?");
@@ -1899,6 +1899,101 @@ test("paid actual response uploads an XLSX with original-name overwrite confirma
   await expect(page.locator("#settlement-demo-response-files-case")).toBeHidden();
   await fixture.verify();
 });
+
+for (const { ordinal, limit } of [{ ordinal:1, limit:1 }, { ordinal:3, limit:3 }, { ordinal:2, limit:3 }]) {
+  test(`rejected offer continuation uses quota dialog only when exhausted at ${ordinal}/${limit}`, async ({ page }) => {
+    const state = { revision:1, attempt_ordinal:ordinal, attempt_limit:limit, sent:true, outcome:"rejected",
+      notes:"Saved response", document_ids:[], sent_filenames:[], selection:null, downloaded_formats:[],
+      stopped:false, completed:false, accepted_document_ids:[] };
+    const nextState = { ...state, revision:0, attempt_ordinal:ordinal + 1, sent:false, outcome:null };
+    const currentWorkspace = { ...workspace,
+      attempts:[{ ordinal, frozen:true, profile:{ metadata:{ asset_overview:workspace.asset_overview } } }],
+    };
+    const mutations = [];
+    const fixture = await installFixtures(page, {
+      authenticated:true,
+      extraReads:{
+        [`/cases/${caseId}/workspace`]:currentWorkspace,
+        [`/cases/${caseId}/asset-mediation/${ordinal}`]:state,
+        [`/cases/${caseId}/asset-mediation/${ordinal + 1}`]:nextState,
+      },
+      mutationHandler:request => {
+        if (!request.url().endsWith("/asset-mediation")) return null;
+        const payload = request.postDataJSON();
+        mutations.push(payload.action);
+        if (payload.action === "response") {
+          state.revision++;
+          return { body:state };
+        }
+        if (payload.action === "continue") {
+          currentWorkspace.attempts.push({ ordinal:ordinal + 1, frozen:false,
+            profile:{ metadata:{ asset_overview:workspace.asset_overview } } });
+          return { body:nextState };
+        }
+        return null;
+      },
+    });
+    await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+    const next = page.locator("#settlement-demo-next-attempt-case");
+    await expect(next).toBeVisible();
+    if (ordinal >= limit) {
+      await expect(next).toHaveAttribute("aria-disabled", "true");
+      const currentUrl = page.url();
+      await next.scrollIntoViewIfNeeded();
+      const bounds = await next.boundingBox();
+      await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await expect(page.locator("#app-dialog-title")).toHaveText("More attempts need credits");
+      await expect(page.locator("#app-dialog-description")).toContainText("Upgrade your plan or purchase attempt credits");
+      await page.locator("#app-dialog-confirm").click();
+      await page.reload();
+      await expect(next).toBeVisible();
+      await expect(next).toHaveAttribute("aria-disabled", "true");
+      await expect(next).toHaveJSProperty("disabled", false);
+      await next.focus();
+      await expect(next).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(page.locator("#app-dialog")).toBeVisible();
+      await expect(page.locator("#app-dialog-title")).toHaveText("More attempts need credits");
+      await page.locator("#app-dialog-confirm").click();
+      expect(mutations).toEqual([]);
+      expect(page.url()).toBe(currentUrl);
+    } else {
+      await expect(next).toHaveAttribute("aria-disabled", "false");
+      await next.click();
+      await expect(page.locator('#demo-attempt-progress-list button[aria-current="step"]')).toContainText("3rd Attempt");
+      expect(mutations).toEqual(["response", "continue"]);
+      await expect(page.locator("#app-dialog")).not.toBeVisible();
+    }
+    fixture.verify();
+  });
+}
+
+for (const inactive of ["stopped", "closed", "finalized", "historical"]) {
+  test(`rejected offer continuation remains disabled for ${inactive} cases`, async ({ page }) => {
+    const state = { revision:1, attempt_ordinal:1, attempt_limit:1, sent:true, outcome:"rejected",
+      notes:"", document_ids:[], sent_filenames:[], selection:null, downloaded_formats:[],
+      stopped:inactive === "stopped", completed:false, accepted_document_ids:[] };
+    const currentWorkspace = { ...workspace,
+      case:{ ...workspace.case,
+        ...(inactive === "closed" ? { closed_at:"2026-01-01T00:00:00Z" } : {}),
+        ...(inactive === "finalized" ? { status:"finalized" } : {}),
+      },
+      attempts:[{ ordinal:1, frozen:true, profile:{ metadata:{ asset_overview:workspace.asset_overview } } },
+        ...(inactive === "historical" ? [{ ordinal:2, frozen:false }] : [])],
+    };
+    const fixture = await installFixtures(page, {
+      authenticated:true,
+      extraReads:{
+        [`/cases/${caseId}/workspace`]:currentWorkspace,
+        [`/cases/${caseId}/asset-mediation/1`]:state,
+      },
+    });
+    await page.goto(`${origin}/case/assets?case_id=${caseId}${inactive === "historical" ? "&asset_attempt=1" : ""}`);
+    await expect(page.locator("#settlement-demo-next-attempt-case")).toBeDisabled();
+    await expect(page.locator("#app-dialog")).not.toBeVisible();
+    fixture.verify();
+  });
+}
 
 test("case milestone add, edit and removal persist without resetting saved balances", async ({ page }) => {
   const overview = { revision: 0, overview: { snapshots: [], milestones: [] } };
