@@ -147,6 +147,11 @@ async function signIn(page) {
 test("public landing contains only supported sections and working local links", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator("#theme-select"), `${width}px: theme selector`).toBeVisible();
+    await expect(page.locator("#theme-select"), `${width}px: theme selector accessible name`).toHaveAccessibleName("Theme");
+  }
   expect(await page.locator("main > section").evaluateAll((sections) =>
     sections.map((section) => section.id || section.className)
   )).toEqual([
@@ -161,14 +166,32 @@ test("public landing contains only supported sections and working local links", 
   fixture.verify();
 });
 
+test("public authentication pages keep the theme selector visible", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of ["/?auth=login", "/?auth=signup", "/?auth=verify", "/?auth=reset"]) {
+      await page.goto(`${origin}${path}`);
+      await expect(page.locator("#theme-select"), `${path}: theme selector`).toBeVisible();
+      await expect(page.locator("#theme-select"), `${path}: theme selector accessible name`).toHaveAccessibleName("Theme");
+    }
+  }
+  fixture.verify();
+});
+
 test("signed-in header offers Account, Your case and the existing logout action", async ({ page }) => {
   const fixture = await installFixtures(page, { authenticated: true });
-  for (const path of ["/", "/?view=home", "/?view=account"]) {
-    await page.goto(`${origin}${path}`);
-    await expect(page.locator("#account-tools-link")).toBeVisible();
-    await expect(page.locator("#your-case-entry")).toBeVisible();
-    await expect(page.locator("#logout-button")).toBeVisible();
-    await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of ["/", "/?view=home", "/?view=account"]) {
+      await page.goto(`${origin}${path}`);
+      await expect(page.locator("#theme-select"), `${path}: theme selector`).toBeVisible();
+      await expect(page.locator("#theme-select"), `${path}: theme selector accessible name`).toHaveAccessibleName("Theme");
+      await expect(page.locator("#account-tools-link")).toBeVisible();
+      await expect(page.locator("#your-case-entry")).toBeVisible();
+      await expect(page.locator("#logout-button")).toBeVisible();
+      await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
+    }
   }
   fixture.verify();
 });
@@ -2473,12 +2496,15 @@ test("accepted real page uses the exact demo guidance and only returns to its ca
     return copy.innerHTML;
   });
   await page.goto(`${origin}/demo/start?source=demo1`);
+  await expect(page.locator("#theme-select")).toBeVisible();
   await page.locator("#demo-case-documents-link").click();
   const demoQuery = new URL(page.url()).search;
   await page.goto(`${origin}/demo/settlement-completion${demoQuery}`);
+  await expect(page.locator("#theme-select")).toBeVisible();
   await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
   const demoGuidance = await guidance();
   await page.goto(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
+  await expect(page.locator("#theme-select")).toBeVisible();
   await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
   expect(await guidance()).toBe(demoGuidance);
   await expect(page.locator("#settlement-completion-demo-notice")).toBeHidden();
