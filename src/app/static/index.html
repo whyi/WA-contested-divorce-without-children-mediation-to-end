@@ -3391,9 +3391,10 @@
             item.append(name, remove);
             list.append(item);
           }
+          caseOfferToggle.disabled = caseDocumentsRestoring || caseOfferLoading || caseOfferLoadFailed;
           caseDocumentsLayout.querySelector("#demo-file-input-case").disabled = caseImportBusy || caseDocumentsRestoring;
           caseDocumentsLayout.querySelector("#demo-documents-back-case").style.pointerEvents = caseImportBusy ? "none" : "";
-          caseDocumentsLayout.querySelector("#demo-files-next-case").disabled = caseImportBusy || caseOfferLoading || caseOfferLoadFailed || caseOfferBusy || !caseSelectedDocuments.length;
+          caseDocumentsLayout.querySelector("#demo-files-next-case").disabled = caseImportBusy || caseDocumentsRestoring || caseOfferLoading || caseOfferLoadFailed || caseOfferBusy || !caseSelectedDocuments.length;
           const status = caseDocumentsLayout.querySelector("#demo-file-status-case");
           status.textContent = caseSelectedDocuments.length ? `${caseSelectedDocuments.length} file(s) selected.` : "No files selected.";
           status.removeAttribute("data-kind");
@@ -6302,6 +6303,7 @@
 
         async function restoreDocumentDraft() {
           caseDocumentsRestoring = true;
+          renderCaseSelectedDocuments();
           try {
             await loadExistingOffer();
             const draft = await localOnboardingDraft(preparationCaseId);

@@ -829,6 +829,36 @@ test("documents entry reuses the demo selection panel and never mounts the remov
   fixture.verify();
 });
 
+test("documents counteroffer waits for browser draft restoration before allowing edits", async ({ page }) => {
+  await page.addInitScript(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(IDBRequest.prototype, "onsuccess");
+    const ready = new Promise((resolve) => { window.releaseDraftRestore = resolve; });
+    Object.defineProperty(IDBRequest.prototype, "onsuccess", {
+      ...descriptor,
+      set(handler) {
+        descriptor.set.call(this, this instanceof IDBOpenDBRequest && handler
+          ? (event) => { void ready.then(() => handler.call(this, event)); }
+          : handler);
+      },
+    });
+  });
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  await expect(page.locator("#case-counteroffer-status")).toHaveText("");
+  const toggle = page.locator("#case-counteroffer-toggle");
+  await expect(toggle).toBeDisabled();
+  await expect(page.locator("#demo-file-input-case")).toBeDisabled();
+  await expect(page.locator("#demo-files-next-case")).toBeDisabled();
+  await page.evaluate(() => window.releaseDraftRestore());
+  await expect(toggle).toBeEnabled();
+  await toggle.check();
+  await page.locator("#existing-offer-notes").fill("Synthetic counteroffer notes");
+  await toggle.uncheck();
+  await toggle.check();
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic counteroffer notes");
+  fixture.verify();
+});
+
 test("documents counteroffer checkbox reveals text and file input only when checked and preserves unsaved notes", async ({ page }) => {
   const fixture = await installDocumentsFixtures(page, noOffer);
   await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
