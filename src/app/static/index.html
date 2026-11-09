@@ -4346,6 +4346,7 @@
 
         function caseMediationFrozen() {
           return Boolean(caseMediationState?.sent
+            || caseWorkspace?.case.attempts_locked_at
             || closedCaseViewMode
             || caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal
             || caseWorkspace?.attempts.find(item => item.ordinal === caseWorkspaceViewingOrdinal)?.frozen);
@@ -4413,7 +4414,8 @@
           caseAssetElement("settlement-demo-add-counteroffer").addEventListener("click", continueAttempt);
           caseAssetElement("settlement-demo-next-attempt").addEventListener("click", continueAttempt);
           caseAssetElement("settlement-demo-response-next").addEventListener("click", async () => {
-            if (closedCaseViewMode || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized") return;
+            if (closedCaseViewMode || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized"
+              || caseWorkspace.case.attempts_locked_at || caseMediationState?.attempts_locked) return;
             if (caseMediationState?.outcome !== "accepted" || !await saveCaseMediation("response")) return;
             window.location.assign(`/settlement-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`);
           });
@@ -4458,6 +4460,7 @@
           const state = caseMediationState;
           const historical = caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal;
           const inactive = historical || (caseMediationFrozen() && !state.sent) || state.stopped
+            || state.attempts_locked || caseWorkspace.case.attempts_locked_at
             || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized";
           const canContinue = !inactive && state.attempt_ordinal < state.attempt_limit;
           const sameSelection = state.selection && JSON.stringify(state.selection) === JSON.stringify(caseMediationSelection());
@@ -4511,9 +4514,11 @@
           next.hidden = ["counteroffer", "rejected"].includes(state.outcome);
           next.disabled = Boolean(inactive || caseMediationBusy || state.outcome !== "accepted");
           caseAssetElement("settlement-demo-response-status").textContent = state.stopped ? "This workflow has stopped. Your case materials remain saved."
-            : state.outcome === "accepted" ? closedCaseViewMode || caseWorkspace.case.closed_at
+            : state.outcome === "accepted" ? closedCaseViewMode || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized"
               ? "The offer was accepted. You are viewing a closed case."
-              : "The offer was accepted. Select Next to open the completion page."
+              : state.attempts_locked || caseWorkspace.case.attempts_locked_at
+                ? "The offer was accepted. This reopened case is read-only. Select Offer Accepted to view the completion page or close the case again."
+                : "The offer was accepted. Select Next to open the completion page."
               : state.outcome === "counteroffer" ? canContinue ? "Add counteroffer notes or a file, then select Next to prepare another attempt." : ""
                 : state.outcome === "rejected" ? "Choose whether to prepare another attempt or stop this workflow."
                   : state.sent ? "Mediator delivery recorded. This attempt is read-only. Select the response you received."
@@ -9764,6 +9769,8 @@
           }
         }
 
+        let settlementCompletionCaseClosed = false;
+
         async function initializeSettlementCompletionPage() {
           if (!demoSettlementCompletionMode && !await verifyWorkingPageSession()) return;
           document.body.dataset.settlementCompletionPage = "true";
@@ -9784,6 +9791,7 @@
           const caseId = query.get("case_id");
           const selectionId = query.get("selection_id");
           const assetAttempt = query.get("asset_attempt");
+          let completionCase = null;
           if (closedCaseViewMode) {
             settlementCompletionBackToCases.href = "/?view=account";
             try {
@@ -9803,6 +9811,7 @@
                 || acceptedTarget.searchParams.get("selection_id") !== selectionId) {
                 throw new Error("The requested offer is not the accepted offer for this closed case. Return to My Account.");
               }
+              completionCase = saved.case;
             } catch (error) {
               settlementCompletionStatus.dataset.kind = "error";
               settlementCompletionStatus.textContent = error instanceof Error
@@ -9811,8 +9820,23 @@
             }
           }
           if (caseId && (assetAttempt || selectionId)) {
+            try {
+              if (!completionCase) {
+                const saved = await settlementApi(`/cases/${encodeURIComponent(caseId)}/workspace`);
+                completionCase = saved.case;
+              }
+              if (completionCase?.id !== caseId || typeof completionCase.status !== "string") {
+                throw new Error("The current case status could not be verified. Reload and retry.");
+              }
+              settlementCompletionCaseClosed = Boolean(completionCase.closed_at || completionCase.status === "finalized");
+            } catch (error) {
+              settlementCompletionStatus.dataset.kind = "error";
+              settlementCompletionStatus.textContent = error instanceof Error
+                ? error.message : "The current case status could not be loaded. Reload and retry.";
+              return;
+            }
             const backTarget = `/case/assets?case_id=${encodeURIComponent(caseId)}`;
-            settlementCompletionBackToCases.href = closedCaseViewMode
+            settlementCompletionBackToCases.href = closedCaseViewMode || settlementCompletionCaseClosed
               ? `${backTarget}&view=closed${assetAttempt ? `&attempt=${encodeURIComponent(assetAttempt)}` : ""}`
               : backTarget;
           }
@@ -9823,10 +9847,12 @@
               settlementCompletionState = state;
               settlementCompletionDemoContent.hidden = false;
               settlementCompletionCloseCase.hidden = false;
-              settlementCompletionCloseCase.disabled = Boolean(closedCaseViewMode || state.attempts_locked || state.completed);
-              settlementCompletionStatus.textContent = state.attempts_locked || state.completed
+              settlementCompletionCloseCase.disabled = settlementCompletionCaseClosed;
+              settlementCompletionStatus.textContent = settlementCompletionCaseClosed
                 ? "This case is closed. All negotiation attempts are read-only; you can reopen the case for review and export."
-                : "Your accepted offer is confirmed. Review the remaining document guidance below.";
+                : state.attempts_locked
+                  ? "This case is open for read-only review. All attempts remain locked. Select Close your case to close it again."
+                  : "Your accepted offer is confirmed. Review the remaining document guidance below.";
             } catch (error) {
               settlementCompletionStatus.textContent = error instanceof Error ? error.message : "The accepted response could not be loaded. Please retry.";
               settlementCompletionStatus.dataset.kind = "error";
@@ -9851,11 +9877,13 @@
             settlementCompletionDemoContent.hidden = false;
             settlementCompletionCloseCase.hidden = false;
             settlementCompletionCloseCase.disabled = Boolean(
-              closedCaseViewMode || response.attempts_locked || !response.sent_documents_complete,
+              settlementCompletionCaseClosed || !response.sent_documents_complete,
             );
-            settlementCompletionStatus.textContent = response.attempts_locked
+            settlementCompletionStatus.textContent = settlementCompletionCaseClosed
               ? "This case is closed. All negotiation attempts are read-only; you can reopen the case for review and export."
-              : response.sent_documents_complete
+              : response.attempts_locked && response.sent_documents_complete
+                ? "This case is open for read-only review. All attempts remain locked. Select Close your case to close it again."
+                : response.sent_documents_complete
                 ? "Your accepted offer is confirmed. Review the remaining document guidance below."
                 : "Attach both final proposal documents before closing this case.";
             settlementCompletionPage.querySelector("h1").focus();
@@ -9868,7 +9896,7 @@
         }
 
         async function closeAcceptedCase() {
-          if (closedCaseViewMode) return;
+          if (closedCaseViewMode || settlementCompletionCaseClosed) return;
           const query = new URLSearchParams(window.location.search);
           const caseId = query.get("case_id");
           const selectionId = query.get("selection_id");
