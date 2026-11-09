@@ -682,19 +682,6 @@
       .float-note strong { display: block; color:var(--theme-text-36473c); font-size: 10px; }
       .float-note span { color:var(--theme-text-7c877f); font-size: 9px; }
 
-      .principles {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        padding: 22px 0;
-        border-top:1px solid var(--line);
-        border-bottom:1px solid var(--line);
-      }
-      .principle { display: flex; align-items: center; justify-content: center; gap: 11px; padding: 5px 14px; }
-      .principle + .principle { border-left:1px solid var(--line); }
-      .principle-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 50%; color:var(--green); background:var(--theme-background-eaf0e9); }
-      .principle strong { display: block; margin-bottom: 3px; font-size: 11px; }
-      .principle span { color:var(--theme-text-7a857e); font-size: 10px; }
-
       .section { padding: 94px 0; }
       .section-heading { max-width: 650px; margin-bottom: 36px; }
       .section-heading .eyebrow { margin-bottom: 16px; }
@@ -1304,9 +1291,6 @@
         .account-form-wrap { max-width: none; }
         .hero-copy { max-width: 620px; }
         .visual-wrap { width: min(100%, 590px); margin: 0 auto; }
-        .principles { grid-template-columns: 1fr; gap: 15px; }
-        .principle { justify-content: flex-start; padding-left: 4px; }
-        .principle + .principle { border-left:0; }
         .section { padding: 72px 0; }
         .steps-section { padding-top: 0; }
         .steps-grid { grid-template-columns: 1fr 1fr; row-gap: 28px; }
@@ -1729,7 +1713,6 @@
           <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/start?source=demo1">Demo 1 — Free</a>
           <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/start?source=demo2">Demo 2 — Essential</a>
           <a href="#how-it-works">How it works</a>
-          <a href="#approach">Our approach</a>
           <label class="theme-control" for="theme-select">
             <span>Theme</span>
             <select id="theme-select" name="theme">
@@ -2032,21 +2015,6 @@
               </form>
               <p class="account-status" id="account-status" role="status" aria-live="polite"></p>
             </div>
-          </div>
-        </section>
-
-        <section class="principles" id="approach" aria-label="Product principles">
-          <div class="principle">
-            <span class="principle-icon" aria-hidden="true">✳</span>
-            <div><strong>Built for a specific journey</strong><span>Washington cases without children</span></div>
-          </div>
-          <div class="principle">
-            <span class="principle-icon" aria-hidden="true">⌁</span>
-            <div><strong>Guidance, not guesswork</strong><span>Sources and open questions stay visible</span></div>
-          </div>
-          <div class="principle">
-            <span class="principle-icon" aria-hidden="true">◎</span>
-            <div><strong>Your decisions remain yours</strong><span>AI drafts for people to review</span></div>
           </div>
         </section>
 
