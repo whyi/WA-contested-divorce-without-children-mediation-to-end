@@ -1529,7 +1529,7 @@
       }
       body[data-public-landing="true"]:not(.authenticated-view) .nav > :not(.auth-entry) { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .nav .auth-entry { display: inline-flex; }
-      body[data-public-landing="true"]:not(.authenticated-view) main > section:not(.hero):not(#plans) { display: none; }
+      body[data-public-landing="true"]:not(.authenticated-view) main > section:not(.hero):not(:where(#plans)) { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .hero {
         min-height: calc(100svh - var(--landing-header-height));
         grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
