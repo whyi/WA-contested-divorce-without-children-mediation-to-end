@@ -41,11 +41,22 @@ def ensure_test_account(db: Session, password: str) -> None:
     if user is not None:
         if user.status != "active" or not user.password_hash or not verify_password(user.password_hash, password):
             raise ValueError("The existing local test account differs; it was not modified.")
+        changed = False
+        if not user.first_name:
+            user.first_name = "Local"
+            changed = True
+        if not user.last_name:
+            user.last_name = "Test"
+            changed = True
+        if changed:
+            db.flush()
         return
     db.add(
         User(
             email=TEST_EMAIL,
             password_hash=hash_password(password),
+            first_name="Local",
+            last_name="Test",
             status="active",
             email_verified_at=datetime.now(UTC),
         )
@@ -58,12 +69,22 @@ def ensure_essential_test_account(db: Session, password: str) -> None:
     if user is None:
         user = User(
             id=uuid4(), email=ESSENTIAL_TEST_EMAIL, password_hash=hash_password(password),
+            first_name="Essential", last_name="Test",
             status="active", email_verified_at=datetime.now(UTC),
         )
         db.add(user)
         db.flush()
     elif user.status != "active" or not user.password_hash or not verify_password(user.password_hash, password):
         raise ValueError("The existing Essential test account differs; it was not modified.")
+    changed = False
+    if not user.first_name:
+        user.first_name = "Essential"
+        changed = True
+    if not user.last_name:
+        user.last_name = "Test"
+        changed = True
+    if changed:
+        db.flush()
     case = db.scalar(
         select(Case).join(CaseMembership, CaseMembership.case_id == Case.id)
         .where(CaseMembership.user_id == user.id, CaseMembership.role == "owner")

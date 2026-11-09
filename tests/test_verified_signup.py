@@ -254,6 +254,7 @@ class VerifiedSignupTests(unittest.TestCase):
         user = self.db.scalar(select(User).where(User.email == ESSENTIAL_TEST_EMAIL))
         case = self.db.scalar(select(Case))
         self.assertTrue(verify_password(user.password_hash, password))
+        self.assertEqual((user.first_name, user.last_name), ("Essential", "Test"))
         self.assertEqual(read_account_entitlement(user, self.db).status, "paid")
         self.assertEqual(read_account_entitlement(free, self.db).status, "free")
         self.assertEqual(attachment_limit(self.db, case.id), 100)

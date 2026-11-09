@@ -114,7 +114,7 @@ class AccountPlanCardTests(unittest.TestCase):
         self.assertIn("/api/billing/account/entitlement", body)
         self.assertIn("/api/billing/packages", body)
         self.assertIn('entitlement.status === "paid"', body)
-        self.assertIn('"Paid plan" : "Free plan"', body)
+        self.assertIn('"Essential plan" : "Free plan"', body)
         self.assertIn('"Buy more credits" : "Upgrade"', body)
         lowered = PAGE.casefold()
         self.assertNotIn("downgrade-to-free", lowered)

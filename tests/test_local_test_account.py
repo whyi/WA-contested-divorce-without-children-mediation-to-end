@@ -51,6 +51,7 @@ class LocalTestAccountTests(unittest.TestCase):
         user = db.add.call_args.args[0]
         self.assertEqual(user.email, TEST_EMAIL)
         self.assertEqual(user.status, "active")
+        self.assertEqual((user.first_name, user.last_name), ("Local", "Test"))
         self.assertIsNotNone(user.email_verified_at)
         self.assertNotEqual(user.password_hash, password)
         self.assertTrue(verify_password(user.password_hash, password))

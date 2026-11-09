@@ -456,6 +456,7 @@ class AuthenticationRouteTests(unittest.TestCase):
             "/api/auth/verify-email",
             "/api/auth/verify-email/resend",
             "/api/auth/login",
+            "/api/auth/account",
             "/api/auth/refresh",
             "/api/auth/logout",
             "/api/auth/password/forgot",

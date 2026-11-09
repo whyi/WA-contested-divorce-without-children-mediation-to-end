@@ -110,6 +110,12 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class AccountProfileRead(BaseModel):
+    email: str
+    first_name: str | None
+    last_name: str | None
+
+
 class PasswordResetRequest(BaseModel):
     token: str = Field(min_length=20, max_length=256)
     password: str = Field(min_length=1, max_length=1024)
@@ -473,6 +479,19 @@ def _current_user(request: Request, db: Session) -> User:
 
 def require_current_user(request: Request, db: DbSession) -> User:
     return _current_user(request, db)
+
+
+@router.get("/account", response_model=AccountProfileRead)
+def read_account_profile(
+    response: Response,
+    user: Annotated[User, Depends(require_current_user)],
+) -> AccountProfileRead:
+    response.headers["Cache-Control"] = "no-store"
+    return AccountProfileRead(
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
 
 
 def _login_email(value: str) -> str:

@@ -76,6 +76,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
       const fixtures = {
         [`/cases/${caseId}/workspace`]: { ...workspace, intake: { ...workspace.intake, ...intake } },
         "/api/auth/providers": { google: false },
+        "/api/auth/account": { email: "synthetic@example.invalid", first_name: "Synthetic", last_name: "User" },
         "/api/v1/closed-cases": { cases: [] },
         "/api/v1/support/config": { contact_url: null },
         "/api/billing/packages": { packages: [] },
@@ -299,6 +300,24 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
   await expect(page.locator("#login-entry")).toBeVisible();
   await expect(page.locator("#logout-button")).toBeHidden();
   expect(posted).toEqual(["synthetic-csrf"]);
+  fixture.verify();
+});
+
+test("Account shows the signed-in email and names and labels paid entitlement Essential", async ({ page }) => {
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    extraReads: {
+      "/api/auth/account": { email: "essential@example.invalid", first_name: "Essential", last_name: "Tester" },
+      "/api/billing/account/entitlement": { status: "paid" },
+    },
+  });
+  await page.goto(`${origin}/?view=account`);
+  await expect(page.locator("#account-profile")).toBeVisible();
+  await expect(page.locator("#account-profile-email")).toHaveText("essential@example.invalid");
+  await expect(page.locator("#account-profile-first-name")).toHaveText("Essential");
+  await expect(page.locator("#account-profile-last-name")).toHaveText("Tester");
+  await expect(page.locator("#plan-name")).toHaveText("Essential plan");
+  await expect(page.locator("#plan-name")).not.toHaveText("Free plan");
   fixture.verify();
 });
 

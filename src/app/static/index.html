@@ -1256,6 +1256,11 @@
       .plan-card-action[hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
       .plan-packages { grid-column: 1 / -1; padding-top: 14px; border-top:1px solid var(--line); }
       .plan-packages p { margin: 0 0 10px; color:var(--muted); font-size: 13px; line-height: 1.6; }
+      .account-profile { margin: 0 0 24px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background:var(--surface-background); }
+      .account-profile h3 { margin: 0 0 14px; font-size: 18px; }
+      .account-profile dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 24px; margin: 0; }
+      .account-profile dt { color:var(--muted); font-size: 12px; }
+      .account-profile dd { margin: 4px 0 0; overflow-wrap: anywhere; font-weight: 650; }
       .account-tools-link[hidden] { display: none; }
       .authenticated-view .nav a.account-tools-link:not([hidden]) { display: inline-block; }
       .authenticated-view main > section:not(#account-dashboard):not(#case-documents-layout):not(#preparation-view) { display: none; }
@@ -2085,6 +2090,15 @@
                 </div>
                 <p id="settlement-case-action-status" role="status" aria-live="polite"></p>
               </section>
+              <section class="account-profile" id="account-profile" aria-labelledby="account-profile-title">
+                <h3 id="account-profile-title">Account information</h3>
+                <dl>
+                  <div><dt>Email</dt><dd id="account-profile-email">Loading…</dd></div>
+                  <div><dt>First name</dt><dd id="account-profile-first-name">Loading…</dd></div>
+                  <div><dt>Last name</dt><dd id="account-profile-last-name">Loading…</dd></div>
+                </dl>
+                <p id="account-profile-status" role="status" aria-live="polite"></p>
+              </section>
               <section class="plan-card" id="plan-card" aria-labelledby="plan-name">
                 <div class="plan-card-main">
                   <p class="eyebrow">Your plan</p>
@@ -2558,6 +2572,7 @@
         const planPackagesNote = document.getElementById("plan-packages-note");
         const planPackageList = document.getElementById("plan-package-list");
         const planPackagesStatus = document.getElementById("plan-packages-status");
+        const accountProfileStatus = document.getElementById("account-profile-status");
         let planCaseId = null;
         let planPackageData = [];
         const demoCaseChoicePage = document.getElementById("demo-case-choice-page");
@@ -5858,6 +5873,7 @@
           dashboardLoading.hidden = true;
           accountToolsSection.hidden = false;
           void loadPlanCard();
+          void loadAccountProfile();
         }
 
         function showNewCaseStart() {
@@ -5929,6 +5945,33 @@
           return result;
         }
 
+        async function loadAccountProfile() {
+          accountProfileStatus.textContent = "";
+          accountProfileStatus.removeAttribute("data-kind");
+          try {
+            const response = await fetch("/api/auth/account", {
+              credentials: "same-origin",
+              cache: "no-store",
+              headers: { Accept: "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Account information is unavailable.");
+            if (typeof result.email !== "string"
+              || !(result.first_name === null || typeof result.first_name === "string")
+              || !(result.last_name === null || typeof result.last_name === "string")) {
+              throw new Error("Account information could not be verified.");
+            }
+            document.getElementById("account-profile-email").textContent = result.email;
+            document.getElementById("account-profile-first-name").textContent = result.first_name || "Not provided";
+            document.getElementById("account-profile-last-name").textContent = result.last_name || "Not provided";
+          } catch (error) {
+            accountProfileStatus.textContent = error instanceof Error
+              ? error.message
+              : "Account information is unavailable. Please try again.";
+            accountProfileStatus.dataset.kind = "error";
+          }
+        }
+
         async function loadPlanCard() {
           planName.textContent = "Checking your plan…";
           planSummary.textContent = "";
@@ -5942,9 +5985,9 @@
             ]);
             const paid = entitlement.status === "paid";
             planPackageData = Array.isArray(packages.packages) ? packages.packages : [];
-            planName.textContent = paid ? "Paid plan" : "Free plan";
+            planName.textContent = paid ? "Essential plan" : "Free plan";
             planSummary.textContent = paid
-              ? "You have purchased attempt credits. Your account stays Paid after the credits are used."
+              ? "Your Essential account includes paid features. Attempt credits are shown and managed separately."
               : "Your case includes one free finalized attempt. Upgrade to buy one-time attempt credits for more.";
             planAction.textContent = paid ? "Buy more credits" : "Upgrade";
             planAction.hidden = false;
