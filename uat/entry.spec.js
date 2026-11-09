@@ -144,15 +144,40 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
-test("Our approach section is removed while How it works remains available", async ({ page }) => {
+test("Our approach section remains removed after the How it works cleanup", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);
   await expect(page.locator("#approach, a[href='#approach']")).toHaveCount(0);
-  await expect(page.locator("#how-it-works")).toHaveCount(1);
   for (const link of await page.locator('a[href^="#"]').all()) {
     const href = await link.getAttribute("href");
     if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
   }
+  fixture.verify();
+});
+
+test("How it works section and entry links are removed", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator("#how-it-works, a[href='#how-it-works'], .steps-section, .expectations-link")).toHaveCount(0);
+  for (const link of await page.locator('a[href^="#"]').all()) {
+    const href = await link.getAttribute("href");
+    if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
+  }
+  fixture.verify();
+});
+
+test("homepage pricing explains credit options and routes free signup to email entry", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator("#plans")).toBeVisible();
+  await expect(page.locator("#plans")).toContainText("one free successful finalization");
+  await expect(page.locator("#plans")).toContainText("$5");
+  await expect(page.locator("#plans")).toContainText("$8");
+  await expect(page.locator("#account-entry")).toHaveAttribute("href", "#plans");
+  await page.locator("#pricing-signup").click();
+  await expect(page).toHaveURL(`${origin}/?auth=signup`);
+  await expect(page.locator("#email-entry-form")).toBeVisible();
+  await expect(page.locator("#plans")).toBeHidden();
   fixture.verify();
 });
 
@@ -826,6 +851,52 @@ test("documents entry reuses the demo selection panel and never mounts the remov
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
   }
+  fixture.verify();
+});
+
+test("unchecking an unsaved counteroffer cancels its pending autosave without clearing notes", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.clock.install();
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  const toggle = page.locator("#case-counteroffer-toggle");
+  await expect(toggle).toBeEnabled();
+  await toggle.check();
+  await page.locator("#existing-offer-notes").fill("Synthetic counteroffer notes");
+  await toggle.uncheck();
+  await page.clock.fastForward(1_000);
+  expect(fixture.puts).toEqual([]);
+  await toggle.check();
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic counteroffer notes");
+  fixture.verify();
+});
+
+test("documents counteroffer waits for browser draft restoration before allowing edits", async ({ page }) => {
+  await page.addInitScript(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(IDBRequest.prototype, "onsuccess");
+    const ready = new Promise((resolve) => { window.releaseDraftRestore = resolve; });
+    Object.defineProperty(IDBRequest.prototype, "onsuccess", {
+      ...descriptor,
+      set(handler) {
+        descriptor.set.call(this, this instanceof IDBOpenDBRequest && handler
+          ? (event) => { void ready.then(() => handler.call(this, event)); }
+          : handler);
+      },
+    });
+  });
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  await expect(page.locator("#case-counteroffer-status")).toHaveText("");
+  const toggle = page.locator("#case-counteroffer-toggle");
+  await expect(toggle).toBeDisabled();
+  await expect(page.locator("#demo-file-input-case")).toBeDisabled();
+  await expect(page.locator("#demo-files-next-case")).toBeDisabled();
+  await page.evaluate(() => window.releaseDraftRestore());
+  await expect(toggle).toBeEnabled();
+  await toggle.check();
+  await page.locator("#existing-offer-notes").fill("Synthetic counteroffer notes");
+  await toggle.uncheck();
+  await toggle.check();
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic counteroffer notes");
   fixture.verify();
 });
 
