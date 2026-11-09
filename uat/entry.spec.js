@@ -829,6 +829,22 @@ test("documents entry reuses the demo selection panel and never mounts the remov
   fixture.verify();
 });
 
+test("unchecking an unsaved counteroffer cancels its pending autosave without clearing notes", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.clock.install();
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  const toggle = page.locator("#case-counteroffer-toggle");
+  await expect(toggle).toBeEnabled();
+  await toggle.check();
+  await page.locator("#existing-offer-notes").fill("Synthetic counteroffer notes");
+  await toggle.uncheck();
+  await page.clock.fastForward(1_000);
+  expect(fixture.puts).toEqual([]);
+  await toggle.check();
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic counteroffer notes");
+  fixture.verify();
+});
+
 test("documents counteroffer waits for browser draft restoration before allowing edits", async ({ page }) => {
   await page.addInitScript(() => {
     const descriptor = Object.getOwnPropertyDescriptor(IDBRequest.prototype, "onsuccess");
