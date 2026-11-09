@@ -144,6 +144,18 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
+test("signed-in header offers Account, Your case and the existing logout action", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true });
+  for (const path of ["/", "/?view=home", "/?view=account"]) {
+    await page.goto(`${origin}${path}`);
+    await expect(page.locator("#account-tools-link")).toBeVisible();
+    await expect(page.locator("#your-case-entry")).toBeVisible();
+    await expect(page.locator("#logout-button")).toBeVisible();
+    await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
+  }
+  fixture.verify();
+});
+
 test("login locks the entered account and permits an explicit account change", async ({ page }) => {
   const fixture = await installFixtures(page, { loginStatus: 401 });
   await signIn(page);
@@ -817,6 +829,52 @@ test("documents entry reuses the demo selection panel and never mounts the remov
   fixture.verify();
 });
 
+test("unchecking an unsaved counteroffer cancels its pending autosave without clearing notes", async ({ page }) => {
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.clock.install();
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  const toggle = page.locator("#case-counteroffer-toggle");
+  await expect(toggle).toBeEnabled();
+  await toggle.check();
+  await page.locator("#existing-offer-notes").fill("Synthetic counteroffer notes");
+  await toggle.uncheck();
+  await page.clock.fastForward(1_000);
+  expect(fixture.puts).toEqual([]);
+  await toggle.check();
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic counteroffer notes");
+  fixture.verify();
+});
+
+test("documents counteroffer waits for browser draft restoration before allowing edits", async ({ page }) => {
+  await page.addInitScript(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(IDBRequest.prototype, "onsuccess");
+    const ready = new Promise((resolve) => { window.releaseDraftRestore = resolve; });
+    Object.defineProperty(IDBRequest.prototype, "onsuccess", {
+      ...descriptor,
+      set(handler) {
+        descriptor.set.call(this, this instanceof IDBOpenDBRequest && handler
+          ? (event) => { void ready.then(() => handler.call(this, event)); }
+          : handler);
+      },
+    });
+  });
+  const fixture = await installDocumentsFixtures(page, noOffer);
+  await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
+  await expect(page.locator("#case-counteroffer-status")).toHaveText("");
+  const toggle = page.locator("#case-counteroffer-toggle");
+  await expect(toggle).toBeDisabled();
+  await expect(page.locator("#demo-file-input-case")).toBeDisabled();
+  await expect(page.locator("#demo-files-next-case")).toBeDisabled();
+  await page.evaluate(() => window.releaseDraftRestore());
+  await expect(toggle).toBeEnabled();
+  await toggle.check();
+  await page.locator("#existing-offer-notes").fill("Synthetic counteroffer notes");
+  await toggle.uncheck();
+  await toggle.check();
+  await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic counteroffer notes");
+  fixture.verify();
+});
+
 test("documents counteroffer checkbox reveals text and file input only when checked and preserves unsaved notes", async ({ page }) => {
   const fixture = await installDocumentsFixtures(page, noOffer);
   await page.goto(`${origin}/onboarding/upload?case_id=${caseId}`);
@@ -1214,7 +1272,7 @@ test("document selection stays local until Next, supports removal, then imports 
   expect(fixture.requests.filter(request => /analysis|profile-facts/.test(request))).toEqual([]);
   await page.getByRole("link", { name: "Casework home", exact: true }).click();
   await expect(page).toHaveURL(`${origin}/?view=home`);
-  await page.locator("#account-entry").click();
+  await page.locator("#your-case-entry").click();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
   await expect(page.locator("#case-assets-view")).toBeVisible();
   await page.reload();

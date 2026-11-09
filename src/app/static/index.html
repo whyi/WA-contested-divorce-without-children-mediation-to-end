@@ -1291,6 +1291,11 @@
       .account-profile dd { margin: 4px 0 0; overflow-wrap: anywhere; font-weight: 650; }
       .account-tools-link[hidden] { display: none; }
       .authenticated-view .nav a.account-tools-link:not([hidden]) { display: inline-block; }
+      #your-case-entry[hidden] { display: none; }
+      body.authenticated-view:not([data-demo-page]) .nav a.demo-entry { display: none; }
+      .authenticated-view .nav #your-case-entry:not([hidden]),
+      body.signed-in-home .nav #your-case-entry:not([hidden]) { display: inline-flex !important; }
+      body.signed-in-home #account-entry { display: none; }
       .authenticated-view main > section:not(#account-dashboard):not(#case-documents-layout):not(#preparation-view) { display: none; }
 
       @media (max-width: 850px) {
@@ -1734,6 +1739,7 @@
             </select>
           </label>
           <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
+          <a class="nav-cta" id="your-case-entry" href="/" hidden>Your case</a>
           <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
           <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
           <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup">Get started <span class="arrow" aria-hidden="true">→</span></a>
@@ -3277,6 +3283,7 @@
           existingOfferPanel.after(offerLoadStatus, offerRetry);
           offerRetry.addEventListener("click", () => void loadExistingOffer());
           caseOfferToggle.addEventListener("change", async () => {
+            window.clearTimeout(caseOfferSaveTimer);
             if (caseOfferToggle.checked) {
               setExistingOfferAnswer("yes");
               existingOfferPanel.hidden = false;
@@ -3385,9 +3392,10 @@
             item.append(name, remove);
             list.append(item);
           }
+          caseOfferToggle.disabled = caseDocumentsRestoring || caseOfferLoading || caseOfferLoadFailed || caseOfferBusy;
           caseDocumentsLayout.querySelector("#demo-file-input-case").disabled = caseImportBusy || caseDocumentsRestoring;
           caseDocumentsLayout.querySelector("#demo-documents-back-case").style.pointerEvents = caseImportBusy ? "none" : "";
-          caseDocumentsLayout.querySelector("#demo-files-next-case").disabled = caseImportBusy || caseOfferLoading || caseOfferLoadFailed || caseOfferBusy || !caseSelectedDocuments.length;
+          caseDocumentsLayout.querySelector("#demo-files-next-case").disabled = caseImportBusy || caseDocumentsRestoring || caseOfferLoading || caseOfferLoadFailed || caseOfferBusy || !caseSelectedDocuments.length;
           const status = caseDocumentsLayout.querySelector("#demo-file-status-case");
           status.textContent = caseSelectedDocuments.length ? `${caseSelectedDocuments.length} file(s) selected.` : "No files selected.";
           status.removeAttribute("data-kind");
@@ -6097,7 +6105,6 @@
           dashboardLoading.hidden = true;
           accountToolsLink.hidden = false;
           for (const [id, label] of [
-            ["account-entry", "Your case "],
             ["hero-primary-action", "Open your case "],
             ["closing-account-cta", "Open your case "],
           ]) {
@@ -6297,6 +6304,7 @@
 
         async function restoreDocumentDraft() {
           caseDocumentsRestoring = true;
+          renderCaseSelectedDocuments();
           try {
             await loadExistingOffer();
             const draft = await localOnboardingDraft(preparationCaseId);
@@ -6336,6 +6344,7 @@
           if (caseOfferToggle && !caseOfferToggle.checked) return;
           setExistingOfferStatus("Unsaved changes — saving automatically…");
           caseOfferSaveTimer = window.setTimeout(async () => {
+            if (caseOfferToggle && !caseOfferToggle.checked) return;
             if (caseOfferBusy || caseOfferLoading) {
               scheduleOfferAutosave();
               return;
@@ -9621,6 +9630,7 @@
         });
         function showSignedInNavigation() {
           accountToolsLink.hidden = false;
+          document.getElementById("your-case-entry").hidden = false;
           logoutButton.hidden = false;
           document.getElementById("login-entry").hidden = true;
         }
