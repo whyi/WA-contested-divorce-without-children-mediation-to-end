@@ -904,13 +904,31 @@ def forgot_password(
     email = normalize_email(str(payload.email))
     _rate_limit(db, request, "password-forgot", email)
     user = (
-        db.scalar(select(User).where(User.email == email, User.status == "active"))
+        db.scalar(select(User).where(User.email == email, User.status == "active").with_for_update())
         if _owner_beta_allows(email)
         else None
     )
     if user is not None:
         now = datetime.now(UTC)
+        latest = db.scalar(
+            select(AuthToken)
+            .where(AuthToken.user_id == user.id, AuthToken.purpose == "password_reset")
+            .order_by(AuthToken.created_at.desc())
+            .limit(1)
+        )
+        if latest is not None and latest.created_at > now - timedelta(minutes=5):
+            return {"message": "If the account exists, password reset instructions will be sent."}
         token = random_token()
+        db.execute(
+            update(AuthToken)
+            .where(
+                AuthToken.user_id == user.id,
+                AuthToken.purpose == "password_reset",
+                AuthToken.used_at.is_(None),
+                AuthToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
         db.add(
             AuthToken(
                 user_id=user.id,
@@ -919,9 +937,45 @@ def forgot_password(
                 expires_at=now + timedelta(minutes=30),
             )
         )
+        _send_security_email(
+            user.email,
+            "Reset your password",
+            f"Enter this verification code in Casework:\n\n{token}\n\n"
+            "This code expires in 30 minutes. If you did not request a reset, ignore this email.",
+        )
         db.commit()
-        _send_security_email(user.email, "Reset your password", f"One-time token: {token}")
     return {"message": "If the account exists, password reset instructions will be sent."}
+
+
+def _password_reset_token(db: Session, raw_token: str, *, lock: bool = False) -> AuthToken:
+    statement = select(AuthToken).where(
+        AuthToken.token_hash == hash_token(raw_token),
+        AuthToken.purpose == "password_reset",
+        AuthToken.used_at.is_(None),
+        AuthToken.revoked_at.is_(None),
+    )
+    token = db.scalar(statement)
+    if token is None or token.expires_at <= datetime.now(UTC):
+        raise HTTPException(status_code=400, detail="Invalid or expired code. Please try again.")
+    user = db.get(User, token.user_id, with_for_update=True) if lock else db.get(User, token.user_id)
+    if user is None or user.status != "active" or not _owner_beta_allows(user.email):
+        raise HTTPException(status_code=400, detail="Invalid or expired code. Please try again.")
+    if lock:
+        # Serialize with resends and recheck after acquiring the account lock.
+        token = db.scalar(statement.with_for_update().execution_options(populate_existing=True))
+        if token is None or token.expires_at <= datetime.now(UTC):
+            raise HTTPException(status_code=400, detail="Invalid or expired code. Please try again.")
+    return token
+
+
+@router.post("/password/verify")
+def verify_password_reset(
+    payload: EmailTokenRequest, request: Request, db: DbSession
+) -> dict[str, str]:
+    _require_secret_config()
+    _rate_limit(db, request, "password-verify")
+    _password_reset_token(db, payload.token)
+    return {"message": "Code verified. Enter your new password."}
 
 
 @router.post("/password/reset")
@@ -935,18 +989,9 @@ def reset_password(
         validate_password(payload.password)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    _rate_limit(db, request, "password-reset", hash_token(payload.token))
-    token = db.scalar(
-        select(AuthToken).where(
-            AuthToken.token_hash == hash_token(payload.token),
-            AuthToken.purpose == "password_reset",
-            AuthToken.used_at.is_(None),
-            AuthToken.revoked_at.is_(None),
-        )
-    )
+    _rate_limit(db, request, "password-reset")
+    token = _password_reset_token(db, payload.token, lock=True)
     now = datetime.now(UTC)
-    if token is None or token.expires_at <= now:
-        raise HTTPException(status_code=400, detail="Password reset token is invalid or expired.")
     user = db.get(User, token.user_id)
     if user is None or user.status != "active" or not _owner_beta_allows(user.email):
         raise HTTPException(status_code=400, detail="Password reset token is invalid or expired.")
