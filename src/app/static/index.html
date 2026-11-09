@@ -3257,6 +3257,7 @@
           existingOfferPanel.after(offerLoadStatus, offerRetry);
           offerRetry.addEventListener("click", () => void loadExistingOffer());
           caseOfferToggle.addEventListener("change", async () => {
+            window.clearTimeout(caseOfferSaveTimer);
             if (caseOfferToggle.checked) {
               setExistingOfferAnswer("yes");
               existingOfferPanel.hidden = false;
@@ -3365,7 +3366,7 @@
             item.append(name, remove);
             list.append(item);
           }
-          caseOfferToggle.disabled = caseDocumentsRestoring || caseOfferLoading || caseOfferLoadFailed;
+          caseOfferToggle.disabled = caseDocumentsRestoring || caseOfferLoading || caseOfferLoadFailed || caseOfferBusy;
           caseDocumentsLayout.querySelector("#demo-file-input-case").disabled = caseImportBusy || caseDocumentsRestoring;
           caseDocumentsLayout.querySelector("#demo-documents-back-case").style.pointerEvents = caseImportBusy ? "none" : "";
           caseDocumentsLayout.querySelector("#demo-files-next-case").disabled = caseImportBusy || caseDocumentsRestoring || caseOfferLoading || caseOfferLoadFailed || caseOfferBusy || !caseSelectedDocuments.length;
@@ -6318,6 +6319,7 @@
           if (caseOfferToggle && !caseOfferToggle.checked) return;
           setExistingOfferStatus("Unsaved changes — saving automatically…");
           caseOfferSaveTimer = window.setTimeout(async () => {
+            if (caseOfferToggle && !caseOfferToggle.checked) return;
             if (caseOfferBusy || caseOfferLoading) {
               scheduleOfferAutosave();
               return;
