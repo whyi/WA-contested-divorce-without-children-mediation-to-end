@@ -546,6 +546,9 @@
       .account-form input:focus { outline:3px solid rgba(47, 102, 82, .17); border-color:var(--green); }
       .account-form input[readonly] { border-color: transparent; background: transparent; padding-left: 0; box-shadow: none; }
       .account-form .button { width: 100%; margin-top: 3px; cursor: pointer; }
+      .account-form button:disabled { opacity: .5; cursor: not-allowed; }
+      .auth-feedback { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+      #reset-password-step { display: grid; gap: 12px; }
       .account-status { min-height: 18px; margin: 3px 0 0; color:var(--theme-text-526459); font-size: 11px; line-height: 1.5; }
       .account-status[data-kind="error"] { color:var(--theme-text-a1382d); }
       .account-status[data-kind="success"] { color:var(--theme-text-286343); }
@@ -2013,7 +2016,37 @@
                 <button class="button button-primary" type="submit">Verify email</button>
                 <button class="account-tab" id="resend-verification" type="button">Resend verification email</button>
               </form>
-              <p class="account-status" id="account-status" role="status" aria-live="polite"></p>
+              <form class="account-form" id="reset-form" aria-label="Reset your password" hidden>
+                <h3>Reset your password</h3>
+                <label for="reset-email">Email address
+                  <input id="reset-email" type="email" autocomplete="email" maxlength="320" required>
+                </label>
+                <button class="button button-primary" id="reset-send" type="button">Send verification code</button>
+                <div id="reset-code-step" hidden>
+                  <label for="reset-code">Enter the code sent to your email
+                    <input id="reset-code" type="text" autocomplete="one-time-code" minlength="20" maxlength="256" required>
+                  </label>
+                  <button class="account-tab" id="reset-verify" type="button">Verify</button>
+                  <button class="account-tab" id="reset-resend" type="button" disabled>Resend verification code</button>
+                  <p class="account-status" id="reset-resend-status" role="status"></p>
+                </div>
+                <div id="reset-password-step" hidden>
+                  <label for="reset-password">New password
+                    <input id="reset-password" type="password" autocomplete="new-password" minlength="15" maxlength="1024" required>
+                  </label>
+                  <label for="reset-confirm">Confirm new password
+                    <input id="reset-confirm" type="password" autocomplete="new-password" minlength="15" maxlength="1024" required>
+                  </label>
+                  <p class="account-footnote">Use at least 15 characters. Choose a password you do not use elsewhere.</p>
+                  <p class="account-status" id="reset-match-status" role="status"></p>
+                  <button class="button button-primary" id="reset-update" type="submit" disabled>Update</button>
+                </div>
+                <a href="/?auth=login">Back to sign in</a>
+              </form>
+              <div class="auth-feedback">
+                <p class="account-status" id="account-status" role="status" aria-live="polite"></p>
+                <a class="account-footnote" id="forgot-password" href="/?auth=reset" hidden>Forgot your password?</a>
+              </div>
             </div>
           </div>
         </section>
@@ -2685,6 +2718,21 @@
         const verifyForm = document.getElementById("verify-form");
         const resendButton = document.getElementById("resend-verification");
         const status = document.getElementById("account-status");
+        const loginEmail = document.getElementById("login-email");
+        const forgotPassword = document.getElementById("forgot-password");
+        const resetForm = document.getElementById("reset-form");
+        const resetEmail = document.getElementById("reset-email");
+        const resetSend = document.getElementById("reset-send");
+        const resetCode = document.getElementById("reset-code");
+        const resetVerify = document.getElementById("reset-verify");
+        const resetResend = document.getElementById("reset-resend");
+        const resetPassword = document.getElementById("reset-password");
+        const resetConfirm = document.getElementById("reset-confirm");
+        const resetUpdate = document.getElementById("reset-update");
+        let resetVerifiedCode = null;
+        let resetResendAt = 0;
+        let resetTimer = null;
+        let resetBusy = false;
         const googleButton = document.getElementById("google-signin");
         const googleStatus = document.getElementById("google-status");
         const accountSection = document.getElementById("account");
@@ -4518,16 +4566,20 @@
           if (selected === "signup" || selected === "login") authEmailIntent = selected;
           const signupSelected = selected === "register";
           const loginSelected = selected === "password";
+          const resetSelected = selected === "reset";
           signupForm.hidden = !signupSelected;
           loginForm.hidden = !loginSelected;
           verifyForm.hidden = selected !== "verify";
-          document.getElementById("auth-entry-content").hidden = signupSelected || loginSelected || selected === "verify";
-          document.getElementById("auth-back").hidden = !signupSelected && !loginSelected && selected !== "verify";
+          resetForm.hidden = !resetSelected;
+          forgotPassword.hidden = !loginSelected;
+          document.getElementById("auth-entry-content").hidden = signupSelected || loginSelected || resetSelected || selected === "verify";
+          document.getElementById("auth-back").hidden = !signupSelected && !loginSelected && !resetSelected && selected !== "verify";
           document.getElementById("auth-back").textContent = loginSelected ? "Use a different account" : "Back";
           document.getElementById("auth-back").setAttribute("aria-label", loginSelected ? "Use a different account" : "Back to login or signup");
           document.getElementById("account-title").textContent = signupSelected
             ? "Sign up for Casework" : loginSelected ? "Log in to Casework"
-              : selected === "verify" ? "Verify your email" : "Log in or sign up for free";
+              : resetSelected ? "Reset your password"
+                : selected === "verify" ? "Verify your email" : "Log in or sign up for free";
           cancelGoogleConsent();
           if (clearStatus) {
             status.textContent = "";
@@ -4536,7 +4588,7 @@
         }
 
         if (publicLandingMode) {
-          const requestedAuthView = ["signup", "login", "verify"].includes(landingAuthMode)
+          const requestedAuthView = ["signup", "login", "verify", "reset"].includes(landingAuthMode)
             ? landingAuthMode
             : window.location.hash === "#account" ? "login" : null;
           if (requestedAuthView) {
@@ -4544,6 +4596,133 @@
             selectForm(requestedAuthView, false);
           }
         }
+
+        function resetFeedback(message, error = false) {
+          status.textContent = message;
+          status.dataset.kind = error ? "error" : "success";
+        }
+        function resetRequest(endpoint, body) {
+          return authRequest(`/api/auth/password/${endpoint}`, body);
+        }
+        function updateResetCooldown() {
+          const remaining = Math.max(0, Math.ceil((resetResendAt - Date.now()) / 1000));
+          resetResend.disabled = resetBusy || remaining > 0;
+          document.getElementById("reset-resend-status").textContent = remaining
+            ? `You can resend the code in ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}.`
+            : "";
+          if (!remaining && resetTimer !== null) {
+            clearInterval(resetTimer);
+            resetTimer = null;
+          }
+        }
+        function invalidateResetVerification() {
+          resetVerifiedCode = null;
+          resetPassword.value = "";
+          resetConfirm.value = "";
+          document.getElementById("reset-password-step").hidden = true;
+          resetUpdate.disabled = true;
+        }
+        async function sendResetCode() {
+          if (resetBusy || !resetEmail.reportValidity()) return;
+          resetBusy = true;
+          resetSend.disabled = true;
+          resetResend.disabled = true;
+          try {
+            const result = await resetRequest("forgot", { email: resetEmail.value });
+            invalidateResetVerification();
+            resetCode.value = "";
+            resetEmail.readOnly = true;
+            resetSend.hidden = true;
+            document.getElementById("reset-code-step").hidden = false;
+            resetResendAt = Date.now() + 300_000;
+            if (resetTimer !== null) clearInterval(resetTimer);
+            resetTimer = setInterval(updateResetCooldown, 1000);
+            resetFeedback(result.message);
+            resetCode.focus();
+          } catch (error) {
+            resetFeedback(error instanceof Error ? error.message : "Could not send the code. Please try again.", true);
+          } finally {
+            resetBusy = false;
+            resetSend.disabled = false;
+            updateResetCooldown();
+          }
+        }
+        resetSend.addEventListener("click", sendResetCode);
+        resetResend.addEventListener("click", () => {
+          if (Date.now() >= resetResendAt) void sendResetCode();
+        });
+        forgotPassword.addEventListener("click", (event) => {
+          event.preventDefault();
+          window.history.pushState(null, "", forgotPassword.href);
+          selectForm("reset");
+          resetEmail.value = loginEmail.value;
+          if (resetEmail.validity.valid && resetEmail.value) void sendResetCode();
+          else resetEmail.focus();
+        });
+        window.addEventListener("popstate", () => {
+          if (publicLandingMode) selectForm(new URLSearchParams(location.search).get("auth") || "login");
+        });
+        resetCode.addEventListener("input", invalidateResetVerification);
+        resetVerify.addEventListener("click", async () => {
+          resetCode.value = resetCode.value.trim();
+          if (resetBusy) return;
+          if (!resetCode.reportValidity()) {
+            resetFeedback("Enter the complete code from your email and try again.", true);
+            return;
+          }
+          resetBusy = true;
+          resetVerify.disabled = true;
+          resetCode.readOnly = true;
+          const code = resetCode.value;
+          try {
+            const result = await resetRequest("verify", { token: code });
+            resetVerifiedCode = code;
+            document.getElementById("reset-password-step").hidden = false;
+            resetFeedback(result.message);
+            resetPassword.focus();
+          } catch (error) {
+            invalidateResetVerification();
+            resetFeedback(error instanceof Error ? error.message : "Verification failed. Please try again.", true);
+          } finally {
+            resetBusy = false;
+            resetVerify.disabled = false;
+            resetCode.readOnly = false;
+            updateResetCooldown();
+          }
+        });
+        function updateResetPasswordValidity() {
+          const mismatch = resetConfirm.value && resetPassword.value !== resetConfirm.value;
+          resetConfirm.setCustomValidity(mismatch ? "Passwords do not match." : "");
+          const feedback = document.getElementById("reset-match-status");
+          feedback.textContent = mismatch ? "Passwords do not match." : "";
+          feedback.dataset.kind = "error";
+          resetUpdate.disabled = resetBusy || !resetVerifiedCode
+            || !resetPassword.validity.valid || !resetConfirm.validity.valid;
+        }
+        resetPassword.addEventListener("input", updateResetPasswordValidity);
+        resetConfirm.addEventListener("input", updateResetPasswordValidity);
+        resetForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (resetBusy || resetUpdate.disabled || !resetForm.reportValidity()) return;
+          resetBusy = true;
+          resetUpdate.disabled = true;
+          resetCode.readOnly = true;
+          resetVerify.disabled = true;
+          resetResend.disabled = true;
+          try {
+            await resetRequest("reset", { token: resetVerifiedCode, password: resetPassword.value });
+            resetForm.reset();
+            window.location.assign("/");
+          } catch (error) {
+            resetFeedback(error instanceof Error ? error.message : "Could not update your password. Please try again.", true);
+          } finally {
+            resetBusy = false;
+            resetCode.readOnly = false;
+            resetVerify.disabled = false;
+            updateResetCooldown();
+            updateResetPasswordValidity();
+          }
+        });
 
         function showPublicPage() {
           dashboard.hidden = true;
