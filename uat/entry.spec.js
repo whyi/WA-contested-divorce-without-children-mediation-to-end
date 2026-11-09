@@ -1770,7 +1770,8 @@ for (const outcome of ["accepted", "rejected"]) {
     await expect(page.locator("#settlement-demo-response-status-case")).toContainText("not saved");
     await counteroffer.check();
     await expect(page.locator("#settlement-demo-counteroffer-panel-case")).toBeVisible();
-    await expect(page.locator("#settlement-demo-counteroffer-limit-case")).toContainText("Free");
+    await expect(page.locator("#settlement-demo-counteroffer-limit-case")).toBeHidden();
+    await expect(page.locator("#settlement-demo-counteroffer-help-case")).toHaveText("Your Free plan allows 1 attempt. The attempt limit is reached.");
     const counterofferNext = page.locator("#settlement-demo-add-counteroffer-case");
     await expect(counterofferNext).toBeVisible();
     await expect(counterofferNext).toHaveAttribute("aria-disabled", "true");
@@ -1820,6 +1821,45 @@ for (const outcome of ["accepted", "rejected"]) {
     }
     expect(mutations.some(item => item.action === "continue")).toBe(false);
     await fixture.verify();
+  });
+}
+
+for (const { ordinal, limit, closed } of [
+  { ordinal:1, limit:1, closed:false },
+  { ordinal:3, limit:3, closed:false },
+  { ordinal:2, limit:3, closed:false },
+  { ordinal:2, limit:3, closed:true },
+]) {
+  test(`counteroffer footer reflects actual quota at ${ordinal}/${limit}, closed=${closed}`, async ({ page }) => {
+    const state = { revision:1, attempt_ordinal:ordinal, attempt_limit:limit, sent:true, outcome:"counteroffer",
+      notes:"Saved counteroffer", document_ids:[], sent_filenames:[], selection:null, downloaded_formats:[],
+      stopped:false, completed:false, accepted_document_ids:[] };
+    const currentWorkspace = { ...workspace,
+      case:{ ...workspace.case, ...(closed ? { closed_at:"2026-01-01T00:00:00Z" } : {}) },
+      attempts:[{ ordinal, frozen:true, profile:{ metadata:{ asset_overview:workspace.asset_overview } } }],
+    };
+    const fixture = await installFixtures(page, {
+      authenticated:true,
+      extraReads:{
+        [`/cases/${caseId}/workspace`]:currentWorkspace,
+        [`/cases/${caseId}/asset-mediation/${ordinal}`]:state,
+      },
+    });
+    const expected = ordinal >= limit
+      ? `Your ${limit === 1 ? "Free" : "paid"} plan allows ${limit} attempt${limit === 1 ? "" : "s"}. The attempt limit is reached.`
+      : "Notes and attachments are saved to your case. They are not automatically sent or analyzed.";
+    await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+    for (let load = 0; load < 2; load++) {
+      if (load) await page.reload();
+      await expect(page.locator("#settlement-demo-counteroffer-help-case")).toHaveText(expected);
+      await expect(page.locator("#settlement-demo-counteroffer-limit-case")).toBeHidden();
+      await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toHaveValue("Saved counteroffer");
+      if (ordinal >= limit) {
+        await expect(page.locator("#settlement-demo-rejection-choices-case")).toBeHidden();
+        await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("");
+      }
+    }
+    fixture.verify();
   });
 }
 
