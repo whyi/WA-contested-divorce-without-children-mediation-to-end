@@ -89,7 +89,8 @@ class RemovedNegotiationPlannerTests(unittest.TestCase):
             self.assertIn(f'id="{element_id}"', PAGE)
         self.assertNotIn("/offer-response/attachments/accepted_offer", PAGE)
         self.assertIn('response.outcome !== "accepted" || !response.sent_confirmed', PAGE)
-        self.assertNotIn("/offer-response/complete", PAGE)
+        self.assertIn('id="settlement-completion-close-case"', PAGE)
+        self.assertIn("/offer-response/complete", PAGE)
 
 
 if __name__ == "__main__":

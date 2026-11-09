@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.attempt_finalization import finalize_attempt, is_finalized
 from app.attempt_credits import consume_finalization_credit
 from app.auth_routes import require_current_user
+from app.case_lifecycle import require_attempts_editable
 from app.config import Settings, get_settings, provider_data_handling_notice
 from app.database import get_db
 from app.failure_logging import log_failure_event
@@ -201,7 +202,14 @@ class DemoExportRequest(BaseModel):
         return self
 
 
-def _authorize_case(db: Session, user: User, case_id: UUID, *, write: bool) -> Case:
+def _authorize_case(
+    db: Session,
+    user: User,
+    case_id: UUID,
+    *,
+    write: bool,
+    allow_locked_attempts: bool = False,
+) -> Case:
     membership = db.scalar(
         select(CaseMembership).where(
             CaseMembership.case_id == case_id,
@@ -217,6 +225,8 @@ def _authorize_case(db: Session, user: User, case_id: UUID, *, write: bool) -> C
     case = db.get(Case, case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found.")
+    if write and not allow_locked_attempts:
+        require_attempts_editable(case)
     return case
 
 

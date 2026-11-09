@@ -338,7 +338,8 @@ class MainWorkflowTests(unittest.TestCase):
             self.assertIn('id="settlement-completion-back-to-cases"', page)
             self.assertNotIn('id="settlement-completion-finalize"', page)
             self.assertNotIn("uploadAcceptedOfferDocument", page)
-            self.assertNotIn("/offer-response/complete", page)
+            self.assertIn('id="settlement-completion-close-case"', page)
+            self.assertIn("/offer-response/complete", page)
             self.assertNotIn("casework-demo-case-completed", page)
             self.assertIn("settlementCompletionBackToCases.href = demoAssetOverviewUrl()", page)
 

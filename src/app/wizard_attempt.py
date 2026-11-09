@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth_routes import require_current_user
-from app.case_lifecycle import lifecycle_write_allowed
+from app.case_lifecycle import lifecycle_write_allowed, require_attempts_editable
 from app.database import get_db
 from app.failure_logging import log_failure_event
 from app.models import (
@@ -308,6 +308,7 @@ def create_wizard_attempt(
     try:
         _authorize_case(db, user, case_id, write=True)
         case = _lock_case(db, case_id)
+        require_attempts_editable(case)
         if not lifecycle_write_allowed(case, f"/cases/{case_id}/wizard-attempt"):
             raise HTTPException(
                 status_code=409,

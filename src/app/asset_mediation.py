@@ -20,7 +20,7 @@ from app.attachment_limits import FREE_ATTACHMENT_LIMIT, attachment_limit, enfor
 from app.config import get_settings
 from app.auth_routes import require_current_user
 from app.case_access import resolve_case_access
-from app.case_lifecycle import close_case_record
+from app.case_lifecycle import close_case_record, require_attempts_editable
 from app.database import get_db
 from app.deletion import require_scope_active
 from app.failure_logging import log_failure_event
@@ -53,6 +53,7 @@ class MediationState(BaseModel):
     stopped: bool = False
     completed: bool = False
     accepted_document_ids: list[UUID] = Field(default_factory=list)
+    attempts_locked: bool = False
 
 
 class MediationUpdate(BaseModel):
@@ -74,7 +75,14 @@ def latest_attempt(db: Session, case_id: UUID) -> SettlementNegotiationAttempt |
     ).order_by(SettlementNegotiationAttempt.attempt_ordinal.desc()).limit(1))
 
 
-def _case(db: Session, user: User, case_id: UUID) -> Case:
+def _case(
+    db: Session,
+    user: User,
+    case_id: UUID,
+    *,
+    write: bool = False,
+    allow_locked_attempts: bool = False,
+) -> Case:
     case = db.scalar(select(Case).where(Case.id == case_id).with_for_update())
     membership = resolve_case_access(db, case_id, user.id)
     if case is None or membership is None:
@@ -82,6 +90,8 @@ def _case(db: Session, user: User, case_id: UUID) -> Case:
     if membership.role != "owner":
         raise HTTPException(status_code=403, detail="Only the case owner can record mediation responses.")
     require_scope_active(db, "case", case_id)
+    if write and not allow_locked_attempts:
+        require_attempts_editable(case)
     return case
 
 
@@ -90,6 +100,7 @@ def read_state(db: Session, case: Case, ordinal: int) -> MediationState:
     return MediationState.model_validate({
         **saved, "attempt_ordinal": ordinal,
         "attempt_limit": 1 if attachment_limit(db, case.id) == FREE_ATTACHMENT_LIMIT else 3,
+        "attempts_locked": getattr(case, "attempts_locked_at", None) is not None,
     })
 
 
@@ -100,6 +111,7 @@ def _save(case: Case, state: MediationState) -> None:
 
 
 def record_download(db: Session, case: Case, selection: OverviewScenarioExport, format: Literal["docx", "xlsx"]) -> None:
+    require_attempts_editable(case)
     state = read_state(db, case, selection.attempt_ordinal)
     if state.sent:
         if state.selection != selection:
@@ -202,11 +214,19 @@ def update_mediation_state(
 ) -> MediationState:
     try:
         _require_real_case_exports()
-        case = _case(db, user, case_id)
+        case = _case(
+            db,
+            user,
+            case_id,
+            write=True,
+            allow_locked_attempts=payload.action == "complete",
+        )
         response.headers["Cache-Control"] = "no-store"
         state = read_state(db, case, payload.attempt_ordinal)
         if (payload.action == "complete" and state.completed) or (payload.action == "stop" and state.stopped):
             return state
+        if payload.action == "complete":
+            require_attempts_editable(case)
         if case.closed_at is not None or case.status == "finalized":
             raise HTTPException(status_code=409, detail="This case is closed or read-only.")
         latest = latest_attempt(db, case_id)
@@ -274,6 +294,7 @@ def update_mediation_state(
                 state.completed = True
                 close_case_record(db, case, user.id, "accepted")
                 case.status = "finalized"
+                state.attempts_locked = True
             elif payload.action == "stop":
                 if state.outcome != "rejected" or not payload.confirm:
                     raise HTTPException(status_code=409, detail="Confirm stopping after the rejection.")
@@ -336,10 +357,10 @@ async def upload_counteroffer(
     key = None
     stored = False
     try:
-        case = _case(db, user, case_id)
+        case = _case(db, user, case_id, write=True)
         latest = latest_attempt(db, case_id)
         state = read_state(db, case, ordinal)
-        if case.closed_at is not None or case.status == "finalized" or state.stopped:
+        if case.closed_at is not None or case.status == "finalized" or state.attempts_locked or state.stopped:
             raise HTTPException(status_code=409, detail="This case workflow is read-only.")
         if latest is None or latest.attempt_ordinal != ordinal or not state.sent or state.outcome not in {"counteroffer", "accepted"}:
             raise HTTPException(status_code=409, detail="Select Counteroffer received or Offer accepted on the current attempt before attaching a file.")

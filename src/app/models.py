@@ -74,6 +74,7 @@ class Case(Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_reason: Mapped[str | None] = mapped_column(String(20))
     status_before_close: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

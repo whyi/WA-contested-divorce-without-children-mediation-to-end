@@ -119,10 +119,21 @@ def lifecycle_write_allowed(case: Case, path: str) -> bool:
     return path.rstrip("/").endswith(("/reopen", "/close", "/permanent-deletion"))
 
 
+def require_attempts_editable(case: Case) -> None:
+    if isinstance(getattr(case, "attempts_locked_at", None), datetime):
+        raise HTTPException(
+            status_code=409,
+            detail="This accepted case is closed. Its negotiation attempts remain read-only.",
+        )
+
+
 def close_case_record(db: Session, case: Case, user_id: UUID, reason: str) -> None:
+    closed_at = datetime.now(UTC)
+    if reason == "accepted" and getattr(case, "attempts_locked_at", None) is None:
+        case.attempts_locked_at = closed_at
     if case.closed_at is not None:
         return
-    case.closed_at = datetime.now(UTC)
+    case.closed_at = closed_at
     case.closed_reason = reason
     case.status_before_close = case.status
     db.add(
@@ -305,6 +316,7 @@ def export_case(
                     "id": case.id,
                     "status": case.status,
                     "closed_at": case.closed_at,
+                    "attempts_locked_at": case.attempts_locked_at,
                     "closed_reason": case.closed_reason,
                     "metadata_json": case.metadata_json,
                     "wizard_intake_json": case.wizard_intake_json,

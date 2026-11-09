@@ -139,6 +139,7 @@ class AssetMediationTests(unittest.TestCase):
         self.assertTrue(self.update("complete", confirm=True).completed)
         self.assertEqual(self.case.status, "finalized")
         self.assertEqual(self.case.closed_reason, "accepted")
+        self.assertIsNotNone(self.case.attempts_locked_at)
         self.assertIn("asset_overview", self.case.metadata_json)
 
     def test_rejection_stop_uses_existing_reversible_closure(self):
@@ -149,6 +150,22 @@ class AssetMediationTests(unittest.TestCase):
         self.assertEqual(self.case.closed_reason, "stopped")
         self.assertIsNotNone(self.case.closed_at)
         self.assertIn("asset_overview", self.case.metadata_json)
+
+    def test_accepted_closure_keeps_all_attempts_read_only_after_reopen(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="accepted")
+        completed = self.update("complete", confirm=True)
+        self.assertTrue(completed.attempts_locked)
+        self.assertIsNotNone(self.case.attempts_locked_at)
+
+        reopen_case(self.case.id, self.user, self.db)
+        self.assertTrue(self.state().attempts_locked)
+        with self.assertRaises(HTTPException) as error:
+            self.update("response", outcome="accepted")
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(len(self.db.scalars(select(SettlementNegotiationAttempt)).all()), 1)
 
     def test_counteroffer_upload_preserves_filename_and_links_file_with_retry_identity(self):
         self.send()
