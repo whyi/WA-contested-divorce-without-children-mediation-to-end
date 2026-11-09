@@ -996,6 +996,9 @@
       .closed-cases { margin-top:30px; padding-top:24px; border-top:1px solid var(--border-color); }
       .closed-cases h3 { margin:0 0 6px; color:var(--text-primary); font-size:18px; }
       .closed-cases p { margin:0 0 8px; color:var(--text-secondary); font-size:13px; line-height:1.5; }
+      .closed-case-view-banner { margin:0 0 20px; padding:16px 18px; border:1px solid var(--border-color); border-radius:14px; background:var(--surface-raised); }
+      .closed-case-view-banner p { margin:0 0 8px; color:var(--text-secondary); line-height:1.5; }
+      .closed-case-view-banner p:last-child { margin-bottom:0; }
       .closed-case-list { list-style:none; margin:14px 0 0; padding:0; display:grid; gap:12px; }
       .closed-case-item { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px; border:1px solid var(--border-color); border-radius:12px; }
       .closed-case-item .case-tile-title { display:block; color:var(--text-primary); font-weight:600; }
@@ -2024,6 +2027,11 @@
 
         <section class="dashboard-section" id="account-dashboard" aria-label="Your account" hidden>
           <div class="dashboard-panel">
+            <section id="closed-case-view-banner" class="closed-case-view-banner" aria-labelledby="closed-case-view-title" hidden>
+              <h2 id="closed-case-view-title">Closed case · Read-only</h2>
+              <p id="closed-case-view-status" role="status" aria-live="polite"></p>
+              <p><a id="closed-case-view-account" href="/?view=account">Back to My Account</a></p>
+            </section>
             <nav class="demo-case-navigation" id="demo-case-navigation" aria-label="Demo case navigation" hidden>
               <div class="demo-case-nav-context">
                 <span class="demo-case-nav-mark" aria-hidden="true">XY</span>
@@ -3313,6 +3321,9 @@
         const demoFileManagerMode = window.location.pathname === "/demo/files";
         const demoOnlyMode = demoDocumentsMode || demoWizardMode || demoFileManagerMode;
         const demoQuery = new URLSearchParams(window.location.search);
+        const closedCaseViewMode = demoQuery.get("view") === "closed";
+        const closedCaseViewBanner = document.getElementById("closed-case-view-banner");
+        const closedCaseViewStatus = document.getElementById("closed-case-view-status");
         const landingAuthMode = demoMode ? null : new URLSearchParams(window.location.search).get("auth");
         const publicLandingMode = window.location.pathname === "/";
         if (publicLandingMode) document.body.dataset.publicLanding = "true";
@@ -3460,6 +3471,7 @@
           "/case/assets": "assets",
         }[window.location.pathname];
         let caseWorkspace = null;
+        let closedCaseRecord = null;
         let caseWorkspaceCurrentOrdinal = 1;
         let caseWorkspaceViewingOrdinal = 1;
         let caseWorkspaceAttemptLimit = 1;
@@ -3550,6 +3562,7 @@
         }
 
         async function importNamedCaseFile(file, batch, item, identity) {
+          if (closedCaseViewMode) throw new Error("This closed case is open for read-only review.");
           while (true) {
             const body = new FormData();
             body.append("upload", file, file.name);
@@ -3768,6 +3781,7 @@
         }
 
         async function importCaseManagerFiles(files) {
+          if (closedCaseViewMode) return;
           if (caseImportBusy) return;
           caseImportBusy = true;
           caseManagerRetry = { files };
@@ -3850,6 +3864,8 @@
           initializeCaseMediation();
           const exportGroup = caseAssetLayout.querySelector(".settlement-export-actions");
           exportGroup.setAttribute("aria-label", "Download drafts for the selected case scenario");
+          exportGroup.hidden = closedCaseViewMode;
+          exportGroup.style.display = closedCaseViewMode ? "none" : "";
           const exportStatus = caseAssetElement("settlement-demo-export-status");
           exportStatus.textContent = "Select a scenario to download Word and Excel drafts from your saved case values. Draft downloads do not finalize the attempt or send a proposal.";
           for (const [format, label] of [
@@ -4361,6 +4377,7 @@
 
         function caseMediationFrozen() {
           return Boolean(caseMediationState?.sent
+            || closedCaseViewMode
             || caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal
             || caseWorkspace?.attempts.find(item => item.ordinal === caseWorkspaceViewingOrdinal)?.frozen);
         }
@@ -4563,6 +4580,7 @@
         }
 
         async function uploadCaseCounteroffer(file) {
+          if (closedCaseViewMode) return;
           if (!file || caseMediationBusy || !caseMediationState) return;
           clearTimeout(caseMediationTimer);
           if (!await saveCaseMediation("response")) return;
@@ -4621,6 +4639,7 @@
         }
 
         async function downloadCaseScenario(format) {
+          if (closedCaseViewMode) return;
           if (caseScenarioDownloading || caseAssetEditing || caseAssetSaving || !caseSelectedShareBps) return;
           const status = caseAssetElement("settlement-demo-export-status");
           caseScenarioDownloading = true;
@@ -4735,6 +4754,13 @@
           progress.hidden = false;
           demoMediationLink.href = `/case/assets?case_id=${encodeURIComponent(preparationCaseId)}`;
           demoFileManagementLink.href = `/case/files?case_id=${encodeURIComponent(preparationCaseId)}`;
+          if (closedCaseViewMode) {
+            for (const link of [demoMediationLink, demoFileManagementLink]) {
+              const target = new URL(link.href, window.location.origin);
+              target.searchParams.set("view", "closed");
+              link.href = `${target.pathname}${target.search}`;
+            }
+          }
           demoMediationLink.removeAttribute("aria-current");
           demoFileManagementLink.removeAttribute("aria-current");
           if (preparationMode === "assets") demoMediationLink.setAttribute("aria-current", "page");
@@ -4786,8 +4812,12 @@
           document.getElementById("case-saved-files").hidden = managerMode;
           if (managerMode) {
             caseFileLayout.hidden = false;
-            caseFileLayout.querySelector(".eyebrow").textContent = `Active case · ${caseWorkspace.case.metadata_json.case_title || "Your case"}`;
+            caseFileLayout.querySelector(".eyebrow").textContent = `${closedCaseViewMode ? "Closed case · Read-only" : "Active case"} · ${caseWorkspace.case.metadata_json.case_title || "Your case"}`;
             preparationView.hidden = true;
+            if (closedCaseViewMode) {
+              caseFileLayout.querySelector(".demo-file-manager-toolbar").style.display = "none";
+              caseFileLayout.querySelector("#case-files-retry").style.display = "none";
+            }
           }
           document.getElementById("case-saved-files-status").textContent =
             caseWorkspace.documents.length ? `${caseWorkspace.documents.length} saved file(s).` : "No files have been saved yet.";
@@ -4837,7 +4867,8 @@
                 remove.disabled = false;
               }
             });
-            actions.append(download, remove);
+            if (closedCaseViewMode) actions.append(download);
+            else actions.append(download, remove);
             item.append(copy, actions);
             list.append(item);
           }
@@ -4859,6 +4890,18 @@
             throw new Error("Your saved case information could not be verified.");
           }
           caseWorkspace = result;
+          if (closedCaseViewMode) {
+            if (!closedCaseRecord
+              || !result.case.closed_at
+              || result.case.closed_reason !== closedCaseRecord.closed_reason
+              || result.case.closed_at !== closedCaseRecord.closed_at) {
+              throw new Error("This case is no longer closed. Return to My Account and refresh the closed-case list.");
+            }
+            document.body.dataset.closedCaseView = "true";
+            closedCaseViewStatus.textContent =
+              `${result.case.metadata_json.case_title || "This case"} is closed. You can review saved information and files, but changes are unavailable until you explicitly reopen it.`;
+            closedCaseViewBanner.hidden = false;
+          }
           caseWorkspaceCurrentOrdinal = Math.max(1, ...result.attempts.map((attempt) => attempt.ordinal));
           const requested = new URLSearchParams(window.location.search).get("attempt");
           caseWorkspaceViewingOrdinal = requested === null ? caseWorkspaceCurrentOrdinal : Number(requested);
@@ -7081,6 +7124,16 @@
               copy.append(title, meta);
               const actions = document.createElement("span");
               actions.className = "closed-case-actions";
+              const view = document.createElement("button");
+              view.type = "button";
+              view.className = "dashboard-retry";
+              view.textContent = "View";
+              view.setAttribute("aria-label", `View ${item.title} read-only`);
+              view.addEventListener("click", () => {
+                window.location.assign(
+                  `/case/assets?case_id=${encodeURIComponent(item.id)}&view=closed`,
+                );
+              });
               const reopen = document.createElement("button");
               reopen.type = "button";
               reopen.className = "dashboard-retry";
@@ -7093,7 +7146,7 @@
               exportButton.textContent = "Export data";
               exportButton.setAttribute("aria-label", `Export all data for ${item.title}`);
               exportButton.addEventListener("click", () => void downloadCaseExport(item.id, closedCasesStatus, exportButton));
-              actions.append(reopen, exportButton);
+              actions.append(view, reopen, exportButton);
               row.append(copy, actions);
               closedCaseList.append(row);
             }
@@ -7177,6 +7230,9 @@
         void loadFailureSupportConfig();
 
         async function settlementApi(url, options = {}) {
+          if (closedCaseViewMode && (options.method || "GET").toUpperCase() !== "GET") {
+            throw new Error("This closed case is open for read-only review. Reopen it from My Account to make changes.");
+          }
           const response = await fetch(url, {
             credentials: "same-origin",
             ...options,
@@ -7206,6 +7262,7 @@
         }
 
         async function openSettlementPlanner(caseId) {
+          if (closedCaseViewMode) return;
           settlementCaseId = caseId;
           document.getElementById("account-dashboard").after(settlementPlanner);
           void loadAttemptCreditPackages();
@@ -11783,6 +11840,13 @@
               dashboardLoading.hidden = true;
               accountToolsLink.hidden = false;
               if (!preparationCaseId) throw new Error("A case identifier is required.");
+              if (closedCaseViewMode) {
+                const closedCaseResponse = await settlementApi("/api/v1/closed-cases");
+                closedCaseRecord = closedCaseResponse.cases.find((item) => item.id === preparationCaseId);
+                if (!closedCaseRecord) {
+                  throw new Error("This case is not currently listed as closed for your account. Return to My Account.");
+                }
+              }
               if (preparationMode !== "assets") showPreparation(preparationMode);
               if (preparationMode !== "wizard") await loadCaseWorkspace();
             } else if (homeMode) {
