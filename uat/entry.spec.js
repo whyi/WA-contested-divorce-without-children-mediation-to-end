@@ -137,6 +137,18 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
+test("signed-in header offers Account, Your case and the existing logout action", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true });
+  for (const path of ["/", "/?view=home", "/?view=account"]) {
+    await page.goto(`${origin}${path}`);
+    await expect(page.locator("#account-tools-link")).toBeVisible();
+    await expect(page.locator("#your-case-entry")).toBeVisible();
+    await expect(page.locator("#logout-button")).toBeVisible();
+    await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
+  }
+  fixture.verify();
+});
+
 test("login entry shows only email-first entry and Google, without old tabs or preview copy", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(`${origin}/?auth=login`);
