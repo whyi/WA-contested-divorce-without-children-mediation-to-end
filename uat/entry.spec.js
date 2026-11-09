@@ -345,9 +345,11 @@ test("login entry shows only email-first entry and Google, without old tabs or p
   await expect(page.locator("#signup-form")).toBeHidden();
   await expect(page.locator("#login-form")).toBeHidden();
   await expect(page.locator("#verify-form")).toBeHidden();
-  for (const selector of [".preview-bar", ".topbar", ".theme-status", "footer"]) {
+  for (const selector of [".preview-bar", ".theme-status"]) {
     await expect(page.locator(selector)).toBeHidden();
   }
+  await expect(page.locator(".topbar")).toBeVisible();
+  await expect(page.locator("footer")).toBeVisible();
   await expect(page.locator("#account")).toBeVisible();
   await expect(page.locator("#signup-tab, #login-tab, #verify-tab, .account-copy")).toHaveCount(0);
   await expect(page.locator("#logout-button")).toBeHidden();
