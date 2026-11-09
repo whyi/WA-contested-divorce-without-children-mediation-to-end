@@ -456,7 +456,9 @@
         background:var(--green);
       }
       .brand-name { font-family: Georgia, "Times New Roman", serif; font-size: 21px; font-weight: 700; letter-spacing: -.04em; }
-      .nav { display: flex; align-items: center; gap: 30px; color:var(--theme-text-56635d); font-size: 13px; }
+      .nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; max-width: 100%; margin-left: auto; gap: 10px; color:var(--theme-text-56635d); font-size: 13px; }
+      .account-navigation { display: flex; align-items: center; gap: inherit; }
+      .account-navigation:not(:has(> :not([hidden]))) { display: none; }
       .nav a { text-decoration: none; }
       .nav a:hover { color:var(--green); }
       .nav-cta {
@@ -1289,7 +1291,6 @@
         .shell { padding-right: 20px; padding-left: 20px; }
         .preview-bar { padding-right: 14px; padding-left: 14px; font-size: 10px; }
         .topbar { height: auto; min-height: 68px; flex-wrap: wrap; gap: 8px; padding: 10px 0; }
-        .nav { width: 100%; justify-content: space-between; gap: 6px; font-size: 11px; }
         .theme-control { gap: 4px; font-size: 10px; }
         .theme-control select { min-width: 78px; min-height: 34px; padding-right: 20px; }
         .theme-control span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1335,7 +1336,10 @@
         --home-amber: #c97a42;
       }
       .topbar {
+        height: auto;
         min-height: 84px;
+        flex-wrap: wrap;
+        gap: 8px;
         border-bottom-color: color-mix(in srgb, var(--line) 75%, transparent);
       }
       .brand-mark {
@@ -1359,7 +1363,6 @@
         content: "";
       }
       .brand-name { font-size: 24px; }
-      .nav { gap: clamp(14px, 2.4vw, 30px); }
       .nav-cta { border-radius: 999px; }
       .hero {
         min-height: min(760px, calc(100svh - 120px));
@@ -1461,12 +1464,7 @@
           gap: 8px;
           padding: 10px 0;
         }
-        .nav {
-          width: 100%;
-          justify-content: space-between;
-          gap: 6px;
-          font-size: 11px;
-        }
+        .nav { font-size: 11px; }
         .nav a:not(.nav-cta) { display: none; }
         .nav-cta { padding: 9px 11px; white-space: nowrap; }
         .hero {
@@ -1479,14 +1477,7 @@
         .visual-wrap { width: min(100%, 680px); margin: 0 auto; }
       }
       @media (max-width: 600px) {
-        .nav {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          align-items: stretch;
-          gap: 8px;
-        }
         .nav-cta { justify-content: center; }
-        #account-entry { grid-column: 1 / -1; }
         .theme-control {
           justify-content: center;
           padding: 0 8px;
@@ -1519,15 +1510,7 @@
       body[data-public-landing="true"]:not(.authenticated-view) .preview-bar,
       body[data-public-landing="true"]:not(.authenticated-view) .theme-status { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .topbar {
-        height: 84px;
         min-height: 84px;
-        flex-wrap: nowrap;
-      }
-      body[data-public-landing="true"]:not(.authenticated-view) .nav {
-        width: auto;
-        margin-left: auto;
-        justify-content: flex-end;
-        gap: 10px;
       }
       body[data-public-landing="true"]:not(.authenticated-view) .nav > .demo-entry { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .nav .auth-entry { display: inline-flex; }
@@ -1579,18 +1562,11 @@
       @media (max-width: 850px) {
         body[data-public-landing="true"]:not(.authenticated-view) { --landing-header-height: 68px; }
         body[data-public-landing="true"]:not(.authenticated-view) .topbar {
-          height: 68px;
           min-height: 68px;
           padding: 8px 0;
         }
-        body[data-public-landing="true"]:not(.authenticated-view) .nav {
-          display: flex;
-          width: auto;
-          flex-wrap: nowrap;
-          gap: 8px;
-        }
+        .nav { gap: 8px; }
         body[data-public-landing="true"]:not(.authenticated-view) .nav-cta { padding: 9px 12px; }
-        body[data-public-landing="true"]:not(.authenticated-view) #account-entry { grid-column: auto; }
         body[data-public-landing="true"]:not(.authenticated-view) .hero {
           min-height: calc(100svh - 68px);
           grid-template-columns: minmax(0, 1fr);
@@ -1622,13 +1598,8 @@
           min-height: 0;
           flex-wrap: wrap;
         }
-        body[data-public-landing="true"]:not(.authenticated-view) .nav {
-          width: 100%;
-          justify-content: flex-end;
-          gap: 8px;
-        }
-        body[data-public-landing="true"]:not(.authenticated-view) .nav .auth-entry { order: 0; }
-        body[data-public-landing="true"]:not(.authenticated-view) .nav .theme-control { order: 1; }
+        .nav { width: 100%; }
+        .nav .theme-control { order: 1; }
         body[data-public-landing="true"]:not(.authenticated-view) .brand-name { font-size: 20px; }
         body[data-public-landing="true"]:not(.authenticated-view) .brand-mark { width: 30px; height: 30px; }
         body[data-public-landing="true"]:not(.authenticated-view) .nav-cta { padding: 8px 9px; font-size: 11px; }
@@ -1640,10 +1611,6 @@
           min-height: 0;
           flex-wrap: wrap;
           padding: 8px 0;
-        }
-        body[data-public-landing="true"]:not(.authenticated-view) .nav {
-          width: 100%;
-          justify-content: flex-end;
         }
         body[data-public-landing="true"]:not(.authenticated-view) .hero {
           min-height: 0;
@@ -1700,9 +1667,11 @@
               <option value="dark">Dark</option>
             </select>
           </label>
-          <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
-          <a class="nav-cta" id="your-case-entry" href="/" hidden>Your case</a>
-          <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
+          <span class="account-navigation">
+            <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
+            <a class="nav-cta" id="your-case-entry" href="/" hidden>Your case</a>
+            <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
+          </span>
           <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
           <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup">Get started <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
