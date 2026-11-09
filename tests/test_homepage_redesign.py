@@ -14,24 +14,27 @@ class HomepageRedesignTests(unittest.TestCase):
         self.assertIn('id="hero-title">Clarity for the <em>next chapter.</em></h1>', page)
         self.assertIn("A guided workspace for organizing the details and questions that matter", page)
 
-    def test_header_offers_distinct_login_and_signup_destinations(self) -> None:
+    def test_header_offers_login_and_pricing_before_signup(self) -> None:
         response = TestClient(app).get("/")
 
         self.assertEqual(response.status_code, 200)
         page = response.text
         self.assertIn('class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login"', page)
-        self.assertIn('class="nav-cta auth-entry" id="account-entry" href="/?auth=signup"', page)
+        self.assertIn('class="nav-cta nav-cta-primary auth-entry" id="account-entry" href="#plans"', page)
+        self.assertIn('id="pricing-signup" href="/?auth=signup"', page)
         self.assertIn(">Log in</a>", page)
         self.assertIn(">Get started <span class=\"arrow\"", page)
 
-    def test_public_home_is_limited_to_a_single_viewport_hero(self) -> None:
+    def test_public_home_shows_the_hero_and_pricing_without_obsolete_sections(self) -> None:
         response = TestClient(app).get("/")
 
         self.assertEqual(response.status_code, 200)
         page = response.text
         self.assertIn('dataset.publicLanding = "true"', page)
         self.assertIn('dataset.authView = "true"', page)
-        self.assertIn("body[data-public-landing=\"true\"]:not(.authenticated-view) main > section:not(.hero)", page)
+        self.assertIn('main > section:not(.hero):not(:where(#plans))', page)
+        self.assertIn('id="plans"', page)
+        self.assertIn("one free successful finalization", page)
         self.assertIn('body[data-public-landing="true"]:not(.authenticated-view) .preview-bar', page)
         self.assertIn('body[data-public-landing="true"]:not(.authenticated-view) footer', page)
         self.assertIn("@media (max-width: 850px)", page)
