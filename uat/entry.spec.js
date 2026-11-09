@@ -151,6 +151,133 @@ test("login locks the entered account and permits an explicit account change", a
   fixture.verify();
 });
 
+test("password recovery verifies codes, waits five minutes for resend, and updates matching passwords", async ({ page }) => {
+  let verifyAttempts = 0;
+  const mutations = [];
+  const fixture = await installFixtures(page, {
+    loginStatus: 401,
+    mutationHandler: async (request) => {
+      const path = new URL(request.url()).pathname;
+      mutations.push({ path, body: request.postDataJSON() });
+      if (path.endsWith("/forgot")) return {
+        status: 202, body: { message: "If the account exists, password reset instructions will be sent." },
+      };
+      if (path.endsWith("/verify")) {
+        verifyAttempts++;
+        return verifyAttempts === 1
+          ? { status: 400, body: { detail: "Invalid or expired code. Please try again." } }
+          : { body: { message: "Code verified. Enter your new password." } };
+      }
+      if (path.endsWith("/reset")) return { body: { message: "Password reset complete." } };
+      return null;
+    },
+  });
+  await page.clock.install();
+  await signIn(page);
+  await expect(page.locator("#account-status")).toHaveText("Invalid email or password.");
+  await page.locator("#forgot-password").click();
+  await expect(page).toHaveURL(`${origin}/?auth=reset`);
+  await expect(page.locator("#reset-email")).toHaveValue("synthetic@example.invalid");
+  await expect(page.locator("#reset-email")).toHaveAttribute("readonly", "");
+  await expect(page.locator("#reset-code")).toBeVisible();
+  await expect(page.locator("#reset-password")).toBeHidden();
+  await expect(page.locator("#reset-resend")).toBeDisabled();
+  await page.locator("#reset-code").fill("incorrect-verification-code");
+  await page.locator("#reset-verify").click();
+  await expect(page.locator("#account-status")).toHaveText(/Invalid or expired code/);
+  await expect(page.locator("#account-status")).toHaveAttribute("data-kind", "error");
+  await page.clock.fastForward(299_000);
+  await expect(page.locator("#reset-resend")).toBeDisabled();
+  await page.clock.fastForward(1_000);
+  await expect(page.locator("#reset-resend")).toBeEnabled();
+  await page.locator("#reset-resend").click();
+  await expect(page.locator("#reset-code")).toHaveValue("");
+  await expect(page.locator("#reset-resend")).toBeDisabled();
+  await page.locator("#reset-code").fill("correct-verification-code");
+  await page.locator("#reset-verify").click();
+  await expect(page.locator("#reset-password")).toBeVisible();
+  await expect(page.locator("#reset-update")).toBeDisabled();
+  await page.locator("#reset-password").fill("A matching recovery password!");
+  await page.locator("#reset-confirm").fill("A different recovery password!");
+  await expect(page.locator("#reset-update")).toBeDisabled();
+  await page.locator("#reset-confirm").fill("A matching recovery password!");
+  await expect(page.locator("#reset-update")).toBeEnabled();
+  await page.locator("#reset-update").click();
+  await expect(page).toHaveURL(`${origin}/`);
+  expect(mutations.filter(({ path }) => path.endsWith("/forgot"))).toHaveLength(2);
+  expect(mutations.find(({ path }) => path.endsWith("/reset")).body.token).toBe("correct-verification-code");
+  fixture.verify();
+});
+
+test("editing a verified recovery code hides and clears the password fields", async ({ page }) => {
+  const fixture = await installFixtures(page, {
+    mutationHandler: async (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith("/forgot")) return { status: 202, body: { message: "Check your email." } };
+      if (path.endsWith("/verify")) return { body: { message: "Code verified." } };
+      return null;
+    },
+  });
+  await page.goto(`${origin}/?auth=reset`);
+  await page.locator("#reset-email").fill("synthetic@example.invalid");
+  await page.locator("#reset-send").click();
+  await page.locator("#reset-code").fill("correct-verification-code");
+  await page.locator("#reset-verify").click();
+  await expect(page.locator("#reset-password")).toBeVisible();
+  await page.locator("#reset-password").fill("A matching recovery password!");
+  await page.locator("#reset-confirm").fill("A matching recovery password!");
+  await expect(page.locator("#reset-update")).toBeEnabled();
+  await page.locator("#reset-code").fill("changed-verification-code");
+  await expect(page.locator("#reset-password")).toBeHidden();
+  await expect(page.locator("#reset-password")).toHaveValue("");
+  await expect(page.locator("#reset-confirm")).toHaveValue("");
+  await expect(page.locator("#reset-update")).toBeDisabled();
+  fixture.verify();
+});
+
+test("password recovery delivery and password-policy failures remain retryable", async ({ page }) => {
+  let sends = 0;
+  let updates = 0;
+  const fixture = await installFixtures(page, {
+    mutationHandler: async (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith("/forgot")) {
+        sends++;
+        return sends === 1
+          ? { status: 503, body: { detail: "Delivery unavailable. Please try again." } }
+          : { status: 202, body: { message: "Check your email." } };
+      }
+      if (path.endsWith("/verify")) return { body: { message: "Code verified." } };
+      if (path.endsWith("/reset")) {
+        updates++;
+        return updates === 1
+          ? { status: 422, body: { detail: "Password is too common." } }
+          : { body: { message: "Password reset complete." } };
+      }
+      return null;
+    },
+  });
+  await page.goto(`${origin}/?auth=reset`);
+  await page.locator("#reset-email").fill("synthetic@example.invalid");
+  await page.locator("#reset-send").click();
+  await expect(page.locator("#account-status")).toHaveAttribute("data-kind", "error");
+  await expect(page.locator("#reset-send")).toBeEnabled();
+  await expect(page.locator("#reset-email")).toBeEditable();
+  await page.locator("#reset-send").click();
+  await page.locator("#reset-code").fill("valid-verification-code");
+  await page.locator("#reset-verify").click();
+  await expect(page.locator("#reset-password")).toBeVisible();
+  await page.locator("#reset-password").fill("A retryable recovery password!");
+  await page.locator("#reset-confirm").fill("A retryable recovery password!");
+  await page.locator("#reset-update").click();
+  await expect(page.locator("#account-status")).toHaveText("Password is too common.");
+  await expect(page.locator("#reset-password")).toHaveValue("A retryable recovery password!");
+  await expect(page.locator("#reset-update")).toBeEnabled();
+  await page.locator("#reset-update").click();
+  await expect(page).toHaveURL(`${origin}/`);
+  fixture.verify();
+});
+
 test("accepted offer page uses the attempt page's top gap at every breakpoint", async ({ page }) => {
   const measureTopGap = async (width, mode) => {
     await page.setViewportSize({ width, height: 900 });
