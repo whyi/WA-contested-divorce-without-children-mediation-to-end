@@ -115,6 +115,7 @@ class OfferResponseRead(BaseModel):
     sent_confirmed: bool
     counteroffer_attachment_present: bool
     attempt_ordinal: int
+    attempts_locked: bool
     offer_origin: OfferOrigin
     attempt_limit: int | None
     attempts_remaining: int | None
@@ -422,6 +423,10 @@ def _read_response(
             for item, document in rows
         ]
     attempt = _attempt_for_selection(db, selection)
+    case = db.get(Case, selection.case_id)
+    attempts_locked = isinstance(
+        getattr(case, "attempts_locked_at", None), datetime
+    )
     proposal_issued_at = getattr(attempt, "proposal_issued_at", None)
     proposal_terms = getattr(attempt, "proposal_terms_json", None)
     proposal_scenario_result = getattr(attempt, "proposal_scenario_result_json", None)
@@ -533,6 +538,7 @@ def _read_response(
         sent_confirmed=attempt.sent_confirmed_at is not None if attempt is not None else False,
         counteroffer_attachment_present="counteroffer" in kinds,
         attempt_ordinal=attempt_ordinal,
+        attempts_locked=attempts_locked,
         offer_origin=origin,
         attempt_limit=attempt_limit,
         attempts_remaining=(
@@ -540,8 +546,10 @@ def _read_response(
             if attempt_limit is not None
             else None
         ),
-        frozen=attempt.frozen_at is not None if attempt is not None else bool(
-            response_record and response_record.outcome is not None
+        frozen=(
+            attempts_locked or attempt.frozen_at is not None
+            if attempt is not None
+            else bool(response_record and response_record.outcome is not None)
         ),
         finalized=finalized,
         finalized_at=getattr(attempt, "finalized_at", None),
@@ -745,8 +753,15 @@ def _authorized_selection(
     db: Session,
     *,
     write: bool,
+    allow_locked_attempts: bool = False,
 ) -> tuple[Case, SettlementScenarioSelection]:
-    case = _authorize_case(db, user, case_id, write=write)
+    case = _authorize_case(
+        db,
+        user,
+        case_id,
+        write=write,
+        allow_locked_attempts=allow_locked_attempts,
+    )
     return case, _selection(db, case_id, selection_id)
 
 
@@ -836,8 +851,15 @@ def complete_accepted_case(
     selection_id: UUID,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
-    _, selection = _authorized_selection(case_id, selection_id, user, db, write=True)
+) -> dict[str, str | bool]:
+    _, selection = _authorized_selection(
+        case_id,
+        selection_id,
+        user,
+        db,
+        write=True,
+        allow_locked_attempts=True,
+    )
     case = _lock_case(db, case_id)
     current = _read_response(
         db,
@@ -853,8 +875,8 @@ def complete_accepted_case(
             status_code=409,
             detail="Only a confirmed, accepted offer can complete this case.",
         )
-    if case.status == "finalized":
-        return {"status": "finalized"}
+    if getattr(case, "attempts_locked_at", None) is not None:
+        return {"status": "finalized", "attempts_locked": True}
 
     _finalize_case_record(case, user.id, db)
     try:
@@ -866,7 +888,7 @@ def complete_accepted_case(
             status_code=503,
             detail="The case could not be marked as completed. Please try again.",
         ) from error
-    return {"status": "finalized"}
+    return {"status": "finalized", "attempts_locked": True}
 
 
 @router.post("/parse-modified-offer", response_model=ModifiedOfferParseRead)

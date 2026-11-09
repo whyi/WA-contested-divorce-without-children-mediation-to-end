@@ -17,6 +17,7 @@ from app.case_lifecycle import (
     export_case,
     lifecycle_write_allowed,
     list_closed_cases,
+    require_attempts_editable,
     reopen_case,
 )
 from app.database import Base
@@ -232,10 +233,19 @@ class CloseAndReopenTests(LifecycleFixture):
         self.db.commit()
         self.assertEqual(self.case.status, "finalized")
         self.assertEqual(self.case.closed_reason, "accepted")
+        self.assertIsNotNone(self.case.attempts_locked_at)
         reopen_case(self.case.id, self.user, self.db)
         self.db.refresh(self.case)
         self.assertEqual(self.case.status, "settlement")
         self.assertIsNone(self.case.closed_at)
+        self.assertIsNotNone(self.case.attempts_locked_at)
+        with self.assertRaises(HTTPException) as caught:
+            require_attempts_editable(self.case)
+        self.assertEqual(caught.exception.status_code, 409)
+
+    def test_nonaccepted_closure_does_not_permanently_lock_attempts(self) -> None:
+        close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
+        self.assertIsNone(self.case.attempts_locked_at)
 
     def test_legacy_finalized_case_reopens_to_settlement(self) -> None:
         self.case.status = "finalized"
@@ -334,7 +344,16 @@ class ExportTests(LifecycleFixture):
             _, manifest = self.export()
         self.assertEqual(manifest["case"]["status"], "settlement")
         self.assertIsNotNone(manifest["case"]["closed_at"])
+        self.assertIsNone(manifest["case"]["attempts_locked_at"])
         self.assertEqual(self.db.get(Case, self.case.id).closed_reason, "stopped")
+
+    def test_accepted_case_export_includes_persistent_attempt_lock(self) -> None:
+        _finalize_case_record(self.case, self.user.id, self.db)
+        self.db.commit()
+
+        _, manifest = self.export()
+
+        self.assertIsNotNone(manifest["case"]["attempts_locked_at"])
 
     def test_export_minimizes_data_and_is_membership_scoped(self) -> None:
         _, manifest = self.export()

@@ -2056,7 +2056,8 @@ for (const outcome of ["accepted", "rejected"]) {
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
       await expect(page.locator("#settlement-completion-status")).toContainText("Your accepted offer is confirmed");
       await expect(page.locator("#settlement-completion-page input[type=file]")).toHaveCount(0);
-      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(1);
+      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
+      await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
       await page.getByRole("link", { name:"Back to your case", exact:true }).click();
       await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
       expect(state.completed).toBe(false);
@@ -2698,9 +2699,10 @@ for (const accepted of [true, false]) {
     if (accepted) {
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
       await expect(page.locator("#settlement-completion-page input[type=file]")).toHaveCount(0);
-      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(1);
+      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
       await expect(page.locator("#settlement-completion-page")).toHaveCSS("margin-top", "0px");
       await expect(page.getByRole("link", { name:"Back to your case", exact:true })).toHaveAttribute("href", `/case/assets?case_id=${caseId}`);
+      await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
     } else {
       await expect(page.locator("#settlement-completion-status")).toHaveText("This completion page is only available for an accepted, confirmed offer.");
       await expect(page.locator("#settlement-completion-demo-content")).toBeHidden();
@@ -2737,10 +2739,79 @@ test("accepted real page uses the exact demo guidance and only returns to its ca
   await expect(page.locator("#settlement-completion-demo-notice")).toBeHidden();
   await expect(page.locator("#settlement-completion-page input[type=file]")).toHaveCount(0);
   await expect(page.getByRole("link", { name:"Back to mediation", exact:true })).toHaveCount(0);
-  await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(1);
+  await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
+  await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
   await page.getByRole("link", { name:"Back to your case", exact:true }).click();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
   expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
+  fixture.verify();
+});
+
+for (const backend of ["asset-attempt", "offer-response"]) {
+  test(`accepted completion closes the case and locks attempts through ${backend}`, async ({ page }) => {
+    const selectionId = "00000000-0000-4000-8000-000000000076";
+    const expectedPath = backend === "asset-attempt"
+      ? `/cases/${caseId}/asset-mediation`
+      : `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/complete`;
+    const fixture = await installFixtures(page, {
+      authenticated: true,
+      extraReads: backend === "asset-attempt"
+        ? { [`/cases/${caseId}/asset-mediation/1`]: {
+          revision: 3, attempt_ordinal: 1, sent: true, outcome: "accepted", completed: false,
+          attempts_locked: false,
+        } }
+        : { [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+          outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+          attempts_locked: false, attachments: [],
+        } },
+      mutationHandler: async (request) => {
+        expect(new URL(request.url()).pathname).toBe(expectedPath);
+        if (backend === "asset-attempt") {
+          expect(await request.postDataJSON()).toEqual({
+            expected_revision: 3, attempt_ordinal: 1, action: "complete", confirm: true,
+          });
+          return { body: {
+            revision: 4, attempt_ordinal: 1, sent: true, outcome: "accepted",
+            completed: true, attempts_locked: true,
+          } };
+        }
+        return { body: { status: "finalized", attempts_locked: true } };
+      },
+    });
+    const url = backend === "asset-attempt"
+      ? `${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`
+      : `${origin}/settlement-completion?case_id=${caseId}&selection_id=${selectionId}`;
+    await page.goto(url);
+    await page.getByRole("button", { name: "Close your case", exact: true }).click();
+    await expect(page.locator("#app-dialog-title")).toHaveText("Close your case?");
+    await expect(page.locator("#app-dialog")).toContainText("permanently read-only");
+    await page.locator("#app-dialog-confirm").click();
+    await expect(page).toHaveURL(`${origin}/?view=account`);
+    expect(fixture.requests).toContain(`POST ${expectedPath}`);
+    fixture.verify();
+  });
+}
+
+test("accepted completion does not report closure when locking fails", async ({ page }) => {
+  const selectionId = "00000000-0000-4000-8000-000000000076";
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    extraReads: { [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+      outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+      attempts_locked: false, attachments: [],
+    } },
+    mutationHandler: async () => ({ status: 503, body: { detail: "The case could not be marked as completed. Please try again." } }),
+  });
+  await page.goto(`${origin}/settlement-completion?case_id=${caseId}&selection_id=${selectionId}`);
+  await page.getByRole("button", { name: "Close your case", exact: true }).click();
+  await page.locator("#app-dialog-confirm").click();
+  await expect(page.locator("#settlement-completion-status")).toHaveText(
+    "The case could not be marked as completed. Please try again.",
+  );
+  await expect(page.getByRole("button", { name: "Close your case", exact: true })).toBeEnabled();
+  expect(fixture.requests).toContain(
+    `POST /cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/complete`,
+  );
   fixture.verify();
 });
 
@@ -2812,7 +2883,8 @@ for (const source of ["demo1", "demo2"]) {
     await expect(page.locator("#settlement-scenario-results")).toBeVisible();
     await page.goto(`${origin}/demo/settlement-completion${query}`);
     await expect(page.locator("#settlement-completion-status")).toContainText("Fictional demo only");
-    await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(1);
+    await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
+    await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeHidden();
     await expect(page.getByRole("link", { name:"Back to your case", exact:true })).toHaveAttribute("href", new RegExp("/demo\\?"));
     fixture.verify();
   });

@@ -105,8 +105,9 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
                 db,
             )
 
-        self.assertEqual(result, {"status": "finalized"})
+        self.assertEqual(result, {"status": "finalized", "attempts_locked": True})
         self.assertEqual(case.status, "finalized")
+        self.assertIsNotNone(case.attempts_locked_at)
         db.commit.assert_called_once()
 
     def test_unconfirmed_offer_cannot_finalize_case(self) -> None:
