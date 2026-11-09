@@ -171,6 +171,50 @@ test("public landing contains only supported sections and working local links", 
   fixture.verify();
 });
 
+async function expectAcceptedCompletionProgress(page) {
+  const progress = page.locator("#settlement-completion-page #demo-attempt-progress");
+  await expect(progress).toBeVisible();
+  const selected = progress.locator('[aria-current="step"]');
+  await expect(selected).toHaveCount(1);
+  await expect(selected).toHaveAccessibleName("Offer Accepted");
+  await expect(selected).toHaveAttribute("data-state", "current");
+  await expect(selected).toBeDisabled();
+  await expect(selected).toBeInViewport();
+  const geometry = await selected.locator(".demo-attempt-circle").evaluate(circle => {
+    const style = getComputedStyle(circle);
+    const green = document.createElement("span");
+    green.style.backgroundColor = "var(--green)";
+    circle.append(green);
+    const expectedGreen = getComputedStyle(green).backgroundColor;
+    green.remove();
+    const nav = circle.closest("#demo-case-navigation").getBoundingClientRect();
+    const card = document.querySelector(".settlement-completion-card").getBoundingClientRect();
+    const circleBounds = circle.getBoundingClientRect();
+    const progressBounds = circle.closest("#demo-attempt-progress").getBoundingClientRect();
+    return {
+      background: style.backgroundColor, expectedGreen, outline: style.outlineStyle,
+      outlineWidth: style.outlineWidth, navBottom: nav.bottom, cardTop: card.top,
+      viewportWidth: document.documentElement.clientWidth, documentWidth: document.documentElement.scrollWidth,
+      circleTop: circleBounds.top, circleRight: circleBounds.right, circleBottom: circleBounds.bottom,
+      circleLeft: circleBounds.left, progressTop: progressBounds.top, progressRight: progressBounds.right,
+      progressBottom: progressBounds.bottom, progressLeft: progressBounds.left,
+    };
+  });
+  expect(geometry.background).toBe(geometry.expectedGreen);
+  expect(geometry.outline).toBe("solid");
+  expect(geometry.outlineWidth).toBe("3px");
+  expect(geometry.navBottom).toBeLessThanOrEqual(geometry.cardTop);
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.circleTop - 6).toBeGreaterThanOrEqual(geometry.progressTop);
+  expect(geometry.circleLeft - 6).toBeGreaterThanOrEqual(geometry.progressLeft);
+  expect(geometry.circleRight + 6).toBeLessThanOrEqual(geometry.progressRight);
+  expect(geometry.circleBottom + 6).toBeLessThanOrEqual(geometry.progressBottom);
+  await expect(progress.locator('[data-state="future"]')).toHaveCount(0);
+  for (const attempt of await progress.locator("button[data-ordinal]").all()) {
+    await expect(attempt).toHaveAttribute("data-state", "past");
+  }
+}
+
 test("closed-case Account actions place View before Reopen and Export", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
@@ -272,6 +316,7 @@ for (const kind of ["asset", "selection"]) {
       await expect(page).toHaveURL(`${origin}${completionUrl}&view=closed`);
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
       await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+      await expectAcceptedCompletionProgress(page);
       expect(fixture.requests.filter(request => request.includes("/case/assets"))).toEqual([]);
       expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
       fixture.verify();
@@ -431,6 +476,15 @@ for (const width of [1280, 390, 320]) {
       await expect(page).toHaveURL(`${origin}${completionUrl}&view=closed`);
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
       await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+      await expectAcceptedCompletionProgress(page);
+      await page.reload();
+      await expectAcceptedCompletionProgress(page);
+      if (ordinal > 1) {
+        await page.getByRole("button", { name: "1st Attempt, read-only", exact: true }).click();
+        await expect(page).toHaveURL(`${origin}${assetsUrl}&attempt=1`);
+        await accepted.click();
+        await expectAcceptedCompletionProgress(page);
+      }
       await page.locator("#settlement-completion-close-case").dispatchEvent("click");
       await page.locator("#settlement-completion-back-to-cases").click();
       await expect(page).toHaveURL(`${origin}${assetsUrl}&attempt=${ordinal}`);
@@ -439,6 +493,46 @@ for (const width of [1280, 390, 320]) {
       expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
       fixture.verify();
     });
+  }
+}
+
+for (const kind of ["asset", "selection"]) {
+  for (const lifecycle of ["open", "reopened"]) {
+    for (const width of [1280, 390, 320]) {
+      test(`accepted completion progress: ${kind}, ${lifecycle}, third attempt at ${width}px`, async ({ page }) => {
+        const selectionId = "00000000-0000-4000-8000-000000000076";
+        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+        const fixture = await installFixtures(page, {
+          authenticated: true,
+          extraReads: {
+            [`/cases/${caseId}/workspace`]: {
+              ...workspace, accepted_offer_url: completionUrl,
+              case: { ...workspace.case, attempts_locked_at: lifecycle === "reopened" ? closedAt : null },
+              attempts: [1, 2, 3].map(ordinal => ({
+                ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+              })),
+            },
+            [`/cases/${caseId}/asset-mediation/3`]: {
+              revision: 1, attempt_ordinal: 3, attempt_limit: 3,
+              sent: true, outcome: "accepted", attempts_locked: lifecycle === "reopened",
+            },
+            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+              outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+              attempts_locked: lifecycle === "reopened",
+            },
+          },
+        });
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${origin}${completionUrl}`);
+        await expectAcceptedCompletionProgress(page);
+        await expect(page.locator("#demo-attempt-progress-list button")).toHaveCount(4);
+        await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
+        await page.getByRole("button", { name: "3rd Attempt, read-only", exact: true }).click();
+        await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+        fixture.verify();
+      });
+    }
   }
 }
 
@@ -467,6 +561,7 @@ for (const closed of [false, true]) {
     await page.getByRole("button", { name: "Offer Accepted", exact: true }).click();
     await expect(page).toHaveURL(`${origin}${completionUrl}${closed ? "&view=closed" : ""}`);
     await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
+    await expectAcceptedCompletionProgress(page);
     if (closed) await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
     else await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
     expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
@@ -523,6 +618,7 @@ test("reopened accepted attempt disables Next but permits actual case closure th
   await page.getByRole("button", { name: "Offer Accepted", exact: true }).click();
   await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
   await expect(page.locator("#settlement-completion-status")).toContainText("This case is open for read-only review.");
+  await expectAcceptedCompletionProgress(page);
   expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
   fixture.verify();
 });
@@ -562,6 +658,7 @@ test("completion reports lifecycle lookup failure instead of enabling an unverif
   await expect(page.locator("#settlement-completion-status")).toHaveText("Case lifecycle unavailable. Reload and retry.");
   await expect(page.locator("#settlement-completion-status")).toHaveAttribute("data-kind", "error");
   await expect(page.locator("#settlement-completion-close-case")).toBeHidden();
+  await expect(page.locator("#settlement-completion-page #demo-attempt-progress")).toHaveCount(0);
   expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
   fixture.verify();
 });
@@ -619,6 +716,11 @@ for (const source of ["demo1", "demo2"]) {
     await expect(page).toHaveURL(`${origin}/demo/settlement-completion${query}`);
     await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
     await expect(page.locator("#settlement-completion-close-case")).toBeHidden();
+    await expectAcceptedCompletionProgress(page);
+    await page.reload();
+    await expectAcceptedCompletionProgress(page);
+    await page.getByRole("button", { name: "1st Attempt, read-only", exact: true }).click();
+    await expect(page).toHaveURL(`${origin}/demo${query}&attempt=1`);
     expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
     fixture.verify();
   });
@@ -671,6 +773,7 @@ for (const invalid of ["missing", "reopened", "other-offer", "unconfirmed"]) {
     await expect(page.locator("#settlement-completion-status")).toContainText("Return to My Account.");
     await expect(page.locator("#settlement-completion-demo-content")).toBeHidden();
     await expect(page.locator("#settlement-completion-close-case")).toBeHidden();
+    await expect(page.locator("#settlement-completion-page #demo-attempt-progress")).toHaveCount(0);
     expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
     fixture.verify();
   });

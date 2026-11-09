@@ -889,6 +889,8 @@
       .demo-case-navigation { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(0, 1.8fr); align-items: center; gap: 20px; margin: -8px 0 28px; padding: 15px 0 17px; border-bottom: 1px solid var(--line); }
       body:is([data-demo-page="settlement"], [data-case-workspace]) .demo-case-navigation { grid-template-columns: minmax(150px, 1fr) auto minmax(0, 1fr); }
       .demo-case-navigation[hidden] { display: none; }
+      body[data-settlement-completion-page="true"] .demo-case-navigation { grid-template-columns:minmax(0, 1fr); }
+      body[data-settlement-completion-page="true"] .demo-attempt-progress { box-sizing:border-box; padding:6px; }
       #case-assets-view[hidden], #case-saved-files[hidden] { display:none; }
       #case-assets-view { margin-top:24px; }
       .demo-case-nav-context { display: flex; min-width: 0; align-items: center; gap: 11px; }
@@ -4726,10 +4728,15 @@
           });
         }
 
-        function renderCaseWorkspaceNavigation() {
-          const metadata = caseWorkspace.case.metadata_json || {};
-          const caseClosed = Boolean(closedCaseViewMode || caseWorkspace.case.closed_at
-            || caseWorkspace.case.status === "finalized");
+        function renderCaseWorkspaceNavigation({
+          workspace = caseWorkspace,
+          currentOrdinal = caseWorkspaceCurrentOrdinal,
+          viewingOrdinal = caseWorkspaceViewingOrdinal,
+          completion = false,
+        } = {}) {
+          const metadata = workspace.case.metadata_json || {};
+          const caseClosed = Boolean(closedCaseViewMode || workspace.case.closed_at
+            || workspace.case.status === "finalized");
           document.getElementById("demo-current-case-title").textContent = metadata.case_title || "Your case";
           demoCaseNavigation.querySelector(".demo-case-nav-mark").textContent = "C";
           demoCaseNavigation.setAttribute("aria-label", "Case navigation");
@@ -4739,7 +4746,7 @@
           progress.hidden = false;
           demoMediationLink.href = `/case/assets?case_id=${encodeURIComponent(preparationCaseId)}`;
           demoFileManagementLink.href = `/case/files?case_id=${encodeURIComponent(preparationCaseId)}`;
-          if (closedCaseViewMode) {
+          if (closedCaseViewMode || caseClosed) {
             for (const link of [demoMediationLink, demoFileManagementLink]) {
               const target = new URL(link.href, window.location.origin);
               target.searchParams.set("view", "closed");
@@ -4748,29 +4755,29 @@
           }
           demoMediationLink.removeAttribute("aria-current");
           demoFileManagementLink.removeAttribute("aria-current");
-          if (preparationMode === "assets") demoMediationLink.setAttribute("aria-current", "page");
-          if (preparationMode === "upload") demoFileManagementLink.setAttribute("aria-current", "page");
+          if (!completion && preparationMode === "assets") demoMediationLink.setAttribute("aria-current", "page");
+          if (!completion && preparationMode === "upload") demoFileManagementLink.setAttribute("aria-current", "page");
           const list = document.getElementById("demo-attempt-progress-list");
           list.replaceChildren();
-          const ordinals = new Set([1, caseWorkspaceCurrentOrdinal,
-            ...caseWorkspace.attempts.map((attempt) => attempt.ordinal)]);
-          if (!caseWorkspace.accepted_offer_url) {
+          const ordinals = new Set([1, currentOrdinal,
+            ...workspace.attempts.map((attempt) => attempt.ordinal)]);
+          if (!workspace.accepted_offer_url && !completion) {
             for (let ordinal = 1; ordinal <= caseWorkspaceAttemptLimit; ordinal += 1) ordinals.add(ordinal);
           }
           for (const ordinal of [...ordinals].sort((a, b) => a - b)) {
-            const attempt = caseWorkspace.attempts.find((entry) => entry.ordinal === ordinal);
-            const current = ordinal === caseWorkspaceCurrentOrdinal;
-            const future = ordinal > caseWorkspaceCurrentOrdinal;
+            const attempt = workspace.attempts.find((entry) => entry.ordinal === ordinal);
+            const current = ordinal === currentOrdinal;
+            const future = ordinal > currentOrdinal;
             const item = document.createElement("li");
             const button = document.createElement("button");
             button.type = "button";
             button.dataset.ordinal = String(ordinal);
-            button.dataset.state = future ? "future" : current && !caseClosed ? "current" : "past";
+            button.dataset.state = future ? "future" : current && !caseClosed && !completion ? "current" : "past";
             const unavailable = !current && !attempt?.profile;
             button.disabled = future || unavailable
-              || (current && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal);
-            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${future ? ", future" : current && !caseClosed ? ", current" : unavailable ? ", snapshot unavailable" : ", read-only"}`);
-            if (ordinal === caseWorkspaceViewingOrdinal) button.setAttribute("aria-current", "step");
+              || (!completion && current && viewingOrdinal === currentOrdinal);
+            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${future ? ", future" : current && !caseClosed && !completion ? ", current" : unavailable ? ", snapshot unavailable" : ", read-only"}`);
+            if (!completion && ordinal === viewingOrdinal) button.setAttribute("aria-current", "step");
             const circle = document.createElement("span");
             circle.className = "demo-attempt-circle";
             circle.textContent = String(ordinal);
@@ -4787,14 +4794,15 @@
             item.append(button);
             list.append(item);
           }
-          if (caseWorkspace.accepted_offer_url) {
-            const target = new URL(caseWorkspace.accepted_offer_url, window.location.origin);
-            if (closedCaseViewMode) target.searchParams.set("view", "closed");
-            appendAcceptedOfferStep(list, `${target.pathname}${target.search}`);
+          if (workspace.accepted_offer_url || completion) {
+            const target = new URL(completion ? window.location.href : workspace.accepted_offer_url, window.location.origin);
+            if (closedCaseViewMode || caseClosed) target.searchParams.set("view", "closed");
+            appendAcceptedOfferStep(list, `${target.pathname}${target.search}`, completion);
           }
           document.getElementById("demo-attempt-progress-status").textContent =
-            caseClosed ? "All attempts are read-only. This case is closed."
-              : `${caseAttemptLabel(caseWorkspaceCurrentOrdinal)} is current.`;
+            completion ? "Offer Accepted is the current step."
+              : caseClosed ? "All attempts are read-only. This case is closed."
+              : `${caseAttemptLabel(currentOrdinal)} is current.`;
         }
 
         function renderSavedCaseFiles() {
@@ -7908,12 +7916,16 @@
           refreshAssetMilestones();
         }
 
-        function appendAcceptedOfferStep(list, target) {
+        function appendAcceptedOfferStep(list, target, selected = false) {
           const item = document.createElement("li");
           const button = document.createElement("button");
           button.type = "button";
           button.dataset.state = "current";
           button.setAttribute("aria-label", "Offer Accepted");
+          if (selected) {
+            button.setAttribute("aria-current", "step");
+            button.disabled = true;
+          }
           const circle = document.createElement("span");
           circle.className = "demo-attempt-circle";
           circle.textContent = "✓";
@@ -7927,12 +7939,12 @@
           list.append(item);
         }
 
-        function renderDemoAttemptProgress() {
+        function renderDemoAttemptProgress({ completion = false } = {}) {
           const list = document.getElementById("demo-attempt-progress-list");
           const status = document.getElementById("demo-attempt-progress-status");
           list.replaceChildren();
-          const accepted = demoCaseData?.current_draft?.sent
-            && demoCaseData.current_draft.outcome === "accepted";
+          const accepted = completion || (demoCaseData?.current_draft?.sent
+            && demoCaseData.current_draft.outcome === "accepted");
           for (let ordinal = 1; ordinal <= (accepted ? settlementDemoAttemptOrdinal : demoAttemptLimit); ordinal += 1) {
             const past = ordinal < settlementDemoAttemptOrdinal;
             const snapshot = demoCaseData?.attempt_snapshots?.[ordinal];
@@ -7941,13 +7953,13 @@
             const circle = document.createElement("span");
             const label = document.createElement("span");
             button.type = "button";
-            button.dataset.state = past ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
+            button.dataset.state = past || completion ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
             button.disabled = ordinal > settlementDemoAttemptOrdinal || (past && !snapshot)
-              || (ordinal === settlementDemoAttemptOrdinal
+              || (!completion && ordinal === settlementDemoAttemptOrdinal
                 && settlementDemoViewingOrdinal === settlementDemoAttemptOrdinal);
-            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${past && !snapshot ? ", snapshot unavailable" : past ? ", review read-only" : ordinal === settlementDemoAttemptOrdinal ? ", current" : ", future"}`);
+            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${past && !snapshot ? ", snapshot unavailable" : past ? ", review read-only" : completion ? ", read-only" : ordinal === settlementDemoAttemptOrdinal ? ", current" : ", future"}`);
             if (past && !snapshot) button.title = "No saved snapshot exists for this older attempt.";
-            if (ordinal === settlementDemoViewingOrdinal) button.setAttribute("aria-current", "step");
+            if (!completion && ordinal === settlementDemoViewingOrdinal) button.setAttribute("aria-current", "step");
             circle.className = "demo-attempt-circle";
             circle.textContent = String(ordinal);
             label.className = "demo-attempt-progress-label";
@@ -7955,6 +7967,12 @@
             button.append(circle, label);
             button.addEventListener("click", () => {
               if (button.disabled) return;
+              if (completion) {
+                const target = new URL(demoAssetOverviewUrl(), window.location.origin);
+                target.searchParams.set("attempt", String(ordinal));
+                window.location.assign(`${target.pathname}${target.search}`);
+                return;
+              }
               if (!viewDemoAttempt(ordinal, { navigate: true })) return;
               const url = new URL(window.location.href);
               url.searchParams.set("attempt", String(ordinal));
@@ -7965,9 +7983,10 @@
           }
           if (accepted) {
             appendAcceptedOfferStep(list,
-              `/demo/settlement-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`);
+              `/demo/settlement-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`, completion);
           }
-          status.textContent = settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal
+          status.textContent = completion ? "Offer Accepted is the current step."
+            : settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal
             ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only. Select the current attempt to return.`
             : `${caseAttemptLabel(settlementDemoAttemptOrdinal)} is current.`;
           if (Array.from({ length: settlementDemoAttemptOrdinal - 1 }, (_, index) => index + 1)
@@ -9797,6 +9816,23 @@
 
         let settlementCompletionCaseClosed = false;
 
+        function showSettlementCompletionProgress(workspace = null) {
+          if (demoSettlementCompletionMode) {
+            renderDemoAttemptProgress({ completion: true });
+          } else {
+            const assetAttempt = new URLSearchParams(window.location.search).get("asset_attempt");
+            const currentOrdinal = Math.max(1, Number(assetAttempt),
+              ...workspace.attempts.map((attempt) => attempt.ordinal));
+            renderCaseWorkspaceNavigation({ workspace, currentOrdinal, completion: true });
+          }
+          settlementCompletionPage.prepend(demoCaseNavigation);
+          demoCaseNavigation.hidden = false;
+          document.getElementById("demo-attempt-progress").hidden = false;
+          demoCaseNavigation.querySelector('[aria-current="step"]').scrollIntoView({
+            block: "nearest", inline: "nearest",
+          });
+        }
+
         async function initializeSettlementCompletionPage() {
           if (!demoSettlementCompletionMode && !await verifyWorkingPageSession()) return;
           document.body.dataset.settlementCompletionPage = "true";
@@ -9808,6 +9844,7 @@
             document.getElementById("settlement-completion-demo-notice").hidden = false;
             settlementCompletionStatus.textContent =
               "Fictional demo only — no offer, attachment, or case data was saved.";
+            showSettlementCompletionProgress();
             settlementCompletionPage.querySelector("h1").focus();
             return;
           }
@@ -9818,6 +9855,7 @@
           const selectionId = query.get("selection_id");
           const assetAttempt = query.get("asset_attempt");
           let completionCase = null;
+          let completionWorkspace = null;
           if (closedCaseViewMode) {
             settlementCompletionBackToCases.href = "/?view=account";
             try {
@@ -9838,6 +9876,7 @@
                 throw new Error("The requested offer is not the accepted offer for this closed case. Return to My Account.");
               }
               completionCase = saved.case;
+              completionWorkspace = saved;
             } catch (error) {
               settlementCompletionStatus.dataset.kind = "error";
               settlementCompletionStatus.textContent = error instanceof Error
@@ -9850,6 +9889,7 @@
               if (!completionCase) {
                 const saved = await settlementApi(`/cases/${encodeURIComponent(caseId)}/workspace`);
                 completionCase = saved.case;
+                completionWorkspace = saved;
               }
               if (completionCase?.id !== caseId || typeof completionCase.status !== "string") {
                 throw new Error("The current case status could not be verified. Reload and retry.");
@@ -9870,6 +9910,7 @@
             try {
               const state = await settlementApi(`/cases/${encodeURIComponent(caseId)}/asset-mediation/${encodeURIComponent(assetAttempt)}`);
               if (!state.sent || state.outcome !== "accepted") throw new Error("This page requires an accepted, confirmed offer.");
+              showSettlementCompletionProgress(completionWorkspace);
               settlementCompletionState = state;
               settlementCompletionDemoContent.hidden = false;
               settlementCompletionCloseCase.hidden = false;
@@ -9899,6 +9940,7 @@
             if (response.outcome !== "accepted" || !response.sent_confirmed) {
               throw new Error("This completion page is only available for an accepted, confirmed offer.");
             }
+            showSettlementCompletionProgress(completionWorkspace);
             settlementCompletionState = response;
             settlementCompletionDemoContent.hidden = false;
             settlementCompletionCloseCase.hidden = false;
