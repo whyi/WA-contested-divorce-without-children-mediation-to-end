@@ -188,7 +188,7 @@ async function expectAcceptedCompletionProgress(page) {
     const expectedGreen = getComputedStyle(green).backgroundColor;
     green.remove();
     const nav = circle.closest("#demo-case-navigation").getBoundingClientRect();
-    const card = document.querySelector(".settlement-completion-card").getBoundingClientRect();
+    const card = document.querySelector("#settlement-completion-content").getBoundingClientRect();
     const circleBounds = circle.getBoundingClientRect();
     const progressBounds = circle.closest("#demo-attempt-progress").getBoundingClientRect();
     return {
@@ -1263,7 +1263,88 @@ test("password recovery delivery and password-policy failures remain retryable",
   fixture.verify();
 });
 
-test("accepted offer page uses the attempt page's top gap at every breakpoint", async ({ page }) => {
+for (const backend of ["asset", "selection"]) {
+  for (const closed of [false, true]) {
+    test(`accepted layout matches the attempt workspace: ${backend}, ${closed ? "closed" : "open"}`, async ({ page }) => {
+      const selectionId = "00000000-0000-4000-8000-000000000076";
+      const completionUrl = `/settlement-completion?case_id=${caseId}&${backend === "asset" ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+      const fixture = await installFixtures(page, {
+        authenticated: true, hasCase: !closed,
+        extraReads: {
+          "/api/billing/account/entitlement": { status: "paid" },
+          "/api/v1/closed-cases": { cases: closed ? [{
+            id: caseId, title: "Layout regression case", closed_at: closedAt, closed_reason: "accepted",
+          }] : [] },
+          [`/cases/${caseId}/workspace`]: {
+            ...workspace, accepted_offer_url: completionUrl,
+            case: { ...workspace.case, status: closed ? "finalized" : "settlement",
+              closed_at: closed ? closedAt : null, closed_reason: closed ? "accepted" : null },
+            attempts: [1, 2, 3].map(ordinal => ({
+              ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+            })),
+          },
+          [`/cases/${caseId}/asset-mediation/3`]: {
+            revision: 1, attempt_ordinal: 3, attempt_limit: 3, sent: true, outcome: "accepted",
+            completed: closed, attempts_locked: closed, sent_filenames: [], document_ids: [],
+          },
+          [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+            outcome: "accepted", sent_confirmed: true, sent_documents_complete: true, attempts_locked: closed,
+          },
+        },
+      });
+      const measure = completion => page.evaluate(isCompletion => {
+        const root = document.querySelector(isCompletion ? "#settlement-completion-page" : "#account-dashboard");
+        const panel = root.querySelector(".dashboard-panel");
+        const content = root.querySelector(isCompletion ? "#settlement-completion-content" : "#case-asset-layout");
+        const nav = root.querySelector("#demo-case-navigation");
+        const header = content.querySelector(".asset-analysis-header");
+        const heading = header.querySelector(isCompletion ? "h1" : "h2");
+        const style = element => {
+          const value = getComputedStyle(element);
+          return Object.fromEntries([
+            "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "backgroundColor",
+            "borderTopWidth", "borderTopColor", "borderRadius", "boxShadow",
+          ].map(key => [key, value[key]]));
+        };
+        const bounds = panel.getBoundingClientRect();
+        const navBounds = nav.getBoundingClientRect();
+        const titleStyle = getComputedStyle(heading);
+        return {
+          shell: style(panel), section: style(root),
+          x: bounds.x, width: bounds.width,
+          topGap: bounds.top - document.querySelector(".topbar").getBoundingClientRect().bottom,
+          navX: navBounds.x, navWidth: navBounds.width, navOffset: navBounds.top - bounds.top,
+          navGrid: getComputedStyle(nav).gridTemplateColumns, navStyle: style(nav),
+          headerX: header.getBoundingClientRect().x, headerWidth: header.getBoundingClientRect().width,
+          heading: Object.fromEntries(["fontFamily", "fontSize", "fontWeight", "letterSpacing", "lineHeight", "color"]
+            .map(key => [key, titleStyle[key]])),
+          overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      }, completion);
+      for (const width of [1280, 880, 850, 768, 600, 390, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${origin}/case/assets?case_id=${caseId}${closed ? "&view=closed" : ""}`);
+        await expect(page.locator("#case-asset-layout")).toBeVisible();
+        const attemptLayout = await measure(false);
+        await page.goto(`${origin}${completionUrl}${closed ? "&view=closed" : ""}`);
+        await expectAcceptedCompletionProgress(page);
+        expect(await measure(true), `matching workspace at ${width}px`).toEqual(attemptLayout);
+        await expect(page.locator("#settlement-completion-page .settlement-completion-card")).toHaveCount(0);
+        await expect(page.locator("#settlement-completion-workspace > #settlement-completion-content")).toBeVisible();
+        await expect(page.locator("#settlement-completion-workspace #settlement-completion-demo-content a")).toHaveCount(4);
+        await expect(page.locator("#settlement-completion-workspace")).toContainText("Check any judgment and deadlines");
+        await expect(page.locator("#settlement-completion-workspace")).toContainText("does not provide legal advice");
+        if (closed) await expectClosedCompletionActions(page);
+        else await expect(page.locator("#settlement-completion-workspace .settlement-completion-actions > :visible"))
+          .toHaveText(["Back to attempt #3", "Close your case"]);
+      }
+      expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+      fixture.verify();
+    });
+  }
+}
+
+test("accepted offer page uses the attempt page's workspace shell at every breakpoint", async ({ page }) => {
   const measureTopGap = async (width, mode) => {
     await page.setViewportSize({ width, height: 900 });
     await page.setContent(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ""));
@@ -1279,7 +1360,7 @@ test("accepted offer page uses the attempt page's top gap at every breakpoint", 
       }
       const target = pageMode === "attempt"
         ? document.querySelector("#account-dashboard .dashboard-panel")
-        : document.querySelector("#settlement-completion-page .settlement-completion-card");
+        : document.querySelector("#settlement-completion-page .dashboard-panel");
       return target.getBoundingClientRect().top - document.querySelector(".topbar").getBoundingClientRect().bottom;
     }, mode);
   };
