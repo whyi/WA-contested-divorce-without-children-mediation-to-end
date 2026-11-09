@@ -1274,6 +1274,11 @@
       .account-profile dd { margin: 4px 0 0; overflow-wrap: anywhere; font-weight: 650; }
       .account-tools-link[hidden] { display: none; }
       .authenticated-view .nav a.account-tools-link:not([hidden]) { display: inline-block; }
+      #your-case-entry[hidden] { display: none; }
+      body.authenticated-view:not([data-demo-page]) .nav a.demo-entry { display: none; }
+      .authenticated-view .nav #your-case-entry:not([hidden]),
+      body.signed-in-home .nav #your-case-entry:not([hidden]) { display: inline-flex !important; }
+      body.signed-in-home #account-entry { display: none; }
       .authenticated-view main > section:not(#account-dashboard):not(#case-documents-layout):not(#preparation-view) { display: none; }
 
       @media (max-width: 850px) {
@@ -1716,6 +1721,7 @@
             </select>
           </label>
           <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
+          <a class="nav-cta" id="your-case-entry" href="/" hidden>Your case</a>
           <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
           <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
           <a class="nav-cta nav-cta-primary auth-entry" id="account-entry" href="#plans">Get started <span class="arrow" aria-hidden="true">→</span></a>
@@ -6079,7 +6085,6 @@
           dashboardLoading.hidden = true;
           accountToolsLink.hidden = false;
           for (const [id, label] of [
-            ["account-entry", "Your case "],
             ["hero-primary-action", "Open your case "],
             ["closing-account-cta", "Open your case "],
           ]) {
@@ -9605,6 +9610,7 @@
         });
         function showSignedInNavigation() {
           accountToolsLink.hidden = false;
+          document.getElementById("your-case-entry").hidden = false;
           logoutButton.hidden = false;
           document.getElementById("login-entry").hidden = true;
         }

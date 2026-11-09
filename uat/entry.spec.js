@@ -166,6 +166,18 @@ test("How it works section and entry links are removed", async ({ page }) => {
   fixture.verify();
 });
 
+test("signed-in header offers Account, Your case and the existing logout action", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true });
+  for (const path of ["/", "/?view=home", "/?view=account"]) {
+    await page.goto(`${origin}${path}`);
+    await expect(page.locator("#account-tools-link")).toBeVisible();
+    await expect(page.locator("#your-case-entry")).toBeVisible();
+    await expect(page.locator("#logout-button")).toBeVisible();
+    await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
+  }
+  fixture.verify();
+});
+
 test("homepage pricing explains credit options and routes free signup to email entry", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);
@@ -1297,7 +1309,7 @@ test("document selection stays local until Next, supports removal, then imports 
   expect(fixture.requests.filter(request => /analysis|profile-facts/.test(request))).toEqual([]);
   await page.getByRole("link", { name: "Casework home", exact: true }).click();
   await expect(page).toHaveURL(`${origin}/?view=home`);
-  await page.locator("#account-entry").click();
+  await page.locator("#your-case-entry").click();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
   await expect(page.locator("#case-assets-view")).toBeVisible();
   await page.reload();
