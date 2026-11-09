@@ -91,6 +91,9 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
         [`/cases/${caseId}/settlement-planning`]: { consented: false, profile_revision: 0, settlement_revision: 0 },
         [`/cases/${caseId}/profile-facts`]: { facts: [] },
         [`/cases/${caseId}/settlement-planning/ledger-events`]: [],
+        [`/cases/${caseId}/settlement-planning/document-credits`]: {
+          remaining: 1, free_first_finalization_available: true,
+        },
         [`/cases/${caseId}/settlement-planning/disclosure`]: {
           available: false, provider: "disabled", data_sent: "No AI configured.",
         },
@@ -619,19 +622,21 @@ for (const [label, mode, intake] of [
   ["unfiled wizard", "wizard", { filed: "no", role: "" }],
   ["complete wizard", "wizard", { filed: "yes", role: "petitioner" }],
 ]) {
-  test(`active case (${label}): login and refresh never open the deleted planner`, async ({ page }) => {
+  test(`active case (${label}): proposal planning remains opt-in`, async ({ page }) => {
     const fixture = await installFixtures(page, { mode, intake });
     await signIn(page);
     for (const reload of [false, true]) {
       if (reload) await page.reload();
-      await expect(page.locator("#settlement-planner, #settlement-generate, #settlement-ledger-json")).toHaveCount(0);
+      await expect(page.locator("#settlement-planner")).toBeHidden();
       await expect(page.locator("#case-create-page")).toBeHidden();
       if (mode) {
         await expect(page).toHaveURL(`${origin}/onboarding/${mode}?case_id=${caseId}`);
         await expect(page.locator(mode === "upload" ? "#case-documents-layout" : "#preparation-view")).toBeVisible();
+        await expect(page.locator("#open-proposal-workspace")).toBeVisible();
         if (mode === "upload") await expect(page.locator("#demo-file-input-case")).toBeEnabled();
       } else {
         await expect(page.locator("#start-path-page")).toBeVisible();
+        await expect(page.locator("#proposal-workspace-entry")).toBeHidden();
         await expect(page.locator("#start-path-page")).toHaveJSProperty("tagName", "SECTION");
         await expect(page.locator("#start-path-cancel")).toHaveCount(0);
         expect(await page.locator("dialog:modal").count()).toBe(0);
@@ -645,6 +650,228 @@ for (const [label, mode, intake] of [
     fixture.verify();
   });
 }
+
+test("real account can open, calculate, and select a server-backed proposal scenario", async ({ page }) => {
+  const selectionId = "00000000-0000-4000-8000-000000000072";
+  const scenarioResult = {
+    scenario: {
+      id: "synthetic-scenario",
+      label: "Synthetic marriage-only scenario",
+      relationship_window: {
+        label: "Marriage-only dates",
+        start_date: "2020-01-01",
+        separation_date: "2024-01-01",
+      },
+      tracing_method: "explicit",
+      community_share_bps: 5000,
+    },
+    ledgers: [],
+    user_net_cents: 0,
+    other_net_cents: 0,
+    unresolved_cents: 0,
+  };
+  const offerResponse = {
+    outcome: null,
+    sent_confirmed: false,
+    frozen: false,
+    finalized: false,
+    scenario_result: scenarioResult,
+    proposal_downloaded_formats: [],
+    attachments: [],
+    editable_state: {
+      offer_from: "",
+      offer_to: "",
+      county: null,
+      cause_number: null,
+      proposed_effective_date: null,
+      proposed_response_date: null,
+      scenario_assumptions: null,
+      milestones: [],
+      proposed_values: [],
+      proposal_terms: [],
+      sent_offer_mode: null,
+    },
+  };
+  let attemptRevision = 0;
+  const downloads = [];
+  const fixture = await installFixtures(page, {
+    mode: "upload",
+    extraReads: {
+      [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: offerResponse,
+    },
+    mutationHandler: async (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === `/cases/${caseId}/settlement-planning/scenarios`) {
+        return {
+          body: {
+            profile_revision: 0,
+            settlement_revision: 0,
+            run_id: "synthetic-run",
+            scenarios: [scenarioResult],
+            ranking: { ranked: [], unranked_reason: "Synthetic unranked result." },
+          },
+        };
+      }
+      if (path === `/cases/${caseId}/settlement-planning/selections`) {
+        return { body: { selection_id: selectionId } };
+      }
+      if (path === `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/attempt`) {
+        const editableState = request.postDataJSON();
+        attemptRevision += 1;
+        offerResponse.editable_state = editableState;
+        offerResponse.attempt_revision = attemptRevision;
+        return {
+          body: {
+            editable_state: editableState,
+            revision: attemptRevision,
+            proposal_downloaded_formats: offerResponse.proposal_downloaded_formats,
+            scenario_recalculated: false,
+            proposal_documents_updated: false,
+          },
+        };
+      }
+      const documentMatch = path.match(
+        new RegExp(`/cases/${caseId}/settlement-planning/offers/${selectionId}/(docx|xlsx)$`),
+      );
+      if (documentMatch) {
+        const format = documentMatch[1];
+        if (request.postDataJSON().finalize) {
+          offerResponse.frozen = true;
+          offerResponse.finalized = true;
+        }
+        offerResponse.proposal_downloaded_formats = [
+          ...new Set([...offerResponse.proposal_downloaded_formats, format]),
+        ];
+        return {
+          contentType: format === "docx"
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          body: "Synthetic proposal document",
+        };
+      }
+      return null;
+    },
+  });
+  page.on("download", (download) => downloads.push(download.suggestedFilename()));
+  await signIn(page);
+  await expect(page.locator("#case-documents-layout")).toBeVisible();
+  await page.locator("#open-proposal-workspace").click();
+  await expect(page.locator("#settlement-planner")).toBeVisible();
+  await expect(page.locator("#settlement-planner-status")).toContainText("Attempt workspace ready.");
+  await expect(page.locator("#settlement-planner")).toContainText("The product does not deliver proposal documents");
+  await expect(page.locator("#settlement-planner button").filter({ hasText: /send|deliver/i })).toHaveCount(0);
+  await expect(page.locator("#settlement-generate")).toBeEnabled();
+  await page.locator("#settlement-generate").click();
+  await expect(page.locator("#settlement-scenarios-status")).toContainText("All 1 calculated candidates");
+  await page.getByRole("button", { name: "Choose scenario", exact: true }).click();
+  await expect(page.locator("#settlement-offer")).toBeVisible();
+  await expect(page.locator("#settlement-planner-status")).toContainText("Scenario selection saved.");
+  await page.locator(".settlement-offer-advanced-values > summary").click();
+  await expect(page.locator("#settlement-offer-values")).toBeEditable();
+  await page.locator("#settlement-offer-values").fill("[]");
+  await page.locator("#settlement-offer-from").fill("Synthetic party A");
+  await page.locator("#settlement-offer-to").fill("Synthetic party B");
+  await page.locator("#settlement-offer-terms").fill("Synthetic test term.");
+  await page.locator("#settlement-offer-download").click();
+  await expect.poll(() => downloads).toContain("cr2a-agreement-proposal-draft.docx");
+  await page.locator("#settlement-finalize-download").click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await page.locator("#app-dialog-confirm").click();
+  await expect(page.locator("#settlement-planner-status")).toContainText("Attempt finalized:");
+  await expect.poll(() => downloads).toEqual([
+    "cr2a-agreement-proposal-draft.docx",
+    "cr2a-agreement-proposal-draft.docx",
+    "property-division-proposal-draft.xlsx",
+  ]);
+  await expect(page.locator("#settlement-finalize-download")).toBeDisabled();
+  expect(fixture.requests).toContain(`POST /cases/${caseId}/settlement-planning/scenarios`);
+  expect(fixture.requests).toContain(`POST /cases/${caseId}/settlement-planning/selections`);
+  expect(fixture.requests).toContain(`GET /cases/${caseId}/settlement-planning`);
+  await expect(page).toHaveURL(`${origin}/onboarding/upload?case_id=${caseId}`);
+  fixture.verify();
+});
+
+test("real account can edit and save reported counteroffer values", async ({ page }) => {
+  const selectionId = "00000000-0000-4000-8000-000000000073";
+  const assetId = "00000000-0000-4000-8000-000000000074";
+  const scenarioResult = {
+    scenario: { id: "synthetic-scenario", label: "Synthetic scenario" },
+    ledgers: [],
+    user_net_cents: 0,
+    other_net_cents: 0,
+    unresolved_cents: 0,
+  };
+  const offerResponse = {
+    selection_id: selectionId,
+    outcome: "counteroffer",
+    sent_confirmed: true,
+    frozen: true,
+    finalized: true,
+    attempt_revision: 2,
+    scenario_result: scenarioResult,
+    snapshot: {
+      settlement_ledger: [{ asset_id: assetId, asset_name: "Synthetic asset" }],
+    },
+    counteroffer: {
+      recorded_at: "2026-01-02T03:04:05+00:00",
+      values: [{ asset_id: assetId, amount_cents: 50000 }],
+    },
+    proposal_downloaded_formats: [],
+    attachments: [],
+    editable_state: {},
+  };
+  let savedCounteroffer = null;
+  const fixture = await installFixtures(page, {
+    mode: "upload",
+    extraReads: {
+      [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: offerResponse,
+      [`/cases/${caseId}/settlement-planning/offer-responses`]: [{
+        selection_id: selectionId,
+        scenario_id: "synthetic-scenario",
+        attempt_ordinal: 1,
+        attempt_limit: 3,
+        frozen: true,
+        finalized: true,
+        outcome: "counteroffer",
+        attachments: [],
+      }],
+    },
+    mutationHandler: async (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === `/cases/${caseId}/settlement-planning/scenarios`) {
+        return {
+          body: {
+            profile_revision: 0,
+            settlement_revision: 0,
+            run_id: "synthetic-run",
+            scenarios: [scenarioResult],
+            ranking: { ranked: [], unranked_reason: "Synthetic unranked result." },
+          },
+        };
+      }
+      if (path === `/cases/${caseId}/settlement-planning/selections`) {
+        return { body: { selection_id: selectionId } };
+      }
+      if (path === `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/counteroffer-values`) {
+        savedCounteroffer = request.postDataJSON();
+        return { body: offerResponse };
+      }
+      return null;
+    },
+  });
+  await signIn(page);
+  await page.locator("#open-proposal-workspace").click();
+  const historyButton = page.locator("#settlement-offer-response-history-list button");
+  await expect(historyButton).toBeVisible();
+  await expect(page.locator("#settlement-counteroffer-values")).toBeVisible();
+  const value = page.locator("#settlement-counteroffer-rows input").first();
+  await expect(value).toBeEnabled();
+  await value.fill("705.50");
+  await page.locator("#settlement-counteroffer-save").click();
+  await expect(page.locator("#settlement-counteroffer-status")).toContainText("Saved as the values you reported");
+  expect(savedCounteroffer.values).toEqual([{ asset_id: assetId, amount_cents: 70550 }]);
+  fixture.verify();
+});
 
 test("failed dashboard after login stays an explicit error, not a start or attempt", async ({ page }) => {
   const fixture = await installFixtures(page, { dashboardStatus: 503 });
@@ -2430,7 +2657,7 @@ test("Account retains active-case export, closure and deletion with explicit fai
 });
 
 for (const accepted of [true, false]) {
-  test(`existing completion ${accepted ? "accepted" : "unconfirmed"} is independent of the deleted planner`, async ({ page }) => {
+  test(`existing completion ${accepted ? "accepted" : "unconfirmed"} remains separate from the hidden planner`, async ({ page }) => {
     const selectionId = "00000000-0000-4000-8000-000000000076";
     const fixture = await installFixtures(page, {
       authenticated:true,
@@ -2455,7 +2682,7 @@ for (const accepted of [true, false]) {
       await expect(page.locator("#settlement-completion-status")).toHaveText("This completion page is only available for an accepted, confirmed offer.");
       await expect(page.locator("#settlement-completion-demo-content")).toBeHidden();
     }
-    await expect(page.locator("#settlement-planner")).toHaveCount(0);
+    await expect(page.locator("#settlement-planner")).toBeHidden();
     fixture.verify();
   });
 }

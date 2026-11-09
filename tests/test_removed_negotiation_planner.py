@@ -20,25 +20,34 @@ class CaseMarkup(HTMLParser):
 
 
 class RemovedNegotiationPlannerTests(unittest.TestCase):
-    def test_deleted_page_and_technical_controls_are_absent_even_when_hidden(self) -> None:
-        for removed in (
+    def test_real_account_proposal_workspace_and_editable_controls_are_present(self) -> None:
+        for required in (
             "Negotiation attempts",
-            "Attempt workspace ready.",
-            "Advanced evidence and ledger tools",
-            "Separate consent for settlement planning",
-            "Append ledger events",
-            "Scenario assumptions JSON",
-            "Calculate and rank scenarios",
-            "settlement-planner",
-            "settlement-ledger-json",
-            "settlement-axes-json",
-            "settlement-generate",
+            'id="settlement-planner"',
+            'id="settlement-offer-values"',
+            'id="settlement-axes-json"',
+            'id="settlement-generate"',
+            'id="settlement-offer-download"',
+            'id="settlement-finalize-download"',
             "openSettlementPlanner",
-            "createWizardAttemptOne",
-            "settlement-edit-intake",
+            "finalizeSettlementAttempt",
+            "renderSettlementOfferComparison",
         ):
-            with self.subTest(removed=removed):
-                self.assertNotIn(removed, PAGE)
+            with self.subTest(required=required):
+                self.assertTrue(required in PAGE, f"Missing required workspace element: {required}")
+
+    def test_authenticated_case_entry_preserves_preparation_and_offers_explicit_workspace_entry(self) -> None:
+        entry = PAGE.split("async function openActiveCase(item)", 1)[1].split(
+            "\n        function showAccountTools()", 1
+        )[0]
+        self.assertIn("/onboarding/${item.workflow_mode}", entry)
+        self.assertNotIn("openSettlementPlanner(item.id)", entry)
+        self.assertIn('id="open-proposal-workspace"', PAGE)
+        self.assertIn("openSettlementPlanner(preparationCaseId || settlementCaseId)", PAGE)
+        self.assertIn("/settlement-planning", PAGE)
+        self.assertIn("credentials: \"same-origin\"", PAGE)
+        self.assertIn("The product does not deliver proposal documents", PAGE)
+        self.assertNotIn("optional external transfer", PAGE)
 
     def test_case_actions_exist_once_inside_account_not_the_deleted_page(self) -> None:
         markup = CaseMarkup()

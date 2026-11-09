@@ -208,7 +208,7 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
 
 class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
     @patch("app.offer_response.enforce_attachment_quota")
-    async def test_uploaded_final_file_is_stored_without_extraction_or_delivery(self, _quota) -> None:
+    async def test_uploaded_final_file_is_stored_without_extraction(self, _quota) -> None:
         case_id = uuid4()
         selection = SimpleNamespace(
             id=uuid4(), case_id=case_id, run_id=uuid4(), scenario_id="saved"
@@ -232,7 +232,6 @@ class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
             patch("app.offer_response.storage.put") as store,
             patch("app.offer_response.storage.delete") as delete,
             patch("app.settlement_routes.rank_settlement_scenarios") as rank,
-            patch("app.settlement_routes.deliver_export_files") as deliver,
         ):
             result = await upload_offer_response_attachment(
                 case_id,
@@ -260,7 +259,6 @@ class OfferResponseUploadTests(unittest.IsolatedAsyncioTestCase):
         _quota.assert_called_once_with(db, case_id)
         delete.assert_not_called()
         rank.assert_not_called()
-        deliver.assert_not_called()
 
     @patch("app.offer_response.enforce_attachment_quota")
     async def test_replacing_modified_source_invalidates_prior_review(self, _quota) -> None:
@@ -1227,6 +1225,11 @@ class OfferResponseTransitionTests(unittest.TestCase):
             self.assertIn(source, html)
         self.assertIn("The signed decree or order and case docket determine", html)
         self.assertIn("Ask the Superior Court Clerk or qualified Washington counsel", html)
+        self.assertIn(
+            "The product does not send proposal documents or verify mediator receipt.",
+            html,
+        )
+        self.assertNotIn("/deliver", html)
         self.assertNotIn('id="settlement-response-accepted-file"', html)
         self.assertNotIn("uploadAcceptedOfferDocument", html)
         self.assertNotIn('id="settlement-demo-attempt-status"', html)
@@ -1238,8 +1241,6 @@ class OfferResponseTransitionTests(unittest.TestCase):
         self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", html)
         self.assertIn("function settlementAttemptOrdinalLabel(ordinal)", html)
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" hidden', html)
-        self.assertNotIn('id="settlement-response-confirm-sent"', html)
-        self.assertNotIn("saveSettlementAttemptState", html)
 
     def test_demo_attempt_freezes_chart_date_dragging(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "src/app/static/index.html").read_text(
