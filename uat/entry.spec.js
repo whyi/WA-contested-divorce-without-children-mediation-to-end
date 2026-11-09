@@ -199,6 +199,135 @@ test("signed-in header offers Account, Your case and the existing logout action"
   fixture.verify();
 });
 
+async function headerControlBoxes(page) {
+  return page.locator("header.topbar .nav > :not(.account-navigation):visible, header.topbar .account-navigation > *:visible").evaluateAll((controls) =>
+    controls.map((control) => {
+      const { x, y, width, height } = control.getBoundingClientRect();
+      return { id: control.id || control.className, x, y, width, height };
+    }).sort((a, b) => a.y + a.height / 2 - b.y - b.height / 2 || a.x - b.x)
+  );
+}
+
+async function expectHomepageNavigationSpacing(page, referenceGap, signedIn) {
+  await expect(page.locator("#theme-select")).toBeVisible();
+  for (const selector of ["#account-tools-link", "#your-case-entry", "#logout-button"]) {
+    if (signedIn) await expect(page.locator(selector)).toBeVisible();
+    else await expect(page.locator(selector)).toBeHidden();
+  }
+  const header = await page.locator("header.topbar").boundingBox();
+  expect(header.x).toBeGreaterThanOrEqual(0);
+  expect(header.x + header.width).toBeLessThanOrEqual(page.viewportSize().width);
+  const controls = await headerControlBoxes(page);
+  expect(controls.length).toBeGreaterThan(1);
+  for (const control of controls) {
+    expect(control.x, `${control.id}: left boundary`).toBeGreaterThanOrEqual(header.x - 0.5);
+    expect(control.x + control.width, `${control.id}: right boundary`).toBeLessThanOrEqual(header.x + header.width + 0.5);
+    expect(control.y, `${control.id}: top boundary`).toBeGreaterThanOrEqual(header.y - 0.5);
+    expect(control.y + control.height, `${control.id}: bottom boundary`).toBeLessThanOrEqual(header.y + header.height + 0.5);
+  }
+  const rows = [];
+  for (const control of controls) {
+    const center = control.y + control.height / 2;
+    let row = rows.find((items) => Math.abs(items[0].y + items[0].height / 2 - center) < 1);
+    if (!row) rows.push(row = []);
+    row.push(control);
+  }
+  for (const row of rows) {
+    row.sort((a, b) => a.x - b.x);
+    for (let index = 1; index < row.length; index++) {
+      expect(row[index].x - row[index - 1].x - row[index - 1].width,
+        `${row[index - 1].id} to ${row[index].id}: rendered gap`).toBeCloseTo(referenceGap, 0);
+    }
+    const last = row.at(-1);
+    expect(last.x + last.width, "navigation row is right-aligned").toBeCloseTo(header.x + header.width, 0);
+  }
+  for (let index = 1; index < rows.length; index++) {
+    const previousBottom = Math.max(...rows[index - 1].map((control) => control.y + control.height));
+    const nextTop = Math.min(...rows[index].map((control) => control.y));
+    expect(nextTop - previousBottom, "wrapped row gap").toBeCloseTo(referenceGap, 0);
+  }
+  if (signedIn) {
+    const accountControls = ["account-tools-link", "your-case-entry", "logout-button"]
+      .map((id) => controls.find((control) => control.id === id));
+    for (let index = 1; index < accountControls.length; index++) {
+      const previous = accountControls[index - 1];
+      const current = accountControls[index];
+      expect(current.y + current.height / 2, "account actions stay on one row")
+        .toBeCloseTo(previous.y + previous.height / 2, 0);
+      expect(current.x - previous.x - previous.width, "adjacent account action gap")
+        .toBeCloseTo(referenceGap, 0);
+    }
+  }
+}
+
+for (const width of [1280, 901, 900, 851, 850, 601, 600, 421, 420, 390, 320]) {
+  for (const mode of ["anonymous", "no-case", "upload", "wizard", "demo1", "demo2"]) {
+    test(`homepage navigation spacing: ${mode} at ${width}px`, async ({ page }) => {
+      const signedIn = ["no-case", "upload", "wizard"].includes(mode);
+      const fixture = await installFixtures(page, {
+        authenticated: signedIn,
+        hasCase: mode !== "no-case",
+        mode: ["upload", "wizard"].includes(mode) ? mode : null,
+        extraReads: {
+          [`/cases/${caseId}/asset-mediation/1`]: {
+            revision: 1, attempt_ordinal: 1, sent: true, outcome: "accepted", completed: false,
+          },
+        },
+      });
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${origin}/?view=home`);
+      if (signedIn) await expect(page.locator("#logout-button")).toBeVisible();
+      else await expect(page.locator("#login-entry")).toBeVisible();
+      const homepageControls = await headerControlBoxes(page);
+      const pair = signedIn
+        ? ["account-tools-link", "your-case-entry"]
+        : ["login-entry", "account-entry"];
+      const [first, second] = pair.map((id) => homepageControls.find((control) => control.id === id));
+      const referenceGap = second.x - first.x - first.width;
+      expect(referenceGap, "unchanged homepage reference").toBeCloseTo(width > 850 ? 10 : 8, 0);
+      let paths;
+      if (mode.startsWith("demo")) {
+        await page.goto(`${origin}/demo/start?source=${mode}`);
+        await expect(page.locator("#demo-case-choice-page")).toBeVisible();
+        await expectHomepageNavigationSpacing(page, referenceGap, false);
+        await page.locator("#demo-case-documents-link").click();
+        const query = new URL(page.url()).search;
+        paths = ["/demo/start", "/demo", "/demo/documents", "/demo/wizard",
+          "/demo/files", "/demo/settlement-completion", "/demo/rejection-completion"]
+          .map((path) => `${path}${query}`);
+      } else if (signedIn) {
+        paths = ["/", "/?view=home", "/?view=account",
+          `/onboarding/${mode === "wizard" ? "wizard" : "upload"}?case_id=${caseId}`,
+          `/case/assets?case_id=${caseId}`, `/case/files?case_id=${caseId}`,
+          `/settlement-completion?case_id=${caseId}&asset_attempt=1`,
+          `/rejection-completion?case_id=${caseId}`,
+          "/settlement-completion", "/rejection-completion"];
+        if (mode === "no-case") paths = ["/", "/?view=home", "/?view=account"];
+      } else {
+        paths = ["/", "/?auth=login", "/?auth=signup", "/?auth=verify", "/?auth=reset",
+          "/settlement-completion", "/rejection-completion"];
+      }
+      for (const path of paths) {
+        await test.step(path, async () => {
+          await page.goto(`${origin}${path}`);
+          await expectHomepageNavigationSpacing(page, referenceGap, signedIn);
+          let expectedPath = path === "/" && ["upload", "wizard"].includes(mode)
+            ? `/onboarding/${mode}?case_id=${caseId}`
+            : path.replace("/demo/start?", "/demo?");
+          if (mode === "anonymous" && ["/settlement-completion", "/rejection-completion"].includes(path)) {
+            expectedPath = "/";
+          }
+          await expect(page).toHaveURL(`${origin}${expectedPath}`);
+          if (path.startsWith(`/settlement-completion?case_id=`)) {
+            await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
+          }
+        });
+      }
+      fixture.verify();
+    });
+  }
+}
+
 test("login locks the entered account and permits an explicit account change", async ({ page }) => {
   const fixture = await installFixtures(page, { loginStatus: 401 });
   await signIn(page);
