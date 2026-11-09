@@ -215,6 +215,24 @@ async function expectAcceptedCompletionProgress(page) {
   }
 }
 
+async function expectClosedCompletionActions(page) {
+  const actions = page.locator("#settlement-completion-page .settlement-completion-actions > :visible");
+  await expect(actions).toHaveCount(1);
+  await expect(actions).toHaveText(["Open your case"]);
+  await expect(page.locator("#settlement-completion-open-case")).toBeEnabled();
+  await expect(page.locator("#settlement-completion-close-case")).toBeHidden();
+  await expect(page.locator("#settlement-completion-back-to-cases")).toBeHidden();
+  const banner = page.locator("#settlement-completion-page #closed-case-view-banner");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("Closed case · Read-only");
+  await expect(banner).toContainText("is closed. You can review saved information and files, but changes are unavailable until you explicitly reopen it.");
+  const positions = await banner.evaluate(element => ({
+    bannerBottom: element.getBoundingClientRect().bottom,
+    progressTop: document.querySelector("#demo-case-navigation").getBoundingClientRect().top,
+  }));
+  expect(positions.bannerBottom).toBeLessThanOrEqual(positions.progressTop);
+}
+
 test("closed-case Account actions place View before Reopen and Export", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
@@ -315,7 +333,7 @@ for (const kind of ["asset", "selection"]) {
       await page.getByRole("button", { name: "View Accepted regression case read-only" }).click();
       await expect(page).toHaveURL(`${origin}${completionUrl}&view=closed`);
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
-      await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+      await expectClosedCompletionActions(page);
       await expectAcceptedCompletionProgress(page);
       expect(fixture.requests.filter(request => request.includes("/case/assets"))).toEqual([]);
       expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
@@ -475,7 +493,7 @@ for (const width of [1280, 390, 320]) {
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(`${origin}${completionUrl}&view=closed`);
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
-      await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+      await expectClosedCompletionActions(page);
       await expectAcceptedCompletionProgress(page);
       await page.reload();
       await expectAcceptedCompletionProgress(page);
@@ -486,7 +504,7 @@ for (const width of [1280, 390, 320]) {
         await expectAcceptedCompletionProgress(page);
       }
       await page.locator("#settlement-completion-close-case").dispatchEvent("click");
-      await page.locator("#settlement-completion-back-to-cases").click();
+      await page.getByRole("button", { name: `${ordinal === 1 ? "1st" : "2nd"} Attempt, read-only`, exact: true }).click();
       await expect(page).toHaveURL(`${origin}${assetsUrl}&attempt=${ordinal}`);
       await expect(status).toHaveText("The offer was accepted. You are viewing a closed case.");
       await expect(next).toBeDisabled();
@@ -527,7 +545,10 @@ for (const kind of ["asset", "selection"]) {
         await expectAcceptedCompletionProgress(page);
         await expect(page.locator("#demo-attempt-progress-list button")).toHaveCount(4);
         await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
-        await page.getByRole("button", { name: "3rd Attempt, read-only", exact: true }).click();
+        await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible"))
+          .toHaveText(["Back to attempt #3", "Close your case"]);
+        await expect(page.locator("#closed-case-view-banner")).toBeHidden();
+        await page.getByRole("link", { name: "Back to attempt #3", exact: true }).click();
         await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
         expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
         fixture.verify();
@@ -535,6 +556,158 @@ for (const kind of ["asset", "selection"]) {
     }
   }
 }
+
+for (const kind of ["asset", "selection"]) {
+  for (const width of [1280, 390, 320]) {
+    for (const closedQuery of [false, true]) {
+      test(`Open your case reopens and selects latest locked attempt: ${kind}, ${width}px, closed query ${closedQuery}`, async ({ page }) => {
+        const selectionId = "00000000-0000-4000-8000-000000000076";
+        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+        const saved = {
+          ...workspace, accepted_offer_url: completionUrl,
+          case: { ...workspace.case, status: "finalized", closed_at: closedAt, closed_reason: "accepted",
+            attempts_locked_at: closedAt, metadata_json: { case_title: "Synthetic closed accepted case" } },
+          attempts: [1, 2, 3].map(ordinal => ({
+            ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+          })),
+        };
+        let reopenRequests = 0;
+        const fixture = await installFixtures(page, {
+          authenticated: true, hasCase: false,
+          extraReads: {
+            "/api/v1/closed-cases": { cases: [{
+              id: caseId, title: "Synthetic closed accepted case", closed_at: closedAt, closed_reason: "accepted",
+            }] },
+            [`/cases/${caseId}/workspace`]: saved,
+            [`/cases/${caseId}/asset-mediation/3`]: {
+              revision: 3, attempt_ordinal: 3, attempt_limit: 3, sent: true, outcome: "accepted",
+              notes: "", document_ids: [], sent_filenames: [], downloaded_formats: [],
+              completed: true, attempts_locked: true,
+            },
+            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+              outcome: "accepted", sent_confirmed: true, sent_documents_complete: true, attempts_locked: true,
+            },
+          },
+          mutationHandler: async request => {
+            expect(new URL(request.url()).pathname).toBe(`/cases/${caseId}/reopen`);
+            expect(request.method()).toBe("POST");
+            expect(request.headers()["x-csrf-token"]).toBe("synthetic-csrf-token");
+            reopenRequests += 1;
+            saved.case = { ...saved.case, status: "settlement", closed_at: null, closed_reason: null };
+            return { body: { id: caseId, status: "settlement", closed_at: null, closed_reason: null,
+              attempt_credit_balance: 0 } };
+          },
+        });
+        await page.context().addCookies([{
+          name: "auth_csrf", value: "synthetic-csrf-token", url: origin, secure: true,
+        }]);
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${origin}${completionUrl}${closedQuery ? "&view=closed" : ""}`);
+        await expectClosedCompletionActions(page);
+        await expectAcceptedCompletionProgress(page);
+        const bannerText = await page.locator("#closed-case-view-banner").innerText();
+        await page.getByRole("button", { name: "3rd Attempt, read-only", exact: true }).click();
+        await expect(page.locator("#closed-case-view-banner")).toHaveText(bannerText);
+        await page.getByRole("button", { name: "Offer Accepted", exact: true }).click();
+        await expectClosedCompletionActions(page);
+        expect(reopenRequests).toBe(0);
+        await page.getByRole("button", { name: "Open your case", exact: true }).click();
+        await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
+        expect(reopenRequests).toBe(1);
+        const latest = page.locator('#demo-attempt-progress-list button[data-ordinal="3"]');
+        await expect(latest).toHaveAttribute("aria-current", "step");
+        await expect(latest).toHaveAttribute("data-state", "current");
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        await expect(page.locator("#settlement-demo-response-next-case")).toBeDisabled();
+        await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeDisabled();
+        await expect(page.locator("#closed-case-view-banner")).toBeHidden();
+        await page.reload();
+        await expect(latest).toHaveAttribute("aria-current", "step");
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        await page.locator("#demo-file-management-link").click();
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        await page.reload();
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        expect(saved.case.attempts_locked_at).toBe(closedAt);
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([
+          `POST /cases/${caseId}/reopen`,
+        ]);
+        fixture.verify();
+      });
+    }
+  }
+}
+
+for (const failure of ["unavailable", "still-closed", "wrong-case"]) {
+  test(`completion reopen handles ${failure} explicitly and permits retry`, async ({ page }) => {
+    let attempts = 0;
+    const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=1`;
+    const fixture = await installFixtures(page, {
+      authenticated: true, hasCase: false,
+      extraReads: {
+        "/api/v1/closed-cases": { cases: [{
+          id: caseId, title: "Closed case", closed_at: closedAt, closed_reason: "accepted",
+        }] },
+        [`/cases/${caseId}/workspace`]: {
+          ...workspace, accepted_offer_url: completionUrl,
+          case: { ...workspace.case, status: "finalized", closed_at: closedAt, closed_reason: "accepted" },
+        },
+        [`/cases/${caseId}/asset-mediation/1`]: { sent: true, outcome: "accepted", attempts_locked: true },
+      },
+      mutationHandler: async request => {
+        expect(new URL(request.url()).pathname).toBe(`/cases/${caseId}/reopen`);
+        attempts += 1;
+        if (failure === "unavailable") return { status: 503, body: { detail: "Reopening unavailable. Please retry." } };
+        return { body: { id: failure === "wrong-case" ? "another-case" : caseId,
+          status: failure === "still-closed" ? "finalized" : "settlement",
+          closed_at: failure === "still-closed" ? closedAt : null, closed_reason: null } };
+      },
+    });
+    await page.goto(`${origin}${completionUrl}&view=closed`);
+    const open = page.getByRole("button", { name: "Open your case", exact: true });
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      await open.click();
+      await expect(page.locator("#settlement-completion-status")).toHaveAttribute("data-kind", "error");
+      await expect(page.locator("#settlement-completion-status")).toContainText(
+        failure === "unavailable" ? "Reopening unavailable." : "reopened case could not be verified",
+      );
+      await expect(open).toBeEnabled();
+      await expect(page).toHaveURL(`${origin}${completionUrl}&view=closed`);
+      expect(attempts).toBe(attempt);
+    }
+    fixture.verify();
+  });
+}
+
+test("completion prevents duplicate reopening while its lifecycle request is pending", async ({ page }) => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  let requests = 0;
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    extraReads: {
+      [`/cases/${caseId}/workspace`]: {
+        ...workspace, case: { ...workspace.case, status: "finalized", closed_at: closedAt },
+      },
+      [`/cases/${caseId}/asset-mediation/1`]: { sent: true, outcome: "accepted" },
+    },
+    mutationHandler: async () => {
+      requests += 1;
+      await pending;
+      return { status: 503, body: { detail: "Reopen not confirmed. Please retry." } };
+    },
+  });
+  await page.goto(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
+  const open = page.getByRole("button", { name: "Open your case", exact: true });
+  await open.click();
+  await expect(open).toBeDisabled();
+  await open.dispatchEvent("click");
+  expect(requests).toBe(1);
+  release();
+  await expect(open).toBeEnabled();
+  await expect(page.locator("#settlement-completion-status")).toHaveText("Reopen not confirmed. Please retry.");
+  fixture.verify();
+});
 
 for (const closed of [false, true]) {
   test(`selection-based accepted timeline opens the correct completion (${closed ? "closed" : "open"})`, async ({ page }) => {
@@ -562,7 +735,7 @@ for (const closed of [false, true]) {
     await expect(page).toHaveURL(`${origin}${completionUrl}${closed ? "&view=closed" : ""}`);
     await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
     await expectAcceptedCompletionProgress(page);
-    if (closed) await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+    if (closed) await expectClosedCompletionActions(page);
     else await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
     expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
     fixture.verify();
@@ -592,7 +765,7 @@ test("open accepted attempt keeps Next enabled and the original guidance", async
   fixture.verify();
 });
 
-test("reopened accepted attempt disables Next but permits actual case closure through Offer Accepted", async ({ page }) => {
+test("reopened accepted attempt disables Next and removes the Offer Accepted timeline circle", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
     extraReads: {
@@ -615,7 +788,10 @@ test("reopened accepted attempt disables Next but permits actual case closure th
   await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeDisabled();
   await next.dispatchEvent("click");
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
-  await page.getByRole("button", { name: "Offer Accepted", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+  await page.goto(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
   await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
   await expect(page.locator("#settlement-completion-status")).toContainText("This case is open for read-only review.");
   await expectAcceptedCompletionProgress(page);
@@ -624,7 +800,7 @@ test("reopened accepted attempt disables Next but permits actual case closure th
 });
 
 for (const backend of ["asset-attempt", "offer-response"]) {
-  test(`actually closed ${backend} remains disabled without a closed-view parameter`, async ({ page }) => {
+  test(`actually closed ${backend} exposes only Open your case without a closed-view parameter`, async ({ page }) => {
     const selectionId = "00000000-0000-4000-8000-000000000076";
     const fixture = await installFixtures(page, {
       authenticated: true,
@@ -640,11 +816,11 @@ for (const backend of ["asset-attempt", "offer-response"]) {
     });
     await page.goto(`${origin}/settlement-completion?case_id=${caseId}&${backend === "asset-attempt" ? "asset_attempt=1" : `selection_id=${selectionId}`}`);
     const close = page.locator("#settlement-completion-close-case");
-    await expect(close).toBeDisabled();
+    await expectClosedCompletionActions(page);
     await expect(page.locator("#settlement-completion-status")).toContainText("This case is closed.");
     await close.dispatchEvent("click");
     await expect(page.locator("#app-dialog")).not.toBeVisible();
-    await expect(page.locator("#settlement-completion-back-to-cases")).toHaveAttribute("href", /view=closed/);
+    await expect(page.locator("#settlement-completion-back-to-cases")).toBeHidden();
     expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
     fixture.verify();
   });
@@ -748,7 +924,7 @@ test("unidentified completion keeps its safe return link", async ({ page }) => {
   const fixture = await installFixtures(page, { authenticated: true });
   await page.goto(`${origin}/settlement-completion`);
   await expect(page.locator("#settlement-completion-status")).toContainText("could not be identified");
-  await expect(page.locator("#settlement-completion-back-to-cases")).toHaveAttribute("href", "/#account");
+  await expect(page.locator("#settlement-completion-back-to-cases")).toBeHidden();
   fixture.verify();
 });
 
@@ -2804,10 +2980,10 @@ for (const outcome of ["accepted", "rejected"]) {
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
       await expect(page.locator("#settlement-completion-status")).toContainText("Your accepted offer is confirmed");
       await expect(page.locator("#settlement-completion-page input[type=file]")).toHaveCount(0);
-      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
+      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible")).toHaveCount(2);
       await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
-      await page.getByRole("link", { name:"Back to your case", exact:true }).click();
-      await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+      await page.getByRole("link", { name:"Back to attempt #1", exact:true }).click();
+      await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
       expect(state.completed).toBe(false);
     } else {
       await expect(page.locator("#settlement-demo-next-attempt-case")).toHaveAttribute("aria-disabled", "true");
@@ -3447,9 +3623,9 @@ for (const accepted of [true, false]) {
     if (accepted) {
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
       await expect(page.locator("#settlement-completion-page input[type=file]")).toHaveCount(0);
-      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
+      await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible")).toHaveCount(2);
       await expect(page.locator("#settlement-completion-page")).toHaveCSS("margin-top", "0px");
-      await expect(page.getByRole("link", { name:"Back to your case", exact:true })).toHaveAttribute("href", `/case/assets?case_id=${caseId}`);
+      await expect(page.getByRole("link", { name:"Back to attempt #1", exact:true })).toHaveAttribute("href", `/case/assets?case_id=${caseId}&attempt=1`);
       await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
     } else {
       await expect(page.locator("#settlement-completion-status")).toHaveText("This completion page is only available for an accepted, confirmed offer.");
@@ -3487,10 +3663,10 @@ test("accepted real page uses the exact demo guidance and only returns to its ca
   await expect(page.locator("#settlement-completion-demo-notice")).toBeHidden();
   await expect(page.locator("#settlement-completion-page input[type=file]")).toHaveCount(0);
   await expect(page.getByRole("link", { name:"Back to mediation", exact:true })).toHaveCount(0);
-  await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
+  await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible")).toHaveCount(2);
   await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
-  await page.getByRole("link", { name:"Back to your case", exact:true }).click();
-  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+  await page.getByRole("link", { name:"Back to attempt #1", exact:true }).click();
+  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
   expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
   fixture.verify();
 });
@@ -3640,7 +3816,7 @@ for (const source of ["demo1", "demo2"]) {
     await expect(page.locator("#settlement-scenario-results")).toBeVisible();
     await page.goto(`${origin}/demo/settlement-completion${query}`);
     await expect(page.locator("#settlement-completion-status")).toContainText("Fictional demo only");
-    await expect(page.locator("#settlement-completion-page .settlement-completion-actions > *")).toHaveCount(2);
+    await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible")).toHaveCount(1);
     await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeHidden();
     await expect(page.getByRole("link", { name:"Back to your case", exact:true })).toHaveAttribute("href", new RegExp("/demo\\?"));
     fixture.verify();
