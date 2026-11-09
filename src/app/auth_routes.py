@@ -6,8 +6,8 @@ import secrets
 import smtplib
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
-from typing import Annotated, TypeAlias
-from urllib.parse import urlencode
+from typing import Annotated, Literal, TypeAlias
+from urllib.parse import urlencode, urlparse
 from uuid import UUID, uuid4
 
 import httpx
@@ -72,11 +72,29 @@ _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _REFRESH_COOKIE = "auth_refresh"
 _ACCESS_COOKIE = "auth_access"
 _CSRF_COOKIE = "auth_csrf"
+_GOOGLE_CONSENT_COOKIE = "auth_google_consent"
+CONSENT_VERSION = "2026-11-09"
 
 
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=1024)
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    challenge_id: UUID
+    verification_token: str = Field(min_length=20, max_length=256)
+    terms_accepted: Literal[True]
+
+
+class SignupVerificationRequest(BaseModel):
+    email: EmailStr
+    challenge_id: UUID
+    token: str = Field(min_length=20, max_length=256)
+
+
+class ConsentRequest(BaseModel):
+    terms_accepted: Literal[True]
+
 
 
 class EmailTokenRequest(BaseModel):
@@ -457,52 +475,121 @@ def require_current_user(request: Request, db: DbSession) -> User:
     return _current_user(request, db)
 
 
-@router.post("/signup", status_code=202)
-def signup(payload: SignupRequest, request: Request, db: DbSession) -> dict[str, str]:
+def _login_email(value: str) -> str:
+    email = value.strip().casefold()
+    if (
+        email == "essential-test@localhost.invalid"
+        and urlparse(get_settings().database_url).hostname == "local-test-db"
+    ):
+        return email
+    return normalize_email(email)
+
+
+@router.post("/signup/email/start", status_code=202)
+def start_signup_verification(payload: EmailRequest, request: Request, db: DbSession) -> dict:
     _require_email_config()
     email = normalize_email(str(payload.email))
+    _rate_limit(db, request, "signup-email", email)
+    if not _owner_beta_allows(email):
+        raise HTTPException(status_code=403, detail="Registration is not available for this email.")
+    token = random_token()
+    record = AuthChallenge(
+        id=uuid4(),
+        purpose="signup_email",
+        challenge=hash_token(token),
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        context={"email": email},
+    )
+    db.add(record)
+    try:
+        db.flush()
+        _send_security_email(
+            email, "Verify your Casework email",
+            f"Your one-time verification token is: {token}\n\nIt expires in 5 minutes. "
+            "If you did not request this, ignore this email. No account has been created.",
+        )
+        db.commit()
+    except (HTTPException, SQLAlchemyError):
+        db.rollback()
+        logger.exception("Signup email verification could not be started.")
+        raise HTTPException(status_code=503, detail="Verification email could not be sent. Please retry.")
+    return {"challenge_id": str(record.id), "expires_in": 300}
+
+
+@router.post("/signup/email/verify")
+def verify_signup_email(payload: SignupVerificationRequest, request: Request, db: DbSession) -> dict:
+    _require_secret_config()
+    email = normalize_email(str(payload.email))
+    _rate_limit(db, request, "signup-email-verify", email)
+    record = db.scalar(
+        select(AuthChallenge).where(AuthChallenge.id == payload.challenge_id).with_for_update()
+    )
+    if (
+        record is None or record.purpose != "signup_email"
+        or record.consumed_at is not None or record.expires_at <= datetime.now(UTC)
+        or record.context.get("email") != email
+        or record.context.get("verification_hash")
+        or not secrets.compare_digest(record.challenge, hash_token(payload.token))
+    ):
+        raise HTTPException(status_code=400, detail="Verification token is invalid or expired. Request a new token.")
+    proof = random_token()
+    record.context = {**record.context, "verification_hash": hash_token(proof)}
+    db.commit()
+    existing = db.scalar(select(User.id).where(User.email == email))
+    return {
+        "verification_token": proof, "expires_at": record.expires_at.isoformat(),
+        "next": "login" if existing is not None else "signup",
+    }
+
+
+@router.post("/signup")
+def signup(payload: SignupRequest, request: Request, response: Response, db: DbSession) -> dict:
+    _require_secret_config()
+    email = normalize_email(str(payload.email))
+    first_name, last_name = payload.first_name.strip(), payload.last_name.strip()
+    if not first_name or not last_name:
+        raise HTTPException(status_code=422, detail="Enter your first and last name.")
     try:
         validate_password(payload.password)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     _rate_limit(db, request, "signup", email)
     if not _owner_beta_allows(email):
-        return {"message": "If signup can be completed, verification instructions will be sent."}
-    existing = db.scalar(select(User).where(User.email == email))
-    if existing is None:
-        user = User(
-            email=email,
-            password_hash=hash_password(payload.password),
+        raise HTTPException(status_code=403, detail="Registration is not available for this email.")
+    record = db.scalar(
+        select(AuthChallenge).where(AuthChallenge.id == payload.challenge_id).with_for_update()
+    )
+    now = datetime.now(UTC)
+    if (
+        record is None or record.purpose != "signup_email"
+        or record.consumed_at is not None or record.expires_at <= now
+        or record.context.get("email") != email
+        or not secrets.compare_digest(
+            record.context.get("verification_hash", ""), hash_token(payload.verification_token),
         )
-        db.add(user)
-        try:
-            db.flush()
-            token = random_token()
-            db.add(
-                AuthToken(
-                    user_id=user.id,
-                    purpose="email_verification",
-                    token_hash=hash_token(token),
-                    expires_at=datetime.now(UTC) + timedelta(hours=24),
-                )
-            )
-            _audit(db, "signup", "success", user.id)
-            db.commit()
-            _send_security_email(
-                email,
-                "Verify your email",
-                f"Complete verification by submitting this one-time token: {token}",
-            )
-        except IntegrityError:
-            db.rollback()
-        except SQLAlchemyError:
-            db.rollback()
-            logger.exception("Could not complete the signup email operation.")
-            raise HTTPException(status_code=503, detail="Signup could not be completed.")
-        except (smtplib.SMTPException, OSError):
-            logger.exception("Could not deliver the signup verification email.")
-            raise HTTPException(status_code=503, detail="Signup email could not be delivered.")
-    return {"message": "If signup can be completed, verification instructions will be sent."}
+    ):
+        raise HTTPException(status_code=400, detail="Verify your email before signing up. Verification may have expired.")
+    existing = db.scalar(select(User).where(User.email == email))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="This email already has an account. Sign in instead.")
+    user = User(
+        email=email, password_hash=hash_password(payload.password), status="active",
+        email_verified_at=now, first_name=first_name, last_name=last_name,
+        terms_accepted_at=now, terms_version=CONSENT_VERSION,
+    )
+    db.add(user)
+    record.consumed_at = now
+    try:
+        db.flush()
+        _audit(db, "signup", "success", user.id, {"consent_version": CONSENT_VERSION})
+        return _finish_login(db, user, response)
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This email already has an account. Sign in instead.") from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.exception("Verified signup could not be completed.")
+        raise HTTPException(status_code=503, detail="Signup could not be completed. Please retry.") from error
 
 
 @router.get("/providers")
@@ -610,7 +697,7 @@ def login(
         user = db.scalar(select(User).where(User.email == "demo@localhost.invalid"))
     else:
         try:
-            email = normalize_email(payload.email)
+            email = _login_email(payload.email)
         except ValueError:
             email = ""
         user = db.scalar(select(User).where(User.email == email)) if email else None
@@ -784,6 +871,7 @@ def logout(request: Request, response: Response, db: DbSession) -> Response:
         except (ValueError, KeyError):
             db.rollback()
     clear_auth_cookies(response)
+    response.status_code = 204
     return response
 
 
@@ -971,7 +1059,12 @@ def _b64url_decode(value: str) -> bytes:
 
 
 @router.get("/oidc/google/start")
-def google_oidc_start(request: Request, db: DbSession) -> Response:
+def google_oidc_consent_entry() -> Response:
+    return Response(status_code=303, headers={"Location": "/?auth=login", "Cache-Control": "no-store"})
+
+
+@router.post("/oidc/google/start")
+def google_oidc_start(payload: ConsentRequest, request: Request, response: Response, db: DbSession) -> dict:
     settings = get_settings()
     _require_secret_config()
     if not settings.google_client_id or not settings.google_client_secret:
@@ -980,13 +1073,18 @@ def google_oidc_start(request: Request, db: DbSession) -> Response:
     state = random_token()
     nonce = random_token()
     verifier = secrets.token_urlsafe(48)
+    browser_binding = random_token()
     challenge = _b64url_encode(hashlib.sha256(verifier.encode()).digest())
     callback = f"{settings.auth_public_base_url.rstrip('/')}/api/auth/oidc/google/callback"
     auth_challenge = AuthChallenge(
         purpose="google_oidc",
         challenge=state,
         expires_at=datetime.now(UTC) + timedelta(minutes=10),
-        context={"nonce": nonce, "verifier": verifier},
+        context={
+            "nonce": nonce, "verifier": verifier, "consent_version": CONSENT_VERSION,
+            "consent_at": datetime.now(UTC).isoformat(),
+            "browser_binding": hash_token(browser_binding),
+        },
     )
     db.add(auth_challenge)
     db.commit()
@@ -1002,10 +1100,12 @@ def google_oidc_start(request: Request, db: DbSession) -> Response:
             "code_challenge_method": "S256",
         }
     )
-    return Response(
-        status_code=302,
-        headers={"Location": f"https://accounts.google.com/o/oauth2/v2/auth?{query}"},
+    response.set_cookie(
+        _GOOGLE_CONSENT_COOKIE, browser_binding, httponly=True,
+        secure=settings.auth_cookie_secure, samesite="lax", path="/", max_age=600,
     )
+    response.headers["Cache-Control"] = "no-store"
+    return {"authorization_url": f"https://accounts.google.com/o/oauth2/v2/auth?{query}"}
 
 
 @router.post("/oidc/google/link/start")
@@ -1079,8 +1179,8 @@ def google_oidc_callback(
 ) -> Response | dict[str, str | bool]:
     settings = get_settings()
     _require_secret_config()
-    if error or not code or not settings.google_client_id or not settings.google_client_secret:
-        raise HTTPException(status_code=401, detail="Google sign-in could not be completed.")
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured.")
     _rate_limit(db, request, "google-oidc-callback")
     challenge = db.scalar(
         select(AuthChallenge).where(
@@ -1092,6 +1192,27 @@ def google_oidc_callback(
     now = datetime.now(UTC)
     if challenge is None or challenge.expires_at <= now:
         raise HTTPException(status_code=401, detail="Google sign-in could not be completed.")
+    if challenge.purpose == "google_oidc":
+        binding = request.cookies.get(_GOOGLE_CONSENT_COOKIE, "")
+        if (
+            challenge.context.get("consent_version") != CONSENT_VERSION
+            or not binding
+            or not secrets.compare_digest(
+                challenge.context.get("browser_binding", ""), hash_token(binding),
+            )
+        ):
+            raise HTTPException(status_code=401, detail="Google sign-in requires your consent. Please start again.")
+    if error or not code:
+        challenge.consumed_at = now
+        db.commit()
+        response.delete_cookie(
+            _GOOGLE_CONSENT_COOKIE, path="/", secure=settings.auth_cookie_secure,
+            httponly=True, samesite="lax",
+        )
+        response.status_code = 303
+        response.headers["Location"] = "/?auth=login"
+        response.headers["Cache-Control"] = "no-store"
+        return response
     callback_url = f"{settings.auth_public_base_url.rstrip('/')}/api/auth/oidc/google/callback"
     try:
         token_response = httpx.post(
@@ -1170,6 +1291,7 @@ def google_oidc_callback(
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
+    new_account = identity is None
     if identity is not None:
         user = db.get(User, identity.user_id)
     else:
@@ -1183,6 +1305,8 @@ def google_oidc_callback(
             email=email,
             status="active",
             email_verified_at=now,
+            terms_accepted_at=datetime.fromisoformat(challenge.context["consent_at"]),
+            terms_version=CONSENT_VERSION,
         )
         db.add(user)
         db.flush()
@@ -1222,8 +1346,12 @@ def google_oidc_callback(
     _, access, refresh, csrf = _create_session(db, user)
     db.commit()
     _set_auth_cookies(response, access, refresh, csrf)
+    response.delete_cookie(
+        _GOOGLE_CONSENT_COOKIE, path="/", secure=settings.auth_cookie_secure,
+        httponly=True, samesite="lax",
+    )
     response.status_code = 303
-    response.headers["Location"] = "/"
+    response.headers["Location"] = "/?view=account" if new_account else "/"
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response

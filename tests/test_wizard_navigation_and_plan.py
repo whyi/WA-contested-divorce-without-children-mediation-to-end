@@ -25,37 +25,47 @@ def _function_body(name: str) -> str:
 class WizardBackAndContinueTests(unittest.TestCase):
     def test_back_opens_the_start_path_choice_instead_of_the_account_page(self) -> None:
         preparation = _function_body("showPreparation")
-        self.assertIn('backLink.textContent = "Back"', preparation)
+        self.assertNotIn('id="demo-wizard-back"', PAGE)
         self.assertNotIn("view=account", preparation)
-        self.assertIn("openStartPathDialog();", PAGE)
-        self.assertIn('id="start-path-dialog"', PAGE)
+        self.assertIn("showStartPathPage();", PAGE)
+        self.assertIn('id="start-path-page"', PAGE)
         self.assertEqual(PAGE.count('data-path-mode="'), 2)
-        self.assertIn('id="start-path-cancel"', PAGE)
+        self.assertNotIn('id="start-path-cancel"', PAGE)
 
     def test_choosing_a_path_updates_the_case_then_opens_that_path(self) -> None:
         body = _function_body("chooseStartPath")
 
-        self.assertIn("if (mode === preparationMode)", body)
+        self.assertIn("mode === onboardingState.workflow_mode", body)
         self.assertLess(
-            body.index("/workflow-mode"),
-            body.index("window.location.assign("),
+            body.index('"workflow-mode"'),
+            body.rindex("window.location.assign("),
         )
-        self.assertIn('method: "PUT"', body)
+        self.assertIn('method: discard ? "POST" : "PUT"', body)
         self.assertIn("startPathStatus.textContent = error instanceof Error", body)
 
     def test_real_wizard_hides_the_demo_only_asset_overview_link(self) -> None:
         preparation = _function_body("showPreparation")
 
-        self.assertIn('document.getElementById("demo-wizard-back").parentElement.hidden = true', preparation)
+        self.assertNotIn('id="demo-wizard-back"', PAGE)
 
     def test_finish_saves_then_continues_to_the_case_entry(self) -> None:
-        self.assertIn('wizardFinish.textContent = "Save case information";', PAGE)
+        self.assertIn('id="wizard-finish" type="button" disabled>Next</button>', PAGE)
         handler = PAGE.split('wizardFinish.addEventListener("click", async () =>', 1)[1].split(
             "wizardClearButton.addEventListener", 1
         )[0]
         self.assertLess(handler.index("await saveWizardDraft()"), handler.index("window.location.assign("))
-        self.assertIn('setWizardSaveStatus("Your case information is saved.")', handler)
-        self.assertIn('id="wizard-finish-hint"', PAGE)
+        self.assertIn("/workspace-entry", handler)
+        self.assertNotIn('id="wizard-finish-hint"', PAGE)
+        self.assertIn("if (!canFinishWizard())", handler)
+
+    def test_finish_requires_dates_and_a_named_asset_or_debt(self) -> None:
+        body = _function_body("canFinishWizard")
+        self.assertIn('["marriage", "petition"].every', body)
+        self.assertIn("isValidMilestoneDate", body)
+        self.assertIn("wizardDraft.finances.some", body)
+        self.assertIn('["asset", "debt"].includes(entry.kind)', body)
+        self.assertIn("wizardServerReady", body)
+        self.assertIn("wizardFinish.disabled = !canFinishWizard()", _function_body("refreshWizardReview"))
 
     def test_entry_opens_the_saved_preparation_path(self) -> None:
         entry = _function_body("openActiveCase")

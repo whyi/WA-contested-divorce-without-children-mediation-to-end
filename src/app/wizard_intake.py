@@ -192,6 +192,8 @@ def update_wizard_intake(
     try:
         _authorize_case(db, user, case_id, write=True)
         case = _lock_case(db, case_id)
+        if (case.metadata_json or {}).get("onboarding_reset"):
+            raise HTTPException(status_code=409, detail="Finish discarding onboarding before editing its wizard.")
         if not lifecycle_write_allowed(case, f"/cases/{case_id}/wizard-intake"):
             raise HTTPException(
                 status_code=409,

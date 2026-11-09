@@ -1,7 +1,7 @@
 from functools import lru_cache
 from urllib.parse import parse_qs, urlparse
 
-from pydantic import EmailStr, Field, model_validator
+from pydantic import EmailStr, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=2 * 1024 * 1024, gt=0)
     max_pdf_pages: int = Field(default=200, gt=0)
     conversion_timeout_seconds: int = Field(default=90, gt=0)
+
+    @field_validator("owner_beta_email", mode="before")
+    @classmethod
+    def normalize_optional_owner_email(cls, value: str | None) -> str | None:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @model_validator(mode="after")
     def validate_s3_credentials(self) -> "Settings":

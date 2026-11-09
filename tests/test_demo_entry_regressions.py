@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -7,7 +8,7 @@ from app.main import app
 
 class DemoEntryRegressionTests(unittest.TestCase):
     def test_upload_and_demo_pages_remain_available_without_workspace_remnants(self) -> None:
-        with TestClient(app, follow_redirects=False) as client:
+        with patch("app.main.require_current_user"), TestClient(app, follow_redirects=False) as client:
             for path in (
                 "/onboarding/upload?case_id=synthetic",
                 "/demo/documents?source=demo1&demo_case_id=synthetic",
@@ -17,7 +18,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                 with self.subTest(path=path):
                     response = client.get(path)
                     self.assertEqual(response.status_code, 200)
-                    self.assertIn('id="materials-workflow"', response.text)
+                    self.assertNotIn('id="materials-workflow"', response.text)
                     self.assertIn('id="documents-demo"', response.text)
                     self.assertIn('id="wizard-demo"', response.text)
                     self.assertIn('id="demo-file-manager"', response.text)
@@ -78,7 +79,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
 
                     self.assertIn('document.body.dataset.demoPage = "start"', start_branch)
                     self.assertIn('id="demo-workspace-header" hidden', page)
-                    self.assertIn("openDemoCaseChoiceDialog()", start_branch)
+                    self.assertIn("showDemoCaseChoicePage()", start_branch)
                     self.assertNotIn("renderCases(", start_branch)
                     self.assertIn(
                         'id="existing-cases" hidden',
@@ -91,8 +92,8 @@ class DemoEntryRegressionTests(unittest.TestCase):
                     self.assertNotIn('id="demo-my-cases-link"', page)
                     self.assertNotIn('id="demo-inactive-cases"', page)
                     self.assertNotIn("Archived cases", page)
-                    self.assertIn('function openDemoCaseChoiceDialog()', page)
-                    self.assertIn("demoCaseChoiceDialog.showModal()", page)
+                    self.assertIn('function showDemoCaseChoicePage()', page)
+                    self.assertIn("demoCaseChoicePage.hidden = false", page)
 
     def test_both_start_choices_share_one_new_id_and_keep_the_selected_plan(self) -> None:
         with TestClient(app) as client:
@@ -108,7 +109,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                         page,
                     )
                     choice = page.split(
-                        "function openDemoCaseChoiceDialog()", 1
+                        "function showDemoCaseChoicePage()", 1
                     )[1].split("\n        }", 1)[0]
                     self.assertEqual(choice.count('createLocalId("case")'), 1)
                     self.assertIn("id: `demo-${createLocalId(\"case\")}`", choice)
@@ -121,7 +122,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                         'demoCaseWizardLink.href = `/demo/wizard?${query}`',
                         choice,
                     )
-                    self.assertIn('demoCaseChoiceDialog.showModal()', choice)
+                    self.assertIn('demoCaseChoicePage.hidden = false', choice)
 
                     start_case = page.split("function startDemoCase(mode, event)", 1)[1].split(
                         "\n        }", 1
@@ -148,18 +149,18 @@ class DemoEntryRegressionTests(unittest.TestCase):
                         "if (demoCaseData) {\n"
                         "            window.location.replace(demoAssetOverviewUrl(demoCaseData.id));\n"
                         "          } else {\n"
-                        "            openDemoCaseChoiceDialog();",
+                        "            showDemoCaseChoicePage();",
                         page,
                     )
                     choice = page.split(
-                        "function openDemoCaseChoiceDialog()", 1
+                        "function showDemoCaseChoicePage()", 1
                     )[1].split("\n        }", 1)[0]
                     self.assertIn("demoCaseData || loadDemoCaseData()", choice)
                     self.assertIn(
                         "window.location.replace(demoAssetOverviewUrl(existingCase.id))",
                         choice,
                     )
-                    self.assertIn("demoCaseChoiceDialog.showModal()", choice)
+                    self.assertIn("demoCaseChoicePage.hidden = false", choice)
 
     def test_case_id_and_source_survive_every_demo_case_subpage_return_path(self) -> None:
         case_id = "regression-case-123"
@@ -203,7 +204,7 @@ class DemoEntryRegressionTests(unittest.TestCase):
                     'window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId))',
                     pages["/demo/wizard"],
                 )
-                self.assertIn("settlementCompletionBackToMediation.href", pages["/demo/settlement-completion"])
+                self.assertNotIn("settlementCompletionBackToMediation", pages["/demo/settlement-completion"])
                 self.assertIn("settlementCompletionBackToCases.href", pages["/demo/settlement-completion"])
 
 

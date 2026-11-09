@@ -32,7 +32,7 @@ class DashboardStatusTests(unittest.TestCase):
         case_id = uuid4()
         db = Mock()
         db.execute.return_value.all.return_value = [
-            (case_id, "draft", {"case_title": "XYZ vs ABC", "workflow_mode": "upload"}, 2, "owner")
+            (case_id, "draft", {"case_title": "XYZ vs ABC", "workflow_mode": "upload"}, 2, "owner", True, 2)
         ]
         app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=user_id)
 
@@ -57,6 +57,7 @@ class DashboardStatusTests(unittest.TestCase):
                         "title": "XYZ vs ABC",
                         "workflow_mode": "upload",
                         "attempt_ordinal": 2,
+                        "workspace_started": True,
                     }],
                 },
             },
@@ -65,6 +66,8 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertIn("case_memberships.user_id", statement)
         self.assertIn("case_memberships.revoked_at IS NULL", statement)
         self.assertIn("settlement_negotiation_attempts.attempt_ordinal", statement)
+        self.assertIn("documents.case_id", statement)
+        self.assertIn("deletion_tombstones.scope_type", statement)
 
     def test_status_returns_empty_case_list_for_new_account(self) -> None:
         db = Mock()
@@ -88,6 +91,30 @@ class DashboardStatusTests(unittest.TestCase):
             },
         )
 
+    def test_saved_progress_documents_attempts_and_snapshots_resume_the_workspace(self) -> None:
+        case_id = uuid4()
+        db = Mock()
+        app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=uuid4())
+
+        def override_db():
+            yield db
+
+        app.dependency_overrides[get_db] = override_db
+        for metadata, documents, attempts, expected in [
+            ({"workflow_mode": "upload"}, False, 0, False),
+            ({"workspace_started": True}, False, 0, True),
+            ({"workflow_mode": "upload"}, True, 0, True),
+            ({}, False, 1, True),
+            ({"asset_overview": {"overview": {"snapshots": [{"date": "2025-01-01"}]}}}, False, 0, True),
+        ]:
+            with self.subTest(metadata=metadata, documents=documents, attempts=attempts):
+                db.execute.return_value.all.return_value = [
+                    (case_id, "draft", metadata, 1, "owner", documents, attempts)
+                ]
+                response = TestClient(app).get("/api/v1/dashboard/status")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["data"]["cases"][0]["workspace_started"], expected)
+
     def test_status_reports_database_failure_as_retryable_service_error(self) -> None:
         db = Mock()
         db.execute.side_effect = SQLAlchemyError("database unavailable")
@@ -109,7 +136,7 @@ class DashboardStatusTests(unittest.TestCase):
         case_id = uuid4()
         db = Mock()
         db.execute.return_value.all.return_value = [
-            (case_id, "settlement", {"case_title": "Mine"}, 1, "owner")
+            (case_id, "settlement", {"case_title": "Mine"}, 1, "owner", False, 0)
         ]
         app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(
             id=uuid4(), account_type="professional"

@@ -167,6 +167,7 @@ crash.log
 crash.*.log
 
 # Local environment and uploaded/generated documents
+.local-tls/
 .env
 *.docx
 *.pdf

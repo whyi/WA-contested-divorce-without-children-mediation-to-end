@@ -67,9 +67,9 @@ def _sample_result():
 class LegalBoundaryDisclosureTests(unittest.TestCase):
     def test_marketing_and_onboarding_disclosures_are_explicitly_proposed(self) -> None:
         marketing_start = PAGE.index('class="homepage-expectations"')
-        onboarding_start = PAGE.index('id="case-create-dialog"')
+        onboarding_start = PAGE.index('id="case-create-page"')
         marketing = PAGE[marketing_start:onboarding_start]
-        onboarding_end = PAGE.index("</dialog>", onboarding_start)
+        onboarding_end = PAGE.index('<section class="preparation-view"', onboarding_start)
         onboarding = PAGE[onboarding_start:onboarding_end]
 
         for surface in (marketing, onboarding):
@@ -81,11 +81,8 @@ class LegalBoundaryDisclosureTests(unittest.TestCase):
             self.assertIn("does not automatically deliver", surface.lower())
 
     def test_ai_calculations_comparison_and_finalization_are_bounded(self) -> None:
-        analysis_start = PAGE.index('id="analysis-controls"')
-        analysis_end = PAGE.index('id="proposal-review"', analysis_start)
-        analysis = PAGE[analysis_start:analysis_end]
-        self.assertIn("may be incomplete or incorrect", analysis)
-        self.assertIn("not verified facts or legal advice", analysis)
+        self.assertNotIn('id="analysis-controls"', PAGE)
+        self.assertIn("no AI analysis starts automatically", PAGE)
 
         self.assertNotIn('id="settlement-offer-comparison"', PAGE)
         self.assertNotIn('id="settlement-finalize-note"', PAGE)

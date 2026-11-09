@@ -83,6 +83,19 @@ class SettingsTests(unittest.TestCase):
         self.assertIsNone(settings.owner_beta_email)
         self.assertFalse(settings.owner_beta_readiness_required)
 
+    def test_empty_owner_email_is_unconfigured_but_required_when_beta_is_enabled(self) -> None:
+        for email in ("", "  "):
+            with self.subTest(email=email):
+                settings = Settings(owner_beta_email=email)
+                self.assertIsNone(settings.owner_beta_email)
+                with self.assertRaisesRegex(ValueError, "OWNER_BETA_EMAIL is required"):
+                    Settings(
+                        auth_enabled=True,
+                        auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+                        owner_beta_enabled=True,
+                        owner_beta_email=email,
+                    )
+
     def test_owner_beta_readiness_is_opt_in_and_requires_private_deployment_settings(self) -> None:
         settings = Settings(owner_beta_readiness_required=True)
 

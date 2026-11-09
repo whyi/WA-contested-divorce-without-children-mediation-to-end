@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from typing import Annotated
 from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
@@ -19,6 +20,7 @@ from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import get_db
 from app.deletion import (
+    delete_document_scope,
     import_item_tombstone_id,
     require_scope_active,
     scope_tombstone,
@@ -63,6 +65,8 @@ class ImportedDocument(BaseModel):
     extension: str
     media_type: str
     size_bytes: int
+    original_filename: str | None = None
+    overwrite_pending: bool = False
 
 
 class ImportedFile(BaseModel):
@@ -101,8 +105,49 @@ def _document_response(item_id: UUID, case_id: UUID, document: Document) -> Impo
             extension=document.extension,
             media_type=document.media_type,
             size_bytes=document.size_bytes,
+            original_filename=document.original_filename,
+            overwrite_pending=document.overwrite_document_id is not None,
         ),
     )
+
+def _finish_overwrite(db: Session, user: User, document: Document) -> None:
+    target = document.overwrite_document_id
+    if target is None:
+        return
+    delete_document_scope(db, user, document.case_id, target, storage)
+    try:
+        case = db.get(Case, document.case_id, with_for_update=True)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        metadata = dict(case.metadata_json or {})
+        offer = metadata.get("existing_offer")
+        if isinstance(offer, dict) and str(target) in offer.get("document_ids", []):
+            metadata["existing_offer"] = {
+                **offer, "document_ids": list(dict.fromkeys(
+                    str(document.id) if item == str(target) else item
+                    for item in offer["document_ids"]
+                )),
+            }
+            case.metadata_json = metadata
+        mediation = metadata.get("asset_mediation")
+        if isinstance(mediation, dict):
+            updated = {}
+            for ordinal, state in mediation.items():
+                record = dict(state)
+                for key in ("document_ids", "accepted_document_ids"):
+                    record[key] = list(dict.fromkeys(
+                        str(document.id) if item == str(target) else item
+                        for item in record.get(key, [])
+                    ))
+                updated[ordinal] = record
+            metadata["asset_mediation"] = updated
+            case.metadata_json = metadata
+        document.overwrite_document_id = None
+        db.commit()
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "upload_overwrite_completion_failed", error)
+        raise HTTPException(status_code=503, detail="Overwrite cleanup is incomplete. Retry the same upload.") from error
 
 
 def _existing_item(
@@ -126,6 +171,16 @@ def _existing_item(
         log_failure_event(logger, "upload_document_missing", severity="SEV1")
         raise HTTPException(status_code=503, detail="Import status is unavailable. Please try again.")
     return batch, document
+
+
+def _validate_retry_file(document: Document, filename: str, content: bytes) -> None:
+    if hashlib.sha256(content).hexdigest() != document.sha256 or (
+        document.original_filename is not None and filename != document.original_filename
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="This import item was already used for different file contents or filename. Reselect the original file or start a new selection.",
+        )
 
 
 def _delete_uploaded_object(key: str | None) -> None:
@@ -193,12 +248,15 @@ async def import_material_file(
     case_id: UUID | None = Form(default=None),
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
+    overwrite_document_id: Annotated[UUID | None, Form()] = None,
 ) -> ImportedFile:
     config = get_settings()
     filename = upload.filename or ""
     extension = filename.rpartition(".")[2].lower()
     try:
         _require_import_enabled()
+        if not filename or len(filename) > 1024 or any(ord(char) < 32 for char in filename):
+            raise HTTPException(status_code=422, detail="The filename is missing, too long or contains control characters.")
         if extension not in {"pdf", "docx"}:
             raise HTTPException(status_code=415, detail="Only PDF and DOCX files are supported.")
         content = await upload.read(config.max_upload_bytes + 1)
@@ -253,11 +311,8 @@ async def import_material_file(
             raise HTTPException(status_code=404, detail="Case not found.")
         require_scope_active(db, "case", batch.case_id)
         if document is not None:
-            if hashlib.sha256(content).hexdigest() != document.sha256:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This import item was already used for different file contents.",
-                )
+            _validate_retry_file(document, filename, content)
+            _finish_overwrite(db, user, document)
             return _document_response(item_id, batch.case_id, document)
         case_id = batch.case_id
         new_case = False
@@ -304,8 +359,31 @@ async def import_material_file(
             ]
         )
 
+    duplicate = db.scalars(select(Document).where(
+        Document.case_id == case_id, Document.original_filename == filename,
+    ).order_by(Document.overwrite_document_id.is_(None), Document.created_at, Document.id).limit(1)).first()
+    if duplicate is not None:
+        if duplicate.overwrite_document_id is not None:
+            raise HTTPException(status_code=409, detail="A previous overwrite of this filename is incomplete. Retry that upload first.")
+        if overwrite_document_id != duplicate.id:
+            raise HTTPException(status_code=409, detail={
+                "code": "filename_conflict", "filename": filename, "document_id": str(duplicate.id),
+                "message": "A file with this name already exists. Overwrite it?",
+            })
+        if membership.role != "owner":
+            raise HTTPException(status_code=403, detail="Only the case owner can overwrite files.")
+    elif overwrite_document_id is not None:
+        raise HTTPException(status_code=409, detail="The file to overwrite changed or was deleted. Reload before uploading again.")
+
     if not new_case:
-        enforce_attachment_quota(db, case_id)
+        if case.closed_at is not None or case.status == "finalized":
+            raise HTTPException(status_code=409, detail="This case is closed or read-only.")
+        if (case.metadata_json or {}).get("onboarding_reset"):
+            raise HTTPException(status_code=409, detail="Finish discarding onboarding before importing files.")
+        if duplicate is not None:
+            enforce_attachment_quota(db, case_id, incoming=0)
+        else:
+            enforce_attachment_quota(db, case_id)
 
     document_id = uuid4()
     object_key = f"{case_id}/{document_id}.{extension}"
@@ -319,6 +397,8 @@ async def import_material_file(
         case_id=case_id,
         object_key=object_key,
         extension=extension,
+        original_filename=filename,
+        overwrite_document_id=duplicate.id if duplicate is not None else None,
         media_type=media_type,
         sha256=hashlib.sha256(content).hexdigest(),
         size_bytes=len(content),
@@ -365,6 +445,8 @@ async def import_material_file(
                         raise HTTPException(
                             status_code=404, detail="Import batch not found."
                         ) from error
+                    _validate_retry_file(recovered_document, filename, content)
+                    _finish_overwrite(db, user, recovered_document)
                     return _document_response(item_id, recovered_batch.case_id, recovered_document)
                 raise HTTPException(
                     status_code=409,
@@ -384,6 +466,7 @@ async def import_material_file(
             detail="This file could not be confirmed as stored. Check its import status before retrying.",
         ) from error
 
+    _finish_overwrite(db, user, document)
     return _document_response(item_id, case_id, document)
 
 

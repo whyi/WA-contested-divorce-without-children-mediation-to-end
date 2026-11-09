@@ -57,18 +57,17 @@ class RemovedNegotiationPlannerTests(unittest.TestCase):
 
     def test_saved_case_information_and_real_document_controls_remain(self) -> None:
         for element_id in (
-            "materials-workflow",
-            "materials-file-input",
+            "documents-demo",
+            "demo-file-input",
             "wizard-demo",
             "wizard-finish",
             "existing-offer-panel",
-            "existing-offer-toggle",
         ):
             self.assertIn(f'id="{element_id}"', PAGE)
-        self.assertIn('wizardFinish.textContent = "Save case information"', PAGE)
-        self.assertIn("Your case information is saved.", PAGE)
-        self.assertIn("Your offer choice is saved.", PAGE)
-        self.assertIn("startPathDialog.showModal()", PAGE)
+        self.assertIn('id="wizard-finish" type="button" disabled>Next</button>', PAGE)
+        self.assertIn("/workspace-entry", PAGE)
+        self.assertIn("await uploadCaseFiles(caseSelectedDocuments)", PAGE)
+        self.assertIn("startPathPage.hidden = false", PAGE)
 
     def test_demo_and_existing_completion_features_remain_independent(self) -> None:
         for element_id in (
@@ -77,12 +76,11 @@ class RemovedNegotiationPlannerTests(unittest.TestCase):
             "settlement-demo-docx-download",
             "settlement-demo-response-preview",
             "settlement-completion-page",
-            "settlement-response-accepted-file",
         ):
             self.assertIn(f'id="{element_id}"', PAGE)
-        self.assertIn("/offer-response/attachments/accepted_offer", PAGE)
+        self.assertNotIn("/offer-response/attachments/accepted_offer", PAGE)
         self.assertIn('response.outcome !== "accepted" || !response.sent_confirmed', PAGE)
-        self.assertIn("/offer-response/complete", PAGE)
+        self.assertNotIn("/offer-response/complete", PAGE)
 
 
 if __name__ == "__main__":
