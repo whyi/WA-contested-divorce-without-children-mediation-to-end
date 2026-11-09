@@ -4,9 +4,11 @@ import { test, expect } from "@playwright/test";
 const origin = "https://casework-regression.invalid";
 const html = readFileSync(new URL("../src/app/static/index.html", import.meta.url), "utf8");
 const caseId = "00000000-0000-4000-8000-000000000071";
+const closedAt = "2026-10-25T18:30:00Z";
 const workspace = {
   case: {
     id: caseId, status: "draft", metadata_json: { case_title: "Synthetic regression case" },
+    closed_at: null, closed_reason: null, attempts_locked_at: null,
     property_assets: [], relationship_milestones: {}, asset_liability_inventory: {},
   },
   intake: { finances: [], dates: {} },
@@ -166,6 +168,85 @@ test("public landing contains only supported sections and working local links", 
     const href = await link.getAttribute("href");
     if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
   }
+  fixture.verify();
+});
+
+test("closed-case Account actions place View before Reopen and Export", async ({ page }) => {
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    hasCase: false,
+    extraReads: {
+      "/api/v1/closed-cases": { cases: [{
+        id: caseId, title: "Synthetic closed case", status: "finalized",
+        closed_at: closedAt, closed_reason: "accepted",
+      }] },
+    },
+  });
+  await page.goto(`${origin}/?view=account`);
+  const row = page.locator("#closed-case-list .closed-case-item");
+  await expect(row).toContainText("Synthetic closed case");
+  const actions = row.locator(".closed-case-actions button");
+  await expect(actions).toHaveText(["View", "Reopen", "Export data"]);
+  await expect(actions.nth(0)).toHaveAccessibleName("View Synthetic closed case read-only");
+  await expect(actions.nth(1)).toHaveAccessibleName("Reopen Synthetic closed case");
+  await expect(actions.nth(2)).toHaveAccessibleName("Export all data for Synthetic closed case");
+  fixture.verify();
+});
+
+test("View opens a closed case read-only without reopening or mutating it", async ({ page }) => {
+  const closedWorkspace = {
+    ...workspace,
+    case: {
+      ...workspace.case,
+      status: "finalized",
+      closed_at: closedAt,
+      closed_reason: "accepted",
+      attempts_locked_at: closedAt,
+      metadata_json: { case_title: "Synthetic closed case" },
+    },
+    attempts: [{ ordinal: 1, frozen: false, profile: null }],
+  };
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    hasCase: false,
+    extraReads: {
+      "/api/v1/closed-cases": { cases: [{
+        id: caseId, title: "Synthetic closed case", status: "finalized",
+        closed_at: closedAt, closed_reason: "accepted",
+      }] },
+      [`/cases/${caseId}/workspace`]: closedWorkspace,
+    },
+  });
+  await page.goto(`${origin}/?view=account`);
+  await page.getByRole("button", { name: "View Synthetic closed case read-only" }).click();
+  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&view=closed`);
+  await expect(page.locator("#closed-case-view-banner")).toBeVisible();
+  await expect(page.locator("#closed-case-view-banner")).toContainText("Closed case");
+  await expect(page.locator("#closed-case-view-banner")).toContainText("Read-only");
+  await expect(page.locator("#closed-case-view-status")).toContainText("changes are unavailable");
+  await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+  await expect(page.locator("#case-asset-layout .settlement-export-actions")).toBeHidden();
+  await expect(page.locator("#demo-file-management-link")).toHaveAttribute(
+    "href", `/case/files?case_id=${caseId}&view=closed`,
+  );
+  await page.locator("#demo-file-management-link").click();
+  await expect(page).toHaveURL(`${origin}/case/files?case_id=${caseId}&view=closed`);
+  await expect(page.locator("#closed-case-view-banner")).toBeVisible();
+  await expect(page.locator("#case-file-layout .demo-file-manager-toolbar")).toBeHidden();
+  await expect(page.locator("#case-saved-files-list button")).toHaveCount(0);
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+  await page.locator("#closed-case-view-account").click();
+  await expect(page).toHaveURL(`${origin}/?view=account`);
+  await expect(page.locator("#closed-case-list .closed-case-item")).toHaveCount(1);
+  fixture.verify();
+});
+
+test("direct closed-case view rejects a case that is no longer listed as closed", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true, hasCase: false });
+  await page.goto(`${origin}/case/assets?case_id=${caseId}&view=closed`);
+  await expect(page.locator("#dashboard-error")).toContainText("not currently listed as closed");
+  expect(fixture.requests).not.toContain(`GET /cases/${caseId}/workspace`);
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
   fixture.verify();
 });
 

@@ -379,6 +379,9 @@ class CaseRead(BaseModel):
 
     id: UUID
     status: str
+    closed_at: datetime | None
+    closed_reason: str | None
+    attempts_locked_at: datetime | None
     metadata_json: dict
     asset_liability_inventory: dict
     relationship_milestones: dict
