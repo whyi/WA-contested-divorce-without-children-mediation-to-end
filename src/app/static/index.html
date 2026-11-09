@@ -4728,6 +4728,8 @@
 
         function renderCaseWorkspaceNavigation() {
           const metadata = caseWorkspace.case.metadata_json || {};
+          const caseClosed = Boolean(closedCaseViewMode || caseWorkspace.case.closed_at
+            || caseWorkspace.case.status === "finalized");
           document.getElementById("demo-current-case-title").textContent = metadata.case_title || "Your case";
           demoCaseNavigation.querySelector(".demo-case-nav-mark").textContent = "C";
           demoCaseNavigation.setAttribute("aria-label", "Case navigation");
@@ -4763,11 +4765,11 @@
             const button = document.createElement("button");
             button.type = "button";
             button.dataset.ordinal = String(ordinal);
-            button.dataset.state = future ? "future" : current ? "current" : "past";
+            button.dataset.state = future ? "future" : current && !caseClosed ? "current" : "past";
             const unavailable = !current && !attempt?.profile;
             button.disabled = future || unavailable
               || (current && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal);
-            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${future ? ", future" : current ? ", current" : unavailable ? ", snapshot unavailable" : ", read-only"}`);
+            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${future ? ", future" : current && !caseClosed ? ", current" : unavailable ? ", snapshot unavailable" : ", read-only"}`);
             if (ordinal === caseWorkspaceViewingOrdinal) button.setAttribute("aria-current", "step");
             const circle = document.createElement("span");
             circle.className = "demo-attempt-circle";
@@ -4791,7 +4793,8 @@
             appendAcceptedOfferStep(list, `${target.pathname}${target.search}`);
           }
           document.getElementById("demo-attempt-progress-status").textContent =
-            `${caseAttemptLabel(caseWorkspaceCurrentOrdinal)} is current.`;
+            caseClosed ? "All attempts are read-only. This case is closed."
+              : `${caseAttemptLabel(caseWorkspaceCurrentOrdinal)} is current.`;
         }
 
         function renderSavedCaseFiles() {
@@ -7090,6 +7093,33 @@
           }
         }
 
+        async function viewClosedCase(item, button) {
+          button.disabled = true;
+          closedCasesStatus.textContent = `Opening ${item.title}…`;
+          try {
+            let target = new URL(`/case/assets?case_id=${encodeURIComponent(item.id)}`, window.location.origin);
+            if (item.closed_reason === "accepted") {
+              const saved = await settlementApi(`/cases/${encodeURIComponent(item.id)}/workspace`);
+              if (saved.case.id !== item.id || saved.case.closed_at !== item.closed_at
+                || !saved.case.closed_at || saved.case.closed_reason !== "accepted"
+                || !saved.accepted_offer_url) {
+                throw new Error("The closed accepted case could not be verified. Refresh My Account and retry.");
+              }
+              target = new URL(saved.accepted_offer_url, window.location.origin);
+              if (target.origin !== window.location.origin || target.pathname !== "/settlement-completion"
+                || target.searchParams.get("case_id") !== item.id) {
+                throw new Error("The accepted completion page could not be verified. Refresh My Account and retry.");
+              }
+            }
+            target.searchParams.set("view", "closed");
+            window.location.assign(`${target.pathname}${target.search}`);
+          } catch (error) {
+            closedCasesStatus.textContent = error instanceof Error
+              ? error.message : "The closed case could not be opened. Please retry.";
+            button.disabled = false;
+          }
+        }
+
         async function loadClosedCases() {
           closedCases.hidden = true;
           try {
@@ -7119,11 +7149,7 @@
               view.className = "dashboard-retry";
               view.textContent = "View";
               view.setAttribute("aria-label", `View ${item.title} read-only`);
-              view.addEventListener("click", () => {
-                window.location.assign(
-                  `/case/assets?case_id=${encodeURIComponent(item.id)}&view=closed`,
-                );
-              });
+              view.addEventListener("click", () => void viewClosedCase(item, view));
               const reopen = document.createElement("button");
               reopen.type = "button";
               reopen.className = "dashboard-retry";
