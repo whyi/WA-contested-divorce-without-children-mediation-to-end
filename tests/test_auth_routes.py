@@ -10,7 +10,9 @@ import pyotp
 from starlette.requests import Request
 
 from app.database import get_db
+from app.auth import hash_token
 from app.auth_routes import (
+    CONSENT_VERSION,
     EmailRequest,
     LoginRequest,
     PasskeyAuthenticationOptionsRequest,
@@ -81,17 +83,19 @@ class AuthenticationRouteTests(unittest.TestCase):
             patch("app.auth_routes._rate_limit"),
             patch("app.auth_routes.validate_password"),
             patch("app.auth_routes._send_security_email") as send_email,
+            self.assertRaises(HTTPException) as raised,
         ):
-            result = signup(
-                SignupRequest(email="other@example.com", password="valid-password"),
+            signup(
+                SignupRequest(
+                    email="other@example.com", password="valid-password", first_name="Test", last_name="User",
+                    challenge_id=uuid4(), verification_token="fictional-verification-proof", terms_accepted=True,
+                ),
                 request,
+                Response(),
                 db,
             )
 
-        self.assertEqual(
-            result,
-            {"message": "If signup can be completed, verification instructions will be sent."},
-        )
+        self.assertEqual(raised.exception.status_code, 403)
         db.scalar.assert_not_called()
         db.add.assert_not_called()
         db.commit.assert_not_called()
@@ -279,7 +283,11 @@ class AuthenticationRouteTests(unittest.TestCase):
         challenge = SimpleNamespace(
             purpose="google_oidc",
             expires_at=datetime.now(UTC) + timedelta(minutes=5),
-            context={"verifier": "test-verifier", "nonce": "test-nonce"},
+            context={
+                "verifier": "test-verifier", "nonce": "test-nonce",
+                "consent_version": CONSENT_VERSION,
+                "browser_binding": hash_token("fictional-browser-binding"),
+            },
             consumed_at=None,
             user_id=None,
         )
@@ -312,7 +320,7 @@ class AuthenticationRouteTests(unittest.TestCase):
         ):
             with self.assertRaises(HTTPException) as raised:
                 google_oidc_callback(
-                    self.request("GET", "/api/auth/oidc/google/callback"),
+                    self.request("GET", "/api/auth/oidc/google/callback", [(b"cookie", b"auth_google_consent=fictional-browser-binding")]),
                     Response(),
                     db,
                     state="test-state",
@@ -448,6 +456,7 @@ class AuthenticationRouteTests(unittest.TestCase):
             "/api/auth/verify-email",
             "/api/auth/verify-email/resend",
             "/api/auth/login",
+            "/api/auth/account",
             "/api/auth/refresh",
             "/api/auth/logout",
             "/api/auth/password/forgot",
@@ -605,7 +614,11 @@ class AuthenticationRouteTests(unittest.TestCase):
         challenge = SimpleNamespace(
             purpose="google_oidc",
             expires_at=datetime.now(UTC) + timedelta(minutes=5),
-            context={"verifier": "test-verifier", "nonce": "test-nonce"},
+            context={
+                "verifier": "test-verifier", "nonce": "test-nonce",
+                "consent_version": CONSENT_VERSION,
+                "browser_binding": hash_token("fictional-browser-binding"),
+            },
             consumed_at=None,
             user_id=None,
         )
@@ -661,6 +674,7 @@ class AuthenticationRouteTests(unittest.TestCase):
                 response = TestClient(app).get(
                     "/api/auth/oidc/google/callback",
                     params={"state": "test-state", "code": "authorization-code"},
+                    headers={"Cookie": "auth_google_consent=fictional-browser-binding"},
                     follow_redirects=False,
                 )
         finally:

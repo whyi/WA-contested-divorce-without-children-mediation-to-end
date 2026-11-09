@@ -24,6 +24,7 @@ class MaterialsImportTests(unittest.TestCase):
         user = SimpleNamespace(id=user_id or uuid4())
         app.dependency_overrides[require_current_user] = lambda: user
         if db is not None:
+            db.scalars.return_value.first.return_value = None
             def override_db():
                 yield db
 
@@ -226,6 +227,8 @@ class MaterialsImportTests(unittest.TestCase):
             media_type="application/pdf",
             size_bytes=20,
             sha256=hashlib.sha256(b"%PDF-1.7\ncontent").hexdigest(),
+            original_filename="evidence.pdf",
+            overwrite_document_id=None,
         )
         db = Mock()
         db.get.side_effect = lambda model, key, **kwargs: (

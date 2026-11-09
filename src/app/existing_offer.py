@@ -69,6 +69,7 @@ class ExistingOfferUpdate(BaseModel):
     exists: bool
     notes: str | None = Field(default=None, max_length=MAX_NOTES_LENGTH + 1000)
     document_ids: list[UUID] = Field(default_factory=list, max_length=MAX_DOCUMENTS)
+    expected_workflow_mode: Literal["upload", "wizard"] | None = None
 
     @field_validator("notes", mode="before")
     @classmethod
@@ -217,6 +218,8 @@ def _commit(db: Session) -> None:
 
 
 def _require_open_case(case: Case) -> None:
+    if (case.metadata_json or {}).get("onboarding_reset"):
+        raise HTTPException(status_code=409, detail="Finish discarding onboarding before editing its offer.")
     if getattr(case, "status", None) == "finalized":
         raise HTTPException(status_code=409, detail="This case is completed and read-only.")
 
@@ -252,6 +255,9 @@ def update_existing_offer(
         _authorize_case(db, user, case_id, write=True)
         case = _lock_case(db, case_id)
         _require_open_case(case)
+        mode = (case.metadata_json or {}).get("workflow_mode")
+        if payload.expected_workflow_mode is not None and mode in {"upload", "wizard"} and mode != payload.expected_workflow_mode:
+            raise HTTPException(status_code=409, detail="The onboarding mode changed. Reload before editing the offer.")
         record = _record(case)
         previous_exists = record.get("exists") if record else None
         if previous_exists != payload.exists and db.scalar(

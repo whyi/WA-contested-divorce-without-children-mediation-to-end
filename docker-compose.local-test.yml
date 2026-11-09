@@ -1,0 +1,174 @@
+name: casework-local-test
+
+x-test-environment: &test-environment
+  DATABASE_URL: postgresql+psycopg://postgres:postgres@local-test-db:5432/mediation
+  S3_BUCKET: local-test-documents
+  DELETION_LEDGER_BUCKET: local-test-deletion-ledger
+  S3_ENDPOINT_URL: http://127.0.0.1:5000
+  S3_REGION: us-west-2
+  S3_ACCESS_KEY_ID: test
+  S3_SECRET_ACCESS_KEY: test
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: us-west-2
+  AUTH_ENABLED: "true"
+  AUTH_COOKIE_SECURE: "true"
+  AUTH_ISSUER: https://192.168.1.17:8444
+  AUTH_PUBLIC_BASE_URL: https://192.168.1.17:8444
+  WEBAUTHN_ORIGIN: https://192.168.1.17:8444
+  WEBAUTHN_RP_ID: 192.168.1.17
+  DEMO_MODE_ENABLED: "false"
+  CASE_DATA_ENABLED: "true"
+  CASE_MATERIALS_ENABLED: "true"
+  OWNER_BETA_ENABLED: "false"
+  OWNER_BETA_READINESS_REQUIRED: "false"
+  PRODUCTION_READINESS_REQUIRED: "false"
+  AI_ANALYSIS_ENABLED: "false"
+  SMTP_HOST: local-test-mail
+  SMTP_PORT: "1025"
+  SMTP_STARTTLS: "false"
+  AUTH_EMAIL_FROM: casework@localhost.invalid
+
+services:
+  local-test-mail:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:8026:8025"
+    restart: unless-stopped
+
+  local-test-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: mediation
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - local-test-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mediation"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  local-test-s3:
+    image: motoserver/moto:latest
+    environment:
+      MOTO_PORT: "5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  bucket-init:
+    image: amazon/aws-cli:latest
+    network_mode: service:local-test-s3
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-west-2
+    depends_on:
+      local-test-s3:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        for bucket in local-test-documents local-test-deletion-ledger; do
+          if ! aws --endpoint-url http://127.0.0.1:5000 s3api head-bucket --bucket "$$bucket" >/dev/null 2>&1; then
+            aws --endpoint-url http://127.0.0.1:5000 s3api create-bucket --bucket "$$bucket" --create-bucket-configuration LocationConstraint=us-west-2;
+          fi;
+        done;
+        aws --endpoint-url http://127.0.0.1:5000 s3api put-bucket-versioning --bucket local-test-deletion-ledger --versioning-configuration Status=Enabled
+
+  bootstrap:
+    build: .
+    network_mode: service:local-test-s3
+    env_file: .local-tls/local-test.env
+    environment: *test-environment
+    volumes:
+      - ./deploy/local/seed_test_account.py:/local/seed_test_account.py:ro
+    command:
+      - sh
+      - -ec
+      - |
+        alembic upgrade head
+        python - <<'PY'
+        import sys
+        sys.path.insert(0, "/local")
+        from seed_test_account import validate_local_environment
+        from app.config import Settings
+        from app.deletion_ledger import initialize_from_environment
+        from app.storage import ObjectStorage
+        validate_local_environment(Settings())
+        storage = ObjectStorage()
+        if not storage.deletion_ledger_initialized():
+            initialize_from_environment()
+        storage.check_deletion_ledger_ready()
+        PY
+    depends_on:
+      local-test-db:
+        condition: service_healthy
+      bucket-init:
+        condition: service_completed_successfully
+
+  api:
+    build: .
+    network_mode: service:local-test-s3
+    env_file: .local-tls/local-test.env
+    environment: *test-environment
+    depends_on:
+      local-test-mail:
+        condition: service_started
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  local-https:
+    image: nginx:stable-alpine
+    ports:
+      - "192.168.1.17:8444:443"
+    volumes:
+      - ./deploy/local/nginx.local-test.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.local-tls:/etc/nginx/local-tls:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  seed-account:
+    build: .
+    user: "0:0"
+    profiles: ["tools"]
+    env_file: .local-tls/local-test.env
+    environment: *test-environment
+    secrets:
+      - local-test-password
+    volumes:
+      - ./deploy/local/seed_test_account.py:/local/seed_test_account.py:ro
+    command: ["python", "/local/seed_test_account.py"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  extraction-worker:
+    build: .
+    network_mode: service:local-test-s3
+    env_file: .local-tls/local-test.env
+    environment: *test-environment
+    command: ["python", "-m", "app.extraction_worker"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  local-test-postgres:
+
+secrets:
+  local-test-password:
+    file: .local-tls/local-test-password

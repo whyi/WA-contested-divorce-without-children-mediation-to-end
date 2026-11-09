@@ -31,7 +31,8 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         self.assertIn('id="demo-workspace-title">Demo case</h1>', PAGE)
         self.assertIn('document.getElementById("demo-workspace-title").textContent = demoCaseData?.title', PAGE)
         self.assertIn('"/onboarding/upload": "upload"', PAGE)
-        self.assertIn('id="materials-workflow"', PAGE)
+        self.assertNotIn('id="materials-workflow"', PAGE)
+        self.assertIn("initializeCaseDocumentsLayout()", PAGE)
 
     def test_ci_requires_executable_chromium_entry_regressions(self) -> None:
         root = Path(__file__).parents[1]
@@ -80,13 +81,13 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         self.assertNotIn("wizard-intake", body)
         self.assertIn("/onboarding/${item.workflow_mode}?case_id=", body)
         self.assertNotIn("openSettlementPlanner", body)
-        self.assertIn("startPathDialog.showModal()", body)
+        self.assertIn("showStartPathPage()", body)
 
     def test_new_case_choice_opens_immediately_and_leaves_a_start_action(self) -> None:
         body = _function_body("showNewCaseStart")
 
-        self.assertIn("newCaseEntry.hidden = false", body)
-        self.assertIn("openCaseCreationDialog()", body)
+        self.assertIn("newCaseEntry.hidden = true", body)
+        self.assertIn("showCaseCreationPage()", body)
         self.assertRegex(
             PAGE,
             re.compile(
@@ -95,7 +96,7 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
                 re.S,
             ),
         )
-        self.assertIn('newCaseStart.addEventListener("click", openCaseCreationDialog)', PAGE)
+        self.assertIn('newCaseStart.addEventListener("click", showCaseCreationPage)', PAGE)
 
     def test_dashboard_status_routes_through_direct_entry_without_workspace_markup(self) -> None:
         body = _function_body("loadDashboardStatus")
@@ -119,12 +120,12 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         self.assertIn('id="closed-cases"', section.group(1))
         self.assertIn('id="account-permanent-deletion"', section.group(1))
         existing = PAGE[PAGE.index('id="existing-cases"') :]
-        self.assertIn('id="case-create-dialog"', existing)
+        self.assertIn('id="case-create-page"', existing)
         self.assertNotIn('id="settlement-planner"', existing)
         self.assertNotIn('id="closed-cases"', existing)
 
     def test_return_wording_no_longer_refers_to_a_case_list(self) -> None:
-        self.assertIn('wizardFinish.textContent = "Save case information";', PAGE)
+        self.assertIn('id="wizard-finish" type="button" disabled>Next</button>', PAGE)
         self.assertNotIn("return to cases", PAGE)
         self.assertNotIn("Return to your cases", PAGE)
 

@@ -76,7 +76,8 @@ class PaidAccountEntitlementTests(unittest.TestCase):
 
         self.assertIn('id="plan-name"', page)
         self.assertIn('readBillingJson("/api/billing/account/entitlement")', page)
-        self.assertIn("Your account stays Paid after the credits are used.", page)
+        self.assertIn('paid ? "Essential plan" : "Free plan"', page)
+        self.assertIn("Attempt credits are shown and managed separately.", page)
         self.assertNotIn(">Switch to Free</button>", page)
         self.assertNotIn("subscription_plan", page)
 

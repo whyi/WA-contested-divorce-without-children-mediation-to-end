@@ -48,9 +48,10 @@ class ClosedCaseDashboardTests(unittest.TestCase):
             self.assertIn(f'id="{element_id}"', PAGE)
         self.assertIn('Type DELETE MY ACCOUNT', PAGE)
         self.assertIn('Type DELETE CASE', PAGE)
-        self.assertIn('Type DELETE MATERIAL', PAGE)
+        self.assertIn('Permanently delete this saved file? This cannot be undone.', PAGE)
+        self.assertIn('confirmation: "DELETE MATERIAL"', PAGE)
         self.assertIn("/permanent-deletion`", PAGE)
-        self.assertIn("/materials/${encodeURIComponent(documentId)}/permanent-deletion", PAGE)
+        self.assertIn("/materials/${encodeURIComponent(file.id)}/permanent-deletion", PAGE)
         self.assertIn("Provider-managed database backups and snapshots are not configured", PAGE)
 
 

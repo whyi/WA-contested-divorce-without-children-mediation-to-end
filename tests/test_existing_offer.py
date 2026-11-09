@@ -143,6 +143,19 @@ class ExistingOfferRouteTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 409)
         self.db.commit.assert_not_called()
 
+    def test_put_rejects_autosaves_from_the_discarded_mode_and_during_reset(self) -> None:
+        for metadata in [
+            {"workflow_mode": "wizard"},
+            {"workflow_mode": "upload", "onboarding_reset": "wizard"},
+        ]:
+            with self.subTest(metadata=metadata):
+                self.case.metadata_json = metadata
+                with self.assertRaises(HTTPException) as caught:
+                    self._put(ExistingOfferUpdate(exists=True, notes="Stale draft", expected_workflow_mode="upload"))
+                self.assertEqual(caught.exception.status_code, 409)
+                self.db.commit.assert_not_called()
+                self.assertNotIn("existing_offer", self.case.metadata_json)
+
     def test_put_database_failure_is_retryable_and_rolls_back(self) -> None:
         self.db.commit.side_effect = SQLAlchemyError("boom")
         with self.assertRaises(HTTPException) as caught:
@@ -266,26 +279,19 @@ class OfferOriginTests(unittest.TestCase):
 class ExistingOfferUiTests(unittest.TestCase):
     page = open("src/app/static/index.html", encoding="utf-8").read()
 
-    def test_existing_offer_question_is_inside_both_selected_start_paths(self) -> None:
+    def test_both_selected_start_paths_create_without_an_offer_question(self) -> None:
         chooser = self.page.split('id="case-create-choice"', 1)[1].split("</section>", 1)[0]
-        intake = self.page.split('id="case-create-offer-intake"', 1)[1].split(
-            "</section>", 1
-        )[0]
         self.assertNotIn("case-offer-question", chooser)
-        self.assertIn('id="case-offer-question"', intake)
+        self.assertNotIn('id="case-create-offer-intake"', self.page)
         self.assertIn('data-start-mode="upload"', chooser)
         self.assertIn('data-start-mode="wizard"', chooser)
-        self.assertIn("showCaseStartPath(button.dataset.startMode)", self.page)
         self.assertIn(
-            "createCaseFromDashboard(activeCaseStartMode, caseCreateContinue)",
+            "createCaseFromDashboard(button.dataset.startMode, button)",
             self.page,
         )
 
-    def test_setup_dialog_and_preparation_page_ask_the_question_accessibly(self) -> None:
+    def test_preparation_page_keeps_accessible_offer_editing(self) -> None:
         for marker in (
-            'id="case-offer-question"',
-            'name="case-existing-offer"',
-            'id="case-offer-notes"',
             'id="existing-offer-panel"',
             'id="existing-offer-status"',
             'id="existing-offer-asset-terms"',
@@ -294,46 +300,33 @@ class ExistingOfferUiTests(unittest.TestCase):
         status = self.page.split('id="existing-offer-status"', 1)[1][:120]
         self.assertIn('aria-live="polite"', status)
 
-    def test_selected_file_recovery_requires_reselection_or_removal(self) -> None:
-        self.assertIn('id="case-offer-file-recovery"', self.page)
-        self.assertIn('id="case-offer-file-clear"', self.page)
+    def test_case_creation_does_not_upload_offer_files(self) -> None:
         create = self.page.split("async function createCaseFromDashboard", 1)[1].split(
-            "function renderCases", 1
+            "async function openActiveCase", 1
         )[0]
-        self.assertIn("Reselect the previously selected offer document", create)
-        self.assertIn("caseCreateDraftFileIdentity = null", self.page)
+        self.assertNotIn("offerFile", create)
+        self.assertNotIn('id="case-offer-file-recovery"', self.page)
 
     def test_client_validates_offer_source_and_uses_server_endpoint(self) -> None:
-        self.assertIn("existing_offer:", self.page)
         self.assertIn("/existing-offer", self.page)
         self.assertNotIn('id="settlement-planner"', self.page)
 
-    def test_yes_without_any_source_never_creates_or_advances(self) -> None:
+    def test_case_creation_only_submits_the_selected_workflow(self) -> None:
         create = self.page.split("async function createCaseFromDashboard", 1)[1].split(
-            "function renderCases", 1
+            "async function openActiveCase", 1
         )[0]
         self.assertNotIn("offer=pending", self.page)
-        self.assertIn('id="case-offer-file"', self.page)
-        guard = create.index('offerAnswer === "yes"\n            && !offerNotes\n            && !offerFile')
-        self.assertLess(guard, create.index('settlementApi("/cases"'))
-        self.assertLess(guard, create.index("window.location.assign"))
-        # A file-only answer is persisted only after the upload, and only then may onboarding advance.
-        self.assertLess(
-            create.index("/existing-offer"), create.index("window.location.assign")
-        )
-        self.assertIn("document_ids: [progress.documentId]", create)
-        self.assertIn("caseCreateProgress ||=", create)
+        self.assertIn("JSON.stringify({ workflow_mode: mode })", create)
+        self.assertNotIn("existing_offer", create)
+        self.assertIn("caseCreateProgress = { caseId, mode }", create)
 
-    def test_wizard_onboarding_stays_closed_until_offer_answer_is_saved(self) -> None:
-        gate = self.page.split("function applyExistingOfferGate", 1)[1].split(
-            "function captureExistingOfferSaved", 1
-        )[0]
-        self.assertIn("existingOfferState.exists !== null", gate)
-        self.assertIn("wizardDemoPage.hidden = !open", gate)
-        # Spec 73: the documents path shows the upload immediately and is no longer gated.
-        self.assertNotIn("materialsWorkflow.hidden", gate)
-        self.assertIn("materialsWorkflow.hidden = !isUpload;", self.page)
-        panel_save = self.page.split("async function saveExistingOffer()", 1)[1].split(
+    def test_wizard_opens_without_an_offer_but_offer_sources_are_still_validated(self) -> None:
+        self.assertNotIn("function applyExistingOfferGate", self.page)
+        self.assertIn("wizardDemoPage.hidden = false", self.page)
+        self.assertNotIn('id="materials-workflow"', self.page)
+        self.assertIn("preparationView.append(wizardDemoPage)", self.page)
+        self.assertIn('.querySelector(".demo-flow-panel > .demo-flow-actions").before(existingOfferPanel)', self.page)
+        panel_save = self.page.split("async function saveExistingOffer(", 1)[1].split(
             "async function saveExistingOfferTerms", 1
         )[0]
         self.assertIn("!notes && documentIds.length === 0 && !offerFile", panel_save)

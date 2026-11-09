@@ -252,7 +252,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("catch", bootstrap)
 
         theme_handler = page.split('const themeSelect =', 1)[1].split(
-            'const signupTab =', 1
+            'const signupForm =', 1
         )[0]
         self.assertIn('setItem(themePreferenceKey, preference)', theme_handler)
         self.assertIn('addEventListener("change", handleSystemThemeChange)', theme_handler)
@@ -322,36 +322,35 @@ class MainWorkflowTests(unittest.TestCase):
 
     def test_settlement_completion_routes_serve_the_dedicated_page(self) -> None:
         for path in ("/settlement-completion", "/demo/settlement-completion"):
-            status, body = asyncio.run(request_app(path))
+            with patch("app.main.require_current_user"):
+                status, body = asyncio.run(request_app(path))
             self.assertEqual(status, 200)
             page = body.decode()
             self.assertIn('id="settlement-completion-page"', page)
             self.assertIn("Congratulations — you’re nearly done.", page)
             self.assertIn("Thanks for choosing Casework", page)
             self.assertIn("Findings and Conclusions About a Marriage", page)
-            self.assertIn('id="settlement-response-accepted-file"', page)
+            self.assertNotIn('id="settlement-response-accepted-file"', page)
             self.assertIn("initializeSettlementCompletionPage()", page)
-            self.assertIn("settlement-completion-auth-content", page)
+            self.assertNotIn("settlement-completion-auth-content", page)
             self.assertIn("settlement-completion-demo-content", page)
-            self.assertIn('id="settlement-completion-back-to-mediation"', page)
+            self.assertNotIn('id="settlement-completion-back-to-mediation"', page)
             self.assertIn('id="settlement-completion-back-to-cases"', page)
-            self.assertIn(
-                'id="settlement-completion-finalize" class="completion-primary" type="button" disabled',
-                page,
-            )
-            self.assertIn('window.history.back()', page)
-            self.assertIn("/offer-response/complete", page)
+            self.assertNotIn('id="settlement-completion-finalize"', page)
+            self.assertNotIn("uploadAcceptedOfferDocument", page)
+            self.assertNotIn("/offer-response/complete", page)
             self.assertNotIn("casework-demo-case-completed", page)
-            self.assertIn('settlementCompletionFinalize.textContent = "Return to active demo case"', page)
+            self.assertIn("settlementCompletionBackToCases.href = demoAssetOverviewUrl()", page)
 
         page = body.decode()
-        self.assertIn("/offer-response/attachments/accepted_offer", page)
+        self.assertNotIn("/offer-response/attachments/accepted_offer", page)
         self.assertIn('response.outcome !== "accepted" || !response.sent_confirmed', page)
         self.assertIn("response.sent_confirmed", page)
 
     def test_rejection_completion_routes_serve_the_dedicated_page(self) -> None:
         for path in ("/rejection-completion", "/demo/rejection-completion"):
-            status, body = asyncio.run(request_app(path))
+            with patch("app.main.require_current_user"):
+                status, body = asyncio.run(request_app(path))
             self.assertEqual(status, 200)
             page = body.decode()
             self.assertIn('id="rejection-completion-page"', page)
@@ -386,44 +385,29 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="google-signin"', page)
         self.assertIn('"/api/auth/providers"', page)
         self.assertIn('"/api/auth/oidc/google/start"', page)
-        self.assertIn("Case workspaces remain unavailable in this preview.", page)
+        self.assertIn("Log in or sign up for free", page)
         self.assertIn("Illustrative interface — not an active case", page)
         self.assertIn('id="account-dashboard"', page)
         self.assertIn('id="dashboard-loading" role="status"', page)
-        self.assertIn('id="case-create-dialog"', page)
+        self.assertIn('id="case-create-page"', page)
         self.assertNotIn('id="case-title-input"', page)
-        self.assertIn('id="demo-case-choice-dialog"', page)
+        self.assertIn('id="demo-case-choice-page"', page)
         self.assertIn('id="demo-case-documents-link" href="/demo/documents"', page)
         self.assertIn('id="demo-case-wizard-link" href="/demo/wizard"', page)
         self.assertIn("I have documents", page)
         self.assertIn("Guide me step by step", page)
         self.assertIn('data-start-mode="upload"', page)
         self.assertIn('data-start-mode="wizard"', page)
-        self.assertIn('id="materials-workflow"', page)
-        self.assertIn('id="materials-back"', page)
-        self.assertIn('id="existing-offer-continue-row"', page)
-        self.assertLess(page.index('id="materials-back"'), page.index('id="existing-offer-continue"'))
-        self.assertIn('id="materials-leave-confirmation"', page)
-        self.assertIn('id="materials-leave-confirm"', page)
+        self.assertNotIn('id="materials-workflow"', page)
+        self.assertNotIn('id="materials-back"', page)
+        self.assertNotIn('id="existing-offer-continue-row"', page)
         self.assertIn('get("start_case") === "1"', page)
         self.assertIn('confirmation: "DELETE CASE"', page)
-        self.assertIn('id="materials-file-input"', page)
-        self.assertIn('id="google-drive-picker"', page)
-        self.assertIn('id="dropbox-picker"', page)
-        self.assertIn('id="materials-import"', page)
-        self.assertIn('"/api/v1/materials/config"', page)
-        self.assertIn("OCR is needed but not supported", page)
-        self.assertIn("page_limit_exceeded", page)
-        self.assertIn('id="analysis-preview-start" type="button">Analyze</button>', page)
-        self.assertIn('id="analysis-controls" aria-labelledby="analysis-title" hidden', page)
-        self.assertIn('id="proposal-review"', page)
-        self.assertIn('id="review-status" role="status" aria-live="polite"', page)
-        self.assertIn('id="review-proposals"', page)
-        self.assertIn('id="profile-facts-list"', page)
-        self.assertIn('id="adopt-selected-proposals"', page)
-        self.assertIn('adoptionConfirm.addEventListener("change", renderAdoptionSummary)', page)
-        self.assertIn('adoptSelectedButton.addEventListener("click", adoptSelectedProposals)', page)
-        self.assertIn("Previously adopted case-profile facts are shown below.", page)
+        self.assertIn('id="demo-file-input"', page)
+        self.assertIn("function initializeCaseDocumentsLayout", page)
+        self.assertIn("async function uploadCaseFiles", page)
+        self.assertNotIn('id="analysis-controls"', page)
+        self.assertNotIn('id="proposal-review"', page)
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 
@@ -452,7 +436,7 @@ class MainWorkflowTests(unittest.TestCase):
             "/demo?source=demo1&demo_case_id=demo-free-case",
             "/demo/start?source=demo2",
         )
-        with TestClient(app) as client:
+        with patch("app.main.require_current_user"), TestClient(app) as client:
             responses = [client.get(path) for path in paths]
 
         self.assertEqual([response.status_code for response in responses], [200] * len(paths))
@@ -470,7 +454,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('if (serialized === null) return null;', page)
         self.assertIn('workflow_mode: mode === "documents" ? "upload" : "wizard"', page)
         self.assertIn("const selectedCase = sampleCase || parsed.active[0] || parsed.archived[0] || null;", page)
-        self.assertIn('function openDemoCaseChoiceDialog()', page)
+        self.assertIn('function showDemoCaseChoicePage()', page)
         self.assertIn('const demoCaseStorageKey = `casework-demo-case-v2:${demoSource}`', page)
         self.assertIn('const legacyDemoCaseStorageKey = `casework-demo-cases-v1:${demoSource}`', page)
         self.assertIn('demoCaseDocumentsLink.href = `/demo/documents?${query}`', page)
@@ -491,7 +475,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("if (demoCaseData) {", start_page)
         self.assertIn("window.location.replace(demoAssetOverviewUrl(demoCaseData.id))", start_page)
         self.assertLess(
-            start_page.index('id="demo-case-choice-dialog"'),
+            start_page.index('id="demo-case-choice-page"'),
             start_page.index('id="existing-cases"'),
         )
         self.assertIn(".demo-workspace-header[hidden] { display: none; }", start_page)
@@ -554,7 +538,7 @@ class MainWorkflowTests(unittest.TestCase):
             '              settlementDemoResponseOutcome !== "counteroffer";',
             page,
         )
-        self.assertIn("First sample attempt", table_section)
+        self.assertNotIn("First sample attempt", table_section)
         self.assertRegex(
             page,
             r'settlementDemoResponseNext\.disabled\s*=\s*settlementDemoResponseOutcome\s*!==\s*"accepted"',
@@ -580,7 +564,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('{ label: "Lower proposed share", share: 45 }', page)
         self.assertNotIn('id="settlement-demo-export-share"', page)
         self.assertNotIn("settlementDemoExportShare", page)
-        self.assertIn('name = "settlement-demo-scenario"', page)
+        self.assertIn('radioName: "settlement-demo-scenario"', page)
         self.assertIn("community_share_bps: settlementDemoSelectedShareBps", page)
         self.assertIn("settlementDemoResponseFiles.hidden = false", page)
         self.assertIn("settlementDemoResponseOutcome === \"counteroffer\"", page)
@@ -606,14 +590,10 @@ class MainWorkflowTests(unittest.TestCase):
 
         self.assertEqual(status, 200)
         page = body.decode()
-        self.assertIn('id="analysis-preview-launch"', page)
+        self.assertNotIn('id="analysis-preview-launch"', page)
         self.assertIn('id="asset-analysis-view"', page)
-        self.assertIn("analysisPreviewLaunch.hidden = importedCount === 0;", page)
-        self.assertIn(
-            'analysisPreviewStartButton.addEventListener("click", openAssetAnalysis)',
-            page,
-        )
-        self.assertEqual(page.count("loadAnalysisOptions("), 1)
+        self.assertNotIn("openAssetAnalysis", page)
+        self.assertNotIn("loadAnalysisOptions", page)
         self.assertIn("<strong>Fictional example only.</strong>", page)
         self.assertIn("not based on your uploaded documents or case facts", page)
         self.assertIn('id="asset-table-rows"', page)
@@ -628,12 +608,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Scenario ideas for the selected dates", page)
         self.assertNotIn("Possible discussion scenarios", page)
         self.assertNotIn("scenarioOptions.addEventListener", page)
-        open_view = page.split("function openAssetAnalysis()", 1)[1].split(
-            "function closeAssetAnalysis()", 1
-        )[0]
-        self.assertNotIn("fetch(", open_view)
-        self.assertNotIn("sessionStorage", open_view)
-        self.assertNotIn("/analysis-requests", open_view)
+        self.assertIn("if (demoMode)", page)
 
     def test_asset_comparison_edits_are_validated_accessible_and_local_only(
         self,
@@ -791,7 +766,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("webCrypto?.getRandomValues", id_generator)
         self.assertIn("Math.random()", id_generator)
         self.assertNotIn("crypto.randomUUID()", id_generator)
-        demo_case_creation = page.split("function openDemoCaseChoiceDialog()", 1)[1].split(
+        demo_case_creation = page.split("function showDemoCaseChoicePage()", 1)[1].split(
             "function startDemoCase", 1
         )[0]
         self.assertIn('createLocalId("case")', demo_case_creation)
@@ -1055,6 +1030,7 @@ class MainWorkflowTests(unittest.TestCase):
             media_type="application/pdf",
             extension="pdf",
             sha256="f" * 64,
+            original_filename=None,
         )
         settings = Settings(
             auth_enabled=True,
@@ -1159,20 +1135,20 @@ class MainWorkflowTests(unittest.TestCase):
             page = response.text
             self.assertIn('id="account-dashboard"', page)
             self.assertIn('"/api/v1/dashboard/status"', page)
-            self.assertIn('id="case-create-dialog"', page)
+            self.assertIn('id="case-create-page"', page)
             self.assertNotIn('id="case-title-input"', page)
             self.assertIn('data-start-mode="upload"', page)
             self.assertIn('data-start-mode="wizard"', page)
-            self.assertIn('id="materials-back"', page)
-            self.assertIn('id="existing-offer-continue-row"', page)
-            self.assertIn('id="materials-leave-confirmation"', page)
+            self.assertNotIn('id="materials-back"', page)
+            self.assertNotIn('id="existing-offer-continue-row"', page)
+            self.assertIn('id="demo-documents-back"', page)
             self.assertIn("Start a new case", page)
             self.assertNotIn("active_case_limit", page)
-            self.assertIn("This preview does not accept or save case details or documents.", page)
+            self.assertNotIn('id="preparation-note"', page)
         demo_page = responses[2].text
         self.assertIn('const demoMode = window.location.pathname === "/demo";', demo_page)
         self.assertIn("Review case details and settlement scenarios.", demo_page)
-        self.assertIn('body[data-demo-page="settlement"] #preparation-title', demo_page)
+        self.assertNotIn('id="preparation-title"', demo_page)
         self.assertIn('body[data-demo-page="settlement"] #asset-analysis-back', demo_page)
         self.assertIn('showPreparation("demo");', demo_page)
         file_manager_page = responses[3].text
@@ -1187,16 +1163,16 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("File contents stay in this browser only and are not uploaded.", file_manager_page)
         self.assertIn('indexedDB.open("casework-demo-file-manager", 1)', file_manager_page)
         self.assertIn('store.index("caseId").getAll(demoCaseFilesCaseId)', file_manager_page)
-        self.assertIn('store.add({', file_manager_page)
         self.assertIn('store.put({', file_manager_page)
         self.assertIn('store.delete(fileId)', file_manager_page)
         self.assertIn('download.dataset.demoFileAction = "download"', file_manager_page)
-        self.assertIn('replace.dataset.demoFileAction = "replace"', file_manager_page)
+        self.assertNotIn('replace.dataset.demoFileAction', file_manager_page)
+        self.assertNotIn('demo-file-replace-input', file_manager_page)
+        self.assertNotIn('case-saved-files-refresh', file_manager_page)
         self.assertIn('remove.dataset.demoFileAction = "delete"', file_manager_page)
         self.assertIn('body[data-demo-page="files"] #account-dashboard > .dashboard-panel', file_manager_page)
         self.assertIn('@media (max-width: 600px)', file_manager_page)
-        self.assertIn('body[data-demo-page="settlement"] #demo-back-to-account', file_manager_page)
-        self.assertIn('class="back-to-account" id="demo-back-to-account"', file_manager_page)
+        self.assertNotIn('id="demo-back-to-account"', file_manager_page)
         self.assertIn('body[data-demo-page="settlement"] #asset-analysis-back', file_manager_page)
         self.assertIn('body[data-demo-page="settlement"] .sample-analysis-notice', file_manager_page)
         self.assertIn('body[data-demo-page="settlement"] .scenario-disclaimer', file_manager_page)
@@ -1212,8 +1188,8 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn("Only PDF and DOCX files are supported.", document_demo_page)
         self.assertIn('window.location.assign(demoAssetOverviewUrl(demoCurrentCaseId))', document_demo_page)
         wizard_demo_page = responses[5].text
-        self.assertIn('id="demo-wizard-back" data-demo-case-return href="/demo/start?source=demo1">Back to Asset Overview</a>', wizard_demo_page)
-        self.assertLess(wizard_demo_page.index('id="demo-wizard-back"'), wizard_demo_page.index('id="wizard-gated-content"'))
+        self.assertNotIn('id="demo-wizard-back"', wizard_demo_page)
+        self.assertIn('id="wizard-back" type="button">Back</button>', wizard_demo_page)
         self.assertIn('demoSource === "demo1"', wizard_demo_page)
         self.assertIn('demoSource === "demo2"', wizard_demo_page)
         self.assertIn('if (demoStartMode || demoMode || demoOnlyMode || demoSettlementCompletionMode || demoRejectionCompletionMode)', wizard_demo_page)
@@ -1237,7 +1213,7 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="wizard-agreement-list"', wizard_demo_page)
         self.assertIn('id="wizard-review-list"', wizard_demo_page)
         self.assertIn('id="wizard-clear-dialog"', wizard_demo_page)
-        self.assertIn('id="wizard-finish" type="button" disabled>Save and view your case', wizard_demo_page)
+        self.assertIn('id="wizard-finish" type="button" disabled>Next', wizard_demo_page)
         self.assertIn('indexedDB.open(wizardDatabaseName, wizardDatabaseVersion)', wizard_demo_page)
         self.assertIn('wizardDatabaseName = "casework-wizard-intake"', wizard_demo_page)
         self.assertIn("Restored the draft and attached files saved in this browser.", wizard_demo_page)

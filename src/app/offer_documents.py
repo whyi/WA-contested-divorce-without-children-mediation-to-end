@@ -4,6 +4,7 @@ import re
 from uuid import UUID
 
 from docx import Document
+from docx.document import Document as WordDocument
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
@@ -14,6 +15,7 @@ from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.settlement_planning import SettlementScenarioResult
+from app.asset_overview import AssetOverview, OverviewScenarioExport
 
 
 PROPOSED_DISCLOSURE_LABEL = "PROPOSED DISCLOSURE — PENDING QUALIFIED COUNSEL REVIEW"
@@ -129,10 +131,96 @@ def _currency(cents: int) -> str:
     return f"${cents / 100:,.2f}"
 
 
-def render_mediation_offer_docx(
-    terms: MediationOfferTerms,
-    result: SettlementScenarioResult,
+def render_overview_scenario_draft(
+    overview: AssetOverview, selection: OverviewScenarioExport, format: str,
 ) -> bytes:
+    start, end = selection.snapshots(overview)
+    start_you = sum(balance.you_cents for balance in start.balances if balance.you_cents is not None)
+    start_other = sum(balance.other_cents for balance in start.balances if balance.other_cents is not None)
+    end_you = sum(balance.you_cents for balance in end.balances if balance.you_cents is not None)
+    end_other = sum(balance.other_cents for balance in end.balances if balance.other_cents is not None)
+    change = end_you + end_other - start_you - start_other
+    proposed_you = start_you + (change * selection.community_share_bps + 5000) // 10000
+    proposed_other = end_you + end_other - proposed_you
+    summary = [
+        ("Start date", selection.start_date.isoformat()),
+        ("Division date", selection.end_date.isoformat()),
+        ("Selected share of net change to you", f"{selection.community_share_bps / 100:g}%"),
+        ("Start-date net to you", _currency(start_you)),
+        ("Start-date net to other party", _currency(start_other)),
+        ("Combined net-asset change", _currency(change)),
+        ("Illustrative net to you", _currency(proposed_you)),
+        ("Illustrative net to other party", _currency(proposed_other)),
+    ]
+    explanation = (
+        "Start-date balances are baselines. The selected share applies only to the change "
+        "in combined net assets. These are discussion assumptions, not legal classifications "
+        "of separate or community property. Party names, caption and final agreement terms "
+        "must be completed and reviewed before use. This draft download does not finalize "
+        "the attempt or send a proposal."
+    )
+    if format == "docx":
+        document = _mediation_offer_document(MediationOfferTerms(
+            offer_from="[Proposing party name]", offer_to="[Other party name]",
+            effective_date=selection.end_date,
+            terms=[explanation, f"Proposed net balances: {_currency(proposed_you)} to the proposing party and {_currency(proposed_other)} to the other party."],
+        ))
+        document.add_heading("Selected date-range scenario", 1)
+        document.add_paragraph(explanation)
+        for label, value in summary:
+            document.add_paragraph(f"{label}: {value}")
+        for snapshot in (start, end):
+            document.add_heading(f"Saved balances — {snapshot.date.isoformat()}", 1)
+            table = document.add_table(rows=1, cols=3)
+            table.style = "Table Grid"
+            for cell, value in zip(table.rows[0].cells, ("Category", "You", "Other party"), strict=True):
+                cell.text = value
+            for balance in snapshot.balances:
+                if balance.you_cents is None or balance.other_cents is None:
+                    raise ValueError("Incomplete saved balances.")
+                for cell, value in zip(table.add_row().cells, (
+                    balance.category, _currency(balance.you_cents), _currency(balance.other_cents),
+                ), strict=True):
+                    cell.text = value
+        output = BytesIO()
+        document.save(output)
+        return output.getvalue()
+    if format != "xlsx":
+        raise ValueError("Unsupported draft format.")
+    workbook = Workbook()
+    schedule = workbook.active
+    schedule.title = "Property schedule"
+    schedule.append(["Date", "Category", "You", "Other party"])
+    for snapshot in (start, end):
+        for balance in snapshot.balances:
+            if balance.you_cents is None or balance.other_cents is None:
+                raise ValueError("Incomplete saved balances.")
+            schedule.append([
+                snapshot.date.isoformat(), balance.category,
+                balance.you_cents / 100, balance.other_cents / 100,
+            ])
+            schedule.cell(schedule.max_row, 2).data_type = "s"
+            for column in (3, 4):
+                schedule.cell(schedule.max_row, column).number_format = '"$"#,##0.00;-"$"#,##0.00'
+    details = workbook.create_sheet("Selected scenario")
+    details.append(["UNSIGNED DISCUSSION DRAFT"])
+    details.append([PROPOSED_DISCLOSURE_LABEL])
+    details.append([PROPOSAL_BOUNDARY_DISCLOSURE])
+    details.append([explanation])
+    for row in summary:
+        details.append(row)
+    for sheet in workbook:
+        sheet.freeze_panes = "A2"
+        for column in ("A", "B", "C", "D"):
+            sheet.column_dimensions[column].width = 32
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def _mediation_offer_document(terms: MediationOfferTerms) -> WordDocument:
     document = Document()
     section = document.sections[0]
     section.top_margin = Inches(0.7)
@@ -362,6 +450,14 @@ def render_mediation_offer_docx(
                 paragraph.paragraph_format.space_after = Pt(4)
 
     document.add_page_break()
+    return document
+
+
+def render_mediation_offer_docx(
+    terms: MediationOfferTerms,
+    result: SettlementScenarioResult,
+) -> bytes:
+    document = _mediation_offer_document(terms)
 
     document.add_heading("Schedule A — Selected scenario property division", level=1)
     document.add_paragraph(

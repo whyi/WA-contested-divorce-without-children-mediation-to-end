@@ -42,8 +42,8 @@ services:
     command:
       - >-
         (aws --endpoint-url http://s3mock:5000 s3api head-bucket --bucket mediation-documents >/dev/null 2>&1 || aws --endpoint-url http://s3mock:5000 s3api create-bucket --bucket mediation-documents --create-bucket-configuration LocationConstraint=us-west-2)
-        && (aws --endpoint-url http://s3mock:5000 s3api head-bucket --bucket "$DELETION_LEDGER_BUCKET" >/dev/null 2>&1 || aws --endpoint-url http://s3mock:5000 s3api create-bucket --bucket "$DELETION_LEDGER_BUCKET" --create-bucket-configuration LocationConstraint=us-west-2)
-        && aws --endpoint-url http://s3mock:5000 s3api put-bucket-versioning --bucket "$DELETION_LEDGER_BUCKET" --versioning-configuration Status=Enabled
+        && (aws --endpoint-url http://s3mock:5000 s3api head-bucket --bucket "$$DELETION_LEDGER_BUCKET" >/dev/null 2>&1 || aws --endpoint-url http://s3mock:5000 s3api create-bucket --bucket "$$DELETION_LEDGER_BUCKET" --create-bucket-configuration LocationConstraint=us-west-2)
+        && aws --endpoint-url http://s3mock:5000 s3api put-bucket-versioning --bucket "$$DELETION_LEDGER_BUCKET" --versioning-configuration Status=Enabled
     restart: "no"
 
   api:
@@ -94,7 +94,6 @@ services:
       CASE_DATA_ENABLED: "${CASE_DATA_ENABLED:-false}"
       CASE_MATERIALS_ENABLED: "${CASE_MATERIALS_ENABLED:-false}"
       PRODUCTION_READINESS_REQUIRED: "${PRODUCTION_READINESS_REQUIRED:-false}"
-      OWNER_BETA_READINESS_REQUIRED: "${OWNER_BETA_READINESS_REQUIRED:-false}"
       AI_ANALYSIS_ENABLED: "${AI_ANALYSIS_ENABLED:-false}"
       BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}
       BEDROCK_REGION: ${BEDROCK_REGION:-}

@@ -19,6 +19,7 @@ class Artifact:
     content: bytes
     extension: str
     media_type: str
+    original_filename: str | None = None
 
 
 def store_artifacts(
@@ -52,6 +53,7 @@ def store_artifacts(
                     case_id=case_id,
                     object_key=key,
                     extension=artifact.extension,
+                    original_filename=artifact.original_filename,
                     media_type=artifact.media_type,
                     sha256=hashlib.sha256(artifact.content).hexdigest(),
                     size_bytes=len(artifact.content),

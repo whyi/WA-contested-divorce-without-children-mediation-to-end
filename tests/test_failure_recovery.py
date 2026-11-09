@@ -18,9 +18,10 @@ from app.main import app, retry_case_document_extraction, support_configuration
 class FailureRecoveryUiTests(unittest.TestCase):
     page = open("src/app/static/index.html", encoding="utf-8").read()
 
-    def test_case_creation_progress_survives_reload(self) -> None:
+    def test_direct_creation_preserves_in_page_retry_and_legacy_offer_recovery(self) -> None:
         self.assertIn('caseCreateProgressStorageKey = "case-create-progress"', self.page)
-        self.assertIn("sessionStorage.setItem(\n                caseCreateProgressStorageKey", self.page)
+        self.assertIn("caseCreateProgress = { caseId, mode }", self.page)
+        self.assertIn("let caseId = caseCreateProgress?.caseId || null", self.page)
         self.assertIn("sessionStorage.getItem(caseCreateProgressStorageKey", self.page)
 
     def test_existing_offer_upload_and_notes_survive_reload(self) -> None:
@@ -29,15 +30,15 @@ class FailureRecoveryUiTests(unittest.TestCase):
         self.assertIn("sessionStorage.setItem(existingOfferRecoveryKey", self.page)
         self.assertIn("sameFileIdentity", self.page)
         self.assertIn("reselect the same file to retry", self.page.lower())
-        self.assertIn("!existingOfferRecoveryPending", self.page)
+        self.assertNotIn("function applyExistingOfferGate", self.page)
         self.assertIn("file bytes are not retained by the browser", self.page)
 
     def test_failure_messages_cover_processing_and_final_download_recovery(self) -> None:
         for recovery_text in (
-            "Upload outcome is uncertain",
-            "Extraction failed. The original source is still stored",
-            "OCR is needed",
-            "analysis failed; successful files remain available",
+            "Previous upload status could not be verified",
+            "The file was not imported. Retry with the same selected file.",
+            "Retry failed file import",
+            "Retry failed file import",
             "Copy safe diagnostic details",
             "Contact support",
         ):
@@ -51,10 +52,9 @@ class FailureRecoveryUiTests(unittest.TestCase):
         self.assertIn("Error code", helper)
         self.assertNotIn("filename", helper.lower())
         self.assertNotIn("case_id", helper.lower())
-        self.assertIn("analysisRequestBusy", self.page)
-        self.assertIn("extractionRetryingJobIds", self.page)
-        self.assertIn("imported files were kept", self.page)
-        self.assertIn("Successful sibling results remain available", self.page)
+        self.assertIn("caseImportIdentities", self.page)
+        self.assertIn("identity.documentId", self.page)
+        self.assertIn("pending.length > config.max_attachments", self.page)
 
     def test_support_configuration_is_optional_and_not_cached(self) -> None:
         settings = SimpleNamespace(support_contact_url=None)
@@ -221,10 +221,8 @@ class ExtractionRetryRouteTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "Authentication required.")
 
     def test_failed_extraction_is_explicitly_retryable_in_the_ui(self) -> None:
-        self.assertIn('extraction_status === "failed"', FailureRecoveryUiTests.page)
-        self.assertIn('retry.textContent = "Retry extraction"', FailureRecoveryUiTests.page)
-        self.assertIn("extraction-jobs/${jobId}/retry", FailureRecoveryUiTests.page)
-        self.assertIn("retryLimitReached", FailureRecoveryUiTests.page)
+        self.assertNotIn('id="analysis-controls"', FailureRecoveryUiTests.page)
+        self.assertNotIn("function retryDocumentExtraction", FailureRecoveryUiTests.page)
 
     def test_retry_requeues_only_matching_failed_source_and_reports_no_store(self) -> None:
         case_id, document_id, job_id, request_id = (uuid4() for _ in range(4))

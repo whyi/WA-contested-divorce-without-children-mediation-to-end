@@ -1225,20 +1225,18 @@ class OfferResponseTransitionTests(unittest.TestCase):
             "https://app.leg.wa.gov/RCW/default.aspx?cite=4.64.080",
         ):
             self.assertIn(source, html)
-        self.assertIn("No statewide Superior Court family-law form titled", html)
-        self.assertIn("for garnishment, not a generic divorce judgment", html)
-        self.assertIn("signed, filed, or sufficient", html)
-        self.assertIn('id="settlement-response-accepted-file"', html)
-        self.assertIn("uploadAcceptedOfferDocument(file)", html)
-        self.assertIn('id="settlement-demo-attempt-status"', html)
-        self.assertIn("First sample attempt", html)
-        self.assertIn('body[data-demo-page="settlement"] .settlement-attempt-banner', html)
-        self.assertIn("position: fixed", html)
-        self.assertIn("min-height: 86px", html)
+        self.assertIn("The signed decree or order and case docket determine", html)
+        self.assertIn("Ask the Superior Court Clerk or qualified Washington counsel", html)
+        self.assertNotIn('id="settlement-response-accepted-file"', html)
+        self.assertNotIn("uploadAcceptedOfferDocument", html)
+        self.assertNotIn('id="settlement-demo-attempt-status"', html)
+        self.assertNotIn("First sample attempt", html)
+        self.assertNotIn(".settlement-attempt-banner", html)
+        self.assertNotIn("position: fixed", html)
         self.assertIn('document.body.dataset.demoPage = "settlement"', html)
         self.assertIn("The Free demo allows one attempt.", html)
         self.assertIn("The Essential demo allows up to ${demoAttemptLimit} attempts.", html)
-        self.assertIn("settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)", html)
+        self.assertIn("function settlementAttemptOrdinalLabel(ordinal)", html)
         self.assertIn('id="settlement-demo-add-counteroffer" type="button" hidden', html)
         self.assertNotIn('id="settlement-response-confirm-sent"', html)
         self.assertNotIn("saveSettlementAttemptState", html)
@@ -1330,13 +1328,9 @@ class OfferResponseTransitionTests(unittest.TestCase):
             html,
         )
         self.assertIn("attempt_ordinal: 1,", html.split(
-            "function openDemoCaseChoiceDialog()", 1
+            "function showDemoCaseChoicePage()", 1
         )[1].split("async function createCaseFromDashboard", 1)[0])
-        self.assertIn(
-            "settlementDemoAttemptStatus.textContent =\n"
-            "                `${settlementAttemptOrdinalLabel(settlementDemoAttemptOrdinal)} sample attempt`;",
-            html,
-        )
+        self.assertNotIn("settlementDemoAttemptStatus", html)
         continue_attempt = html.split(
             "function continueSettlementDemoAttempt()", 1
         )[1].split("settlementScenarioResults.addEventListener", 1)[0]

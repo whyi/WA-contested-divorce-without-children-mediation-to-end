@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
+from urllib.parse import quote
 
 from botocore.exceptions import BotoCoreError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
@@ -18,6 +19,9 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.analysis import router as analysis_router
+from app.asset_overview import AssetOverviewRead, AssetOverviewUpdate, OverviewScenarioExport
+from app.asset_mediation import record_download, router as asset_mediation_router
+from app.offer_documents import render_overview_scenario_draft
 from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.billing_routes import router as billing_router
@@ -72,9 +76,9 @@ from app.property_tracing import (
 from app.materials import router as materials_router
 from app.offer_response import router as offer_response_router
 from app.review import router as review_router
-from app.settlement_routes import demo_export_router, router as settlement_router
+from app.settlement_routes import _require_real_case_exports, demo_export_router, router as settlement_router
 from app.wizard_attempt import router as wizard_attempt_router
-from app.wizard_intake import router as wizard_intake_router
+from app.wizard_intake import WizardIntakeDraft, router as wizard_intake_router
 from app.services import (
     Artifact,
     get_case_or_none,
@@ -175,9 +179,14 @@ app.include_router(settlement_router)
 app.include_router(wizard_intake_router)
 app.include_router(wizard_attempt_router)
 app.include_router(demo_export_router)
+app.include_router(asset_mediation_router)
 
 DbSession: TypeAlias = Annotated[Session, Depends(get_db)]
 LOGIN_PAGE = Path(__file__).parent / "static" / "index.html"
+
+def is_working_page_path(path: str) -> bool:
+    normalized = path.rstrip("/")
+    return normalized in {"/settlement-completion", "/rejection-completion", "/case", "/onboarding"} or normalized.startswith(("/case/", "/onboarding/"))
 
 
 @app.middleware("http")
@@ -186,6 +195,22 @@ async def authenticate_and_authorize_case_data(
     call_next: RequestResponseEndpoint,
 ) -> Response:
     path = request.url.path
+    if request.method in {"GET", "HEAD"} and is_working_page_path(path):
+        try:
+            with SessionLocal() as db:
+                require_current_user(request, db)
+        except HTTPException as error:
+            if error.status_code == 401 or (
+                error.status_code == 503 and error.detail == "Authentication is not configured."
+            ):
+                return RedirectResponse("/", status_code=303, headers={"Cache-Control": "no-store"})
+            return JSONResponse(status_code=error.status_code, content={"detail": error.detail}, headers={"Cache-Control": "no-store"})
+        except SQLAlchemyError as error:
+            log_failure_event(logger, "working_page_session_check_failed", error)
+            return JSONResponse(status_code=503, content={"detail": "Your session could not be verified. Please retry."}, headers={"Cache-Control": "no-store"})
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
     is_case_data_path = (
         path == "/cases"
         or path.startswith("/cases/")
@@ -344,6 +369,8 @@ class CaseCreate(BaseModel):
     def metadata_cannot_set_existing_offer(cls, value: dict) -> dict:
         if EXISTING_OFFER_METADATA_KEY in value:
             raise ValueError("Use existing_offer to record an existing offer.")
+        if "asset_overview" in value:
+            raise ValueError("Use the asset-overview endpoint to record dated balances.")
         return value
 
 
@@ -356,6 +383,28 @@ class CaseRead(BaseModel):
     asset_liability_inventory: dict
     relationship_milestones: dict
     property_assets: list[dict]
+
+
+class WorkspaceDocumentRead(BaseModel):
+    id: UUID
+    extension: str
+    size_bytes: int
+    created_at: datetime
+    original_filename: str | None = None
+
+
+class WorkspaceAttemptRead(BaseModel):
+    ordinal: int
+    frozen: bool
+    profile: dict | None
+
+
+class CaseWorkspaceRead(BaseModel):
+    case: CaseRead
+    intake: WizardIntakeDraft
+    attempts: list[WorkspaceAttemptRead]
+    documents: list[WorkspaceDocumentRead]
+    asset_overview: AssetOverviewRead
 
 
 class ClassifiedPropertyAsset(PropertyAsset):
@@ -433,6 +482,7 @@ class DashboardCaseStatus(BaseModel):
     title: str
     workflow_mode: Literal["upload", "wizard"] | None
     attempt_ordinal: int
+    workspace_started: bool
 
 
 class DashboardData(BaseModel):
@@ -502,6 +552,15 @@ def home() -> HTMLResponse:
     return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
 
 
+@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+def account_notices() -> HTMLResponse:
+    return HTMLResponse(
+        LOGIN_PAGE.with_name("auth-notices.html").read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
 def demo_asset_overview(request: Request) -> Response:
     source = request.query_params.get("source", "demo2")
@@ -538,6 +597,8 @@ def demo_start_page(request: Request) -> Response:
 @app.get("/rejection-completion", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/upload", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/case/assets", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/case/files", response_class=HTMLResponse, include_in_schema=False)
 def onboarding_page() -> HTMLResponse:
     return home()
 
@@ -558,6 +619,7 @@ def demo_two_entry() -> RedirectResponse:
 @app.get("/api/v1/dashboard/status", response_model=DashboardStatus)
 def dashboard_status(
     user: Annotated[User, Depends(require_current_user)],
+    response: Response,
     db: DbSession,
 ) -> DashboardStatus:
     try:
@@ -568,6 +630,14 @@ def dashboard_status(
                 Case.metadata_json,
                 func.coalesce(func.max(SettlementNegotiationAttempt.attempt_ordinal), 1),
                 CaseMembership.role,
+                select(Document.id).where(
+                    Document.case_id == Case.id,
+                    ~select(DeletionTombstone.id).where(
+                        DeletionTombstone.scope_type == "document",
+                        DeletionTombstone.scope_id == Document.id,
+                    ).exists(),
+                ).exists(),
+                func.count(SettlementNegotiationAttempt.id),
             )
             .join(CaseMembership, CaseMembership.case_id == Case.id)
             .outerjoin(
@@ -598,12 +668,15 @@ def dashboard_status(
 
     cases = []
     active_case_count = 0
-    for case_id, case_status, metadata, attempt_ordinal, role in rows:
+    for case_id, case_status, metadata, attempt_ordinal, role, has_documents, attempt_count in rows:
         metadata = metadata if isinstance(metadata, dict) else {}
         case_title = metadata.get("case_title")
         if not isinstance(case_title, str) or not case_title.strip():
             case_title = "New case"
         workflow_mode = metadata.get("workflow_mode")
+        asset_overview = metadata.get("asset_overview")
+        overview = asset_overview.get("overview") if isinstance(asset_overview, dict) else None
+        snapshots = overview.get("snapshots") if isinstance(overview, dict) else None
         cases.append(
             DashboardCaseStatus(
                 id=case_id,
@@ -611,10 +684,17 @@ def dashboard_status(
                 title=case_title.strip(),
                 workflow_mode=workflow_mode if workflow_mode in {"upload", "wizard"} else None,
                 attempt_ordinal=attempt_ordinal,
+                workspace_started=(
+                    metadata.get("workspace_started") is True
+                    or bool(has_documents)
+                    or attempt_count > 0
+                    or (isinstance(snapshots, list) and bool(snapshots))
+                ),
             )
         )
         if role == "owner":
             active_case_count += 1
+    response.headers["Cache-Control"] = "no-store"
     return DashboardStatus(
         data=DashboardData(
             has_cases=bool(cases),
@@ -689,11 +769,297 @@ def create_case(payload: CaseCreate, request: Request, db: DbSession) -> Case:
 def read_case(case_id: UUID, db: DbSession) -> Case:
     return _require_case(db, case_id)
 
+@app.get("/cases/{case_id}/workspace", response_model=CaseWorkspaceRead)
+def read_case_workspace(case_id: UUID, response: Response, db: DbSession) -> CaseWorkspaceRead:
+    try:
+        case = _require_case(db, case_id)
+        attempts = db.scalars(
+            select(SettlementNegotiationAttempt)
+            .where(SettlementNegotiationAttempt.case_id == case_id)
+            .order_by(SettlementNegotiationAttempt.attempt_ordinal)
+        ).all()
+        documents = db.scalars(
+            select(Document)
+            .where(
+                Document.case_id == case_id,
+                ~select(DeletionTombstone.id).where(
+                    DeletionTombstone.scope_type == "document",
+                    DeletionTombstone.scope_id == Document.id,
+                ).exists(),
+            )
+            .order_by(Document.created_at, Document.id)
+        ).all()
+        response.headers["Cache-Control"] = "no-store"
+        return CaseWorkspaceRead(
+            case=CaseRead.model_validate(case),
+            intake=WizardIntakeDraft.model_validate(case.wizard_intake_json or {}),
+            asset_overview=AssetOverviewRead.model_validate(
+                (case.metadata_json or {}).get("asset_overview", {})
+            ),
+            attempts=[
+                WorkspaceAttemptRead(
+                    ordinal=attempt.attempt_ordinal,
+                    frozen=attempt.frozen_at is not None or attempt.finalized_at is not None,
+                    profile=(
+                        attempt.finalized_snapshot_json
+                        or attempt.frozen_snapshot_json
+                        or attempt.snapshot_json
+                    ).get("case_profile"),
+                )
+                for attempt in attempts
+            ],
+            documents=[
+                WorkspaceDocumentRead(
+                    id=document.id,
+                    extension=document.extension,
+                    size_bytes=document.size_bytes,
+                    created_at=document.created_at,
+                    original_filename=document.original_filename,
+                )
+                for document in documents
+            ],
+        )
+    except SQLAlchemyError as error:
+        log_failure_event(logger, "case_workspace_lookup_failed", error)
+        raise HTTPException(status_code=503, detail="Your saved case information is unavailable. Please retry.") from error
+
+
+@app.put("/cases/{case_id}/asset-overview", response_model=AssetOverviewRead)
+def save_case_asset_overview(
+    case_id: UUID,
+    payload: AssetOverviewUpdate,
+    response: Response,
+    user: Annotated[User, Depends(require_current_user)],
+    db: DbSession,
+) -> AssetOverviewRead:
+    try:
+        case = db.scalar(select(Case).where(Case.id == case_id).with_for_update())
+        membership = resolve_case_access(db, case_id, user.id)
+        if case is None or membership is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        if membership.role != "owner":
+            raise HTTPException(status_code=403, detail="Only the case owner can edit asset values.")
+        if case.closed_at is not None or case.status == "finalized":
+            raise HTTPException(status_code=409, detail="This case is read-only.")
+        latest = db.scalar(
+            select(SettlementNegotiationAttempt)
+            .where(SettlementNegotiationAttempt.case_id == case_id)
+            .order_by(SettlementNegotiationAttempt.attempt_ordinal.desc()).limit(1)
+        )
+        if latest is not None and (latest.frozen_at is not None or latest.finalized_at is not None):
+            raise HTTPException(status_code=409, detail="The latest attempt is read-only.")
+        metadata = dict(case.metadata_json or {})
+        current = AssetOverviewRead.model_validate(metadata.get("asset_overview", {}))
+        if current.revision != payload.expected_revision:
+            raise HTTPException(status_code=409, detail="Asset values changed. Reload before saving.")
+        result = AssetOverviewRead(revision=current.revision + 1, overview=payload.overview)
+        metadata["asset_overview"] = result.model_dump(mode="json")
+        case.metadata_json = metadata
+        db.commit()
+        response.headers["Cache-Control"] = "no-store"
+        return result
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "asset_overview_save_failed", error)
+        raise HTTPException(status_code=503, detail="Asset values were not saved. Please retry.") from error
+
+
+@app.post("/cases/{case_id}/asset-overview/exports/{format}")
+def download_asset_overview_scenario(
+    case_id: UUID,
+    format: Literal["docx", "xlsx"],
+    payload: OverviewScenarioExport,
+    user: Annotated[User, Depends(require_current_user)],
+    db: DbSession,
+) -> Response:
+    try:
+        _require_real_case_exports()
+        case = db.scalar(select(Case).where(Case.id == case_id).with_for_update())
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        membership = resolve_case_access(db, case_id, user.id)
+        if membership is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        if membership.role != "owner":
+            raise HTTPException(status_code=403, detail="Only the owner can download case proposal drafts.")
+        latest = db.scalar(
+            select(SettlementNegotiationAttempt)
+            .where(SettlementNegotiationAttempt.case_id == case_id)
+            .order_by(SettlementNegotiationAttempt.attempt_ordinal.desc()).limit(1)
+        )
+        current_ordinal = latest.attempt_ordinal if latest is not None else 1
+        if payload.attempt_ordinal > current_ordinal:
+            raise HTTPException(status_code=409, detail="This attempt is not available.")
+        attempt = latest if payload.attempt_ordinal == current_ordinal else db.scalar(
+            select(SettlementNegotiationAttempt).where(
+                SettlementNegotiationAttempt.case_id == case_id,
+                SettlementNegotiationAttempt.attempt_ordinal == payload.attempt_ordinal,
+            )
+        )
+        if payload.attempt_ordinal < current_ordinal and attempt is None:
+            raise HTTPException(status_code=409, detail="The saved attempt is unavailable.")
+        metadata = case.metadata_json or {}
+        if attempt is not None and (
+            payload.attempt_ordinal < current_ordinal
+            or attempt.frozen_at is not None or attempt.finalized_at is not None
+        ):
+            snapshot = attempt.finalized_snapshot_json or attempt.frozen_snapshot_json or attempt.snapshot_json
+            profile = snapshot.get("case_profile")
+            if not isinstance(profile, dict) or not isinstance(profile.get("metadata"), dict):
+                raise HTTPException(status_code=409, detail="The saved attempt profile is unavailable.")
+            metadata = profile["metadata"]
+        saved = AssetOverviewRead.model_validate(metadata.get("asset_overview", {}))
+        if payload.expected_revision != saved.revision:
+            raise HTTPException(status_code=409, detail="Asset values changed. Reload before downloading.")
+        content = render_overview_scenario_draft(saved.overview, payload, format)
+        if len(content) > get_settings().max_upload_bytes:
+            raise HTTPException(status_code=413, detail="Generated draft exceeds the file size limit.")
+        media_type = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if format == "docx"
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        filename = "cr2a-proposal-draft.docx" if format == "docx" else "property-schedule-draft.xlsx"
+        record_download(db, case, payload, format)
+        return Response(content=content, media_type=media_type, headers={
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        })
+    except ValueError as error:
+        log_failure_event(logger, "asset_scenario_export_invalid", error)
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "asset_scenario_export_failed", error)
+        raise HTTPException(status_code=503, detail="Draft download failed. Your work is unchanged; retry.") from error
+
+
+class WorkspaceEntryRead(BaseModel):
+    workspace_started: Literal[True] = True
+
+
+@app.post("/cases/{case_id}/workspace-entry", response_model=WorkspaceEntryRead)
+def record_workspace_entry(
+    case_id: UUID,
+    response: Response,
+    user: Annotated[User, Depends(require_current_user)],
+    db: DbSession,
+) -> WorkspaceEntryRead:
+    try:
+        case = db.scalar(select(Case).where(Case.id == case_id).with_for_update())
+        membership = resolve_case_access(db, case_id, user.id)
+        if case is None or membership is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        if membership.role != "owner":
+            raise HTTPException(status_code=403, detail="Only the case owner can continue onboarding.")
+        if case.closed_at is not None or case.status == "finalized":
+            raise HTTPException(status_code=409, detail="This case is closed or read-only.")
+        metadata = dict(case.metadata_json or {})
+        if metadata.get("onboarding_reset"):
+            raise HTTPException(status_code=409, detail="Finish discarding onboarding before entering an attempt.")
+        metadata["workspace_started"] = True
+        case.metadata_json = metadata
+        db.commit()
+        response.headers["Cache-Control"] = "no-store"
+        return WorkspaceEntryRead()
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "case_workspace_entry_failed", error)
+        raise HTTPException(status_code=503, detail="Case progress was not saved. Please retry.") from error
+
 
 class WorkflowModeUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     workflow_mode: Literal["upload", "wizard"]
+
+
+class OnboardingStateRead(BaseModel):
+    workflow_mode: Literal["upload", "wizard"] | None
+    has_work: bool
+    reset_pending: bool
+    reset_target: Literal["upload", "wizard"] | None = None
+
+
+@app.get("/cases/{case_id}/onboarding-state", response_model=OnboardingStateRead)
+def read_onboarding_state(case_id: UUID, response: Response, db: DbSession) -> OnboardingStateRead:
+    try:
+        case = _require_case(db, case_id)
+        metadata = case.metadata_json or {}
+        mode = metadata.get("workflow_mode")
+        has_documents = db.scalar(select(Document.id).where(Document.case_id == case_id).limit(1)) is not None
+        intake = WizardIntakeDraft.model_validate(case.wizard_intake_json or {})
+        offer = metadata.get(EXISTING_OFFER_METADATA_KEY)
+        has_offer = isinstance(offer, dict) and bool(
+            offer.get("exists") is True or offer.get("notes") or offer.get("document_ids")
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return OnboardingStateRead(
+            workflow_mode=mode if mode in {"upload", "wizard"} else None,
+            has_work=(
+                has_documents or intake != WizardIntakeDraft()
+                or has_offer
+            ),
+            reset_pending=bool(metadata.get("onboarding_reset")),
+            reset_target=metadata.get("onboarding_reset"),
+        )
+    except SQLAlchemyError as error:
+        log_failure_event(logger, "onboarding_state_failed", error)
+        raise HTTPException(status_code=503, detail="Your saved work could not be checked. Please retry.") from error
+
+
+class OnboardingResetRequest(WorkflowModeUpdate):
+    confirmation: Literal["DISCARD ONBOARDING"]
+
+
+@app.post("/cases/{case_id}/onboarding-reset", response_model=OnboardingStateRead)
+def reset_onboarding(
+    case_id: UUID,
+    payload: OnboardingResetRequest,
+    response: Response,
+    user: Annotated[User, Depends(require_current_user)],
+    db: DbSession,
+) -> OnboardingStateRead:
+    try:
+        case = db.scalar(select(Case).where(Case.id == case_id).with_for_update())
+        membership = resolve_case_access(db, case_id, user.id)
+        if case is None or membership is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        if membership.role != "owner":
+            raise HTTPException(status_code=403, detail="Only the case owner can discard onboarding.")
+        if case.closed_at is not None or case.status == "finalized":
+            raise HTTPException(status_code=409, detail="This case is closed or read-only.")
+        if db.scalar(select(SettlementNegotiationAttempt.id).where(
+            SettlementNegotiationAttempt.case_id == case_id,
+        ).limit(1)) is not None or (case.metadata_json or {}).get("workspace_started") is True:
+            raise HTTPException(status_code=409, detail="Onboarding cannot be discarded after entering an attempt.")
+        metadata = dict(case.metadata_json or {})
+        pending = metadata.get("onboarding_reset")
+        if pending and pending != payload.workflow_mode:
+            raise HTTPException(status_code=409, detail="Finish the pending mode change before choosing another mode.")
+        metadata["onboarding_reset"] = payload.workflow_mode
+        case.metadata_json = metadata
+        db.commit()
+        document_ids = list(db.scalars(select(Document.id).where(Document.case_id == case_id)))
+        for document_id in document_ids:
+            delete_document_scope(db, user, case_id, document_id, storage)
+        case = db.scalar(select(Case).where(Case.id == case_id).with_for_update())
+        metadata = dict(case.metadata_json or {})
+        for key in [EXISTING_OFFER_METADATA_KEY, "asset_overview", "workspace_started", "onboarding_reset"]:
+            metadata.pop(key, None)
+        metadata["workflow_mode"] = payload.workflow_mode
+        case.metadata_json = metadata
+        case.wizard_intake_json = WizardIntakeDraft().model_dump(mode="json")
+        case.wizard_intake_revision = (case.wizard_intake_revision or 0) + 1
+        case.property_assets = []
+        case.relationship_milestones = {}
+        case.asset_liability_inventory = {}
+        db.commit()
+        response.headers["Cache-Control"] = "no-store"
+        return OnboardingStateRead(workflow_mode=payload.workflow_mode, has_work=False, reset_pending=False)
+    except SQLAlchemyError as error:
+        db.rollback()
+        log_failure_event(logger, "onboarding_reset_failed", error)
+        raise HTTPException(status_code=503, detail="Discarding onboarding is incomplete. Please retry the same mode change.") from error
 
 
 @app.put("/cases/{case_id}/workflow-mode", response_model=CaseRead)
@@ -711,6 +1077,8 @@ def update_case_workflow_mode(
         raise HTTPException(status_code=403, detail="Only the case owner can change how it starts.")
     try:
         metadata = dict(case.metadata_json or {})
+        if metadata.get("onboarding_reset"):
+            raise HTTPException(status_code=409, detail="Finish discarding onboarding before changing its start path.")
         metadata["workflow_mode"] = payload.workflow_mode
         case.metadata_json = metadata
         db.commit()
@@ -1004,7 +1372,7 @@ def extract_case_document(
         db,
         storage,
         case_id,
-        [Artifact(content, extension, media_type)],
+        [Artifact(content, extension, media_type, original_filename=upload.filename)],
         extraction_data=(extracted.text, extracted.page_count),
     )
     document = documents[0]
@@ -1039,7 +1407,10 @@ def download_document(document_id: UUID, db: DbSession) -> Response:
     return Response(
         content=content,
         media_type=document.media_type,
-        headers={"Content-Disposition": f'attachment; filename="{document.id}.{document.extension}"'},
+        headers={"Content-Disposition": (
+            f"attachment; filename*=UTF-8''{quote(document.original_filename, safe='')}"
+            if document.original_filename else f'attachment; filename="{document.id}.{document.extension}"'
+        )},
     )
 
 

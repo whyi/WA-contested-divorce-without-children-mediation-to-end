@@ -563,11 +563,14 @@ class BillingWebhookEvent(Base):
 
 class Document(Base):
     __tablename__ = "documents"
+    __table_args__ = (Index("ix_documents_case_filename", "case_id", "original_filename"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     case_id: Mapped[UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
     object_key: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
     extension: Mapped[str] = mapped_column(String(10), nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(1024))
+    overwrite_document_id: Mapped[UUID | None] = mapped_column(Uuid)
     media_type: Mapped[str] = mapped_column(String(120), nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -953,6 +956,10 @@ class User(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(512))
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    terms_version: Mapped[str | None] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending_verification")
     account_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="party", server_default=text("'party'")

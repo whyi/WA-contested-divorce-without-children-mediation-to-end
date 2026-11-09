@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -64,6 +64,7 @@ class AttachmentLimitTests(unittest.TestCase):
 
         self.stored: dict[str, bytes] = {}
         storage = Mock()
+        self.storage = storage
         storage.put.side_effect = lambda key, content, media: self.stored.__setitem__(key, content)
         storage.delete_all_versions.side_effect = lambda key: self.stored.pop(key, None)
         settings = Settings(
@@ -97,16 +98,107 @@ class AttachmentLimitTests(unittest.TestCase):
 
     def upload(self, content: bytes = PDF, *, batch=None, item=None, case_id="default"):
         batch = batch or uuid4()
+        item = item or uuid4()
         data = {"case_id": str(self.case.id)} if case_id == "default" else {}
         return self.client.post(
-            f"/api/v1/materials/imports/{batch}/files/{item or uuid4()}",
-            files={"upload": ("a.pdf", content, "application/pdf")},
+            f"/api/v1/materials/imports/{batch}/files/{item}",
+            files={"upload": (f"{item}.pdf", content, "application/pdf")},
             data=data,
         )
 
     def fill(self, count: int) -> None:
         for _ in range(count):
             self.assertEqual(self.upload().status_code, 201)
+
+    def named_upload(self, name, content=PDF, *, batch=None, item=None, overwrite=None):
+        data = {"case_id": str(self.case.id)}
+        if overwrite is not None:
+            data["overwrite_document_id"] = str(overwrite)
+        return self.client.post(
+            f"/api/v1/materials/imports/{batch or uuid4()}/files/{item or uuid4()}",
+            data=data, files={"upload": (name, content, "application/pdf")},
+        )
+
+    def test_original_filename_preserved_and_duplicate_requires_explicit_confirmation(self) -> None:
+        name = "Original \uc790\ub8cc 1.pdf"
+        first = self.named_upload(name)
+        self.assertEqual(first.status_code, 201, first.text)
+        original_id = UUID(first.json()["document"]["id"])
+        self.assertEqual(first.json()["document"]["original_filename"], name)
+        response = self.named_upload(name, PDF + b"new")
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()["detail"]["code"], "filename_conflict")
+        self.assertEqual(response.json()["detail"]["document_id"], str(original_id))
+        self.assertEqual(attachment_count(self.db, self.case.id), 1)
+        self.assertEqual(self.db.get(Document, original_id).original_filename, name)
+        self.assertEqual(len(self.stored), 1)
+
+    def test_confirmed_same_name_overwrite_at_full_quota_frees_old_file_and_keeps_name(self) -> None:
+        first = self.named_upload("Evidence.pdf")
+        original_id = UUID(first.json()["document"]["id"])
+        self.case.metadata_json = {"existing_offer": {"exists": True, "document_ids": [str(original_id)]}}
+        self.db.commit()
+        original_key = self.db.get(Document, original_id).object_key
+        self.fill(4)
+        response = self.named_upload("Evidence.pdf", PDF + b"updated", overwrite=original_id)
+        self.assertEqual(response.status_code, 201, response.text)
+        new_id = UUID(response.json()["document"]["id"])
+        self.assertNotEqual(new_id, original_id)
+        self.assertIsNone(self.db.get(Document, original_id))
+        self.assertEqual(self.db.get(Document, new_id).original_filename, "Evidence.pdf")
+        self.assertNotIn(original_key, self.stored)
+        self.assertEqual(attachment_count(self.db, self.case.id), 5)
+        self.assertEqual(len(self.stored), 5)
+        self.assertEqual(self.case.metadata_json["existing_offer"]["document_ids"], [str(new_id)])
+
+    def test_overwrite_storage_failure_keeps_old_file_and_cleanup_failure_retries_without_uploading_again(self) -> None:
+        first = self.named_upload("Evidence.pdf")
+        original_id = UUID(first.json()["document"]["id"])
+        self.fill(4)
+        batch, item = uuid4(), uuid4()
+        object_storage = self.storage
+        original_put = object_storage.put.side_effect
+        object_storage.put.side_effect = RuntimeError("Storage unavailable")
+        response = self.named_upload("Evidence.pdf", PDF + b"updated", batch=batch, item=item, overwrite=original_id)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertIsNotNone(self.db.get(Document, original_id))
+        self.assertEqual(attachment_count(self.db, self.case.id), 5)
+        object_storage.put.side_effect = original_put
+        with patch("app.materials.delete_document_scope", side_effect=HTTPException(status_code=503, detail="Cleanup unavailable")):
+            response = self.named_upload("Evidence.pdf", PDF + b"updated", batch=batch, item=item, overwrite=original_id)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(attachment_count(self.db, self.case.id), 6)
+        calls = object_storage.put.call_count
+        response = self.named_upload("Evidence.pdf", PDF + b"updated", batch=batch, item=item, overwrite=original_id)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(object_storage.put.call_count, calls)
+        self.assertEqual(attachment_count(self.db, self.case.id), 5)
+        self.assertIsNone(self.db.get(Document, original_id))
+        self.assertFalse(response.json()["document"]["overwrite_pending"])
+
+    def test_different_retry_filename_or_stale_overwrite_target_cannot_change_saved_file(self) -> None:
+        batch, item = uuid4(), uuid4()
+        first = self.named_upload("Original.pdf", batch=batch, item=item)
+        original_id = UUID(first.json()["document"]["id"])
+        response = self.named_upload("Renamed.pdf", batch=batch, item=item)
+        self.assertEqual(response.status_code, 409, response.text)
+        response = self.named_upload("Different.pdf", overwrite=original_id)
+        self.assertEqual(response.status_code, 409, response.text)
+        response = self.named_upload("Original.pdf", overwrite=uuid4())
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(attachment_count(self.db, self.case.id), 1)
+        self.assertEqual(self.db.get(Document, original_id).original_filename, "Original.pdf")
+
+    def test_another_import_cannot_overwrite_while_cleanup_is_pending(self) -> None:
+        first = self.named_upload("Evidence.pdf")
+        original_id = UUID(first.json()["document"]["id"])
+        with patch("app.materials.delete_document_scope", side_effect=HTTPException(status_code=503, detail="Cleanup unavailable")):
+            response = self.named_upload("Evidence.pdf", PDF + b"updated", overwrite=original_id)
+        self.assertEqual(response.status_code, 503, response.text)
+        response = self.named_upload("Evidence.pdf", PDF + b"another", overwrite=original_id)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn("previous overwrite", response.json()["detail"])
+        self.assertEqual(attachment_count(self.db, self.case.id), 2)
 
     def test_default_limit_is_two_mebibytes(self) -> None:
         self.assertEqual(MAX_ATTACHMENT_BYTES, 2_097_152)
@@ -267,10 +359,10 @@ class AttachmentLimitUiTests(unittest.TestCase):
     def test_materials_ui_shows_usage_and_blocks_over_quota_without_truncating(self) -> None:
         html = (Path(__file__).parents[1] / "src/app/static/index.html").read_text(encoding="utf-8")
         for marker in (
-            "attachments used in this case",
-            "materialsStoredCount >= materialsMaxAttachments",
-            "Remove a stored attachment to free a slot",
-            "imported files were kept",
+            "config.attachment_count + pending.length > config.max_attachments",
+            "Delete an unneeded file before adding another",
+            "caseImportIdentities",
+            "identity.documentId",
             "config.max_attachments",
         ):
             self.assertIn(marker, html)
