@@ -808,7 +808,10 @@
       body[data-demo-page="settlement"] .scenario-disclaimer { display: none; }
       body[data-demo-page="settlement-completion"] main > section:not(#settlement-completion-page),
       body[data-settlement-completion-page="true"] main > section:not(#settlement-completion-page) { display: none; }
-      body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 0 auto; padding: 0 0 32px; }
+      body[data-settlement-completion-page="true"] main > #settlement-completion-page { display: block; max-width: 900px; margin: 0 auto; padding: 48px 0 32px; }
+      @media (max-width: 850px) {
+        body[data-settlement-completion-page="true"] main > #settlement-completion-page { padding-top: 32px; }
+      }
       body[data-settlement-completion-page="true"] footer,
       body[data-settlement-completion-page="true"] .theme-status { display: none; }
       body[data-demo-page="rejection-completion"] main > section:not(#rejection-completion-page),
