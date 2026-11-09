@@ -135,6 +135,46 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
   };
 }
 
+for (const authenticated of [false, true]) {
+  test(`all application views retain header and footer (${authenticated ? "signed in" : "anonymous"})`, async ({ page }) => {
+    const fixture = await installFixtures(page, { authenticated, mode: "upload" });
+    const paths = [
+      "/", "/?auth=login", "/?auth=signup", "/?auth=verify", "/?auth=reset",
+      "/?view=home", "/?view=account", "/onboarding/upload", "/onboarding/wizard",
+      "/settlement-completion", "/rejection-completion",
+    ];
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const path of paths) {
+        await page.goto(`${origin}${path}`);
+        await expect(page.locator("body > .shell > header.topbar"), `${path}: header`).toBeVisible();
+        await expect(page.locator("body > .shell > footer"), `${path}: footer`).toBeVisible();
+      }
+    }
+    fixture.verify();
+  });
+}
+
+for (const source of ["demo1", "demo2"]) {
+  test(`${source}: every demo view retains header and footer`, async ({ page }) => {
+    const fixture = await installFixtures(page);
+    await page.goto(`${origin}/demo/start?source=${source}`);
+    await expect(page.locator("header.topbar")).toBeVisible();
+    await expect(page.locator("footer")).toBeVisible();
+    await page.locator("#demo-case-documents-link").click();
+    const query = new URL(page.url()).search;
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const path of ["/demo/start", "/demo", "/demo/documents", "/demo/wizard", "/demo/files", "/demo/settlement-completion", "/demo/rejection-completion"]) {
+        await page.goto(`${origin}${path}${query}`);
+        await expect(page.locator("header.topbar"), `${path}: header`).toBeVisible();
+        await expect(page.locator("footer"), `${path}: footer`).toBeVisible();
+      }
+    }
+    fixture.verify();
+  });
+}
+
 async function signIn(page) {
   await page.goto(origin);
   await page.locator("#login-entry").click();
