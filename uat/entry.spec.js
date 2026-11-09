@@ -144,6 +144,18 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
+test("Our approach section is removed while How it works remains available", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator("#approach, a[href='#approach']")).toHaveCount(0);
+  await expect(page.locator("#how-it-works")).toHaveCount(1);
+  for (const link of await page.locator('a[href^="#"]').all()) {
+    const href = await link.getAttribute("href");
+    if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
+  }
+  fixture.verify();
+});
+
 test("login locks the entered account and permits an explicit account change", async ({ page }) => {
   const fixture = await installFixtures(page, { loginStatus: 401 });
   await signIn(page);
