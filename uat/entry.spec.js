@@ -1175,7 +1175,7 @@ test("document selection stays local until Next, supports removal, then imports 
   expect(fixture.requests.filter(request => /analysis|profile-facts/.test(request))).toEqual([]);
   await page.getByRole("link", { name: "Casework home", exact: true }).click();
   await expect(page).toHaveURL(`${origin}/?view=home`);
-  await page.locator("#account-entry").click();
+  await page.locator("#your-case-entry").click();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
   await expect(page.locator("#case-assets-view")).toBeVisible();
   await page.reload();
