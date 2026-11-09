@@ -27,7 +27,12 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
   const unexpected = [];
   const requests = [];
   const scriptErrors = [];
+  const nativeDialogs = [];
   page.on("pageerror", (error) => scriptErrors.push(error.message));
+  page.on("dialog", (dialog) => {
+    nativeDialogs.push(`${dialog.type()}: ${dialog.message()}`);
+    void dialog.dismiss();
+  });
   await page.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -125,6 +130,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
     verify: () => {
       expect(unexpected, "Unexpected API requests must not be silently mocked").toEqual([]);
       expect(scriptErrors, "Full application script must execute without errors").toEqual([]);
+      expect(nativeDialogs, "Application flows must never show browser-native dialogs").toEqual([]);
     },
   };
 }
@@ -1043,12 +1049,15 @@ test("documents counteroffer text saves, reloads and confirms removal without de
   await page.reload();
   await expect(toggle).toBeChecked();
   await expect(page.locator("#existing-offer-notes")).toHaveValue("Synthetic opposing offer");
-  page.once("dialog", dialog => dialog.dismiss());
   await toggle.click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await expect(page.locator("#app-dialog-title")).toHaveText("Remove saved offer details");
+  await page.locator("#app-dialog-cancel").click();
   await expect(toggle).toBeChecked();
   await expect(page.locator("#existing-offer-panel")).toBeVisible();
-  page.once("dialog", dialog => dialog.accept());
   await toggle.uncheck();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await page.locator("#app-dialog-confirm").click();
   await expect(page.locator("#existing-offer-panel")).toBeHidden();
   expect(fixture.puts.at(-1)).toEqual({ exists: false, notes: null, document_ids: [], expected_workflow_mode: "upload" });
   await page.reload();
@@ -1544,8 +1553,10 @@ for (const outcome of ["accepted", "rejected"]) {
       await downloading;
     }
     await expect(sent).toBeEnabled();
-    page.once("dialog", dialog => dialog.accept());
     await sent.click();
+    await expect(page.locator("#app-dialog")).toBeVisible();
+    await expect(page.locator("#app-dialog-title")).toHaveText("Confirm proposal delivery");
+    await page.locator("#app-dialog-confirm").click();
     await expect(page.locator("#settlement-demo-response-files-case")).toBeVisible();
     await expect(sent).toBeDisabled();
     await expect(page.locator("#settlement-start-date-case")).toBeDisabled();
@@ -1562,21 +1573,18 @@ for (const outcome of ["accepted", "rejected"]) {
     await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("");
     const mutationCount = mutations.length;
     const nextUrl = page.url();
-    page.once("dialog", dialog => {
-      expect(dialog.type()).toBe("alert");
-      expect(dialog.message()).toContain("Upgrade your plan");
-      void dialog.accept();
-    });
     await counterofferNext.scrollIntoViewIfNeeded();
     const nextBounds = await counterofferNext.boundingBox();
     expect(nextBounds).not.toBeNull();
     await page.mouse.click(nextBounds.x + nextBounds.width / 2, nextBounds.y + nextBounds.height / 2);
-    page.once("dialog", dialog => {
-      expect(dialog.message()).toContain("Upgrade your plan");
-      void dialog.accept();
-    });
+    await expect(page.locator("#app-dialog")).toBeVisible();
+    await expect(page.locator("#app-dialog-title")).toHaveText("More attempts need credits");
+    await expect(page.locator("#app-dialog-description")).toContainText("Upgrade your plan");
+    await page.locator("#app-dialog-confirm").click();
     await counterofferNext.focus();
     await page.keyboard.press("Enter");
+    await expect(page.locator("#app-dialog")).toBeVisible();
+    await page.locator("#app-dialog-confirm").click();
     expect(mutations).toHaveLength(mutationCount);
     expect(page.url()).toBe(nextUrl);
     await page.locator("#settlement-demo-counteroffer-notes-case").fill("Actual received counteroffer notes");
@@ -1599,8 +1607,10 @@ for (const outcome of ["accepted", "rejected"]) {
       expect(state.completed).toBe(false);
     } else {
       await expect(page.locator("#settlement-demo-next-attempt-case")).toBeDisabled();
-      page.once("dialog", dialog => dialog.accept());
       await page.locator("#settlement-demo-stop-case").click();
+      await expect(page.locator("#app-dialog")).toBeVisible();
+      await expect(page.locator("#app-dialog-title")).toHaveText("Stop this workflow?");
+      await page.locator("#app-dialog-confirm").click();
       await expect(page).toHaveURL(new RegExp("/rejection-completion\\?case_id="));
       await expect(page.locator("#rejection-completion-status")).toContainText("history and credits remain preserved");
     }
@@ -1667,10 +1677,13 @@ test("paid actual response uploads an XLSX with original-name overwrite confirma
   await page.goto(`${origin}/case/assets?case_id=${caseId}`);
   await expect(page.locator("#settlement-demo-add-counteroffer-case")).toBeVisible();
   await expect(page.locator("#settlement-demo-add-counteroffer-case")).toHaveAttribute("aria-disabled", "false");
-  page.once("dialog", dialog => { expect(dialog.message()).toContain(filename); void dialog.accept(); });
   await page.locator("#settlement-demo-counteroffer-file-case").setInputFiles({
     name:filename, mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer:Buffer.from("PK-test-xlsx"),
   });
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await expect(page.locator("#app-dialog-title")).toHaveText("File already exists");
+  await expect(page.locator("#app-dialog-description")).toContainText(filename);
+  await page.locator("#app-dialog-confirm").click();
   await expect(page.locator("#settlement-demo-counteroffer-file-status-case a")).toHaveText(filename);
   expect(uploads).toHaveLength(2);
   expect(uploads[1]).toContain(fileId);
@@ -1750,14 +1763,17 @@ test("same-name upload requires confirmation and retries overwrite cleanup witho
   await expect(page.locator("#case-saved-files-list h2")).toHaveText(filename);
   await expect(page.getByRole("button", { name:"Replace", exact:true })).toHaveCount(0);
   await expect(page.locator("#case-saved-files-refresh")).toHaveCount(0);
-  page.once("dialog", dialog => { expect(dialog.message()).toContain("Overwrite it?"); void dialog.dismiss(); });
   await page.locator("#demo-case-files-input-case").setInputFiles({
     name: filename, mimeType: "application/pdf", buffer: Buffer.from("New file contents"),
   });
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await expect(page.locator("#app-dialog-title")).toHaveText("File already exists");
+  await page.locator("#app-dialog-cancel").click();
   await expect(page.locator("#case-saved-files-status")).toContainText("Upload cancelled:");
   expect(files).toHaveLength(1);
-  page.once("dialog", dialog => dialog.accept());
   await page.locator("#case-files-retry").click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await page.locator("#app-dialog-confirm").click();
   await expect(page.locator("#case-saved-files-status")).toContainText("Overwrite cleanup is incomplete.");
   await expect(page.locator("#case-saved-files-list .demo-case-file-item")).toHaveCount(2);
   await page.locator("#case-files-retry").click();
@@ -1880,15 +1896,19 @@ test("real saved file deletion confirms, preserves failed files and refreshes af
   await page.goto(`${origin}/case/files?case_id=${caseId}`);
   const remove = page.locator("#case-saved-files-list").getByRole("button", { name: "Delete", exact: true });
   await expect(remove).toBeVisible();
-  page.once("dialog", dialog => dialog.dismiss());
   await remove.click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await expect(page.locator("#app-dialog-title")).toHaveText("Delete saved file?");
+  await page.locator("#app-dialog-cancel").click();
   expect(deletions).toBe(0);
-  page.once("dialog", dialog => dialog.accept());
   await remove.click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await page.locator("#app-dialog-confirm").click();
   await expect(page.locator("#case-saved-files-status")).toContainText("Deletion unavailable. Please retry.");
   await expect(remove).toBeEnabled();
-  page.once("dialog", dialog => dialog.accept());
   await remove.click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await page.locator("#app-dialog-confirm").click();
   await expect(page.locator("#case-saved-files-list .demo-case-file-item")).toHaveCount(0);
   await expect(page.locator("#case-saved-files-status")).toHaveText("No files have been saved yet.");
   await page.reload();
@@ -2048,12 +2068,22 @@ test("Account retains active-case export, closure and deletion with explicit fai
   await actions.getByRole("button", { name: "Export all case data" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(`case-${caseId}-export.zip`);
-  page.once("dialog", (dialog) => dialog.accept());
   await actions.getByRole("button", { name: "Close case", exact: true }).click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");
+  await page.locator("#app-dialog-confirm").click();
   await expect(page.locator("#settlement-case-action-status")).toHaveText("Synthetic case action unavailable.");
   await expect(page.locator("#settlement-case-close")).toBeEnabled();
-  page.once("dialog", (dialog) => dialog.accept("DELETE CASE"));
   await actions.getByRole("button", { name: "Permanently delete case", exact: true }).click();
+  await expect(page.locator("#app-dialog")).toBeVisible();
+  await expect(page.locator("#app-dialog-title")).toHaveText("Permanently delete this case?");
+  const phraseInput = page.locator("#app-dialog-input");
+  const confirmDelete = page.locator("#app-dialog-confirm");
+  await expect(confirmDelete).toBeDisabled();
+  await phraseInput.fill("DELETE CASE");
+  await expect(confirmDelete).toBeEnabled();
+  await confirmDelete.click();
+  await expect.poll(() => fixture.requests.includes(`DELETE /cases/${caseId}/permanent-deletion`)).toBe(true);
   await expect(page.locator("#settlement-case-delete")).toBeEnabled();
   expect(fixture.requests).toContain(`POST /cases/${caseId}/close`);
   expect(fixture.requests).toContain(`DELETE /cases/${caseId}/permanent-deletion`);
