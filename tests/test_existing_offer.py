@@ -309,7 +309,9 @@ class ExistingOfferUiTests(unittest.TestCase):
 
     def test_client_validates_offer_source_and_uses_server_endpoint(self) -> None:
         self.assertIn("/existing-offer", self.page)
-        self.assertNotIn('id="settlement-planner"', self.page)
+        self.assertIn('id="settlement-planner"', self.page)
+        self.assertIn('id="open-proposal-workspace"', self.page)
+        self.assertIn("openSettlementPlanner(preparationCaseId || settlementCaseId)", self.page)
 
     def test_case_creation_only_submits_the_selected_workflow(self) -> None:
         create = self.page.split("async function createCaseFromDashboard", 1)[1].split(

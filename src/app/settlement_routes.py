@@ -1,5 +1,4 @@
 import hashlib
-import hmac
 import json
 import logging
 from collections import defaultdict
@@ -9,7 +8,7 @@ from uuid import UUID, uuid4
 
 from botocore.exceptions import BotoCoreError
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -26,7 +25,6 @@ from app.models import (
     CaseProfileFact,
     CaseProfileFactEvent,
     Document,
-    ExportDeliveryEvent,
     SettlementLedgerEvent,
     SettlementNegotiationAttempt,
     SettlementOfferResponse,
@@ -36,11 +34,6 @@ from app.models import (
     SettlementScenarioRun,
     SettlementScenarioSelection,
     User,
-)
-from app.export_delivery import (
-    ExportDeliveryError,
-    ExportFile,
-    deliver_export_files,
 )
 from app.offer_documents import (
     MediationOfferTerms,
@@ -205,25 +198,6 @@ class DemoExportRequest(BaseModel):
             raise ValueError("Start date must not follow the end date.")
         if self.start_date.year < 2020 or self.end_date.year > 2025:
             raise ValueError("Demo dates must be between 2020 and 2025.")
-        return self
-
-
-class OfferDelivery(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    channel: Literal["google_drive", "dropbox", "email"]
-    confirm: Literal[True]
-    idempotency_key: UUID
-    recipient: EmailStr | None = None
-    terms: MediationOfferTerms
-    confirm_credit_use: bool = False
-
-    @model_validator(mode="after")
-    def require_recipient_only_for_email(self) -> "OfferDelivery":
-        if self.channel == "email" and self.recipient is None:
-            raise ValueError("Confirm the email recipient before delivery.")
-        if self.channel != "email" and self.recipient is not None:
-            raise ValueError("An email recipient is only valid for email delivery.")
         return self
 
 
@@ -395,15 +369,6 @@ def _request_sha256(payload: BaseModel) -> str:
     data = payload.model_dump(mode="json")
     encoded = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _delivery_request_digest(payload: OfferDelivery) -> str:
-    key = get_settings().auth_jwt_secret
-    if not key:
-        raise HTTPException(status_code=503, detail="Delivery audit protection is not configured.")
-    data = payload.model_dump(mode="json")
-    encoded = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hmac.new(key.encode(), encoded.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _require_real_case_exports() -> None:
@@ -1429,137 +1394,4 @@ def create_settlement_property_schedule(
         raise HTTPException(
             status_code=503,
             detail="Property schedule could not be generated. Your saved attempt is unchanged.",
-        ) from error
-
-
-def _destination_digest(destination: str) -> str:
-    key = get_settings().auth_jwt_secret
-    if not key:
-        raise HTTPException(status_code=503, detail="Delivery audit protection is not configured.")
-    return hmac.new(key.encode(), destination.encode(), hashlib.sha256).hexdigest()
-
-
-def _offer_exports(version: SettlementProposalVersion) -> list[ExportFile]:
-    exports = [
-        ExportFile(
-            filename="cr2a-agreement-proposal-draft.docx",
-            content_type=DOCX_MEDIA_TYPE,
-            content=version.docx_content,
-        ),
-        ExportFile(
-            filename="property-division-proposal-draft.xlsx",
-            content_type=XLSX_MEDIA_TYPE,
-            content=version.xlsx_content,
-        ),
-    ]
-    max_bytes = get_settings().max_upload_bytes
-    if sum(len(export.content) for export in exports) > max_bytes:
-        raise HTTPException(status_code=413, detail="Generated proposal files exceed the delivery size limit.")
-    return exports
-
-
-@router.post("/offers/{selection_id}/deliver")
-def deliver_settlement_offer(
-    case_id: UUID,
-    selection_id: UUID,
-    payload: OfferDelivery,
-    response: Response,
-    user: Annotated[User, Depends(require_current_user)],
-    db: Annotated[Session, Depends(get_db)],
-) -> dict[str, int | str]:
-    try:
-        _require_real_case_exports()
-        settings = get_settings()
-        if payload.channel == "email":
-            if not settings.smtp_host or not settings.auth_email_from:
-                raise HTTPException(status_code=503, detail="Email delivery is not configured.")
-            destination = str(payload.recipient)
-        elif payload.channel == "google_drive":
-            if not settings.google_client_id or not settings.google_client_secret:
-                raise HTTPException(status_code=503, detail="Google Drive delivery is not configured.")
-            destination = "Google Drive root (private)"
-        else:
-            if not settings.dropbox_app_key or not settings.dropbox_app_secret:
-                raise HTTPException(status_code=503, detail="Dropbox delivery is not configured.")
-            destination = "Connected Dropbox app folder (private)"
-        destination_digest = _destination_digest(f"{payload.channel}:{destination}")
-        request_hash = _delivery_request_digest(payload)
-        _, version = _prepare_attempt_offer_export(
-            db,
-            user,
-            case_id,
-            selection_id,
-            payload.terms,
-            confirm_credit_use=payload.confirm_credit_use,
-        )
-        exports = _offer_exports(version)
-        prior = db.scalar(
-            select(ExportDeliveryEvent)
-            .where(
-                ExportDeliveryEvent.user_id_snapshot == user.id,
-                ExportDeliveryEvent.idempotency_key == payload.idempotency_key,
-            )
-            .with_for_update()
-        )
-        if prior is not None:
-            if (
-                prior.request_sha256 != request_hash
-                or prior.selection_id != selection_id
-                or prior.case_id != case_id
-                or prior.channel != payload.channel
-                or prior.destination_digest != destination_digest
-            ):
-                raise HTTPException(status_code=409, detail="Delivery key was reused for a different request.")
-            if prior.outcome != "success":
-                raise HTTPException(
-                    status_code=409,
-                    detail="A delivery attempt is already recorded. Check the destination before retrying.",
-                )
-            response.headers["Cache-Control"] = "no-store"
-            return {"outcome": "success", "file_count": prior.file_count}
-        event = ExportDeliveryEvent(
-            id=uuid4(),
-            case_id=case_id,
-            selection_id=selection_id,
-            user_id=user.id,
-            user_id_snapshot=user.id,
-            channel=payload.channel,
-            destination_digest=destination_digest,
-            request_sha256=request_hash,
-            outcome="pending",
-            file_count=0,
-            idempotency_key=payload.idempotency_key,
-        )
-        db.add(event)
-        db.commit()
-        try:
-            file_count = deliver_export_files(
-                db,
-                user,
-                payload.channel,
-                destination if payload.channel == "email" else "",
-                exports,
-            )
-        except ExportDeliveryError as error:
-            event.outcome = "partial" if error.delivered_files else "failed"
-            event.file_count = error.delivered_files
-            db.commit()
-            raise HTTPException(status_code=502, detail=str(error)) from error
-        event.outcome = "success"
-        event.file_count = file_count
-        db.commit()
-        response.headers["Cache-Control"] = "no-store"
-        return {"outcome": event.outcome, "file_count": event.file_count}
-    except HTTPException:
-        db.rollback()
-        raise
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="A delivery request with this key already exists.") from error
-    except SQLAlchemyError as error:
-        db.rollback()
-        log_failure_event(logger, "proposal_delivery_failed", error)
-        raise HTTPException(
-            status_code=503,
-            detail="Delivery status could not be confirmed. Verify the destination before retrying.",
         ) from error

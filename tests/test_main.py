@@ -484,15 +484,21 @@ class MainWorkflowTests(unittest.TestCase):
         _, body = asyncio.run(request_app("/"))
         page = body.decode()
 
-        self.assertNotIn("void loadAttemptCreditPackages();", page)
         dashboard_status = page.split(
             "async function loadDashboardStatus(", 1
         )[1].split(
             "\n        }\n\n        buildAssetTimelineStops();", 1
         )[0]
+        self.assertNotIn("void loadAttemptCreditPackages();", dashboard_status)
         billing_load = dashboard_status.index("await enterSignedInAccount(account)")
         for guard in ("response.status === 401", "if (!response.ok)", "!account"):
             self.assertLess(dashboard_status.index(guard), billing_load)
+        planner_open = page.split(
+            "async function openSettlementPlanner(", 1
+        )[1].split(
+            "\n        function formatWizardCents", 1
+        )[0]
+        self.assertIn("void loadAttemptCreditPackages();", planner_open)
 
 
     def test_existing_demo_shows_dynamic_fictional_settlement_scenarios(self) -> None:

@@ -72,8 +72,10 @@ class WizardBackAndContinueTests(unittest.TestCase):
         self.assertNotIn("wizardIntakeComplete", PAGE)
         self.assertIn("window.location.replace", entry)
         self.assertIn("/onboarding/${item.workflow_mode}?case_id=", entry)
-        self.assertNotIn("openSettlementPlanner", PAGE)
-        self.assertNotIn('id="settlement-edit-intake"', PAGE)
+        self.assertNotIn("openSettlementPlanner", entry)
+        self.assertIn('id="open-proposal-workspace"', PAGE)
+        self.assertIn("openSettlementPlanner(preparationCaseId || settlementCaseId)", PAGE)
+        self.assertIn('id="settlement-edit-intake"', PAGE)
 
 
 class SignedInHomeTests(unittest.TestCase):

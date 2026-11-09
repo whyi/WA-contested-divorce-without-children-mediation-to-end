@@ -26,14 +26,11 @@ from app.settlement_planning import (
 from app.settlement_routes import (
     DemoExportRequest,
     OfferCreate,
-    OfferDelivery,
-    _delivery_request_digest,
-    _destination_digest,
     create_demo_settlement_offer,
     create_demo_settlement_property_schedule,
     create_settlement_offer,
     create_settlement_property_schedule,
-    deliver_settlement_offer,
+    router,
 )
 
 
@@ -633,66 +630,10 @@ class SettlementExportRouteTests(unittest.TestCase):
         self.assertEqual(rendered_terms.proposed_values[0].proposed_amount_cents, 7500)
         render_xlsx.assert_called_once()
 
-    def test_idempotent_success_returns_existing_result_without_resending(self) -> None:
-        payload = OfferDelivery(
-            channel="email",
-            confirm=True,
-            idempotency_key=uuid4(),
-            recipient="recipient@example.com",
-            terms=self.terms,
+    def test_proposal_delivery_endpoint_is_not_registered(self) -> None:
+        self.assertFalse(
+            any(route.path.endswith("/offers/{selection_id}/deliver") for route in router.routes)
         )
-        version = SettlementProposalVersion(
-            id=uuid4(),
-            case_id=self.case_id,
-            attempt_id=self.attempt.id,
-            user_id_snapshot=self.user.id,
-            version_ordinal=1,
-            request_sha256="0" * 64,
-            terms_json=self.terms.model_dump(mode="json"),
-            scenario_result_json=self.result.model_dump(mode="json"),
-            docx_content=b"docx",
-            xlsx_content=b"xlsx",
-            credit_cost=1,
-        )
-        prior = SimpleNamespace(
-            request_sha256="",
-            selection_id=self.selection_id,
-            case_id=self.case_id,
-            channel="email",
-            destination_digest="",
-            outcome="success",
-            file_count=2,
-        )
-        with patch("app.settlement_routes.get_settings", return_value=self.settings):
-            prior.request_sha256 = _delivery_request_digest(payload)
-            prior.destination_digest = _destination_digest("email:recipient@example.com")
-            self.attempt.proposal_issued_at = datetime.now(UTC)
-            self.attempt.proposal_terms_json = self.terms.model_dump(mode="json")
-            self.attempt.proposal_scenario_result_json = self.result.model_dump(mode="json")
-            self.attempt.proposal_version_ordinal = 1
-            self.db.scalar.side_effect = [
-                self.membership,
-                self.case,
-                self.selection,
-                self.attempt,
-                version,
-                prior,
-            ]
-            response = Response()
-            with patch("app.settlement_routes.deliver_export_files") as send:
-                result = deliver_settlement_offer(
-                    self.case_id,
-                    self.selection_id,
-                    payload,
-                    response,
-                    self.user,
-                    self.db,
-                )
-
-        self.assertEqual(result, {"outcome": "success", "file_count": 2})
-        self.assertEqual(response.headers["Cache-Control"], "no-store")
-        send.assert_not_called()
-        self.db.commit.assert_not_called()
 
 
 if __name__ == "__main__":
