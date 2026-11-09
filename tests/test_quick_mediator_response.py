@@ -17,7 +17,9 @@ class QuickMediatorResponseTests(unittest.TestCase):
         self.assertFalse(DELIVERY_BOUNDARY["delivery_verified_by_app"])
         self.assertFalse(DELIVERY_BOUNDARY["response_verified_by_app"])
         self.assertEqual(DELIVERY_BOUNDARY["basis"], "user_reported")
-        self.assertNotIn('id="settlement-response-workflow"', PAGE)
+        self.assertIn('id="settlement-response-workflow"', PAGE)
+        self.assertIn('id="settlement-response-confirm-sent"', PAGE)
+        self.assertIn("This confirmation records your report; it does not verify delivery or receipt.", PAGE)
         self.assertIn("does not automatically deliver proposals", PAGE)
 
 

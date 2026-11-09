@@ -46,7 +46,7 @@ class RemovedNegotiationPlannerTests(unittest.TestCase):
         self.assertIn("openSettlementPlanner(preparationCaseId || settlementCaseId)", PAGE)
         self.assertIn("/settlement-planning", PAGE)
         self.assertIn("credentials: \"same-origin\"", PAGE)
-        self.assertIn("The product does not deliver proposal documents", PAGE)
+        self.assertIn("The product does not automatically deliver proposals", PAGE)
         self.assertNotIn("optional external transfer", PAGE)
 
     def test_case_actions_exist_once_inside_account_not_the_deleted_page(self) -> None:

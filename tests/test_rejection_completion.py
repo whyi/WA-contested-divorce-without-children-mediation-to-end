@@ -10,7 +10,12 @@ class RejectionCompletionTests(unittest.TestCase):
 
 
     def test_next_attempt_is_user_initiated_and_demo_does_not_persist(self) -> None:
-        self.assertNotIn("continueSettlementOfferResponse", PAGE)
+        self.assertIn("async function continueSettlementOfferResponse()", PAGE)
+        next_attempt_handler = PAGE.split(
+            'settlementResponseNextAttempt.addEventListener("click"', 1
+        )[1].split('settlementResponseStop.addEventListener("click"', 1)[0]
+        self.assertIn('settlementOfferResponseState?.outcome !== "rejected"', next_attempt_handler)
+        self.assertIn("void continueSettlementOfferResponse()", next_attempt_handler)
         demo_stop_handler = PAGE[PAGE.index('settlementDemoStop.addEventListener("click"') :]
         demo_stop_handler = demo_stop_handler[: demo_stop_handler.index("\n        });") + len("\n        });")]
         self.assertIn("await showAppConfirm(", demo_stop_handler)

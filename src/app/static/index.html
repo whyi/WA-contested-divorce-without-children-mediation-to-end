@@ -1904,7 +1904,7 @@
           <div class="expectations-copy">
             <p class="eyebrow">Clear expectations</p>
             <h2 id="expectations-title">Structure, not legal strategy.</h2>
-            <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. The product does not deliver proposal documents or verify receipt.</p>
+            <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery. The product does not automatically deliver proposals or verify receipt.</p>
           </div>
         </section>
 
@@ -2212,7 +2212,7 @@
               </section>
               <details id="settlement-review-information">
                 <summary>Important review and delivery information</summary>
-                <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. The product does not deliver proposal documents or verify receipt.</p>
+                <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery. The product does not automatically deliver proposals or verify receipt.</p>
                 <p>Calculations use the assumptions and values you enter. They are arithmetic comparisons, not legal classifications, valuations, findings, or predictions. Missing and unresolved values remain unavailable.</p>
               </details>
               <div id="settlement-planner-content">
@@ -2430,7 +2430,7 @@
                   <h2 id="case-create-title">Choose your starting point</h2>
                   <p>Your new case will be saved to your account. Choose the starting point that fits what you have today.</p>
                   <section id="case-create-choice" aria-label="Choose a case start path">
-                    <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. The product does not deliver proposal documents or verify receipt.</p>
+                    <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery. The product does not automatically deliver proposals or verify receipt.</p>
                     <div class="case-mode-options">
                       <button class="case-mode-choice" id="case-start-upload" type="button" data-start-mode="upload">
                         <strong>I have documents</strong>
@@ -2698,7 +2698,7 @@
             <div id="rejection-completion-auth-content" class="settlement-completion-section" hidden>
               <p class="settlement-completion-thanks">Based on the response you recorded, mediation did not produce an accepted agreement in this workflow.</p>
               <p>Only your Casework mediation-preparation workspace is closed. This does not resolve or end your divorce case. It does not file anything with a court. It does not delete data. It does not change your legal status or court record. Your case history and credits are preserved; you can reopen this workspace from Closed cases.</p>
-              <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading does not deliver it to your mediator; provide reviewed files to your mediator yourself.</p>
+              <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading is not delivery. The product does not automatically deliver proposals; provide reviewed files to your mediator yourself.</p>
               <h2>Possible next steps</h2>
               <p>Possible next steps depend on your case. You may wish to discuss possible next steps with your mediator, consult qualified Washington counsel, or learn about court processes from official sources. This is not legal advice and does not recommend a particular path.</p>
             </div>
@@ -2706,7 +2706,7 @@
               <p class="settlement-completion-thanks">This fictional preview ends after an offer rejection.</p>
               <p><strong>Demo only:</strong> no real case was closed or changed, and no data was saved.</p>
               <p>In a real case, stopping closes only the Casework mediation-preparation workspace. It does not resolve or end a divorce case. It does not file anything with a court. It does not delete data. It does not change legal status. The case history and credits remain preserved and can be reopened.</p>
-              <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading does not deliver it to your mediator; provide reviewed files to your mediator yourself.</p>
+              <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading is not delivery. The product does not automatically deliver proposals; provide reviewed files to your mediator yourself.</p>
               <h2>Possible next steps</h2>
               <p>Possible next steps depend on the case. A person may discuss options with a mediator, consult qualified Washington counsel, or learn about court processes from official sources. This is not legal advice and does not recommend a path.</p>
             </div>
@@ -9612,8 +9612,9 @@
           if (!settlementSelectedScenario
             || settlementOfferResponseState?.outcome !== "rejected"
             || !(settlementOfferResponseState?.outcome_choices || []).includes("stop_case")) return;
-          const confirmed = window.confirm(
+          const confirmed = await showAppConfirm(
             "Stop mediation work and close this Casework case? This closes only the product workspace. It does not resolve your divorce case or delete data; you can reopen the workspace from Closed cases.",
+            { title: "Close this case workspace", confirmLabel: "Close workspace", tone: "danger" },
           );
           if (!confirmed) return;
           const caseId = settlementCaseId;

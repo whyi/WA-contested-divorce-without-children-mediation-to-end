@@ -781,7 +781,7 @@ test("real account can open, calculate, and select a server-backed proposal scen
   await page.locator("#open-proposal-workspace").click();
   await expect(page.locator("#settlement-planner")).toBeVisible();
   await expect(page.locator("#settlement-planner-status")).toContainText("Attempt workspace ready.");
-  await expect(page.locator("#settlement-planner")).toContainText("The product does not deliver proposal documents");
+  await expect(page.locator("#settlement-planner")).toContainText("The product does not automatically deliver proposals");
   await expect(page.locator("#settlement-planner button").filter({ hasText: /send|deliver/i })).toHaveCount(0);
   await expect(page.locator("#settlement-generate")).toBeEnabled();
   await page.locator("#settlement-generate").click();

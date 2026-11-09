@@ -78,15 +78,17 @@ class LegalBoundaryDisclosureTests(unittest.TestCase):
             self.assertIn("cannot guarantee correctness, fairness, acceptance", surface.lower())
             self.assertIn("provide it to your mediator", surface.lower())
             self.assertIn("downloading is not delivery", surface.lower())
-            self.assertIn("does not automatically deliver", surface.lower())
+            self.assertIn("does not automatically deliver proposals", surface.lower())
 
     def test_ai_calculations_comparison_and_finalization_are_bounded(self) -> None:
         self.assertNotIn('id="analysis-controls"', PAGE)
         self.assertIn("no AI analysis starts automatically", PAGE)
 
-        self.assertNotIn('id="settlement-offer-comparison"', PAGE)
-        self.assertNotIn('id="settlement-finalize-note"', PAGE)
+        self.assertIn('id="settlement-offer-comparison"', PAGE)
+        self.assertIn('id="settlement-finalize-note"', PAGE)
         self.assertIn("not legal characterizations, advice, or AI-ranked recommendations", PAGE)
+        self.assertIn("Local calculations and manual scenario selection do not require AI consent.", PAGE)
+        self.assertIn("the product does not deliver proposal documents", PAGE.lower())
 
     def test_completion_guidance_does_not_imply_legal_resolution_or_delivery(self) -> None:
         accepted_start = PAGE.index('id="settlement-completion-page"')
