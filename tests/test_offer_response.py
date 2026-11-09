@@ -139,6 +139,34 @@ class OfferResponseAuthorizationTests(unittest.TestCase):
         self.assertEqual(case.status, "settlement")
         db.commit.assert_not_called()
 
+    def test_reopened_locked_accepted_case_is_actually_closed_again(self) -> None:
+        from datetime import UTC, datetime
+
+        case_id, selection_id = uuid4(), uuid4()
+        locked_at = datetime.now(UTC)
+        case = SimpleNamespace(
+            id=case_id, status="settlement", closed_at=None,
+            closed_reason=None, attempts_locked_at=locked_at,
+        )
+        selection = SimpleNamespace(id=selection_id, case_id=case_id)
+        current = SimpleNamespace(
+            outcome="accepted", sent_documents_complete=True, sent_confirmed=True,
+        )
+        db = Mock()
+        with (
+            patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+            patch("app.offer_response._lock_case", return_value=case),
+            patch("app.offer_response._response_record", return_value=SimpleNamespace()),
+            patch("app.offer_response._read_response", return_value=current),
+        ):
+            result = complete_accepted_case(case_id, selection_id, SimpleNamespace(id=uuid4()), db)
+        self.assertEqual(result, {"status": "finalized", "attempts_locked": True})
+        self.assertIsNotNone(case.closed_at)
+        self.assertEqual(case.status, "finalized")
+        self.assertEqual(case.closed_reason, "accepted")
+        self.assertEqual(case.attempts_locked_at, locked_at)
+        db.commit.assert_called_once()
+
     def test_case_finalization_database_failure_is_reported(self) -> None:
         case_id = uuid4()
         selection_id = uuid4()

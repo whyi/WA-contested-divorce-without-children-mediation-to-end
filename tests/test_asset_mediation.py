@@ -151,6 +151,29 @@ class AssetMediationTests(unittest.TestCase):
         self.assertIsNotNone(self.case.closed_at)
         self.assertIn("asset_overview", self.case.metadata_json)
 
+    def test_reopened_accepted_case_can_close_again_without_unlocking_attempts(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="accepted")
+        self.update("complete", confirm=True)
+        locked_at = self.case.attempts_locked_at
+        attempt = self.db.scalar(select(SettlementNegotiationAttempt))
+        snapshot = deepcopy(attempt.frozen_snapshot_json)
+        reopen_case(self.case.id, self.user, self.db)
+        self.assertIsNone(self.case.closed_at)
+        with self.assertRaises(HTTPException):
+            self.update("complete", confirm=False)
+        result = self.update("complete", confirm=True)
+        self.assertTrue(result.completed)
+        self.assertIsNotNone(self.case.closed_at)
+        self.assertEqual(self.case.status, "finalized")
+        self.assertEqual(self.case.closed_reason, "accepted")
+        self.assertEqual(self.case.attempts_locked_at, locked_at)
+        self.assertEqual(attempt.frozen_snapshot_json, snapshot)
+        with self.assertRaises(HTTPException):
+            self.update("response", outcome="accepted")
+
     def test_accepted_closure_keeps_all_attempts_read_only_after_reopen(self):
         from app.case_lifecycle import reopen_case
 

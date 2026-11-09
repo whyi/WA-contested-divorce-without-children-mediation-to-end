@@ -875,7 +875,7 @@ def complete_accepted_case(
             status_code=409,
             detail="Only a confirmed, accepted offer can complete this case.",
         )
-    if getattr(case, "attempts_locked_at", None) is not None:
+    if getattr(case, "attempts_locked_at", None) is not None and case.closed_at is not None:
         return {"status": "finalized", "attempts_locked": True}
 
     _finalize_case_record(case, user.id, db)

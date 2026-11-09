@@ -223,10 +223,8 @@ def update_mediation_state(
         )
         response.headers["Cache-Control"] = "no-store"
         state = read_state(db, case, payload.attempt_ordinal)
-        if (payload.action == "complete" and state.completed) or (payload.action == "stop" and state.stopped):
+        if (payload.action == "complete" and state.completed and case.closed_at is not None) or (payload.action == "stop" and state.stopped):
             return state
-        if payload.action == "complete":
-            require_attempts_editable(case)
         if case.closed_at is not None or case.status == "finalized":
             raise HTTPException(status_code=409, detail="This case is closed or read-only.")
         latest = latest_attempt(db, case_id)
