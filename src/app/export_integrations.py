@@ -281,9 +281,11 @@ def _connection_result_page(provider: Provider, connected: bool) -> HTMLResponse
         content=(
             "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-            f"<title>{provider_name} connection</title><body><main>"
+            f"<title>{provider_name} connection</title><body>"
+            "<header><a href=\"/\" aria-label=\"Casework home\">Casework</a></header><main>"
             f"<h1>{provider_name} connection</h1><p>{message}</p>"
-            "<a href=\"/\">Return to Casework</a></main><script>"
+            "<a href=\"/\">Return to Casework</a></main>"
+            "<footer>Casework &middot; Washington divorce mediation &middot; Product preview</footer><script>"
             f"if(window.opener){{window.opener.postMessage({json.dumps(event)},window.location.origin);window.close();}}"
             "</script></body></html>"
         ),

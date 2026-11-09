@@ -10,8 +10,10 @@ from starlette.responses import Response
 
 from app.export_integrations import (
     DRIVE_SCOPE,
+    Provider,
     _authorization_url,
     _consume_challenge,
+    _connection_result_page,
     _settings_ready,
     export_destinations,
     start_export_provider_connection,
@@ -21,6 +23,21 @@ from app.secret_encryption import derive_encryption_key, encrypt_secret
 
 
 class ExportIntegrationTests(unittest.TestCase):
+    def test_connection_results_keep_header_and_footer_for_every_provider_and_outcome(self) -> None:
+        providers: tuple[Provider, ...] = ("google_drive", "dropbox")
+        for provider in providers:
+            for connected in (True, False):
+                with self.subTest(provider=provider, connected=connected):
+                    response = _connection_result_page(provider, connected)
+                    page = bytes(response.body).decode()
+                    self.assertIn("<header>", page)
+                    self.assertIn('aria-label="Casework home"', page)
+                    self.assertIn("<footer>", page)
+                    self.assertLess(page.index("<header>"), page.index("<main>"))
+                    self.assertLess(page.index("</main>"), page.index("<footer>"))
+                    self.assertIn("window.opener.postMessage", page)
+                    self.assertEqual(response.headers["Cache-Control"], "no-store")
+
     def test_provider_setup_is_unavailable_for_demo_or_missing_encryption_key(self) -> None:
         settings = SimpleNamespace(
             auth_enabled=True,
