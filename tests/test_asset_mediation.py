@@ -190,6 +190,85 @@ class AssetMediationTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 409)
         self.assertEqual(len(self.db.scalars(select(SettlementNegotiationAttempt)).all()), 1)
 
+    def test_reopened_latest_attempt_can_change_only_response_outcome(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="accepted", notes="Retain these saved notes")
+        self.update("complete", confirm=True)
+        attempt = self.db.scalar(select(SettlementNegotiationAttempt))
+        snapshot = deepcopy(attempt.frozen_snapshot_json)
+        locked_at = self.case.attempts_locked_at
+        with self.assertRaises(HTTPException):
+            self.update("response_outcome", outcome="rejected")
+        reopen_case(self.case.id, self.user, self.db)
+        for outcome in ("rejected", "counteroffer", "accepted"):
+            result = self.update("response_outcome", outcome=outcome)
+            self.assertEqual(self.state().outcome, outcome)
+            self.assertEqual(result.notes, "Retain these saved notes")
+            self.assertTrue(result.completed)
+            self.assertTrue(result.attempts_locked)
+            self.assertEqual(attempt.frozen_snapshot_json, snapshot)
+            self.assertEqual(self.case.attempts_locked_at, locked_at)
+            for action in ("continue", "stop", "response", "sent"):
+                with self.assertRaises(HTTPException):
+                    self.update(action, outcome=outcome, confirm=True)
+        self.assertEqual(len(self.db.scalars(select(SettlementNegotiationAttempt)).all()), 1)
+        self.assertTrue(self.update("complete", confirm=True).completed)
+        self.assertIsNotNone(self.case.closed_at)
+
+    def test_outcome_only_update_rejects_fields_and_stale_revision(self):
+        from app.case_lifecycle import reopen_case
+
+        with self.assertRaises(HTTPException):
+            self.update("response_outcome", outcome="accepted")
+        self.send()
+        self.update("response", outcome="accepted")
+        self.update("complete", confirm=True)
+        reopen_case(self.case.id, self.user, self.db)
+        for extra in ({"notes": ""}, {"document_ids": []}, {"selection": self.selection}, {"confirm": True}):
+            with self.assertRaises(HTTPException) as error:
+                self.update("response_outcome", outcome="rejected", **extra)
+            self.assertEqual(error.exception.status_code, 422)
+            self.assertEqual(self.state().outcome, "accepted")
+        revision = self.state().revision
+        self.update("response_outcome", outcome="counteroffer")
+        with self.assertRaises(HTTPException) as error:
+            update_mediation_state(
+                self.case.id, MediationUpdate(expected_revision=revision, attempt_ordinal=1,
+                    action="response_outcome", outcome="rejected"),
+                Response(), self.user, self.db,
+            )
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(self.state().outcome, "counteroffer")
+        with self.assertRaises(HTTPException) as error:
+            update_mediation_state(
+                self.case.id, MediationUpdate(expected_revision=self.state().revision, attempt_ordinal=1,
+                    action="response_outcome", outcome="accepted"),
+                Response(), self.stranger, self.db,
+            )
+        self.assertEqual(error.exception.status_code, 404)
+        self.assertEqual(self.state().outcome, "counteroffer")
+
+    def test_outcome_only_update_rejects_historical_attempt(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="rejected")
+        with patch("app.asset_mediation.attachment_limit", return_value=100):
+            self.update("continue")
+        self.selection = self.selection.model_copy(update={"attempt_ordinal": 2})
+        for format in ("docx", "xlsx"):
+            record_download(self.db, self.case, self.selection, format)
+        self.update("sent", ordinal=2, selection=self.selection, confirm=True)
+        self.update("response", ordinal=2, outcome="accepted")
+        self.update("complete", ordinal=2, confirm=True)
+        reopen_case(self.case.id, self.user, self.db)
+        with self.assertRaises(HTTPException) as error:
+            self.update("response_outcome", ordinal=1, outcome="accepted")
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(self.state(1).outcome, "rejected")
+
     def test_counteroffer_upload_preserves_filename_and_links_file_with_retry_identity(self):
         self.send()
         self.update("response", outcome="counteroffer")
