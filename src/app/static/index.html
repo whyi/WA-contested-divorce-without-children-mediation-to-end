@@ -849,7 +849,7 @@
       .settlement-completion-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
       .settlement-completion-actions a, .settlement-completion-actions button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid var(--line); border-radius: 8px; color:var(--text-primary); background: transparent; font: inherit; text-decoration: none; cursor: pointer; }
       .settlement-completion-actions .completion-primary { border-color:var(--green-dark); color:var(--theme-text-fff); background:var(--green-dark); }
-      .settlement-completion-actions button[hidden] { display: none; }
+      .settlement-completion-actions [hidden] { display: none; }
       .settlement-completion-actions button:disabled { cursor: wait; opacity: .7; }
       body[data-demo-page] .demo-entry { display: inline-flex !important; }
       .path-art { position: absolute; right: 22px; bottom: 20px; display: flex; align-items: end; gap: 5px; opacity: .48; }
@@ -2668,6 +2668,7 @@
             <div class="settlement-completion-actions">
               <a id="settlement-completion-back-to-cases" href="/#account">Back to your case</a>
               <button id="settlement-completion-close-case" class="completion-primary" type="button" hidden>Close your case</button>
+              <button id="settlement-completion-open-case" class="completion-primary" type="button" hidden>Open your case</button>
             </div>
           </div>
         </section>
@@ -3146,6 +3147,7 @@
         const settlementCompletionDemoContent = document.getElementById("settlement-completion-demo-content");
         const settlementCompletionBackToCases = document.getElementById("settlement-completion-back-to-cases");
         const settlementCompletionCloseCase = document.getElementById("settlement-completion-close-case");
+        const settlementCompletionOpenCase = document.getElementById("settlement-completion-open-case");
         let settlementCompletionState = { revision: 0 };
         const settlementDemoInheritedNotice = document.getElementById("settlement-demo-inherited-notice");
         const settlementDemoMilestoneInherited = document.getElementById("settlement-demo-milestone-inherited");
@@ -4519,7 +4521,7 @@
             : state.outcome === "accepted" ? closedCaseViewMode || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized"
               ? "The offer was accepted. You are viewing a closed case."
               : state.attempts_locked || caseWorkspace.case.attempts_locked_at
-                ? "The offer was accepted. This reopened case is read-only. Select Offer Accepted to view the completion page or close the case again."
+                ? "The offer was accepted. This reopened case is read-only. All negotiation attempts remain permanently locked."
                 : "The offer was accepted. Select Next to open the completion page."
               : state.outcome === "counteroffer" ? canContinue ? "Add counteroffer notes or a file, then select Next to prepare another attempt." : ""
                 : state.outcome === "rejected" ? "Choose whether to prepare another attempt or stop this workflow."
@@ -4794,7 +4796,8 @@
             item.append(button);
             list.append(item);
           }
-          if (workspace.accepted_offer_url || completion) {
+          const reopenedAccepted = !caseClosed && workspace.case.attempts_locked_at;
+          if (completion || (workspace.accepted_offer_url && !reopenedAccepted)) {
             const target = new URL(completion ? window.location.href : workspace.accepted_offer_url, window.location.origin);
             if (closedCaseViewMode || caseClosed) target.searchParams.set("view", "closed");
             appendAcceptedOfferStep(list, `${target.pathname}${target.search}`, completion);
@@ -4875,6 +4878,13 @@
           }
         }
 
+        function renderClosedCaseBanner(caseRecord) {
+          document.body.dataset.closedCaseView = "true";
+          closedCaseViewStatus.textContent =
+            `${caseRecord.metadata_json?.case_title || "This case"} is closed. You can review saved information and files, but changes are unavailable until you explicitly reopen it.`;
+          closedCaseViewBanner.hidden = false;
+        }
+
         async function loadCaseWorkspace() {
           const [result, entitlement] = await Promise.all([
             settlementApi(`/cases/${encodeURIComponent(preparationCaseId)}/workspace`),
@@ -4898,10 +4908,7 @@
               || result.case.closed_at !== closedCaseRecord.closed_at) {
               throw new Error("This case is no longer closed. Return to My Account and refresh the closed-case list.");
             }
-            document.body.dataset.closedCaseView = "true";
-            closedCaseViewStatus.textContent =
-              `${result.case.metadata_json.case_title || "This case"} is closed. You can review saved information and files, but changes are unavailable until you explicitly reopen it.`;
-            closedCaseViewBanner.hidden = false;
+            renderClosedCaseBanner(result.case);
           }
           caseWorkspaceCurrentOrdinal = Math.max(1, ...result.attempts.map((attempt) => attempt.ordinal));
           const requested = new URLSearchParams(window.location.search).get("attempt");
@@ -7254,7 +7261,10 @@
         void loadFailureSupportConfig();
 
         async function settlementApi(url, options = {}) {
-          if (closedCaseViewMode && (options.method || "GET").toUpperCase() !== "GET") {
+          const completionReopen = settlementCompletionMode && settlementCompletionCaseClosed
+            && options.method === "POST"
+            && url === `/cases/${encodeURIComponent(preparationCaseId)}/reopen`;
+          if (closedCaseViewMode && (options.method || "GET").toUpperCase() !== "GET" && !completionReopen) {
             throw new Error("This closed case is open for read-only review. Reopen it from My Account to make changes.");
           }
           const response = await fetch(url, {
@@ -9815,6 +9825,51 @@
         }
 
         let settlementCompletionCaseClosed = false;
+        let settlementCompletionLatestOrdinal = 1;
+
+        function renderSettlementCompletionActions(workspace, documentsComplete = true) {
+          const assetAttempt = new URLSearchParams(window.location.search).get("asset_attempt");
+          settlementCompletionLatestOrdinal = Math.max(1, Number(assetAttempt),
+            ...workspace.attempts.map((attempt) => attempt.ordinal));
+          settlementCompletionBackToCases.textContent = `Back to attempt #${settlementCompletionLatestOrdinal}`;
+          settlementCompletionBackToCases.href =
+            `/case/assets?case_id=${encodeURIComponent(workspace.case.id)}&attempt=${settlementCompletionLatestOrdinal}`;
+          settlementCompletionBackToCases.hidden = settlementCompletionCaseClosed;
+          settlementCompletionCloseCase.hidden = settlementCompletionCaseClosed;
+          settlementCompletionCloseCase.disabled = settlementCompletionCaseClosed || !documentsComplete;
+          settlementCompletionOpenCase.hidden = !settlementCompletionCaseClosed;
+          if (settlementCompletionCaseClosed) {
+            renderClosedCaseBanner(workspace.case);
+            settlementCompletionPage.prepend(closedCaseViewBanner);
+          }
+        }
+
+        async function reopenAcceptedCase() {
+          if (!settlementCompletionCaseClosed || settlementCompletionOpenCase.hidden
+            || settlementCompletionOpenCase.disabled) return;
+          settlementCompletionOpenCase.disabled = true;
+          settlementCompletionStatus.dataset.kind = "";
+          settlementCompletionStatus.textContent = "Reopening your case for read-only review…";
+          try {
+            const result = await settlementApi(
+              `/cases/${encodeURIComponent(preparationCaseId)}/reopen`, { method: "POST" },
+            );
+            if (result?.id !== preparationCaseId || typeof result.status !== "string"
+              || result.status === "finalized" || result.closed_at !== null || result.closed_reason !== null) {
+              throw new Error("The reopened case could not be verified. Refresh the page and retry.");
+            }
+            window.location.assign(
+              `/case/assets?case_id=${encodeURIComponent(preparationCaseId)}&attempt=${settlementCompletionLatestOrdinal}`,
+            );
+          } catch (error) {
+            settlementCompletionStatus.dataset.kind = "error";
+            settlementCompletionStatus.textContent = error instanceof Error
+              ? error.message : "The case could not be reopened. Please retry.";
+            settlementCompletionOpenCase.disabled = false;
+          }
+        }
+
+        settlementCompletionOpenCase.addEventListener("click", () => void reopenAcceptedCase());
 
         function showSettlementCompletionProgress(workspace = null) {
           if (demoSettlementCompletionMode) {
@@ -9837,6 +9892,7 @@
           if (!demoSettlementCompletionMode && !await verifyWorkingPageSession()) return;
           document.body.dataset.settlementCompletionPage = "true";
           settlementCompletionPage.hidden = false;
+          if (!demoSettlementCompletionMode) settlementCompletionBackToCases.hidden = true;
           if (demoSettlementCompletionMode) {
             document.body.dataset.demoPage = "settlement-completion";
             settlementCompletionBackToCases.href = demoAssetOverviewUrl();
@@ -9901,10 +9957,6 @@
                 ? error.message : "The current case status could not be loaded. Reload and retry.";
               return;
             }
-            const backTarget = `/case/assets?case_id=${encodeURIComponent(caseId)}`;
-            settlementCompletionBackToCases.href = closedCaseViewMode || settlementCompletionCaseClosed
-              ? `${backTarget}&view=closed${assetAttempt ? `&attempt=${encodeURIComponent(assetAttempt)}` : ""}`
-              : backTarget;
           }
           if (caseId && assetAttempt) {
             try {
@@ -9913,8 +9965,7 @@
               showSettlementCompletionProgress(completionWorkspace);
               settlementCompletionState = state;
               settlementCompletionDemoContent.hidden = false;
-              settlementCompletionCloseCase.hidden = false;
-              settlementCompletionCloseCase.disabled = settlementCompletionCaseClosed;
+              renderSettlementCompletionActions(completionWorkspace);
               settlementCompletionStatus.textContent = settlementCompletionCaseClosed
                 ? "This case is closed. All negotiation attempts are read-only; you can reopen the case for review and export."
                 : state.attempts_locked
@@ -9943,10 +9994,7 @@
             showSettlementCompletionProgress(completionWorkspace);
             settlementCompletionState = response;
             settlementCompletionDemoContent.hidden = false;
-            settlementCompletionCloseCase.hidden = false;
-            settlementCompletionCloseCase.disabled = Boolean(
-              settlementCompletionCaseClosed || !response.sent_documents_complete,
-            );
+            renderSettlementCompletionActions(completionWorkspace, response.sent_documents_complete);
             settlementCompletionStatus.textContent = settlementCompletionCaseClosed
               ? "This case is closed. All negotiation attempts are read-only; you can reopen the case for review and export."
               : response.attempts_locked && response.sent_documents_complete
