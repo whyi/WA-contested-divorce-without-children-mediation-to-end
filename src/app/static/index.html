@@ -4392,7 +4392,9 @@
           });
           for (const radio of panel.querySelectorAll('input[name="settlement-demo-response-outcome"]')) {
             radio.name = "case-mediation-response-outcome";
-            radio.addEventListener("change", () => void saveCaseMediation("response", { outcome:radio.value }));
+            radio.addEventListener("change", () => void saveCaseMediation(
+              caseReopenedResponseEditable() ? "response_outcome" : "response", { outcome:radio.value },
+            ));
           }
           caseAssetElement("settlement-demo-counteroffer-notes").addEventListener("input", () => {
             clearTimeout(caseMediationTimer);
@@ -4419,6 +4421,18 @@
           caseAssetElement("settlement-demo-add-counteroffer").addEventListener("click", continueAttempt);
           caseAssetElement("settlement-demo-next-attempt").addEventListener("click", continueAttempt);
           caseAssetElement("settlement-demo-response-next").addEventListener("click", async () => {
+            if (caseReopenedResponseEditable()) {
+              if (caseMediationBusy) return;
+              if (caseMediationState.outcome !== "accepted") {
+                await showAppNotice(
+                  "A subscription is required to continue with a response other than Offer accepted. Further attempts are not available from this reopened case.",
+                  { title: "Subscription required" },
+                );
+                return;
+              }
+              window.location.assign(`/settlement-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`);
+              return;
+            }
             if (closedCaseViewMode || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized"
               || caseWorkspace.case.attempts_locked_at || caseMediationState?.attempts_locked) return;
             if (caseMediationState?.outcome !== "accepted" || !await saveCaseMediation("response")) return;
@@ -4460,10 +4474,18 @@
           }
         }
 
+        function caseReopenedResponseEditable() {
+          return Boolean(caseWorkspace && caseMediationState?.sent && caseMediationState.completed
+            && (caseWorkspace.case.attempts_locked_at || caseMediationState.attempts_locked)
+            && !closedCaseViewMode && !caseWorkspace.case.closed_at && caseWorkspace.case.status !== "finalized"
+            && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal && !caseMediationState.stopped);
+        }
+
         function renderCaseMediation() {
           if (!caseMediationState) return;
           const state = caseMediationState;
           const historical = caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal;
+          const reopenedResponse = caseReopenedResponseEditable();
           const inactive = historical || (caseMediationFrozen() && !state.sent) || state.stopped
             || state.attempts_locked || caseWorkspace.case.attempts_locked_at
             || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized";
@@ -4482,7 +4504,7 @@
           }));
           for (const radio of caseAssetElement("settlement-demo-response-files").querySelectorAll('input[type="radio"]')) {
             radio.checked = state.outcome === radio.value;
-            radio.disabled = caseMediationBusy || inactive || !state.sent;
+            radio.disabled = caseMediationBusy || (!reopenedResponse && inactive) || !state.sent;
           }
           const counteroffer = state.outcome === "counteroffer";
           caseAssetElement("settlement-demo-counteroffer-panel").hidden = !counteroffer;
@@ -4501,7 +4523,7 @@
             fileStatus.append(link, document.createTextNode(" "));
           }
           const counterofferNext = caseAssetElement("settlement-demo-add-counteroffer");
-          counterofferNext.hidden = !counteroffer;
+          counterofferNext.hidden = !counteroffer || reopenedResponse;
           counterofferNext.disabled = Boolean(caseMediationBusy || inactive);
           counterofferNext.setAttribute("aria-disabled", String(!canContinue || caseMediationBusy));
           const limit = `Your ${state.attempt_limit === 1 ? "Free" : "paid"} plan allows ${state.attempt_limit} attempt${state.attempt_limit === 1 ? "" : "s"}.`;
@@ -4509,21 +4531,22 @@
           caseAssetElement("settlement-demo-counteroffer-help").textContent = state.attempt_ordinal >= state.attempt_limit
             ? `${limit} The attempt limit is reached.`
             : "Notes and attachments are saved to your case. They are not automatically sent or analyzed.";
-          caseAssetElement("settlement-demo-rejection-choices").hidden = state.outcome !== "rejected";
+          caseAssetElement("settlement-demo-rejection-choices").hidden = state.outcome !== "rejected" || reopenedResponse;
           caseAssetElement("settlement-demo-rejection-limit").textContent = canContinue ? limit : `${limit} The attempt limit is reached.`;
           const rejectedNext = caseAssetElement("settlement-demo-next-attempt");
           rejectedNext.disabled = Boolean(inactive || caseMediationBusy);
           rejectedNext.setAttribute("aria-disabled", String(!canContinue || caseMediationBusy));
           caseAssetElement("settlement-demo-stop").disabled = Boolean(inactive || caseMediationBusy);
           const next = caseAssetElement("settlement-demo-response-next");
-          next.hidden = ["counteroffer", "rejected"].includes(state.outcome);
-          next.disabled = Boolean(inactive || caseMediationBusy || state.outcome !== "accepted");
+          next.hidden = !reopenedResponse && ["counteroffer", "rejected"].includes(state.outcome);
+          next.disabled = Boolean(caseMediationBusy || (!reopenedResponse && (inactive || state.outcome !== "accepted")));
           caseAssetElement("settlement-demo-response-status").textContent = state.stopped ? "This workflow has stopped. Your case materials remain saved."
             : state.outcome === "accepted" ? closedCaseViewMode || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized"
               ? "The offer was accepted. You are viewing a closed case."
               : state.attempts_locked || caseWorkspace.case.attempts_locked_at
-                ? "The offer was accepted. This reopened case is read-only. All negotiation attempts remain permanently locked."
+                ? "The offer was accepted. Proposal values and materials remain read-only. You may update the response below, then select Next."
                 : "The offer was accepted. Select Next to open the completion page."
+              : reopenedResponse ? "Response saved. Proposal values and materials remain read-only. Select Next to review subscription requirements."
               : state.outcome === "counteroffer" ? canContinue ? "Add counteroffer notes or a file, then select Next to prepare another attempt." : ""
                 : state.outcome === "rejected" ? "Choose whether to prepare another attempt or stop this workflow."
                   : state.sent ? "Mediator delivery recorded. This attempt is read-only. Select the response you received."
@@ -4544,12 +4567,14 @@
             caseMediationState = await settlementApi(`/cases/${encodeURIComponent(preparationCaseId)}/asset-mediation`, {
               method:"POST", body:JSON.stringify({
                 expected_revision:caseMediationState.revision, attempt_ordinal:caseWorkspaceViewingOrdinal,
-                action, outcome:caseMediationState.outcome, notes,
-                document_ids:caseMediationState.document_ids, ...extra,
+                action,
+                ...(action === "response_outcome" ? {} : {
+                  outcome:caseMediationState.outcome, notes, document_ids:caseMediationState.document_ids,
+                }), ...extra,
               }),
             });
             caseMediationBusy = false;
-            if (action === "response" && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal) {
+            if (["response", "response_outcome"].includes(action) && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal) {
               caseWorkspace.accepted_offer_url = caseMediationState.sent && caseMediationState.outcome === "accepted"
                 ? `/settlement-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`
                 : null;

@@ -618,8 +618,8 @@ for (const kind of ["asset", "selection"]) {
         await expect(latest).toHaveAttribute("aria-current", "step");
         await expect(latest).toHaveAttribute("data-state", "current");
         await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
-        await expect(page.locator("#settlement-demo-response-next-case")).toBeDisabled();
-        await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeDisabled();
+        await expect(page.locator("#settlement-demo-response-next-case")).toBeEnabled();
+        await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeEnabled();
         await expect(page.locator("#closed-case-view-banner")).toBeHidden();
         await page.reload();
         await expect(latest).toHaveAttribute("aria-current", "step");
@@ -765,7 +765,7 @@ test("open accepted attempt keeps Next enabled and the original guidance", async
   fixture.verify();
 });
 
-test("reopened accepted attempt disables Next and removes the Offer Accepted timeline circle", async ({ page }) => {
+test("reopened accepted attempt enables response-only controls and removes the Offer Accepted timeline circle", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
     extraReads: {
@@ -783,19 +783,170 @@ test("reopened accepted attempt disables Next and removes the Offer Accepted tim
   });
   await page.goto(`${origin}/case/assets?case_id=${caseId}`);
   const next = page.locator("#settlement-demo-response-next-case");
-  await expect(next).toBeDisabled();
-  await expect(page.locator("#settlement-demo-response-status-case")).toContainText("This reopened case is read-only.");
-  await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeDisabled();
-  await next.dispatchEvent("click");
-  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+  await expect(next).toBeEnabled();
+  await expect(page.locator("#settlement-demo-response-status-case")).toContainText("Proposal values and materials remain read-only.");
+  await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeEnabled();
   await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
-  await page.goto(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
+  await next.click();
+  await expect(page).toHaveURL(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
   await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
   await expect(page.locator("#settlement-completion-status")).toContainText("This case is open for read-only review.");
   await expectAcceptedCompletionProgress(page);
   expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
+  fixture.verify();
+});
+
+for (const plan of ["free", "paid"]) {
+  for (const width of [1280, 320]) {
+    test(`reopened outcome persists and nonaccepted Next requires subscription: ${plan} at ${width}px`, async ({ page }) => {
+      const state = {
+        revision: 3, attempt_ordinal: 2, attempt_limit: 3, sent: true, outcome: "accepted",
+        notes: "Frozen counteroffer notes", document_ids: [], sent_filenames: ["sent.docx", "sent.xlsx"],
+        downloaded_formats: ["docx", "xlsx"], completed: true, attempts_locked: true,
+      };
+      const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=2`;
+      const saved = {
+        ...workspace, accepted_offer_url: completionUrl,
+        case: { ...workspace.case, status: "settlement", attempts_locked_at: closedAt },
+        attempts: [1, 2].map(ordinal => ({
+          ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+        })),
+      };
+      let saves = 0;
+      const fixture = await installFixtures(page, {
+        authenticated: true,
+        extraReads: {
+          "/api/billing/account/entitlement": { status: plan },
+          [`/cases/${caseId}/workspace`]: saved,
+          [`/cases/${caseId}/asset-mediation/2`]: state,
+        },
+        mutationHandler: async request => {
+          expect(new URL(request.url()).pathname).toBe(`/cases/${caseId}/asset-mediation`);
+          const payload = request.postDataJSON();
+          expect(payload).toEqual({
+            action: "response_outcome", attempt_ordinal: 2,
+            expected_revision: state.revision, outcome: payload.outcome,
+          });
+          state.outcome = payload.outcome;
+          state.revision += 1;
+          saved.accepted_offer_url = state.outcome === "accepted" ? completionUrl : null;
+          saves += 1;
+          return { body: state };
+        },
+      });
+      await page.setViewportSize({ width, height: 900 });
+      const attemptUrl = `${origin}/case/assets?case_id=${caseId}&attempt=2`;
+      await page.goto(attemptUrl);
+      const next = page.locator("#settlement-demo-response-next-case");
+      const outcomes = page.locator("#settlement-demo-response-files-case");
+      await expect(next).toBeEnabled();
+      await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+      await expect(page.locator("#settlement-demo-mark-sent-case")).toBeDisabled();
+      await page.goto(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
+      await expect(page.locator('#settlement-demo-response-files-case input[type="radio"]').first()).toBeDisabled();
+      await expect(next).toBeDisabled();
+      await page.goto(attemptUrl);
+      for (const outcome of ["rejected", "counteroffer"]) {
+        await outcomes.locator(`input[value="${outcome}"]`).check();
+        await expect.poll(() => state.outcome).toBe(outcome);
+        await expect(next).toBeEnabled();
+        await page.reload();
+        await expect(outcomes.locator(`input[value="${outcome}"]`)).toBeChecked();
+        await expect(next).toBeVisible();
+        await expect(next).toBeEnabled();
+        await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toBeDisabled();
+        await expect(page.locator("#settlement-demo-counteroffer-file-case")).toBeDisabled();
+        const beforeNext = saves;
+        await next.click();
+        await expect(page.locator("#app-dialog-title")).toHaveText("Subscription required");
+        await expect(page.locator("#app-dialog")).toContainText("A subscription is required");
+        await page.locator("#app-dialog-confirm").click();
+        await expect(page).toHaveURL(attemptUrl);
+        expect(saves).toBe(beforeNext);
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+      }
+      await outcomes.locator('input[value="accepted"]').check();
+      await expect.poll(() => state.outcome).toBe("accepted");
+      await expect(next).toBeEnabled();
+      await page.reload();
+      await expect(outcomes.locator('input[value="accepted"]')).toBeChecked();
+      const beforeNext = saves;
+      await next.click();
+      await expect(page).toHaveURL(`${origin}${completionUrl}`);
+      await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
+      expect(saves).toBe(beforeNext);
+      expect(state.notes).toBe("Frozen counteroffer notes");
+      fixture.verify();
+    });
+  }
+}
+
+test("reopened outcome save failure preserves the saved selection and permits retry", async ({ page }) => {
+  const state = {
+    revision: 3, attempt_ordinal: 1, attempt_limit: 1, sent: true, outcome: "accepted",
+    notes: "", document_ids: [], sent_filenames: [], downloaded_formats: [],
+    completed: true, attempts_locked: true,
+  };
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    extraReads: {
+      [`/cases/${caseId}/workspace`]: {
+        ...workspace, case: { ...workspace.case, attempts_locked_at: closedAt },
+      },
+      [`/cases/${caseId}/asset-mediation/1`]: state,
+    },
+    mutationHandler: async () => ({ status: 503, body: { detail: "Response was not saved. Retry." } }),
+  });
+  await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+  const outcomes = page.locator("#settlement-demo-response-files-case");
+  await outcomes.locator('input[value="rejected"]').check();
+  await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("Response was not saved. Retry.");
+  await expect(outcomes.locator('input[value="accepted"]')).toBeChecked();
+  await expect(outcomes.locator('input[value="rejected"]')).toBeEnabled();
+  await expect(page.locator("#settlement-demo-response-next-case")).toBeEnabled();
+  fixture.verify();
+});
+
+test("reopened outcome save disables response and Next until persistence finishes", async ({ page }) => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  let saves = 0;
+  const state = {
+    revision: 3, attempt_ordinal: 1, attempt_limit: 1, sent: true, outcome: "accepted",
+    notes: "", document_ids: [], sent_filenames: [], downloaded_formats: [],
+    completed: true, attempts_locked: true,
+  };
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    extraReads: {
+      [`/cases/${caseId}/workspace`]: {
+        ...workspace, case: { ...workspace.case, attempts_locked_at: closedAt },
+      },
+      [`/cases/${caseId}/asset-mediation/1`]: state,
+    },
+    mutationHandler: async request => {
+      expect(request.postDataJSON().action).toBe("response_outcome");
+      saves += 1;
+      await pending;
+      return { body: { ...state, revision: 4, outcome: "rejected" } };
+    },
+  });
+  await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+  const rejected = page.locator('#settlement-demo-response-files-case input[value="rejected"]');
+  const next = page.locator("#settlement-demo-response-next-case");
+  await rejected.check();
+  await expect(rejected).toBeDisabled();
+  await expect(next).toBeDisabled();
+  await next.dispatchEvent("click");
+  await expect(page.locator("#app-dialog")).toBeHidden();
+  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+  release();
+  await expect(rejected).toBeEnabled();
+  await expect(rejected).toBeChecked();
+  await expect(next).toBeEnabled();
+  expect(saves).toBe(1);
   fixture.verify();
 });
 
