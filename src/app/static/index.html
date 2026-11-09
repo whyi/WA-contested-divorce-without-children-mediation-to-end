@@ -4349,6 +4349,7 @@
           document.getElementById("auth-entry-content").hidden = signupSelected || loginSelected || selected === "verify";
           document.getElementById("auth-back").hidden = !signupSelected && !loginSelected && selected !== "verify";
           document.getElementById("auth-back").textContent = loginSelected ? "Use a different account" : "Back";
+          document.getElementById("auth-back").setAttribute("aria-label", loginSelected ? "Use a different account" : "Back to login or signup");
           document.getElementById("account-title").textContent = signupSelected
             ? "Sign up for Casework" : loginSelected ? "Log in to Casework"
               : selected === "verify" ? "Verify your email" : "Log in or sign up for free";
