@@ -13,7 +13,7 @@ class RejectionCompletionTests(unittest.TestCase):
         self.assertNotIn("continueSettlementOfferResponse", PAGE)
         demo_stop_handler = PAGE[PAGE.index('settlementDemoStop.addEventListener("click"') :]
         demo_stop_handler = demo_stop_handler[: demo_stop_handler.index("\n        });") + len("\n        });")]
-        self.assertIn("window.confirm(", demo_stop_handler)
+        self.assertIn("await showAppConfirm(", demo_stop_handler)
         self.assertIn(
             '`/demo/rejection-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`',
             demo_stop_handler,
