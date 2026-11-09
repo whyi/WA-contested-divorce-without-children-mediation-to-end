@@ -4135,8 +4135,10 @@
           counterofferNext.disabled = Boolean(caseMediationBusy || inactive);
           counterofferNext.setAttribute("aria-disabled", String(!canContinue || caseMediationBusy));
           const limit = `Your ${state.attempt_limit === 1 ? "Free" : "paid"} plan allows ${state.attempt_limit} attempt${state.attempt_limit === 1 ? "" : "s"}.`;
-          caseAssetElement("settlement-demo-counteroffer-limit").hidden = !counteroffer || canContinue;
-          caseAssetElement("settlement-demo-counteroffer-limit").textContent = `${limit} The attempt limit is reached. Purchase credits to continue.`;
+          caseAssetElement("settlement-demo-counteroffer-limit").hidden = true;
+          caseAssetElement("settlement-demo-counteroffer-help").textContent = state.attempt_ordinal >= state.attempt_limit
+            ? `${limit} The attempt limit is reached.`
+            : "Notes and attachments are saved to your case. They are not automatically sent or analyzed.";
           caseAssetElement("settlement-demo-rejection-choices").hidden = state.outcome !== "rejected";
           caseAssetElement("settlement-demo-rejection-limit").textContent = canContinue ? limit : `${limit} The attempt limit is reached.`;
           caseAssetElement("settlement-demo-next-attempt").disabled = !canContinue || caseMediationBusy;
