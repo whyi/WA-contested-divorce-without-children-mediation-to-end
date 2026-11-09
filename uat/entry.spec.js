@@ -200,7 +200,7 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
       ...workspace.case,
       status: "finalized",
       closed_at: closedAt,
-      closed_reason: "accepted",
+      closed_reason: "stopped",
       attempts_locked_at: closedAt,
       metadata_json: { case_title: "Synthetic closed case" },
     },
@@ -212,7 +212,7 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
     extraReads: {
       "/api/v1/closed-cases": { cases: [{
         id: caseId, title: "Synthetic closed case", status: "finalized",
-        closed_at: closedAt, closed_reason: "accepted",
+        closed_at: closedAt, closed_reason: "stopped",
       }] },
       [`/cases/${caseId}/workspace`]: closedWorkspace,
     },
@@ -240,6 +240,124 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
   await expect(page.locator("#closed-case-list .closed-case-item")).toHaveCount(1);
   fixture.verify();
 });
+
+for (const kind of ["asset", "selection"]) {
+  for (const width of [1280, 390, 320]) {
+    test(`Account View opens closed accepted completion directly: ${kind} at ${width}px`, async ({ page }) => {
+      const selectionId = "00000000-0000-4000-8000-000000000076";
+      const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? "asset_attempt=2" : `selection_id=${selectionId}`}`;
+      const fixture = await installFixtures(page, {
+        authenticated: true, hasCase: false,
+        extraReads: {
+          "/api/v1/closed-cases": { cases: [{
+            id: caseId, title: "Accepted regression case", status: "finalized",
+            closed_at: closedAt, closed_reason: "accepted",
+          }] },
+          [`/cases/${caseId}/workspace`]: {
+            ...workspace, accepted_offer_url: completionUrl,
+            case: { ...workspace.case, status: "finalized", closed_at: closedAt, closed_reason: "accepted" },
+          },
+          [`/cases/${caseId}/asset-mediation/2`]: {
+            revision: 1, attempt_ordinal: 2, attempt_limit: 3, sent: true,
+            outcome: "accepted", completed: true, attempts_locked: true,
+          },
+          [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+            outcome: "accepted", sent_confirmed: true, sent_documents_complete: true, attempts_locked: true,
+          },
+        },
+      });
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${origin}/?view=account`);
+      await page.getByRole("button", { name: "View Accepted regression case read-only" }).click();
+      await expect(page).toHaveURL(`${origin}${completionUrl}&view=closed`);
+      await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
+      await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+      expect(fixture.requests.filter(request => request.includes("/case/assets"))).toEqual([]);
+      expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+      fixture.verify();
+    });
+  }
+}
+
+for (const invalid of ["missing-target", "wrong-case", "reopened", "stale-closure", "foreign-target"]) {
+  test(`Account View reports an unverifiable accepted case: ${invalid}`, async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true, hasCase: false,
+      extraReads: {
+        "/api/v1/closed-cases": { cases: [{
+          id: caseId, title: "Unverifiable accepted case", status: "finalized",
+          closed_at: closedAt, closed_reason: "accepted",
+        }] },
+        [`/cases/${caseId}/workspace`]: {
+          ...workspace,
+          accepted_offer_url: invalid === "missing-target" ? null
+            : `${invalid === "foreign-target" ? "https://example.invalid" : ""}/settlement-completion?case_id=${caseId}&asset_attempt=1`,
+          case: {
+            ...workspace.case, id: invalid === "wrong-case" ? "another-case" : caseId,
+            closed_at: invalid === "reopened" ? null : invalid === "stale-closure" ? "2026-10-26T18:30:00Z" : closedAt,
+            closed_reason: "accepted",
+          },
+        },
+      },
+    });
+    await page.goto(`${origin}/?view=account`);
+    const view = page.getByRole("button", { name: "View Unverifiable accepted case read-only" });
+    await view.click();
+    await expect(page.locator("#closed-cases-status")).toContainText("could not be verified");
+    await expect(page).toHaveURL(`${origin}/?view=account`);
+    await expect(view).toBeEnabled();
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
+test("Account accepted View reports lookup failure and allows retry", async ({ page }) => {
+  const fixture = await installFixtures(page, {
+    authenticated: true, hasCase: false,
+    extraReads: {
+      "/api/v1/closed-cases": { cases: [{
+        id: caseId, title: "Unavailable accepted case", status: "finalized",
+        closed_at: closedAt, closed_reason: "accepted",
+      }] },
+    },
+  });
+  let lookups = 0;
+  await page.route(`**/cases/${caseId}/workspace`, (route) => {
+    lookups += 1;
+    return route.fulfill({ status: 503, contentType: "application/json",
+      body: JSON.stringify({ detail: "Accepted case unavailable. Please retry." }) });
+  });
+  await page.goto(`${origin}/?view=account`);
+  const view = page.getByRole("button", { name: "View Unavailable accepted case read-only" });
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    await view.click();
+    await expect(page.locator("#closed-cases-status")).toHaveText("Accepted case unavailable. Please retry.");
+    await expect(view).toBeEnabled();
+    expect(lookups).toBe(attempt);
+    await expect(page).toHaveURL(`${origin}/?view=account`);
+  }
+  fixture.verify();
+});
+
+for (const reason of ["accepted", "stopped"]) {
+  test(`closed ${reason} case uses past-attempt styling without a closed-view parameter`, async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true,
+      extraReads: {
+        [`/cases/${caseId}/workspace`]: {
+          ...workspace,
+          case: { ...workspace.case, status: "finalized", closed_at: closedAt, closed_reason: reason },
+        },
+      },
+    });
+    await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+    const attempt = page.locator('#demo-attempt-progress-list button[data-ordinal="1"]');
+    await expect(attempt).toHaveAttribute("data-state", "past");
+    await expect(attempt).toHaveAccessibleName("1st Attempt, read-only");
+    await expect(page.locator("#demo-attempt-progress-status")).toHaveText("All attempts are read-only. This case is closed.");
+    fixture.verify();
+  });
+}
 
 for (const width of [1280, 390, 320]) {
   for (const ordinal of [1, 2]) {
@@ -287,13 +405,25 @@ for (const width of [1280, 390, 320]) {
       await expect(accepted.locator(".demo-attempt-circle")).toBeVisible();
       await expect(page.locator("#demo-attempt-progress-list li").last()).toContainText("Offer Accepted");
       await expect(page.locator("#demo-attempt-progress-list button")).toHaveCount(ordinal + 1);
+      const lastAttempt = page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`);
+      await expect(lastAttempt).toHaveAttribute("data-state", "past");
+      await expect(lastAttempt).toHaveAccessibleName(`${ordinal === 1 ? "1st" : "2nd"} Attempt, read-only`);
+      await expect(page.locator("#demo-attempt-progress-status")).toHaveText("All attempts are read-only. This case is closed.");
       if (ordinal > 1) {
+        const colors = await page.locator("#demo-attempt-progress-list button[data-ordinal] .demo-attempt-circle").evaluateAll(
+          circles => circles.map(circle => {
+            const style = getComputedStyle(circle);
+            return [style.backgroundColor, style.borderColor, style.color];
+          }),
+        );
+        expect(colors[1]).toEqual(colors[0]);
         await page.getByRole("button", { name: "1st Attempt, read-only", exact: true }).click();
         await expect(page).toHaveURL(`${origin}${assetsUrl}&attempt=1`);
         await expect(accepted).toBeEnabled();
       }
       await page.locator("#demo-file-management-link").click();
       await expect(accepted).toBeEnabled();
+      await expect(lastAttempt).toHaveAttribute("data-state", "past");
       await page.reload();
       await expect(accepted).toBeEnabled();
       await accepted.focus();
@@ -332,6 +462,8 @@ for (const closed of [false, true]) {
       },
     });
     await page.goto(`${origin}/case/assets?case_id=${caseId}${closed ? "&view=closed" : ""}`);
+    await expect(page.locator('#demo-attempt-progress-list button[data-ordinal="1"]'))
+      .toHaveAttribute("data-state", closed ? "past" : "current");
     await page.getByRole("button", { name: "Offer Accepted", exact: true }).click();
     await expect(page).toHaveURL(`${origin}${completionUrl}${closed ? "&view=closed" : ""}`);
     await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
