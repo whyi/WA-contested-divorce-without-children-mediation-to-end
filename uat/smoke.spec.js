@@ -45,8 +45,11 @@ test("SMOKE-04", async ({ page }) => {
   expect(response.status()).toBe(200);
   await expect(page).toHaveTitle(/Casework/);
   await page.locator("#login-entry").click();
+  await expect(page.locator("#email-entry-form")).toBeVisible();
+  await page.locator("#entry-email").fill("smoke@example.invalid");
+  await page.locator("#email-entry-form button[type=submit]").click();
   await expect(page.locator("#login-form")).toBeVisible();
-  await expect(page.locator("#login-email")).toBeEditable();
+  await expect(page.locator("#login-email")).toHaveAttribute("readonly", "");
   await expect(page.locator("#login-password")).toHaveAttribute("type", "password");
   await expect(page.locator("#login-form button[type=submit]")).toBeEnabled();
 });
