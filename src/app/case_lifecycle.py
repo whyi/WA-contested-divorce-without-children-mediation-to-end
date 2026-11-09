@@ -22,6 +22,7 @@ from app.models import (
     CaseMembership,
     DeletionTombstone,
     Document,
+    SettlementNegotiationAttempt,
     User,
 )
 from app.storage import ObjectStorage
@@ -204,6 +205,21 @@ def reopen_case(
     case.closed_at = None
     case.closed_reason = None
     case.status_before_close = None
+    latest_ordinal = db.scalar(
+        select(SettlementNegotiationAttempt.attempt_ordinal)
+        .where(SettlementNegotiationAttempt.case_id == case.id)
+        .order_by(SettlementNegotiationAttempt.attempt_ordinal.desc())
+        .limit(1)
+    )
+    metadata = dict(case.metadata_json or {})
+    mediation = dict(metadata.get("asset_mediation", {}))
+    current_key = str(latest_ordinal or 1)
+    current = mediation.get(current_key)
+    if current and current.get("stopped"):
+        mediation[current_key] = {
+            **current, "stopped": False, "revision": current.get("revision", 0) + 1,
+        }
+        case.metadata_json = {**metadata, "asset_mediation": mediation}
     db.add(
         CaseLifecycleEvent(case_id=case.id, user_id_snapshot=user.id, event_type="reopened")
     )

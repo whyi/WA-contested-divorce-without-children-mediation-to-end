@@ -164,6 +164,36 @@ class LifecycleFixture(unittest.TestCase):
 
 
 class CloseAndReopenTests(LifecycleFixture):
+    def test_reopen_resumes_only_current_stopped_mediation(self) -> None:
+        self.attempt.attempt_ordinal = 3
+        current = {
+            "revision": 7, "stopped": True, "sent": True, "outcome": "rejected",
+            "notes": "Preserve response", "document_ids": [],
+        }
+        historical = {"revision": 2, "stopped": True, "sent": True}
+        self.case.metadata_json = {
+            **self.case.metadata_json,
+            "asset_mediation": {"1": historical, "3": current},
+        }
+        self.db.commit()
+        close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
+        reopen_case(self.case.id, self.user, self.db)
+        self.db.refresh(self.case)
+        saved = self.case.metadata_json["asset_mediation"]
+        self.assertEqual(saved["3"], {**current, "stopped": False, "revision": 8})
+        self.assertEqual(saved["1"], historical)
+        self.assertEqual(self.attempt.snapshot_json, {"snap": 1})
+        self.assertEqual(self.case.attempt_credit_balance, 3)
+        self.assertEqual(self.db.query(SettlementNegotiationAttempt).count(), 1)
+
+    def test_reopen_preserves_nonstopped_mediation(self) -> None:
+        saved = {"1": {"revision": 4, "stopped": False, "completed": True}}
+        self.case.metadata_json = {**self.case.metadata_json, "asset_mediation": saved}
+        self.db.commit()
+        close_case(self.case.id, CaseCloseRequest(), self.user, self.db)
+        reopen_case(self.case.id, self.user, self.db)
+        self.assertEqual(self.case.metadata_json["asset_mediation"], saved)
+
     def test_close_then_reopen_preserves_case_attempts_files_and_credits(self) -> None:
         close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
         self.db.refresh(self.case)
