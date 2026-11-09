@@ -88,8 +88,10 @@ class SignedInHomeTests(unittest.TestCase):
         body = _function_body("showSignedInHome")
 
         self.assertIn("showPublicPage();", body)
-        for control in ('"account-entry"', '"hero-primary-action"', '"closing-account-cta"'):
+        for control in ('"hero-primary-action"', '"closing-account-cta"'):
             self.assertIn(control, body)
+        self.assertIn('id="your-case-entry" href="/"', PAGE)
+        self.assertIn('document.getElementById("your-case-entry").hidden = false', _function_body("showSignedInNavigation"))
         self.assertIn('link.href = "/"', body)
         self.assertIn('document.getElementById("account").hidden = true', body)
         self.assertIn("accountToolsLink.hidden = false", body)
