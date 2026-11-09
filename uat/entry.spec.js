@@ -151,6 +151,34 @@ test("login locks the entered account and permits an explicit account change", a
   fixture.verify();
 });
 
+test("accepted offer page uses the attempt page's top gap at every breakpoint", async ({ page }) => {
+  const measureTopGap = async (width, mode) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.setContent(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ""));
+    return page.evaluate((pageMode) => {
+      const targetId = pageMode === "attempt" ? "account-dashboard" : "settlement-completion-page";
+      for (const section of document.querySelector("main").children) {
+        section.hidden = section.id !== targetId;
+      }
+      if (pageMode === "attempt") {
+        document.body.classList.add("authenticated-view");
+      } else {
+        document.body.dataset.settlementCompletionPage = "true";
+      }
+      const target = pageMode === "attempt"
+        ? document.querySelector("#account-dashboard .dashboard-panel")
+        : document.querySelector("#settlement-completion-page .settlement-completion-card");
+      return target.getBoundingClientRect().top - document.querySelector(".topbar").getBoundingClientRect().bottom;
+    }, mode);
+  };
+
+  for (const width of [1280, 768, 390]) {
+    const attemptGap = await measureTopGap(width, "attempt");
+    const acceptedGap = await measureTopGap(width, "accepted");
+    expect(acceptedGap, `accepted page gap at ${width}px`).toBeCloseTo(attemptGap, 1);
+  }
+});
+
 test("login entry shows only email-first entry and Google, without old tabs or preview copy", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(`${origin}/?auth=login`);
