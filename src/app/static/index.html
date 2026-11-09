@@ -468,6 +468,12 @@
         cursor: pointer;
         font-weight: 650;
       }
+      .nav-cta-primary {
+        border-color: var(--green);
+        color: var(--text-on-accent) !important;
+        background: var(--green);
+      }
+      .nav-cta-primary:hover { background: var(--green-dark); }
       .theme-control select { min-width: 90px; }
       .account-section { padding: 0 0 82px; }
       .account-panel {
@@ -1420,20 +1426,32 @@
         font-size: 12px;
         line-height: 1.65;
       }
-      .expectations-link {
-        display: inline-flex;
-        min-height: 42px;
-        align-items: center;
-        gap: 7px;
-        color: var(--green-dark);
-        font-size: 12px;
-        font-weight: 750;
-        text-decoration: none;
-        white-space: nowrap;
+      .landing-pricing {
+        margin: 0 0 68px;
+        padding: clamp(24px, 5vw, 52px);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--surface-raised);
       }
-      .expectations-link:hover { color: var(--home-amber); }
+      .landing-pricing-heading { max-width: 720px; margin: 0 auto 28px; text-align: center; }
+      .landing-pricing-heading h2 { margin: 0 0 10px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(28px, 4vw, 42px); }
+      .landing-pricing-heading p:last-child { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+      .landing-pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+      .landing-price-card { display: flex; flex-direction: column; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-background); }
+      .landing-price-card h3 { margin: 0 0 8px; font-size: 16px; }
+      .landing-price { margin: 0 0 14px; color: var(--green-dark); font-size: 30px; font-weight: 750; letter-spacing: -.04em; }
+      .landing-price small { color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+      .landing-price-card p:last-child { margin: auto 0 0; padding-top: 16px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+      .landing-pricing-note { margin: 18px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; text-align: center; }
+      .landing-pricing-action { display: flex; justify-content: center; margin-top: 22px; }
+      .landing-pricing-action .button { min-width: 190px; }
+      body.signed-in-home #account-entry,
+      body.signed-in-home #pricing-signup { display: none; }
+      @media (max-width: 850px) {
+        .landing-pricing-grid { grid-template-columns: 1fr; }
+        .landing-price-card { min-height: 150px; }
+      }
       .account-panel { border-radius: 22px; }
-      .steps-panel { border-radius: 24px; }
       .closing { padding-top: 58px; }
       @media (max-width: 900px) {
         .topbar {
@@ -1514,7 +1532,7 @@
       }
       body[data-public-landing="true"]:not(.authenticated-view) .nav > :not(.auth-entry) { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .nav .auth-entry { display: inline-flex; }
-      body[data-public-landing="true"]:not(.authenticated-view) main > section:not(.hero) { display: none; }
+      body[data-public-landing="true"]:not(.authenticated-view) main > section:not(.hero):not(:where(#plans)) { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .hero {
         min-height: calc(100svh - var(--landing-header-height));
         grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
@@ -1654,7 +1672,7 @@
           <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
           <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
           <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
-          <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup">Get started <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="nav-cta nav-cta-primary auth-entry" id="account-entry" href="#plans">Get started <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
       </header>
       <p class="theme-status" id="theme-status" role="status" aria-live="polite"></p>
@@ -1848,6 +1866,35 @@
               </span>
               <div><strong>You stay in control</strong><span>Review before you decide</span></div>
             </div>
+          </div>
+        </section>
+
+        <section class="landing-pricing" id="plans" aria-labelledby="plans-title">
+          <div class="landing-pricing-heading">
+            <p class="eyebrow">Straightforward pricing</p>
+            <h2 id="plans-title">Start free. Pay only if you need more.</h2>
+            <p>Every case includes one free successful finalization. There are no monthly subscriptions; optional credit packages are one-time purchases.</p>
+          </div>
+          <div class="landing-pricing-grid">
+            <article class="landing-price-card">
+              <h3>Free</h3>
+              <p class="landing-price">$0 <small>per case</small></p>
+              <p>Prepare and edit your work, then finalize one proposal at no charge.</p>
+            </article>
+            <article class="landing-price-card">
+              <h3>5-credit package</h3>
+              <p class="landing-price">$5 <small>one time</small></p>
+              <p>Five additional successful attempt finalizations for your case, after its free first one.</p>
+            </article>
+            <article class="landing-price-card">
+              <h3>10-credit package</h3>
+              <p class="landing-price">$8 <small>one time</small></p>
+              <p>Ten additional successful attempt finalizations for your case, after its free first one.</p>
+            </article>
+          </div>
+          <p class="landing-pricing-note">Drafting, editing, and retries after an unsuccessful finalization do not use credits. Applicable tax is calculated at checkout. Package purchases are case-specific.</p>
+          <div class="landing-pricing-action">
+            <a class="button button-primary" id="pricing-signup" href="/?auth=signup">Sign up for free <span class="arrow" aria-hidden="true">→</span></a>
           </div>
         </section>
 

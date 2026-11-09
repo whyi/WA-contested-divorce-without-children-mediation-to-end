@@ -148,6 +148,21 @@ test("landing removes obsolete marketing sections and keeps navigation targets v
   fixture.verify();
 });
 
+test("homepage pricing explains credit options and routes free signup to email entry", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator("#plans")).toBeVisible();
+  await expect(page.locator("#plans")).toContainText("one free successful finalization");
+  await expect(page.locator("#plans")).toContainText("$5");
+  await expect(page.locator("#plans")).toContainText("$8");
+  await expect(page.locator("#account-entry")).toHaveAttribute("href", "#plans");
+  await page.locator("#pricing-signup").click();
+  await expect(page).toHaveURL(`${origin}/?auth=signup`);
+  await expect(page.locator("#email-entry-form")).toBeVisible();
+  await expect(page.locator("#plans")).toBeHidden();
+  fixture.verify();
+});
+
 test("accepted offer page uses the attempt page's top gap at every breakpoint", async ({ page }) => {
   const measureTopGap = async (width, mode) => {
     await page.setViewportSize({ width, height: 900 });
