@@ -144,11 +144,16 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
-test("Our approach section is removed while How it works remains available", async ({ page }) => {
+test("public landing contains only supported sections and working local links", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);
-  await expect(page.locator("#approach, a[href='#approach']")).toHaveCount(0);
-  await expect(page.locator("#how-it-works")).toHaveCount(1);
+  expect(await page.locator("main > section").evaluateAll((sections) =>
+    sections.map((section) => section.id || section.className)
+  )).toEqual([
+    "documents-demo", "wizard-demo", "hero", "homepage-expectations",
+    "account", "account-dashboard", "closing",
+    "settlement-completion-page", "rejection-completion-page",
+  ]);
   for (const link of await page.locator('a[href^="#"]').all()) {
     const href = await link.getAttribute("href");
     if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
