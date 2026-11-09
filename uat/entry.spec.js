@@ -137,6 +137,17 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
+test("landing removes obsolete marketing sections and keeps navigation targets valid", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator(".principles, .steps-section, .expectations-link")).toHaveCount(0);
+  for (const link of await page.locator('a[href^="#"]').all()) {
+    const href = await link.getAttribute("href");
+    if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
+  }
+  fixture.verify();
+});
+
 test("login entry shows only email-first entry and Google, without old tabs or preview copy", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(`${origin}/?auth=login`);
