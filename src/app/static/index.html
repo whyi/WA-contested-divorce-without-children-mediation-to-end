@@ -468,6 +468,12 @@
         cursor: pointer;
         font-weight: 650;
       }
+      .nav-cta-primary {
+        border-color: var(--green);
+        color: var(--text-on-accent) !important;
+        background: var(--green);
+      }
+      .nav-cta-primary:hover { background: var(--green-dark); }
       .theme-control select { min-width: 90px; }
       .account-section { padding: 0 0 82px; }
       .account-panel {
@@ -856,16 +862,6 @@
       .file-tile:nth-child(2) { height: 51px; }
       .file-tile:nth-child(3) { height: 39px; }
 
-      .steps-section { padding-top: 0; }
-      .steps-panel { padding: 38px; border-radius: 16px; color:var(--theme-text-f7f7f1); background:var(--theme-background-263d33); }
-      .steps-panel .eyebrow { color:var(--theme-text-bfd3c2); }
-      .steps-panel h2 { max-width: 560px; margin-bottom: 36px; }
-      .steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-      .step { position: relative; padding-top: 15px; border-top:1px solid rgba(225, 238, 225, .27); }
-      .step-index { color:var(--theme-text-b6ceb9); font-family: Georgia, "Times New Roman", serif; font-size: 13px; }
-      .step h3 { margin: 14px 0 8px; font-size: 14px; }
-      .step p { max-width: 205px; margin: 0; color:var(--theme-text-c1cec3); font-size: 11px; line-height: 1.6; }
-      .steps-disclaimer { margin: 30px 0 0; padding-top: 17px; border-top:1px solid rgba(225, 238, 225, .18); color:var(--theme-text-afbeb1); font-size: 10px; }
 
       .closing {
         display: grid;
@@ -1292,8 +1288,6 @@
         .hero-copy { max-width: 620px; }
         .visual-wrap { width: min(100%, 590px); margin: 0 auto; }
         .section { padding: 72px 0; }
-        .steps-section { padding-top: 0; }
-        .steps-grid { grid-template-columns: 1fr 1fr; row-gap: 28px; }
         .dashboard-section { padding-top: 32px; }
       }
       @media (max-width: 600px) {
@@ -1332,9 +1326,6 @@
         .mode-grid { grid-template-columns: 1fr; }
         .mode-card { min-height: 280px; padding: 24px; }
         .section { padding: 62px 0; }
-        .steps-panel { padding: 26px 22px; }
-        .steps-grid { gap: 24px 15px; }
-        .step p { font-size: 10px; }
         .closing { grid-template-columns: 1fr; padding: 54px 0; }
         .closing .button { justify-self: start; }
         .footer-row { flex-direction: column; gap: 7px; }
@@ -1465,20 +1456,31 @@
         font-size: 12px;
         line-height: 1.65;
       }
-      .expectations-link {
-        display: inline-flex;
-        min-height: 42px;
-        align-items: center;
-        gap: 7px;
-        color: var(--green-dark);
-        font-size: 12px;
-        font-weight: 750;
-        text-decoration: none;
-        white-space: nowrap;
+      .landing-pricing {
+        margin: 0 0 68px;
+        padding: clamp(24px, 5vw, 52px);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--surface-raised);
       }
-      .expectations-link:hover { color: var(--home-amber); }
+      .landing-pricing-heading { max-width: 720px; margin: 0 auto 28px; text-align: center; }
+      .landing-pricing-heading h2 { margin: 0 0 10px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(28px, 4vw, 42px); }
+      .landing-pricing-heading p:last-child { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+      .landing-pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+      .landing-price-card { display: flex; flex-direction: column; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-background); }
+      .landing-price-card h3 { margin: 0 0 8px; font-size: 16px; }
+      .landing-price { margin: 0 0 14px; color: var(--green-dark); font-size: 30px; font-weight: 750; letter-spacing: -.04em; }
+      .landing-price small { color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+      .landing-price-card p:last-child { margin: auto 0 0; padding-top: 16px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+      .landing-pricing-note { margin: 18px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; text-align: center; }
+      .landing-pricing-action { display: flex; justify-content: center; margin-top: 22px; }
+      .landing-pricing-action .button { min-width: 190px; }
+      body.signed-in-home #pricing-signup { display: none; }
+      @media (max-width: 850px) {
+        .landing-pricing-grid { grid-template-columns: 1fr; }
+        .landing-price-card { min-height: 150px; }
+      }
       .account-panel { border-radius: 22px; }
-      .steps-panel { border-radius: 24px; }
       .closing { padding-top: 58px; }
       @media (max-width: 900px) {
         .topbar {
@@ -1542,8 +1544,6 @@
         }
         .expectations-mark { width: 36px; height: 36px; }
         .expectations-copy h2 { font-size: 22px; }
-        .expectations-link { grid-column: 2; justify-self: start; }
-        .steps-panel { border-radius: 18px; }
       }
       body[data-public-landing="true"]:not(.authenticated-view) .preview-bar,
       body[data-public-landing="true"]:not(.authenticated-view) .theme-status,
@@ -1561,7 +1561,7 @@
       }
       body[data-public-landing="true"]:not(.authenticated-view) .nav > :not(.auth-entry) { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .nav .auth-entry { display: inline-flex; }
-      body[data-public-landing="true"]:not(.authenticated-view) main > section:not(.hero) { display: none; }
+      body[data-public-landing="true"]:not(.authenticated-view) main > section:not(.hero):not(:where(#plans)) { display: none; }
       body[data-public-landing="true"]:not(.authenticated-view) .hero {
         min-height: calc(100svh - var(--landing-header-height));
         grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
@@ -1712,7 +1712,6 @@
         <nav class="nav" aria-label="Main navigation">
           <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/start?source=demo1">Demo 1 — Free</a>
           <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/start?source=demo2">Demo 2 — Essential</a>
-          <a href="#how-it-works">How it works</a>
           <label class="theme-control" for="theme-select">
             <span>Theme</span>
             <select id="theme-select" name="theme">
@@ -1725,7 +1724,7 @@
           <a class="nav-cta" id="your-case-entry" href="/" hidden>Your case</a>
           <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
           <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
-          <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup">Get started <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="nav-cta nav-cta-primary auth-entry" id="account-entry" href="#plans">Get started <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
       </header>
       <p class="theme-status" id="theme-status" role="status" aria-live="polite"></p>
@@ -1867,7 +1866,6 @@
             </p>
             <div class="hero-actions">
               <a class="button button-primary" id="hero-primary-action" href="#account">Get started <span class="arrow" aria-hidden="true">↑</span></a>
-              <a class="button button-secondary" href="#how-it-works">See how it works</a>
             </div>
             <p class="hero-note">
               <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.5 16 5v4.3c0 3.8-2.6 6.7-6 8.2-3.4-1.5-6-4.4-6-8.2V5l6-2.5Z" stroke="currentColor" stroke-width="1.4"/><path d="m7.4 9.8 1.7 1.7 3.7-3.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1923,6 +1921,35 @@
           </div>
         </section>
 
+        <section class="landing-pricing" id="plans" aria-labelledby="plans-title">
+          <div class="landing-pricing-heading">
+            <p class="eyebrow">Straightforward pricing</p>
+            <h2 id="plans-title">Start free. Pay only if you need more.</h2>
+            <p>Every case includes one free successful finalization. There are no monthly subscriptions; optional credit packages are one-time purchases.</p>
+          </div>
+          <div class="landing-pricing-grid">
+            <article class="landing-price-card">
+              <h3>Free</h3>
+              <p class="landing-price">$0 <small>per case</small></p>
+              <p>Prepare and edit your work, then finalize one proposal at no charge.</p>
+            </article>
+            <article class="landing-price-card">
+              <h3>5-credit package</h3>
+              <p class="landing-price">$5 <small>one time</small></p>
+              <p>Five additional successful attempt finalizations for your case, after its free first one.</p>
+            </article>
+            <article class="landing-price-card">
+              <h3>10-credit package</h3>
+              <p class="landing-price">$8 <small>one time</small></p>
+              <p>Ten additional successful attempt finalizations for your case, after its free first one.</p>
+            </article>
+          </div>
+          <p class="landing-pricing-note">Drafting, editing, and retries after an unsuccessful finalization do not use credits. Applicable tax is calculated at checkout. Package purchases are case-specific.</p>
+          <div class="landing-pricing-action">
+            <a class="button button-primary" id="pricing-signup" href="/?auth=signup">Sign up for free <span class="arrow" aria-hidden="true">→</span></a>
+          </div>
+        </section>
+
         <section class="homepage-expectations" aria-labelledby="expectations-title">
           <span class="expectations-mark" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.4"/><path d="M10 9v4M10 6.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -1932,7 +1959,6 @@
             <h2 id="expectations-title">Structure, not legal strategy.</h2>
             <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: Casework is a preparation and organization tool, not legal advice or representation. It cannot guarantee correctness, fairness, acceptance, or any particular outcome. Review all source facts, assumptions, calculations, and proposal terms. If you choose to use a proposal, review it, download it, and provide it to your mediator. Downloading is not delivery; the product does not automatically deliver proposals. Any optional external transfer is user-initiated to a destination confirmed in the interface and is not proof of mediator receipt.</p>
           </div>
-          <a class="expectations-link" href="#how-it-works">See how it works <span aria-hidden="true">→</span></a>
         </section>
 
         <section class="account-section" id="account" aria-labelledby="account-title">
@@ -2398,20 +2424,6 @@
                 </section>
               </section>
             </section>
-          </div>
-        </section>
-
-        <section class="section steps-section" id="how-it-works" aria-labelledby="steps-title">
-          <div class="steps-panel">
-            <p class="eyebrow">A considered process</p>
-            <h2 id="steps-title">From a pile of papers to a clearer next step.</h2>
-            <div class="steps-grid">
-              <article class="step"><span class="step-index">01</span><h3>Gather</h3><p>Bring together the documents and details you choose to share.</p></article>
-              <article class="step"><span class="step-index">02</span><h3>Organize</h3><p>Review draft information alongside its source and flag what needs attention.</p></article>
-              <article class="step"><span class="step-index">03</span><h3>Consider</h3><p>Explore possible settlement terms, assumptions, and trade-offs for your review.</p></article>
-              <article class="step"><span class="step-index">04</span><h3>Choose</h3><p>Decide whether to revise, share an offer, continue the conversation, or pause.</p></article>
-            </div>
-            <p class="steps-disclaimer">Planned product direction. AI may help organize information; it cannot promise an outcome or replace legal advice.</p>
           </div>
         </section>
 

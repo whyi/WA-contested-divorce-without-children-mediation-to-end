@@ -144,11 +144,21 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
-test("Our approach section is removed while How it works remains available", async ({ page }) => {
+test("Our approach section remains removed after the How it works cleanup", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);
   await expect(page.locator("#approach, a[href='#approach']")).toHaveCount(0);
-  await expect(page.locator("#how-it-works")).toHaveCount(1);
+  for (const link of await page.locator('a[href^="#"]').all()) {
+    const href = await link.getAttribute("href");
+    if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
+  }
+  fixture.verify();
+});
+
+test("How it works section and entry links are removed", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator("#how-it-works, a[href='#how-it-works'], .steps-section, .expectations-link")).toHaveCount(0);
   for (const link of await page.locator('a[href^="#"]').all()) {
     const href = await link.getAttribute("href");
     if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
@@ -165,6 +175,21 @@ test("signed-in header offers Account, Your case and the existing logout action"
     await expect(page.locator("#logout-button")).toBeVisible();
     await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
   }
+  fixture.verify();
+});
+
+test("homepage pricing explains credit options and routes free signup to email entry", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator("#plans")).toBeVisible();
+  await expect(page.locator("#plans")).toContainText("one free successful finalization");
+  await expect(page.locator("#plans")).toContainText("$5");
+  await expect(page.locator("#plans")).toContainText("$8");
+  await expect(page.locator("#account-entry")).toHaveAttribute("href", "#plans");
+  await page.locator("#pricing-signup").click();
+  await expect(page).toHaveURL(`${origin}/?auth=signup`);
+  await expect(page.locator("#email-entry-form")).toBeVisible();
+  await expect(page.locator("#plans")).toBeHidden();
   fixture.verify();
 });
 
