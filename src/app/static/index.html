@@ -6768,6 +6768,17 @@
           return Math.max(1, ...saved.attempts.map(attempt => attempt.ordinal));
         }
 
+        function acceptedCaseDestination(item, saved, closed = false) {
+          if (!saved.accepted_offer_url || (!closed && saved.case.attempts_locked_at)) return null;
+          const target = new URL(saved.accepted_offer_url, window.location.origin);
+          if (target.origin !== window.location.origin || target.pathname !== "/settlement-completion"
+            || target.searchParams.get("case_id") !== item.id
+            || !(target.searchParams.get("asset_attempt") || target.searchParams.get("selection_id"))) {
+            throw new Error("Your final timeline destination could not be verified. Refresh and retry.");
+          }
+          return target;
+        }
+
         async function openFinalCaseCircle(account) {
           let item = account.active_case_count > 0 ? account.cases[0] : null;
           let closed = false;
@@ -6788,15 +6799,8 @@
             throw new Error("Your case could not be verified. Refresh and retry.");
           }
           const ordinal = latestSavedAttemptOrdinal(saved);
-          let target = new URL(`/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}`, window.location.origin);
-          if (saved.accepted_offer_url && (closed || !saved.case.attempts_locked_at)) {
-            target = new URL(saved.accepted_offer_url, window.location.origin);
-            if (target.origin !== window.location.origin || target.pathname !== "/settlement-completion"
-              || target.searchParams.get("case_id") !== item.id
-              || !(target.searchParams.get("asset_attempt") || target.searchParams.get("selection_id"))) {
-              throw new Error("Your final timeline destination could not be verified. Refresh and retry.");
-            }
-          }
+          const target = acceptedCaseDestination(item, saved, closed)
+            || new URL(`/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}`, window.location.origin);
           if (closed) target.searchParams.set("view", "closed");
           window.location.replace(`${target.pathname}${target.search}`);
         }
@@ -6814,7 +6818,11 @@
             || saved.case.closed_at || saved.case.status === "finalized") {
             throw new Error("Your active case could not be verified. Refresh Account and retry.");
           }
-          return latestSavedAttemptOrdinal(saved);
+          const ordinal = latestSavedAttemptOrdinal(saved);
+          const accepted = acceptedCaseDestination(item, saved);
+          return accepted
+            ? { label: "Go to offer accepted page", href: `${accepted.pathname}${accepted.search}` }
+            : { label: `Go to attempt #${ordinal}`, href: `/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}` };
         }
 
         async function loadAccountActiveCase(item) {
@@ -6848,11 +6856,11 @@
           accountActiveCaseList.append(row);
           const refreshAttempt = async () => {
             try {
-              const ordinal = await readAccountActiveCase(item);
-              go.textContent = `Go to attempt #${ordinal}`;
+              const destination = await readAccountActiveCase(item);
+              go.textContent = destination.label;
               accountActiveCaseStatus.textContent = "";
               accountActiveCaseStatus.dataset.kind = "";
-              return ordinal;
+              return destination;
             } catch (error) {
               go.textContent = "Retry latest attempt";
               accountActiveCaseStatus.dataset.kind = "error";
@@ -6866,10 +6874,10 @@
           go.addEventListener("click", async () => {
             if (go.disabled) return;
             go.disabled = true;
-            const ordinal = await refreshAttempt();
-            if (ordinal !== null) {
+            const destination = await refreshAttempt();
+            if (destination !== null) {
               go.disabled = true;
-              window.location.assign(`/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}`);
+              window.location.assign(destination.href);
             }
           });
           await refreshAttempt();
