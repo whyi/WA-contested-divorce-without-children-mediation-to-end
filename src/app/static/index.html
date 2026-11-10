@@ -4349,6 +4349,7 @@
         let caseMediationState = null;
         let caseMediationBusy = false;
         let caseMediationNotesDirty = false;
+        let caseMediationNotesSaving = false;
         let caseMediationTimer = null;
         const caseCounterofferUploads = new WeakMap();
 
@@ -4406,12 +4407,11 @@
             });
           }
           caseAssetElement("settlement-demo-counteroffer-notes").addEventListener("input", () => {
-            clearTimeout(caseMediationTimer);
             caseMediationNotesDirty = true;
             const next = caseAssetElement("settlement-demo-add-counteroffer");
             next.disabled = true;
             next.setAttribute("aria-disabled", "true");
-            caseMediationTimer = setTimeout(() => void saveCaseMediation("response"), 500);
+            scheduleCaseMediationNotesSave();
           });
           caseAssetElement("settlement-demo-counteroffer-file").addEventListener("change", event =>
             void uploadCaseCounteroffer(event.currentTarget.files[0]));
@@ -4537,7 +4537,7 @@
           caseAssetElement("settlement-demo-counteroffer-panel").hidden = !counteroffer;
           const notes = caseAssetElement("settlement-demo-counteroffer-notes");
           if (!caseMediationNotesDirty && document.activeElement !== notes) notes.value = state.notes;
-          notes.disabled = Boolean(caseMediationBusy || !counterofferEditable);
+          notes.disabled = Boolean((caseMediationBusy && !caseMediationNotesSaving) || !counterofferEditable);
           caseAssetElement("settlement-demo-counteroffer-file").disabled = Boolean(caseMediationBusy || !counterofferEditable);
           const fileStatus = caseAssetElement("settlement-demo-counteroffer-file-status");
           fileStatus.replaceChildren();
@@ -4584,14 +4584,25 @@
           caseAssetElement("settlement-demo-response-status").dataset.kind = "";
         }
 
-        async function saveCaseMediation(action, extra = {}) {
+        function scheduleCaseMediationNotesSave() {
+          clearTimeout(caseMediationTimer);
+          caseMediationTimer = setTimeout(() => void saveCaseMediation(
+            "response", {}, { preserveNotesFocus:true },
+          ), 500);
+        }
+
+        async function saveCaseMediation(action, extra = {}, { preserveNotesFocus = false } = {}) {
           if (!caseMediationState || caseMediationBusy) return false;
           if (action === "response" && caseReopenedResponseEditable()) action = "counteroffer_details";
           const status = caseAssetElement("settlement-demo-response-status");
-          const notes = caseAssetElement("settlement-demo-counteroffer-notes").value;
+          const notesInput = caseAssetElement("settlement-demo-counteroffer-notes");
+          const notes = notesInput.value;
           caseMediationBusy = true;
+          caseMediationNotesSaving = preserveNotesFocus;
           for (const panelId of ["settlement-demo-response-preview", "settlement-demo-counteroffer-panel"]) {
-            for (const control of caseAssetElement(panelId).querySelectorAll("input, textarea, button")) control.disabled = true;
+            for (const control of caseAssetElement(panelId).querySelectorAll("input, textarea, button")) {
+              if (!preserveNotesFocus || control !== notesInput) control.disabled = true;
+            }
           }
           status.textContent = "Saving mediation response…";
           try {
@@ -4605,7 +4616,8 @@
               }),
             });
             caseMediationBusy = false;
-            caseMediationNotesDirty = false;
+            caseMediationNotesSaving = false;
+            caseMediationNotesDirty = notesInput.value !== notes;
             if (["response", "response_outcome"].includes(action) && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal) {
               caseWorkspace.accepted_offer_url = caseMediationState.sent && caseMediationState.outcome === "accepted"
                 ? `/settlement-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`
@@ -4613,14 +4625,16 @@
               renderCaseWorkspaceNavigation();
             }
             renderCaseMediation();
+            if (caseMediationNotesDirty) scheduleCaseMediationNotesSave();
             return true;
           } catch (error) {
             caseMediationBusy = false;
+            caseMediationNotesSaving = false;
             if (["response", "counteroffer_details"].includes(action)) caseMediationNotesDirty = true;
             renderCaseMediation();
-            caseAssetElement("settlement-demo-counteroffer-notes").value = notes;
             status.textContent = error instanceof Error ? error.message : "Mediation response was not saved. Your entries remain here; retry.";
             status.dataset.kind = "error";
+            if (preserveNotesFocus && notesInput.value !== notes) scheduleCaseMediationNotesSave();
             return false;
           }
         }

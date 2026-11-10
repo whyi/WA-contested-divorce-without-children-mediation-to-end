@@ -1256,6 +1256,95 @@ for (const limit of [1, 3]) {
   }
 }
 
+for (const reopened of [false, true]) {
+  for (const width of [1280, 390]) {
+    test(`counteroffer autosave retains typing focus and saves in-flight edits: reopened=${reopened} at ${width}px`, async ({ page }) => {
+      const state = {
+        revision:1, attempt_ordinal:1, attempt_limit:1, sent:true, completed:reopened,
+        attempts_locked:reopened, outcome:"counteroffer", notes:"", document_ids:[],
+        sent_filenames:[], downloaded_formats:[], stopped:false,
+      };
+      const pendingSaves = [];
+      const actions = [];
+      let saveCount = 0;
+      const fixture = await installFixtures(page, {
+        authenticated:true,
+        extraReads:{
+          [`/cases/${caseId}/workspace`]:{
+            ...workspace, case:{ ...workspace.case, attempts_locked_at:reopened ? closedAt : null },
+            attempts:[{ ordinal:1, frozen:true, profile:{ ...workspace.case, metadata:{} } }],
+          },
+          [`/cases/${caseId}/asset-mediation/1`]:state,
+        },
+        mutationHandler: async request => {
+          expect(new URL(request.url()).pathname).toBe(`/cases/${caseId}/asset-mediation`);
+          const payload = request.postDataJSON();
+          expect(payload.action).toBe(reopened ? "counteroffer_details" : "response");
+          expect(payload.expected_revision).toBe(state.revision);
+          actions.push(payload.action);
+          const index = saveCount++;
+          if (index < 5) {
+            const result = await new Promise(resolve => pendingSaves.push(resolve));
+            if (result === "fail") return { status:503, body:{ detail:"Notes storage unavailable" } };
+          }
+          state.notes = payload.notes;
+          state.revision++;
+          return { body:state };
+        },
+      });
+      await page.setViewportSize({ width, height:1000 });
+      await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+      const notes = page.locator("#settlement-demo-counteroffer-notes-case");
+      const next = page.locator("#settlement-demo-add-counteroffer-case");
+      await notes.pressSequentially("Initial terms", { delay:35 });
+      await expect.poll(() => pendingSaves.length).toBe(1);
+      await expect(notes).toBeFocused();
+      await expect(notes).toBeEnabled();
+      await expect(next).toBeDisabled();
+      await page.keyboard.type(" plus revision");
+      await expect(notes).toHaveValue("Initial terms plus revision");
+      await page.waitForTimeout(650);
+      expect(saveCount).toBe(1);
+      pendingSaves[0]("ok");
+      await expect.poll(() => pendingSaves.length).toBe(2);
+      await expect(notes).toBeFocused();
+      await expect(next).toBeDisabled();
+      pendingSaves[1]("ok");
+      await expect(next).toBeEnabled();
+      await expect(notes).toBeFocused();
+      await expect.poll(() => state.notes).toBe("Initial terms plus revision");
+      await page.keyboard.type(" unsaved");
+      await expect.poll(() => pendingSaves.length).toBe(3);
+      await expect(notes).toBeFocused();
+      pendingSaves[2]("fail");
+      await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("Notes storage unavailable");
+      await expect(next).toBeDisabled();
+      await expect(notes).toBeFocused();
+      await expect(notes).toHaveValue("Initial terms plus revision unsaved");
+      await page.keyboard.type(" retried");
+      await expect.poll(() => pendingSaves.length).toBe(4);
+      await page.keyboard.type(" during failed save");
+      pendingSaves[3]("fail");
+      await expect(notes).toHaveValue("Initial terms plus revision unsaved retried during failed save");
+      await expect.poll(() => pendingSaves.length).toBe(5);
+      await expect(next).toBeDisabled();
+      await expect(notes).toBeFocused();
+      pendingSaves[4]("ok");
+      await expect(next).toBeEnabled();
+      await expect(notes).toBeFocused();
+      await expect.poll(() => state.notes).toBe("Initial terms plus revision unsaved retried during failed save");
+      await next.click();
+      await expect(page.locator("#app-dialog-title")).toHaveText(reopened ? "Subscription required" : "More attempts need credits");
+      await page.locator("#app-dialog-confirm").click();
+      expect(actions).not.toContain("continue");
+      await page.reload();
+      await expect(notes).toHaveValue("Initial terms plus revision unsaved retried during failed save");
+      await expect(next).toBeEnabled();
+      fixture.verify();
+    });
+  }
+}
+
 test("reopened outcome save failure preserves the saved selection and permits retry", async ({ page }) => {
   let failSave = true;
   const state = {
