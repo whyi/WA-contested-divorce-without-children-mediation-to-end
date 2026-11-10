@@ -32,3 +32,6 @@
 - Verify expired, malformed, unavailable, and network-failed session responses
   remove provisional controls without bypassing protected-content checks.
 - Preserve existing signup-visibility and failed-logout regressions.
+- Mock successful logout with the API's CSRF-cookie deletion header and assert
+  the cookie is gone before checking signed-out navigation with session
+  verification still pending.

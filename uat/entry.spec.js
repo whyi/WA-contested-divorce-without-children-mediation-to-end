@@ -65,7 +65,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
         await route.abort("blockedbyclient");
         return;
       }
-      await route.fulfill({ status: result.status || 200, contentType: result.contentType || "application/json", body: typeof result.body === "string" ? result.body : JSON.stringify(result.body) });
+      await route.fulfill({ status: result.status || 200, headers: result.headers, contentType: result.contentType || "application/json", body: typeof result.body === "string" ? result.body : JSON.stringify(result.body) });
       return;
     } else if (request.method() !== "GET") {
       unexpected.push(`${request.method()} ${path}`);
@@ -2807,7 +2807,11 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
       posted.push(request.headers()["x-csrf-token"]);
       fixture.signOut();
       loggedOut = true;
-      return { status: 204, body: "" };
+      return {
+        status: 204,
+        headers: { "Set-Cookie": "auth_csrf=; Max-Age=0; Path=/" },
+        body: "",
+      };
     },
   });
   await page.route("**/api/v1/dashboard/status", async (route) => {
@@ -2822,6 +2826,7 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
   await expect(page.locator("#account-entry")).toBeHidden();
   await page.locator("#logout-button").click();
   await expect(page).toHaveURL(`${origin}/`);
+  expect((await page.context().cookies(origin)).some(cookie => cookie.name === "auth_csrf")).toBe(false);
   await expect(page.locator("#login-entry")).toBeVisible();
   await expectGetStartedHidden(page);
   release();
