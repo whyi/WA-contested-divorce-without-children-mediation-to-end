@@ -5200,7 +5200,7 @@
 
         function selectForm(selected, clearStatus = true) {
           if (selected === "signup" || selected === "login") authEmailIntent = selected;
-          const signupSelected = selected === "register";
+          const signupSelected = selected === "register" || selected === "signup";
           const loginSelected = selected === "password";
           const resetSelected = selected === "reset";
           signupForm.hidden = !signupSelected;
@@ -5209,7 +5209,8 @@
           resetForm.hidden = !resetSelected;
           forgotPassword.hidden = !loginSelected;
           document.getElementById("auth-entry-content").hidden = signupSelected || loginSelected || resetSelected || selected === "verify";
-          document.getElementById("auth-back").hidden = !signupSelected && !loginSelected && !resetSelected && selected !== "verify";
+          document.getElementById("auth-back").hidden = selected === "signup"
+            || (!signupSelected && !loginSelected && !resetSelected && selected !== "verify");
           document.getElementById("auth-back").textContent = loginSelected ? "Use a different account" : "Back";
           document.getElementById("auth-back").setAttribute("aria-label", loginSelected ? "Use a different account" : "Back to login or signup");
           document.getElementById("account-title").textContent = signupSelected
@@ -13197,6 +13198,12 @@
           document.getElementById("signup-first-name").focus();
         });
         document.getElementById("auth-use-login").addEventListener("click", () => {
+          if (!signupEmail.checkValidity()) {
+            resetSignupVerification();
+            selectForm("login");
+            document.getElementById("entry-email").focus();
+            return;
+          }
           document.getElementById("login-email").value = signupEmail.value;
           resetSignupVerification();
           selectForm("password");

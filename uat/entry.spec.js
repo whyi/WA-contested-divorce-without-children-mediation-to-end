@@ -2709,6 +2709,54 @@ test("Google only starts after explicit agreement", async ({ page }) => {
   fixture.verify();
 });
 
+for (const width of [1280, 390, 320]) {
+  test(`Get started opens the complete signup form without Back at ${width}px`, async ({ page }) => {
+    const fixture = await installFixtures(page);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(origin);
+    await page.locator("#account-entry").click();
+    await expect(page).toHaveURL(`${origin}/?auth=signup`);
+    for (const refresh of [false, true]) {
+      if (refresh) await page.reload();
+      await expect(page.locator("#account-title")).toHaveText("Sign up for Casework");
+      await expect(page.locator("#email-entry-form")).toBeHidden();
+      await expect(page.locator("#signup-form")).toBeVisible();
+      await expect(page.locator("#auth-back")).toBeHidden();
+      for (const id of ["signup-email", "signup-first-name", "signup-last-name", "signup-password", "signup-verify-email", "signup-submit"]) {
+        await expect(page.locator(`#${id}`)).toBeVisible();
+      }
+      await expect(page.locator("#signup-submit")).toBeDisabled();
+    }
+    fixture.verify();
+  });
+}
+
+test("signup from login preserves Back and the entered email", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(`${origin}/?auth=login`);
+  await page.locator("#entry-email").fill("new@example.com");
+  await page.locator("#email-entry-form button").click();
+  await page.locator("#auth-create-account").click();
+  await expect(page.locator("#account-title")).toHaveText("Sign up for Casework");
+  await expect(page.locator("#signup-email")).toHaveValue("new@example.com");
+  await expect(page.locator("#auth-back")).toBeVisible();
+  await page.locator("#auth-back").click();
+  await expect(page.locator("#email-entry-form")).toBeVisible();
+  fixture.verify();
+});
+
+test("direct signup can switch to login before entering an email", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(`${origin}/?auth=signup`);
+  await page.locator("#auth-use-login").click();
+  await expect(page.locator("#email-entry-form")).toBeVisible();
+  await page.locator("#entry-email").fill("existing@example.com");
+  await page.locator("#email-entry-form button").click();
+  await expect(page.locator("#login-form")).toBeVisible();
+  await expect(page.locator("#login-email")).toHaveValue("existing@example.com");
+  fixture.verify();
+});
+
 test("email signup requires verified five-minute token and all fields, then opens Account", async ({ page }) => {
   const posted = [];
   const fixture = await installFixtures(page, {
@@ -2725,8 +2773,7 @@ test("email signup requires verified five-minute token and all fields, then open
     },
   });
   await page.goto(`${origin}/?auth=signup`);
-  await page.locator("#entry-email").fill("new@example.com");
-  await page.locator("#email-entry-form button").click();
+  await page.locator("#signup-email").fill("new@example.com");
   await expect(page.locator("#signup-form")).toBeVisible();
   await expect(page.locator("#signup-email")).toHaveValue("new@example.com");
   await page.locator("#signup-first-name").fill("Synthetic");
@@ -2773,8 +2820,7 @@ test("changing verified email or waiting past expiry disables signup again", asy
   });
   await page.clock.install();
   await page.goto(`${origin}/?auth=signup`);
-  await page.locator("#entry-email").fill("new@example.com");
-  await page.locator("#email-entry-form button").click();
+  await page.locator("#signup-email").fill("new@example.com");
   await page.locator("#signup-first-name").fill("Test");
   await page.locator("#signup-last-name").fill("User");
   await page.locator("#signup-password").fill("synthetic-password-not-a-secret");
