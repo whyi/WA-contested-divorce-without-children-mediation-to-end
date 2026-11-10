@@ -92,11 +92,16 @@ class SignedInHomeTests(unittest.TestCase):
         self.assertIn("showPublicPage();", body)
         for control in ('"hero-primary-action"', '"closing-account-cta"'):
             self.assertIn(control, body)
-        self.assertIn('id="your-case-entry" href="/"', PAGE)
+        self.assertIn('id="your-case-entry" href="/?view=case"', PAGE)
         self.assertIn('document.getElementById("your-case-entry").hidden = false', _function_body("showSignedInNavigation"))
-        self.assertIn('link.href = "/"', body)
+        self.assertIn('link.href = "/?view=case"', body)
         self.assertIn('document.getElementById("account").hidden = true', body)
         self.assertIn("accountToolsLink.hidden = false", body)
+        final_circle = _function_body("openFinalCaseCircle")
+        self.assertIn('settlementApi("/api/v1/closed-cases")', final_circle)
+        self.assertIn("latestSavedAttemptOrdinal(saved)", final_circle)
+        self.assertIn('target.searchParams.set("view", "closed")', final_circle)
+        self.assertNotIn("showAccountTools", final_circle)
 
 
 class AccountPlanCardTests(unittest.TestCase):
