@@ -65,7 +65,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
         await route.abort("blockedbyclient");
         return;
       }
-      await route.fulfill({ status: result.status || 200, contentType: result.contentType || "application/json", body: typeof result.body === "string" ? result.body : JSON.stringify(result.body) });
+      await route.fulfill({ status: result.status || 200, headers: result.headers, contentType: result.contentType || "application/json", body: typeof result.body === "string" ? result.body : JSON.stringify(result.body) });
       return;
     } else if (request.method() !== "GET") {
       unexpected.push(`${request.method()} ${path}`);
@@ -236,6 +236,133 @@ test("signed-in account can navigate to and view the pricing page", async ({ pag
   fixture.verify();
 });
 
+test.describe("immediate session navigation", () => {
+  const accountControls = ["account-tools-link", "your-case-entry", "logout-button"];
+  const sessionHint = { name: "auth_csrf", value: "synthetic-navigation-hint", url: origin };
+
+  test("header renders before the main application script executes", async ({ page }) => {
+    await page.context().addCookies([sessionHint]);
+    let scripts = 0;
+    const headerOnlyHtml = html.replace(/<script>[\s\S]*?<\/script>/g, (script) =>
+      ++scripts === 3 ? "" : script,
+    );
+    await page.route("**/*", (route) => route.fulfill({ contentType: "text/html", body: headerOnlyHtml }));
+    await page.goto(origin);
+    for (const id of accountControls) await expect(page.locator(`#${id}`)).toBeVisible();
+    await expect(page.locator("#login-entry")).toBeHidden();
+    await expect(page.locator("#account-entry")).toBeHidden();
+    await expect(page.locator("body")).not.toHaveClass(/authenticated-view/);
+  });
+
+  for (const width of [1280, 800, 390, 320]) {
+    for (const path of ["/?view=home", "/pricing"]) {
+      test(`account controls render before verification and remain stable on refresh at ${path} ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.context().addCookies([sessionHint]);
+        const fixture = await installFixtures(page, { authenticated: true, hasCase: false });
+        let release;
+        const pending = new Promise((resolve) => { release = resolve; });
+        await page.route("**/api/v1/dashboard/status", async (route) => {
+          await pending;
+          await route.fallback();
+        });
+        await page.goto(`${origin}${path}`);
+        const controlBounds = async () => Promise.all(accountControls.map((id) => page.locator(`#${id}`).boundingBox()));
+        try {
+          for (const id of accountControls) await expect(page.locator(`#${id}`)).toBeVisible();
+          await expect(page.locator("body")).toHaveAttribute("data-navigation-pending", "true");
+          await expectGetStartedHidden(page);
+          await expect(page.locator("#login-entry")).toBeHidden();
+          const before = await controlBounds();
+          await page.reload();
+          for (const id of accountControls) await expect(page.locator(`#${id}`)).toBeVisible();
+          expect(await controlBounds()).toEqual(before);
+          release();
+          await expect(page.locator("body")).not.toHaveAttribute("data-navigation-pending");
+          expect(await controlBounds()).toEqual(before);
+        } finally {
+          release();
+        }
+        fixture.verify();
+      });
+    }
+  }
+
+  for (const failure of ["expired", "unavailable", "network", "malformed"]) {
+    test(`a ${failure} session clears provisional account controls`, async ({ page }) => {
+      await page.context().addCookies([sessionHint]);
+      const fixture = await installFixtures(page);
+      let release;
+      const pending = new Promise((resolve) => { release = resolve; });
+      await page.route("**/api/v1/dashboard/status", async (route) => {
+        await pending;
+        if (failure === "network") await route.abort("failed");
+        else await route.fulfill({
+          status: failure === "expired" ? 401 : failure === "malformed" ? 200 : 503,
+          contentType: "application/json",
+          body: JSON.stringify(failure === "malformed" ? { data: {} } : { detail: "Session unavailable." }),
+        });
+      });
+      await page.goto(`${origin}/?view=home`);
+      try {
+        await expect(page.locator("#logout-button")).toBeVisible();
+      } finally {
+        release();
+      }
+      for (const id of accountControls) await expect(page.locator(`#${id}`)).toBeHidden();
+      await expect(page.locator("#login-entry")).toBeVisible();
+      if (failure === "expired") await expect(page.locator("#account-entry")).toBeVisible();
+      else await expect(page.locator("#dashboard-error")).toBeVisible();
+      fixture.verify();
+    });
+  }
+
+  test("navigation hint never reveals protected working content before verification", async ({ page }) => {
+    await page.context().addCookies([sessionHint]);
+    const fixture = await installFixtures(page, { authenticated: true });
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    await page.route("**/api/v1/dashboard/status", async (route) => {
+      await pending;
+      await route.fallback();
+    });
+    await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+    try {
+      for (const id of accountControls) await expect(page.locator(`#${id}`)).toBeVisible();
+      await expect(page.locator("main")).toBeHidden();
+      expect(fixture.requests.some((request) => request.includes(`/cases/${caseId}/`))).toBe(false);
+    } finally {
+      release();
+    }
+    await expect(page.locator("html")).not.toHaveAttribute("data-session-checking");
+    await expect(page.locator("#case-assets-view")).toBeVisible();
+    fixture.verify();
+  });
+
+  test("successful logout removes the hint and keeps account controls hidden after refresh", async ({ page }) => {
+    await page.context().addCookies([sessionHint]);
+    const fixture = await installFixtures(page, { authenticated: true, hasCase: false });
+    await page.route("**/api/auth/logout", async (route) => {
+      fixture.signOut();
+      await route.fulfill({
+        contentType: "application/json",
+        headers: { "Set-Cookie": "auth_csrf=; Max-Age=0; Path=/" },
+        body: "{}",
+      });
+    });
+    await page.goto(`${origin}/?view=home`);
+    await expect(page.locator("body")).not.toHaveAttribute("data-navigation-pending");
+    await page.locator("#logout-button").click();
+    await expect(page).toHaveURL(`${origin}/`);
+    await expect(page.locator("#account-entry")).toBeVisible();
+    await page.reload();
+    for (const id of accountControls) await expect(page.locator(`#${id}`)).toBeHidden();
+    await expect(page.locator("#login-entry")).toBeVisible();
+    await expect(page.locator("#account-entry")).toBeVisible();
+    fixture.verify();
+  });
+});
+
 test("Get started stays hidden until the public homepage session check confirms sign-out", async ({ page }) => {
   const fixture = await installFixtures(page, { dashboardDelay: 250 });
   await page.goto(origin);
@@ -340,6 +467,7 @@ test.describe("Get started visibility contract", () => {
   });
 
   test("failed logout never restores the signup CTA", async ({ page }) => {
+    await page.context().addCookies([{ name: "auth_csrf", value: "synthetic-navigation-hint", url: origin }]);
     const fixture = await installFixtures(page, {
       authenticated: true,
       mutationHandler: async (request) => new URL(request.url()).pathname === "/api/auth/logout"
@@ -2679,7 +2807,11 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
       posted.push(request.headers()["x-csrf-token"]);
       fixture.signOut();
       loggedOut = true;
-      return { status: 204, body: "" };
+      return {
+        status: 204,
+        headers: { "Set-Cookie": "auth_csrf=; Max-Age=0; Path=/" },
+        body: "",
+      };
     },
   });
   await page.route("**/api/v1/dashboard/status", async (route) => {
@@ -2694,6 +2826,7 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
   await expect(page.locator("#account-entry")).toBeHidden();
   await page.locator("#logout-button").click();
   await expect(page).toHaveURL(`${origin}/`);
+  expect((await page.context().cookies(origin)).some(cookie => cookie.name === "auth_csrf")).toBe(false);
   await expect(page.locator("#login-entry")).toBeVisible();
   await expectGetStartedHidden(page);
   release();
