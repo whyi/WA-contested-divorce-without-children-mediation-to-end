@@ -184,6 +184,116 @@ test("Get started stays hidden until the public homepage session check confirms 
   fixture.verify();
 });
 
+async function expectGetStartedHidden(page) {
+  const entry = page.locator("#account-entry");
+  await expect(entry).toBeHidden();
+  await entry.evaluate((element) => element.focus());
+  await expect(entry).not.toBeFocused();
+  await expect(page.getByRole("link", { name: /^Get started\b/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Get started\b/i })).toHaveCount(0);
+}
+
+test.describe("Get started visibility contract", () => {
+  for (const width of [1280, 390, 320]) {
+    test(`legacy hash authentication is not the homepage at ${width}px`, async ({ page }) => {
+      const fixture = await installFixtures(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${origin}/#account`);
+      await expect(page.locator("#email-entry-form")).toBeVisible();
+      await expect.poll(() => fixture.requests).toContain("GET /api/v1/dashboard/status");
+      await page.waitForLoadState("networkidle");
+      await expectGetStartedHidden(page);
+      fixture.verify();
+    });
+  }
+
+  for (const failure of ["unconfigured", "unavailable", "server error", "malformed", "network"]) {
+    test(`session verification ${failure} never enables signup`, async ({ page }) => {
+      const fixture = await installFixtures(page);
+      await page.route("**/api/v1/dashboard/status", async (route) => {
+        if (failure === "network") {
+          await route.abort("failed");
+          return;
+        }
+        await route.fulfill({
+          status: failure === "malformed" ? 200 : failure === "server error" ? 500 : 503,
+          contentType: "application/json",
+          body: JSON.stringify(failure === "malformed" ? { data: {} } : {
+            detail: failure === "unconfigured"
+              ? "Authentication is not configured." : "Session verification unavailable.",
+          }),
+        });
+      });
+      await page.goto(origin);
+      await page.waitForLoadState("networkidle");
+      await expectGetStartedHidden(page);
+      if (failure !== "unconfigured") await expect(page.locator("#dashboard-error")).toBeVisible();
+      fixture.verify();
+    });
+  }
+
+  for (const authenticated of [false, true]) {
+    test(`pending session stays hidden before ${authenticated ? "signed-in" : "signed-out"} result`, async ({ page }) => {
+      const fixture = await installFixtures(page, { authenticated });
+      let release;
+      const pending = new Promise((resolve) => { release = resolve; });
+      await page.route("**/api/v1/dashboard/status", async (route) => {
+        await pending;
+        await route.fallback();
+      });
+      await page.goto(`${origin}/?view=home`);
+      await expectGetStartedHidden(page);
+      release();
+      if (authenticated) {
+        await expect(page.locator("#logout-button")).toBeVisible();
+        await expectGetStartedHidden(page);
+      } else {
+        await expect(page.locator("#account-entry")).toBeVisible();
+        await expect(page.locator("#account-entry")).toHaveAttribute("href", "/?auth=signup");
+        await page.locator("#account-entry").focus();
+        await expect(page.locator("#account-entry")).toBeFocused();
+        await page.locator("#account-entry").click();
+        await expect(page).toHaveURL(`${origin}/?auth=signup`);
+        await expectGetStartedHidden(page);
+      }
+      fixture.verify();
+    });
+  }
+
+  test("successful login keeps signup hidden through homepage, reload, and Account navigation", async ({ page }) => {
+    const fixture = await installFixtures(page, { hasCase: false });
+    await signIn(page);
+    await expect(page.locator("#case-create-page")).toBeVisible();
+    await expectGetStartedHidden(page);
+    await page.goto(`${origin}/?view=home`);
+    await expect(page.locator("#logout-button")).toBeVisible();
+    await expectGetStartedHidden(page);
+    await page.reload();
+    await expect(page.locator("#logout-button")).toBeVisible();
+    await expectGetStartedHidden(page);
+    await page.locator("#account-tools-link").click();
+    await expect(page.locator("#account-profile")).toBeVisible();
+    await expectGetStartedHidden(page);
+    fixture.verify();
+  });
+
+  test("failed logout never restores the signup CTA", async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true,
+      mutationHandler: async (request) => new URL(request.url()).pathname === "/api/auth/logout"
+        ? { status: 503, body: { detail: "Logout unavailable." } } : null,
+    });
+    await page.goto(`${origin}/?view=home`);
+    await page.locator("#logout-button").click();
+    await expect(page.locator("#app-dialog")).toBeVisible();
+    await expect(page.locator("#app-dialog-description")).toHaveText("Log out failed. Please retry.");
+    await expectGetStartedHidden(page);
+    await page.locator("#app-dialog-confirm").click();
+    await expect(page.locator("#logout-button")).toBeEnabled();
+    fixture.verify();
+  });
+});
+
 test("closed-case Account actions place View before Reopen and Export", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
@@ -717,6 +827,11 @@ for (const width of [1280, 901, 900, 851, 850, 601, 600, 421, 420, 390, 320]) {
             expectedPath = "/";
           }
           await expect(page).toHaveURL(`${origin}${expectedPath}`);
+          if (!signedIn && ["/", "/?view=home"].includes(expectedPath)) {
+            await expect(page.locator("#account-entry")).toBeVisible();
+          } else {
+            await expectGetStartedHidden(page);
+          }
           if (path.startsWith(`/settlement-completion?case_id=`)) {
             await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
           }
@@ -1040,6 +1155,9 @@ test("changing verified email or waiting past expiry disables signup again", asy
 
 test("top navigation logout revokes session with CSRF and returns to signed-out home", async ({ page }) => {
   let fixture;
+  let loggedOut = false;
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
   const posted = [];
   fixture = await installFixtures(page, {
     authenticated: true,
@@ -1047,8 +1165,13 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
       if (new URL(request.url()).pathname !== "/api/auth/logout") return null;
       posted.push(request.headers()["x-csrf-token"]);
       fixture.signOut();
+      loggedOut = true;
       return { status: 204, body: "" };
     },
+  });
+  await page.route("**/api/v1/dashboard/status", async (route) => {
+    if (loggedOut) await pending;
+    await route.fallback();
   });
   await page.context().addCookies([{ name:"auth_csrf", value:"synthetic-csrf", url:origin }]);
   await page.goto(`${origin}/?view=home`);
@@ -1059,6 +1182,8 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
   await page.locator("#logout-button").click();
   await expect(page).toHaveURL(`${origin}/`);
   await expect(page.locator("#login-entry")).toBeVisible();
+  await expectGetStartedHidden(page);
+  release();
   await expect(page.locator("#account-entry")).toBeVisible();
   await expect(page.locator("#logout-button")).toBeHidden();
   expect(posted).toEqual(["synthetic-csrf"]);
