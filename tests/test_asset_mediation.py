@@ -119,11 +119,11 @@ class AssetMediationTests(unittest.TestCase):
 
     def test_paid_continuation_creates_one_next_attempt_and_preserves_prior_response(self):
         self.send()
-        self.update("response", outcome="counteroffer", notes="Received proposal")
+        self.update("response", outcome="counteroffer", notes="Received proposal " * 10)
         with patch("app.asset_mediation.attachment_limit", return_value=100):
             next_state = self.update("continue")
             self.assertEqual(next_state.attempt_ordinal, 2)
-            self.assertEqual(next_state.notes, "Received proposal")
+            self.assertEqual(next_state.notes, "Received proposal " * 10)
             retry = self.update("continue")
             self.assertEqual(retry.attempt_ordinal, 2)
         attempts = self.db.scalars(select(SettlementNegotiationAttempt).order_by(SettlementNegotiationAttempt.attempt_ordinal)).all()
@@ -150,6 +150,25 @@ class AssetMediationTests(unittest.TestCase):
         self.assertEqual(self.case.closed_reason, "stopped")
         self.assertIsNotNone(self.case.closed_at)
         self.assertIn("asset_overview", self.case.metadata_json)
+
+    def test_counteroffer_continuation_requires_150_trimmed_characters_or_saved_file(self):
+        self.send()
+        with patch("app.asset_mediation.attachment_limit", return_value=100):
+            for notes in ("", "a", "a" * 149, " " + "a" * 149 + " "):
+                self.update("response", outcome="counteroffer", notes=notes)
+                with self.assertRaises(HTTPException) as error:
+                    self.update("continue")
+                self.assertEqual(error.exception.status_code, 422)
+            self.update("response", outcome="counteroffer", notes=" " + "\U0001f600" * 150 + " ")
+            result = self.update("continue")
+            self.assertEqual(result.attempt_ordinal, 2)
+
+    def test_counteroffer_continuation_accepts_saved_file_without_long_notes(self):
+        self.send()
+        self.update("response", outcome="counteroffer", notes="a")
+        self.upload(uuid4(), "Counteroffer.pdf", quota_fixtures.PDF)
+        with patch("app.asset_mediation.attachment_limit", return_value=100):
+            self.assertEqual(self.update("continue").attempt_ordinal, 2)
 
     def test_reopened_accepted_case_can_close_again_without_unlocking_attempts(self):
         from app.case_lifecycle import reopen_case

@@ -36,6 +36,7 @@ from app.validation import UploadValidationError, validate_upload
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/asset-mediation", tags=["asset mediation"])
 KEY = "asset_mediation"
+MIN_COUNTEROFFER_NOTES_LENGTH = 150
 storage = ObjectStorage()
 
 
@@ -350,8 +351,8 @@ def update_mediation_state(
                     raise HTTPException(status_code=409, detail="Record a counteroffer or rejection first.")
                 if ordinal >= state.attempt_limit:
                     raise HTTPException(status_code=402, detail="Your plan's attempt limit is reached. Purchase credits to continue.")
-                if state.outcome == "counteroffer" and not state.notes.strip() and not state.document_ids:
-                    raise HTTPException(status_code=422, detail="Add counteroffer notes or a file before continuing.")
+                if state.outcome == "counteroffer" and len(state.notes.strip()) < MIN_COUNTEROFFER_NOTES_LENGTH and not state.document_ids:
+                    raise HTTPException(status_code=422, detail="Enter at least 150 characters in counteroffer notes or attach a counteroffer file before continuing.")
                 next_selection = state.selection.model_copy(update={"attempt_ordinal": ordinal + 1})
                 _new_attempt(db, case, user, ordinal + 1, next_selection, latest)
                 state = MediationState(

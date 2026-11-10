@@ -4350,6 +4350,7 @@
         let caseMediationBusy = false;
         let caseMediationNotesDirty = false;
         let caseMediationNotesSaving = false;
+        let caseMediationSaveFailed = false;
         let caseMediationTimer = null;
         const caseCounterofferUploads = new WeakMap();
 
@@ -4408,9 +4409,8 @@
           }
           caseAssetElement("settlement-demo-counteroffer-notes").addEventListener("input", () => {
             caseMediationNotesDirty = true;
-            const next = caseAssetElement("settlement-demo-add-counteroffer");
-            next.disabled = true;
-            next.setAttribute("aria-disabled", "true");
+            caseMediationSaveFailed = false;
+            updateCaseCounterofferNext();
             scheduleCaseMediationNotesSave();
           });
           caseAssetElement("settlement-demo-counteroffer-file").addEventListener("change", event =>
@@ -4420,8 +4420,7 @@
               || caseMediationState.stopped || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized") return;
             clearTimeout(caseMediationTimer);
             if (caseMediationState.outcome === "counteroffer") {
-              if (!caseAssetElement("settlement-demo-counteroffer-notes").value.trim()
-                && !caseMediationState.document_ids.length) return;
+              if (!caseCounterofferReady() || caseMediationSaveFailed) return;
               if (!await saveCaseMediation("response")) return;
             }
             if (caseReopenedResponseEditable()) {
@@ -4477,6 +4476,7 @@
         async function loadCaseMediation() {
           caseMediationState = null;
           caseMediationNotesDirty = false;
+          caseMediationSaveFailed = false;
           const status = caseAssetElement("settlement-demo-response-status");
           status.textContent = "Loading saved mediation response…";
           try {
@@ -4549,16 +4549,14 @@
             link.textContent = file?.original_filename || "Saved counteroffer attachment";
             fileStatus.append(link, document.createTextNode(" "));
           }
-          const counterofferNext = caseAssetElement("settlement-demo-add-counteroffer");
-          counterofferNext.hidden = !counteroffer;
-          counterofferNext.disabled = Boolean(caseMediationBusy || caseMediationNotesDirty || !counterofferEditable
-            || (!state.notes.trim() && !state.document_ids.length));
-          counterofferNext.setAttribute("aria-disabled", String(counterofferNext.disabled));
+          updateCaseCounterofferNext();
           const limit = `Your ${state.attempt_limit === 1 ? "Free" : "paid"} plan allows ${state.attempt_limit} attempt${state.attempt_limit === 1 ? "" : "s"}.`;
           caseAssetElement("settlement-demo-counteroffer-limit").hidden = true;
-          caseAssetElement("settlement-demo-counteroffer-help").textContent = state.attempt_ordinal >= state.attempt_limit
+          const help = caseAssetElement("settlement-demo-counteroffer-help");
+          help.textContent = state.attempt_ordinal >= state.attempt_limit
             ? `${limit} The attempt limit is reached.`
             : "Notes and attachments are saved to your case. They are not automatically sent or analyzed.";
+          help.textContent += " Enter at least 150 characters (excluding leading and trailing spaces), or attach a counteroffer file. Next saves your latest notes before continuing.";
           caseAssetElement("settlement-demo-rejection-choices").hidden = state.outcome !== "rejected" || reopenedResponse;
           caseAssetElement("settlement-demo-rejection-limit").textContent = canContinue ? limit : `${limit} The attempt limit is reached.`;
           const rejectedNext = caseAssetElement("settlement-demo-next-attempt");
@@ -4582,6 +4580,24 @@
                   : state.sent ? "Mediator delivery recorded. This attempt is read-only. Select the response you received."
                     : "Download both documents for the same scenario, review them and deliver them to your mediator before confirming.";
           caseAssetElement("settlement-demo-response-status").dataset.kind = "";
+        }
+
+        function caseCounterofferReady() {
+          return Array.from(caseAssetElement("settlement-demo-counteroffer-notes").value.trim()).length >= 150
+            || caseMediationState.document_ids.length > 0;
+        }
+
+        function updateCaseCounterofferNext() {
+          if (!caseMediationState) return;
+          const editable = caseMediationState.sent && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal
+            && !closedCaseViewMode && !caseWorkspace.case.closed_at
+            && caseWorkspace.case.status !== "finalized" && !caseMediationState.stopped
+            && ((!caseMediationState.attempts_locked && !caseWorkspace.case.attempts_locked_at)
+              || caseReopenedResponseEditable());
+          const next = caseAssetElement("settlement-demo-add-counteroffer");
+          next.hidden = caseMediationState.outcome !== "counteroffer";
+          next.disabled = Boolean(!editable || caseMediationBusy || caseMediationSaveFailed || !caseCounterofferReady());
+          next.setAttribute("aria-disabled", String(next.disabled));
         }
 
         function scheduleCaseMediationNotesSave() {
@@ -4617,6 +4633,7 @@
             });
             caseMediationBusy = false;
             caseMediationNotesSaving = false;
+            caseMediationSaveFailed = false;
             caseMediationNotesDirty = notesInput.value !== notes;
             if (["response", "response_outcome"].includes(action) && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal) {
               caseWorkspace.accepted_offer_url = caseMediationState.sent && caseMediationState.outcome === "accepted"
@@ -4630,6 +4647,7 @@
           } catch (error) {
             caseMediationBusy = false;
             caseMediationNotesSaving = false;
+            caseMediationSaveFailed = true;
             if (["response", "counteroffer_details"].includes(action)) caseMediationNotesDirty = true;
             renderCaseMediation();
             status.textContent = error instanceof Error ? error.message : "Mediation response was not saved. Your entries remain here; retry.";

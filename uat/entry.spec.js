@@ -5,6 +5,7 @@ const origin = "https://casework-regression.invalid";
 const html = readFileSync(new URL("../src/app/static/index.html", import.meta.url), "utf8");
 const caseId = "00000000-0000-4000-8000-000000000071";
 const closedAt = "2026-10-25T18:30:00Z";
+const eligibleCounterofferNotes = "N".repeat(150);
 const workspace = {
   case: {
     id: caseId, status: "draft", metadata_json: { case_title: "Synthetic regression case" },
@@ -1031,7 +1032,7 @@ for (const plan of ["free", "paid"]) {
     test(`reopened outcome persists and nonaccepted Next requires subscription: ${plan} at ${width}px`, async ({ page }) => {
       const state = {
         revision: 3, attempt_ordinal: 2, attempt_limit: 3, sent: true, outcome: "accepted",
-        notes: "Frozen counteroffer notes", document_ids: [], sent_filenames: ["sent.docx", "sent.xlsx"],
+        notes: eligibleCounterofferNotes, document_ids: [], sent_filenames: ["sent.docx", "sent.xlsx"],
         downloaded_formats: ["docx", "xlsx"], completed: true, attempts_locked: true,
       };
       const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=2`;
@@ -1129,7 +1130,7 @@ for (const plan of ["free", "paid"]) {
       await expect(page).toHaveURL(`${origin}${completionUrl}`);
       await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
       expect(saves).toBe(beforeNext);
-      expect(state.notes).toBe("Frozen counteroffer notes");
+      expect(state.notes).toBe(eligibleCounterofferNotes);
       fixture.verify();
     });
   }
@@ -1140,7 +1141,7 @@ for (const limit of [1, 3]) {
     test(`reopened final counteroffer restores editable details: ${limit} attempts at ${width}px`, async ({ page }) => {
       const state = {
         revision:3, attempt_ordinal:limit, attempt_limit:limit, sent:true, completed:true,
-        attempts_locked:true, outcome:"accepted", notes:"Previously saved counteroffer",
+        attempts_locked:true, outcome:"accepted", notes:eligibleCounterofferNotes,
         document_ids:["original-file"], sent_filenames:["sent.docx", "sent.xlsx"],
         downloaded_formats:["docx", "xlsx"], stopped:false,
       };
@@ -1199,7 +1200,7 @@ for (const limit of [1, 3]) {
       const notes = panel.locator("textarea");
       const file = panel.locator("input[type=file]");
       const next = panel.getByRole("button", { name:"Next", exact:true });
-      await expect(notes).toHaveValue("Previously saved counteroffer");
+      await expect(notes).toHaveValue(eligibleCounterofferNotes);
       await expect(notes).toBeEnabled();
       await expect(file).toBeEnabled();
       await expect(panel.getByRole("link", { name:"Original counteroffer.pdf" })).toBeVisible();
@@ -1208,23 +1209,22 @@ for (const limit of [1, 3]) {
       await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
       expect(await next.evaluate(element => element === element.parentElement.lastElementChild)).toBe(true);
       failSave = true;
-      await notes.fill("Retryable edited notes");
-      await expect(next).toBeDisabled();
+      await notes.fill(eligibleCounterofferNotes + " retry");
       await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("Counteroffer notes were not saved");
-      await expect(notes).toHaveValue("Retryable edited notes");
+      await expect(notes).toHaveValue(eligibleCounterofferNotes + " retry");
       await expect(next).toBeDisabled();
       failSave = false;
-      await notes.fill("Saved revised counteroffer");
+      await notes.fill(eligibleCounterofferNotes + " revised");
       await expect(next).toBeEnabled();
-      await expect.poll(() => state.notes).toBe("Saved revised counteroffer");
-      await notes.fill("Edited before switching response");
+      await expect.poll(() => state.notes).toBe(eligibleCounterofferNotes + " revised");
+      await notes.fill(eligibleCounterofferNotes + " switched");
       await outcomes.locator('input[value="rejected"]').check();
-      await expect.poll(() => state.notes).toBe("Edited before switching response");
+      await expect.poll(() => state.notes).toBe(eligibleCounterofferNotes + " switched");
       await expect.poll(() => state.outcome).toBe("rejected");
       await outcomes.locator('input[value="counteroffer"]').check();
       await expect(next).toBeEnabled();
       await page.reload();
-      await expect(notes).toHaveValue("Edited before switching response");
+      await expect(notes).toHaveValue(eligibleCounterofferNotes + " switched");
       await expect(notes).toBeEnabled();
       const upload = { name:"Updated counteroffer.pdf", mimeType:"application/pdf", buffer:Buffer.from("%PDF-1.4 synthetic") };
       await file.setInputFiles(upload);
@@ -1234,7 +1234,6 @@ for (const limit of [1, 3]) {
       await file.setInputFiles(upload);
       await expect(panel.getByRole("link", { name:"Updated counteroffer.pdf" })).toBeVisible();
       await notes.fill("");
-      await expect(next).toBeDisabled();
       await expect(next).toBeEnabled();
       await next.click();
       await expect(page.locator("#app-dialog-title")).toHaveText("Subscription required");
@@ -1251,6 +1250,107 @@ for (const limit of [1, 3]) {
       await expect(panel.getByRole("link", { name:"Updated counteroffer.pdf" })).toBeVisible();
       expect(mutations.every(action => ["response_outcome", "counteroffer_details"].includes(action))).toBe(true);
       expect(saved.case.attempts_locked_at).toBe(closedAt);
+      fixture.verify();
+    });
+  }
+}
+
+for (const reopened of [false, true]) {
+  for (const width of [1280, 390]) {
+    test(`counteroffer Next enforces 150 characters without blur: reopened=${reopened} at ${width}px`, async ({ page }) => {
+      const state = {
+        revision:1, attempt_ordinal:1, attempt_limit:1, sent:true, completed:reopened,
+        attempts_locked:reopened, outcome:"counteroffer", notes:"", document_ids:[],
+        sent_filenames:[], downloaded_formats:[], stopped:false,
+      };
+      let delaySave = false;
+      let failSave = false;
+      let releaseSave;
+      const fixture = await installFixtures(page, {
+        authenticated:true,
+        extraReads:{
+          [`/cases/${caseId}/workspace`]:{
+            ...workspace, case:{ ...workspace.case, attempts_locked_at:reopened ? closedAt : null },
+            attempts:[{ ordinal:1, frozen:true, profile:{ ...workspace.case, metadata:{} } }],
+          },
+          [`/cases/${caseId}/asset-mediation/1`]:state,
+        },
+        mutationHandler: async request => {
+          expect(new URL(request.url()).pathname).toBe(`/cases/${caseId}/asset-mediation`);
+          const payload = request.postDataJSON();
+          expect(payload.action).toBe(reopened ? "counteroffer_details" : "response");
+          if (delaySave) await new Promise(resolve => { releaseSave = resolve; });
+          if (failSave) return { status:503, body:{ detail:"Latest notes were not saved" } };
+          state.notes = payload.notes;
+          state.revision++;
+          return { body:state };
+        },
+      });
+      await page.setViewportSize({ width, height:1000 });
+      await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+      const notes = page.locator("#settlement-demo-counteroffer-notes-case");
+      const next = page.locator("#settlement-demo-add-counteroffer-case");
+      await expect(page.locator("#settlement-demo-counteroffer-help-case")).toContainText("at least 150 characters");
+      for (const count of [1, 149]) {
+        await notes.fill("a".repeat(count));
+        await expect(next).toBeDisabled();
+        await expect.poll(() => state.notes).toBe("a".repeat(count));
+        await notes.press("Tab");
+        await notes.click();
+        await expect(next).toBeDisabled();
+        const writes = fixture.requests.filter(request => request.startsWith("POST ")).length;
+        await next.dispatchEvent("click");
+        await expect(page.locator("#app-dialog")).toBeHidden();
+        expect(fixture.requests.filter(request => request.startsWith("POST "))).toHaveLength(writes);
+        await page.reload();
+        await expect(notes).toHaveValue("a".repeat(count));
+        await expect(next).toBeDisabled();
+      }
+      await notes.click();
+      await notes.press("End");
+      await page.keyboard.type("a");
+      expect(await next.isEnabled()).toBe(true);
+      await expect(notes).toBeFocused();
+      await page.keyboard.type("b");
+      expect(await next.isEnabled()).toBe(true);
+      await page.keyboard.press("Backspace");
+      await page.keyboard.press("Backspace");
+      expect(await next.isDisabled()).toBe(true);
+      await notes.fill(" " + "a".repeat(149) + " ");
+      expect(await next.isDisabled()).toBe(true);
+      await expect.poll(() => state.notes).toBe(" " + "a".repeat(149) + " ");
+      await notes.fill("\u{1f600}".repeat(149));
+      expect(await next.isDisabled()).toBe(true);
+      await page.keyboard.type("\u{1f600}");
+      expect(await next.isEnabled()).toBe(true);
+      await expect(notes).toBeFocused();
+      await expect.poll(() => state.notes).toBe("\u{1f600}".repeat(150));
+      delaySave = true;
+      await notes.fill(" " + "b".repeat(150) + " ");
+      expect(await next.isEnabled()).toBe(true);
+      await next.click();
+      await expect.poll(() => typeof releaseSave).toBe("function");
+      await expect(next).toBeDisabled();
+      await expect(page.locator("#app-dialog")).toBeHidden();
+      delaySave = false;
+      releaseSave();
+      await expect(page.locator("#app-dialog-title")).toHaveText(reopened ? "Subscription required" : "More attempts need credits");
+      expect(state.notes).toBe(" " + "b".repeat(150) + " ");
+      await page.locator("#app-dialog-confirm").click();
+      failSave = true;
+      await notes.fill("c".repeat(150));
+      await next.click();
+      await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("Latest notes were not saved");
+      await expect(next).toBeDisabled();
+      await expect(page.locator("#app-dialog")).toBeHidden();
+      await expect(notes).toHaveValue("c".repeat(150));
+      failSave = false;
+      await notes.fill("a");
+      await expect.poll(() => state.notes).toBe("a");
+      state.document_ids = ["saved-file"];
+      await page.reload();
+      await expect(notes).toHaveValue("a");
+      await expect(next).toBeEnabled();
       fixture.verify();
     });
   }
@@ -1296,13 +1396,13 @@ for (const reopened of [false, true]) {
       await page.goto(`${origin}/case/assets?case_id=${caseId}`);
       const notes = page.locator("#settlement-demo-counteroffer-notes-case");
       const next = page.locator("#settlement-demo-add-counteroffer-case");
-      await notes.pressSequentially("Initial terms", { delay:35 });
+      await notes.pressSequentially(eligibleCounterofferNotes, { delay:5 });
       await expect.poll(() => pendingSaves.length).toBe(1);
       await expect(notes).toBeFocused();
       await expect(notes).toBeEnabled();
       await expect(next).toBeDisabled();
       await page.keyboard.type(" plus revision");
-      await expect(notes).toHaveValue("Initial terms plus revision");
+      await expect(notes).toHaveValue(eligibleCounterofferNotes + " plus revision");
       await page.waitForTimeout(650);
       expect(saveCount).toBe(1);
       pendingSaves[0]("ok");
@@ -1312,7 +1412,7 @@ for (const reopened of [false, true]) {
       pendingSaves[1]("ok");
       await expect(next).toBeEnabled();
       await expect(notes).toBeFocused();
-      await expect.poll(() => state.notes).toBe("Initial terms plus revision");
+      await expect.poll(() => state.notes).toBe(eligibleCounterofferNotes + " plus revision");
       await page.keyboard.type(" unsaved");
       await expect.poll(() => pendingSaves.length).toBe(3);
       await expect(notes).toBeFocused();
@@ -1320,25 +1420,25 @@ for (const reopened of [false, true]) {
       await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("Notes storage unavailable");
       await expect(next).toBeDisabled();
       await expect(notes).toBeFocused();
-      await expect(notes).toHaveValue("Initial terms plus revision unsaved");
+      await expect(notes).toHaveValue(eligibleCounterofferNotes + " plus revision unsaved");
       await page.keyboard.type(" retried");
       await expect.poll(() => pendingSaves.length).toBe(4);
       await page.keyboard.type(" during failed save");
       pendingSaves[3]("fail");
-      await expect(notes).toHaveValue("Initial terms plus revision unsaved retried during failed save");
+      await expect(notes).toHaveValue(eligibleCounterofferNotes + " plus revision unsaved retried during failed save");
       await expect.poll(() => pendingSaves.length).toBe(5);
       await expect(next).toBeDisabled();
       await expect(notes).toBeFocused();
       pendingSaves[4]("ok");
       await expect(next).toBeEnabled();
       await expect(notes).toBeFocused();
-      await expect.poll(() => state.notes).toBe("Initial terms plus revision unsaved retried during failed save");
+      await expect.poll(() => state.notes).toBe(eligibleCounterofferNotes + " plus revision unsaved retried during failed save");
       await next.click();
       await expect(page.locator("#app-dialog-title")).toHaveText(reopened ? "Subscription required" : "More attempts need credits");
       await page.locator("#app-dialog-confirm").click();
       expect(actions).not.toContain("continue");
       await page.reload();
-      await expect(notes).toHaveValue("Initial terms plus revision unsaved retried during failed save");
+      await expect(notes).toHaveValue(eligibleCounterofferNotes + " plus revision unsaved retried during failed save");
       await expect(next).toBeEnabled();
       fixture.verify();
     });
@@ -3670,13 +3770,13 @@ for (const outcome of ["accepted", "rejected"]) {
     await counteroffer.check();
     await expect(page.locator("#settlement-demo-counteroffer-panel-case")).toBeVisible();
     await expect(page.locator("#settlement-demo-counteroffer-limit-case")).toBeHidden();
-    await expect(page.locator("#settlement-demo-counteroffer-help-case")).toHaveText("Your Free plan allows 1 attempt. The attempt limit is reached.");
+    await expect(page.locator("#settlement-demo-counteroffer-help-case")).toContainText("Your Free plan allows 1 attempt. The attempt limit is reached.");
     const counterofferNext = page.locator("#settlement-demo-add-counteroffer-case");
     await expect(counterofferNext).toBeVisible();
     await expect(counterofferNext).toBeDisabled();
     await expect(counterofferNext).toHaveAttribute("aria-disabled", "true");
-    await page.locator("#settlement-demo-counteroffer-notes-case").fill("Actual received counteroffer notes");
-    await expect.poll(() => state.notes).toBe("Actual received counteroffer notes");
+    await page.locator("#settlement-demo-counteroffer-notes-case").fill(eligibleCounterofferNotes);
+    await expect.poll(() => state.notes).toBe(eligibleCounterofferNotes);
     await expect(counterofferNext).toBeEnabled();
     await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("");
     const mutationCount = mutations.length;
@@ -3695,10 +3795,10 @@ for (const outcome of ["accepted", "rejected"]) {
     await page.locator("#app-dialog-confirm").click();
     expect(mutations.slice(mutationCount).every(item => item.action === "response")).toBe(true);
     expect(page.url()).toBe(nextUrl);
-    await page.locator("#settlement-demo-counteroffer-notes-case").fill("Actual received counteroffer notes");
-    await expect.poll(() => state.notes).toBe("Actual received counteroffer notes");
+    await page.locator("#settlement-demo-counteroffer-notes-case").fill(eligibleCounterofferNotes);
+    await expect.poll(() => state.notes).toBe(eligibleCounterofferNotes);
     await page.reload();
-    await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toHaveValue("Actual received counteroffer notes");
+    await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toHaveValue(eligibleCounterofferNotes);
     await expect(counterofferNext).toBeVisible();
     await expect(counterofferNext).toHaveAttribute("aria-disabled", "false");
     await expect(sent).toBeDisabled();
@@ -3782,7 +3882,7 @@ for (const limit of [1, 3]) {
       await notes.fill("   ");
       await expect.poll(() => state.notes).toBe("   ");
       await expect(next).toBeDisabled();
-      await notes.fill("Received revised terms");
+      await notes.fill(eligibleCounterofferNotes);
       await expect(next).toBeEnabled();
       await next.click();
       await expect(page.locator("#app-dialog-title")).toHaveText("More attempts need credits");
@@ -3850,7 +3950,7 @@ for (const { ordinal, limit, closed } of [
     await page.goto(`${origin}/case/assets?case_id=${caseId}`);
     for (let load = 0; load < 2; load++) {
       if (load) await page.reload();
-      await expect(page.locator("#settlement-demo-counteroffer-help-case")).toHaveText(expected);
+      await expect(page.locator("#settlement-demo-counteroffer-help-case")).toContainText(expected);
       await expect(page.locator("#settlement-demo-counteroffer-limit-case")).toBeHidden();
       await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toHaveValue("Saved counteroffer");
       if (ordinal >= limit) {
@@ -3870,7 +3970,7 @@ test("paid actual response uploads an XLSX with original-name overwrite confirma
   ], milestones:[] } };
   const selection = { expected_revision:1, attempt_ordinal:1, start_date:"2020-01-01", end_date:"2023-01-01", community_share_bps:5000 };
   const state = { revision:1, attempt_ordinal:1, attempt_limit:3, sent:true, outcome:"counteroffer",
-    notes:"Received proposal", document_ids:[], sent_filenames:["cr2a-proposal-draft.docx", "property-schedule-draft.xlsx"],
+    notes:eligibleCounterofferNotes, document_ids:[], sent_filenames:["cr2a-proposal-draft.docx", "property-schedule-draft.xlsx"],
     selection, downloaded_formats:["docx", "xlsx"], stopped:false, completed:false, accepted_document_ids:[] };
   const nextState = { ...state, revision:0, attempt_ordinal:2, sent:false, outcome:null,
     sent_filenames:[], selection:null, downloaded_formats:[] };
