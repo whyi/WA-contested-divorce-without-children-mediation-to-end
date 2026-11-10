@@ -1111,6 +1111,9 @@
       .materials-import { min-height: 46px; padding: 0 17px; border:0; border-radius: 7px; color:var(--theme-text-fff); background:var(--green-dark); cursor: pointer; font: inherit; font-weight: 750; }
       .materials-import:disabled, .materials-import[aria-disabled="true"] { background:var(--theme-background-85938a); cursor: not-allowed; }
       .materials-import:focus-visible { outline:3px solid rgba(47, 102, 82, .35); outline-offset:3px; }
+      #settlement-demo-rejection-choices-case:not([hidden]) { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+      #settlement-demo-rejection-choices-case > h5, #settlement-demo-rejection-choices-case > p { grid-column:1 / -1; }
+      #settlement-demo-rejection-choices-case > button { padding:8px; }
       .asset-analysis { margin-top: 24px; }
       .asset-analysis-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; }
       .demo-attempt-progress[hidden] { display:none; }
@@ -4380,8 +4383,8 @@
             "Confirm only after you have reviewed and delivered both documents to your mediator. This saves and freezes the current attempt.";
           caseAssetElement("settlement-demo-response-files").querySelector(":scope > p").textContent = "Files you recorded as sent:";
           caseAssetElement("settlement-demo-rejection-title").textContent = "What would you like to do after this rejection?";
-          caseAssetElement("settlement-demo-next-attempt").textContent = "Prepare another attempt";
-          caseAssetElement("settlement-demo-stop").textContent = "Stop this workflow";
+          caseAssetElement("settlement-demo-next-attempt").textContent = "Try another attempt";
+          caseAssetElement("settlement-demo-stop").textContent = "Close Case";
           caseAssetElement("settlement-demo-counteroffer-notes").placeholder = "Enter notes about the received counteroffer";
           caseAssetElement("settlement-demo-counteroffer-help").textContent =
             "Notes and attachments are saved to your case. They are not automatically sent or analyzed.";
@@ -4417,7 +4420,10 @@
             void uploadCaseCounteroffer(event.currentTarget.files[0]));
           const continueAttempt = async () => {
             if (!caseMediationState || caseMediationBusy || caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal
-              || caseMediationState.stopped || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized") return;
+              || closedCaseViewMode || caseMediationState.stopped || caseWorkspace.case.closed_at
+              || caseWorkspace.case.status === "finalized"
+              || ((caseMediationState.attempts_locked || caseWorkspace.case.attempts_locked_at)
+                && !caseReopenedResponseEditable())) return;
             clearTimeout(caseMediationTimer);
             if (caseMediationState.outcome === "counteroffer") {
               if (!caseCounterofferReady() || caseMediationSaveFailed) return;
@@ -4463,12 +4469,35 @@
             window.location.assign(`/settlement-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`);
           });
           caseAssetElement("settlement-demo-stop").addEventListener("click", async () => {
+            if (!caseMediationState || caseMediationBusy || caseMediationState.outcome !== "rejected"
+              || caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal || closedCaseViewMode
+              || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized"
+              || caseMediationState.stopped
+              || ((caseMediationState.attempts_locked || caseWorkspace.case.attempts_locked_at)
+                && !caseReopenedResponseEditable())) return;
             if (!await showAppConfirm(
-              "Stop this mediation-preparation workflow? Your case materials remain saved and the case is not permanently deleted.",
-              { title: "Stop this workflow?", confirmLabel: "Stop workflow", tone: "danger" },
+              "Close this Casework case? Nothing is deleted, your unused attempt credits remain available, and you can reopen the case from Closed cases at any time. This does not resolve your divorce case, file documents, or change its legal status.",
+              { title: "Close this case?", confirmLabel: "Close Case", tone: "danger" },
             )) return;
-            if (await saveCaseMediation("stop", { confirm:true })) {
-              window.location.assign(`/rejection-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`);
+            caseMediationBusy = true;
+            renderCaseMediation();
+            const status = caseAssetElement("settlement-demo-response-status");
+            status.textContent = "Closing your case…";
+            try {
+              const result = await settlementApi(`/cases/${encodeURIComponent(preparationCaseId)}/close`, {
+                method: "POST",
+                body: JSON.stringify({ reason: "stopped" }),
+              });
+              if (result.id !== preparationCaseId || !result.closed_at) {
+                throw new Error("Case closure could not be verified. Please refresh the case before retrying.");
+              }
+              status.textContent = "Your case is closed. Your materials and unused credits are preserved.";
+              window.location.assign("/?view=account");
+            } catch (error) {
+              caseMediationBusy = false;
+              renderCaseMediation();
+              status.dataset.kind = "error";
+              status.textContent = error instanceof Error ? error.message : "The case could not be closed. Please try again.";
             }
           });
         }
@@ -4512,7 +4541,7 @@
           const state = caseMediationState;
           const historical = caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal;
           const reopenedResponse = caseReopenedResponseEditable();
-          const inactive = historical || (caseMediationFrozen() && !state.sent) || state.stopped
+          const inactive = closedCaseViewMode || historical || (caseMediationFrozen() && !state.sent) || state.stopped
             || state.attempts_locked || caseWorkspace.case.attempts_locked_at
             || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized";
           const canContinue = !inactive && state.attempt_ordinal < state.attempt_limit;
@@ -4557,14 +4586,14 @@
             ? `${limit} The attempt limit is reached.`
             : "Notes and attachments are saved to your case. They are not automatically sent or analyzed.";
           help.textContent += " Enter at least 150 characters (excluding leading and trailing spaces), or attach a counteroffer file. Next saves your latest notes before continuing.";
-          caseAssetElement("settlement-demo-rejection-choices").hidden = state.outcome !== "rejected" || reopenedResponse;
+          caseAssetElement("settlement-demo-rejection-choices").hidden = state.outcome !== "rejected";
           caseAssetElement("settlement-demo-rejection-limit").textContent = canContinue ? limit : `${limit} The attempt limit is reached.`;
           const rejectedNext = caseAssetElement("settlement-demo-next-attempt");
-          rejectedNext.disabled = Boolean(inactive || caseMediationBusy);
-          rejectedNext.setAttribute("aria-disabled", String(!canContinue || caseMediationBusy));
-          caseAssetElement("settlement-demo-stop").disabled = Boolean(inactive || caseMediationBusy);
+          rejectedNext.disabled = Boolean((inactive && !reopenedResponse) || caseMediationBusy);
+          rejectedNext.setAttribute("aria-disabled", String(rejectedNext.disabled));
+          caseAssetElement("settlement-demo-stop").disabled = rejectedNext.disabled;
           const next = caseAssetElement("settlement-demo-response-next");
-          next.hidden = counteroffer || (!reopenedResponse && state.outcome === "rejected");
+          next.hidden = counteroffer || state.outcome === "rejected";
           next.disabled = Boolean(caseMediationBusy || (!reopenedResponse && (inactive || state.outcome !== "accepted")));
           caseAssetElement("settlement-demo-response-status").textContent = state.stopped ? "This workflow has stopped. Your case materials remain saved."
             : state.outcome === "accepted" ? closedCaseViewMode || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized"
@@ -4574,9 +4603,11 @@
                 : "The offer was accepted. Select Next to open the completion page."
               : reopenedResponse ? counteroffer
                 ? "Add or update counteroffer notes or a file, then select Next to review subscription requirements. Proposal values remain read-only."
-                : "Response saved. Proposal values remain read-only. Select Next to review subscription requirements."
+                : state.outcome === "rejected"
+                  ? "Choose Try another attempt to review subscription requirements, or Close Case. Proposal values remain read-only."
+                  : "Response saved. Proposal values remain read-only. Select Next to review subscription requirements."
               : state.outcome === "counteroffer" ? canContinue ? "Add counteroffer notes or a file, then select Next to prepare another attempt." : ""
-                : state.outcome === "rejected" ? "Choose whether to prepare another attempt or stop this workflow."
+                : state.outcome === "rejected" ? "Choose Try another attempt or Close Case."
                   : state.sent ? "Mediator delivery recorded. This attempt is read-only. Select the response you received."
                     : "Download both documents for the same scenario, review them and deliver them to your mediator before confirming.";
           caseAssetElement("settlement-demo-response-status").dataset.kind = "";

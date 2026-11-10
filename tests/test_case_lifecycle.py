@@ -216,6 +216,26 @@ class CloseAndReopenTests(LifecycleFixture):
         ).all()
         self.assertCountEqual(events, ["closed", "reopened"])
 
+    def test_rejected_closure_preserves_response_and_does_not_add_accepted_lock(self) -> None:
+        response = {
+            "revision": 4, "outcome": "rejected", "sent": True,
+            "stopped": False, "notes": "Retained response", "document_ids": [],
+        }
+        self.case.metadata_json = {**self.case.metadata_json, "asset_mediation": {"1": response}}
+        self.db.commit()
+        result = close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
+        self.assertEqual(result.id, self.case.id)
+        self.assertIsNotNone(result.closed_at)
+        self.assertEqual(result.closed_reason, "stopped")
+        self.assertEqual(result.status, "settlement")
+        self.assertIsNone(self.case.attempts_locked_at)
+        reopen_case(self.case.id, self.user, self.db)
+        self.db.refresh(self.case)
+        self.assertEqual(self.case.metadata_json["asset_mediation"]["1"], response)
+        self.assertIsNone(self.case.attempts_locked_at)
+        self.assertEqual(self.case.attempt_credit_balance, 3)
+        self.assertEqual(self.storage.deleted, [])
+
     def test_close_has_no_expiry_or_deletion_fields_and_is_idempotent(self) -> None:
         close_case(self.case.id, CaseCloseRequest(reason="closed"), self.user, self.db)
         first = self.db.get(Case, self.case.id).closed_at
