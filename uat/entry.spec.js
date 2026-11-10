@@ -616,7 +616,10 @@ for (const width of [1280, 320]) {
       await expect(page.locator("#account-active-case-section")).toHaveClass("closed-cases");
       const row = page.locator("#account-active-case-list .closed-case-item");
       await expect(row).toContainText("Synthetic regression case");
-      await expect(row.locator(".closed-case-actions button")).toHaveText(["Export data", `Go to attempt #${ordinal}`]);
+      await expect(row.locator(".closed-case-actions button")).toHaveText(["Export data", "Close case", `Go to attempt #${ordinal}`]);
+      await expect(page.locator("#active-case-management, #settlement-case-delete")).toHaveCount(0);
+      await expect(row.getByRole("button", { name:"Close case", exact:true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       await expect(page.locator("#account-active-case")).toHaveCount(0);
       await expect(page.getByText("You have no active case.", { exact:true })).toHaveCount(0);
       await page.reload();
@@ -663,7 +666,7 @@ for (const width of [1280, 320]) {
       await page.goto(`${origin}/?view=account`);
       const label = "Go to offer accepted page";
       const actions = page.locator("#account-active-case-list .closed-case-actions button");
-      await expect(actions).toHaveText(["Export data", label]);
+      await expect(actions).toHaveText(["Export data", "Close case", label]);
       await page.reload();
       const go = page.getByRole("button", { name:label, exact:true });
       await expect(go).toBeEnabled();
@@ -737,9 +740,9 @@ for (const acceptedAtLoad of [false, true]) {
           sent:true, outcome:"accepted", notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] } } });
     await page.goto(`${origin}/?view=account`);
     const actions = page.locator("#account-active-case-list .closed-case-actions button");
-    await expect(actions).toHaveText(["Export data", acceptedAtLoad ? "Go to offer accepted page" : "Go to attempt #1"]);
+    await expect(actions).toHaveText(["Export data", "Close case", acceptedAtLoad ? "Go to offer accepted page" : "Go to attempt #1"]);
     saved.accepted_offer_url = acceptedAtLoad ? null : completionUrl;
-    await actions.nth(1).click();
+    await actions.nth(2).click();
     await expect(page).toHaveURL(`${origin}${acceptedAtLoad
       ? `/case/assets?case_id=${caseId}&attempt=1` : completionUrl}`);
     expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
@@ -770,7 +773,7 @@ for (const failure of ["closed", "finalized", "identity", "server", "attempts"])
       }
       return route.fulfill({ json:workspace });
     });
-    const button = page.locator("#account-active-case-list .closed-case-actions button").nth(1);
+    const button = page.locator("#account-active-case-list .closed-case-actions button").nth(2);
     await button.click();
     await expect(button).toBeDisabled();
     release();
@@ -4973,14 +4976,46 @@ for (const success of [true, false]) {
   });
 }
 
-test("Account retains active-case export, closure and deletion with explicit failure recovery", async ({ page }) => {
+for (const width of [1280, 320]) {
+  test(`Account inline close refreshes to Closed case at ${width}px`, async ({ page }) => {
+    let fixture;
+    fixture = await installFixtures(page, {
+      authenticated:true,
+      extraReads:{ "/api/v1/closed-cases":{ cases:[{
+        id:caseId, title:"Synthetic regression case", status:"draft",
+        closed_at:closedAt, closed_reason:"stopped",
+      }] } },
+      mutationHandler:async request => {
+        if (new URL(request.url()).pathname !== `/cases/${caseId}/close`) return null;
+        expect(request.method()).toBe("POST");
+        expect(request.postDataJSON()).toEqual({ reason:"stopped" });
+        fixture.setHasCase(false);
+        return { body:{ id:caseId, closed_at:closedAt, closed_reason:"stopped" } };
+      },
+    });
+    await page.setViewportSize({ width, height:1000 });
+    await page.goto(`${origin}/?view=account`);
+    const actions = page.locator("#account-active-case-list .closed-case-actions");
+    await expect(actions.locator("button")).toHaveText(["Export data", "Close case", "Go to attempt #1"]);
+    await actions.getByRole("button", { name:"Close case", exact:true }).click();
+    await expect(page.locator("#app-dialog")).toContainText("Nothing is deleted");
+    await page.locator("#app-dialog-confirm").click();
+    await expect(page.locator("#account-active-case-section")).toBeHidden();
+    await expect(page.locator("#closed-case-list .closed-case-actions button")).toHaveText(["View", "Reopen", "Export data"]);
+    expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([`POST /cases/${caseId}/close`]);
+    expect(fixture.requests.filter(request => request.startsWith("DELETE "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
+test("Account inline close preserves export, cancellation and explicit failure recovery without deletion", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
     mode: "upload",
     extraReads: { [`/cases/${caseId}/export`]: {} },
     mutationHandler: async (request) => {
       const path = new URL(request.url()).pathname;
-      if ([`/cases/${caseId}/close`, `/cases/${caseId}/permanent-deletion`].includes(path)) {
+      if (path === `/cases/${caseId}/close`) {
         return { status: 503, body: { detail: "Synthetic case action unavailable." } };
       }
       return null;
@@ -4993,26 +5028,19 @@ test("Account retains active-case export, closure and deletion with explicit fai
   await actions.getByRole("button", { name: "Export all data for Synthetic regression case", exact:true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(`case-${caseId}-export.zip`);
-  await page.locator("#active-case-management summary").click();
+  await expect(page.locator("#active-case-management, #settlement-case-delete")).toHaveCount(0);
+  await actions.getByRole("button", { name: "Close case", exact: true }).click();
+  await page.locator("#app-dialog-cancel").click();
+  expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
+  await expect(page.locator("#settlement-case-close")).toBeEnabled();
   await actions.getByRole("button", { name: "Close case", exact: true }).click();
   await expect(page.locator("#app-dialog")).toBeVisible();
   await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");
   await page.locator("#app-dialog-confirm").click();
-  await expect(page.locator("#settlement-case-action-status")).toHaveText("Synthetic case action unavailable.");
+  await expect(page.locator("#account-active-case-status")).toHaveText("Synthetic case action unavailable.");
   await expect(page.locator("#settlement-case-close")).toBeEnabled();
-  await actions.getByRole("button", { name: "Permanently delete case", exact: true }).click();
-  await expect(page.locator("#app-dialog")).toBeVisible();
-  await expect(page.locator("#app-dialog-title")).toHaveText("Permanently delete this case?");
-  const phraseInput = page.locator("#app-dialog-input");
-  const confirmDelete = page.locator("#app-dialog-confirm");
-  await expect(confirmDelete).toBeDisabled();
-  await phraseInput.fill("DELETE CASE");
-  await expect(confirmDelete).toBeEnabled();
-  await confirmDelete.click();
-  await expect.poll(() => fixture.requests.includes(`DELETE /cases/${caseId}/permanent-deletion`)).toBe(true);
-  await expect(page.locator("#settlement-case-delete")).toBeEnabled();
   expect(fixture.requests).toContain(`POST /cases/${caseId}/close`);
-  expect(fixture.requests).toContain(`DELETE /cases/${caseId}/permanent-deletion`);
+  expect(fixture.requests.filter(request => request.startsWith("DELETE "))).toEqual([]);
   fixture.verify();
 });
 

@@ -22,8 +22,10 @@ class ClosedCaseDashboardTests(unittest.TestCase):
         self.assertRegex(PAGE, r"not (a )?(legal )?(determination|resolution)|does not mean")
 
     def test_workspace_has_close_and_export_actions_using_csrf_and_errors(self) -> None:
-        for element_id in ("account-active-case-list", "settlement-case-close"):
+        for element_id in ("account-active-case-list",):
             self.assertIn(f'id="{element_id}"', PAGE)
+        self.assertIn('close.id = "settlement-case-close"', PAGE)
+        self.assertIn("actions.append(exportButton, close, go)", PAGE)
         self.assertIn("/export`", PAGE)
         self.assertIn("void downloadCaseExport(item.id, accountActiveCaseStatus, exportButton)", PAGE)
         self.assertIn("/close`", PAGE)
@@ -40,15 +42,15 @@ class ClosedCaseDashboardTests(unittest.TestCase):
         reopen_fn = PAGE[PAGE.index("async function reopenClosedCase") :][:1500]
         self.assertIn("loadDashboardStatus", reopen_fn)
 
-    def test_permanent_deletion_has_distinct_typed_material_case_and_account_controls(self) -> None:
+    def test_permanent_deletion_retains_material_and_account_controls_not_case_button(self) -> None:
         for element_id in (
-            "settlement-case-delete",
             "account-permanent-deletion-form",
             "account-permanent-delete-submit",
         ):
             self.assertIn(f'id="{element_id}"', PAGE)
         self.assertIn('Type DELETE MY ACCOUNT', PAGE)
-        self.assertIn('"DELETE CASE"', PAGE)
+        self.assertNotIn("settlement-case-delete", PAGE)
+        self.assertNotIn("active-case-management", PAGE)
         self.assertIn('Permanently delete this saved file? This cannot be undone.', PAGE)
         self.assertIn('confirmation: "DELETE MATERIAL"', PAGE)
         self.assertIn("/permanent-deletion`", PAGE)

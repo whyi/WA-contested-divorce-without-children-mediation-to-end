@@ -26,7 +26,8 @@ class CustomDialogTests(unittest.TestCase):
 
     def test_all_destructive_confirmations_use_the_shared_custom_dialog(self) -> None:
         self.assertIn("Confirm proposal delivery", PAGE)
-        self.assertIn('"DELETE CASE"', PAGE)
+        self.assertNotIn('"DELETE CASE"', PAGE)
+        self.assertIn('title: "Close this case?", confirmLabel: "Close case"', PAGE)
         self.assertIn("Type ${options.confirmationPhrase} exactly to continue", PAGE)
         self.assertIn("Permanently delete your account?", PAGE)
         self.assertIn('title: "File already exists"', PAGE)
