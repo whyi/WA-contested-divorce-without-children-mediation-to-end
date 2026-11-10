@@ -2204,14 +2204,6 @@
                 <h3 id="account-active-case-title">Active case</h3>
                 <p id="account-active-case-status" role="status" aria-live="polite"></p>
                 <ul class="closed-case-list" id="account-active-case-list"></ul>
-                <details id="active-case-management">
-                  <summary>Manage case</summary>
-                  <div class="settlement-case-actions">
-                    <button class="dashboard-retry" id="settlement-case-close" type="button">Close case</button>
-                    <button class="dashboard-retry" id="settlement-case-delete" type="button">Permanently delete case</button>
-                  </div>
-                  <p id="settlement-case-action-status" role="status" aria-live="polite"></p>
-                </details>
               </section>
               <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
                 <h3 id="closed-cases-title">Closed case</h3>
@@ -3039,9 +3031,6 @@
         const accountActiveCaseSection = document.getElementById("account-active-case-section");
         const accountActiveCaseList = document.getElementById("account-active-case-list");
         const accountActiveCaseStatus = document.getElementById("account-active-case-status");
-        const settlementCaseClose = document.getElementById("settlement-case-close");
-        const settlementCaseDelete = document.getElementById("settlement-case-delete");
-        const settlementCaseActionStatus = document.getElementById("settlement-case-action-status");
         const logoutButton = document.getElementById("logout-button");
         const emailEntryForm = document.getElementById("email-entry-form");
         const signupEmail = document.getElementById("signup-email");
@@ -6945,7 +6934,13 @@
           go.className = "dashboard-retry";
           go.textContent = "Loading latest attempt…";
           go.disabled = true;
-          actions.append(exportButton, go);
+          const close = document.createElement("button");
+          close.type = "button";
+          close.className = "dashboard-retry";
+          close.id = "settlement-case-close";
+          close.textContent = "Close case";
+          close.addEventListener("click", () => void closeCaseFromWorkspace(item.id, close));
+          actions.append(exportButton, close, go);
           row.append(title, actions);
           accountActiveCaseList.append(row);
           const refreshAttempt = async () => {
@@ -7415,16 +7410,18 @@
           }
         }
 
-        async function closeCaseFromWorkspace() {
-          if (!settlementCaseId) return;
-          const confirmed = await showAppConfirm(
-            "Close this case? Nothing is deleted, your attempt credits do not expire, and you can reopen it from Closed case at any time.",
-            { title: "Close this case?", confirmLabel: "Close case" },
-          );
-          if (!confirmed) return;
-          settlementCaseClose.disabled = true;
+        async function closeCaseFromWorkspace(caseId, button) {
+          if (button.disabled) return;
+          button.disabled = true;
+          accountActiveCaseStatus.textContent = "";
+          accountActiveCaseStatus.dataset.kind = "";
           try {
-            await settlementApi(`/cases/${encodeURIComponent(settlementCaseId)}/close`, {
+            const confirmed = await showAppConfirm(
+              "Close this case? Nothing is deleted, your attempt credits do not expire, and you can reopen it from Closed case at any time.",
+              { title: "Close this case?", confirmLabel: "Close case" },
+            );
+            if (!confirmed) return;
+            await settlementApi(`/cases/${encodeURIComponent(caseId)}/close`, {
               method: "POST",
               body: JSON.stringify({ reason: "stopped" }),
             });
@@ -7432,40 +7429,10 @@
             settlementCaseId = null;
             await loadDashboardStatus();
           } catch (error) {
-            settlementCaseActionStatus.textContent = error instanceof Error ? error.message : "The case could not be closed. Please try again.";
+            accountActiveCaseStatus.dataset.kind = "error";
+            accountActiveCaseStatus.textContent = error instanceof Error ? error.message : "The case could not be closed. Please try again.";
           } finally {
-            settlementCaseClose.disabled = false;
-          }
-        }
-
-        async function permanentlyDeleteCaseFromWorkspace() {
-          if (!settlementCaseId) return;
-          const caseId = settlementCaseId;
-          const confirmed = await showAppPhraseConfirmation(
-            "Permanent deletion is irreversible and is not case closure. This removes this case's active application data and known S3 object versions. Provider-managed database backup/snapshot purge is not verified by this deployment.",
-            "DELETE CASE",
-            { title: "Permanently delete this case?" },
-          );
-          if (!confirmed) return;
-          settlementCaseDelete.disabled = true;
-          try {
-            await settlementApi(`/cases/${encodeURIComponent(caseId)}/permanent-deletion`, {
-              method: "DELETE",
-              body: JSON.stringify({ confirmation: "DELETE CASE" }),
-            });
-            settlementPlanner.hidden = true;
-            settlementCaseId = null;
-            await loadDashboardStatus();
-            await showAppNotice(
-              "The case was removed from active application data and known S3 object versions. Provider-managed database backups and snapshots are not configured or verified by this deployment.",
-              { title: "Case deletion completed" },
-            );
-          } catch (error) {
-            settlementCaseActionStatus.textContent = error instanceof Error
-              ? error.message
-              : "Case deletion is incomplete. Please retry.";
-          } finally {
-            settlementCaseDelete.disabled = false;
+            button.disabled = false;
           }
         }
 
@@ -12463,12 +12430,6 @@
         planAction.addEventListener("click", togglePlanPackages);
         startPathPage.querySelectorAll("[data-path-mode]").forEach((button) => {
           button.addEventListener("click", () => void chooseStartPath(button.dataset.pathMode));
-        });
-        settlementCaseClose.addEventListener("click", () => {
-          void closeCaseFromWorkspace();
-        });
-        settlementCaseDelete.addEventListener("click", () => {
-          void permanentlyDeleteCaseFromWorkspace();
         });
         accountDeletionForm.addEventListener("submit", async (event) => {
           event.preventDefault();

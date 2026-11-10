@@ -57,12 +57,12 @@ class RemovedNegotiationPlannerTests(unittest.TestCase):
         )[0]
         for element_id in (
             "account-active-case-list",
-            "settlement-case-close",
-            "settlement-case-delete",
-            "settlement-case-action-status",
+            "account-active-case-status",
         ):
             self.assertEqual(markup.ids.count(element_id), 1)
             self.assertIn(f'id="{element_id}"', account)
+        self.assertIn('close.id = "settlement-case-close"', PAGE)
+        self.assertNotIn("settlement-case-delete", PAGE)
 
     def test_saved_case_information_and_real_document_controls_remain(self) -> None:
         for element_id in (
