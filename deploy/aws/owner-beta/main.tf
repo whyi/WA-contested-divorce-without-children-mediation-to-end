@@ -25,7 +25,7 @@ locals {
     smtp_password   = "/${local.name}/smtp-password"
   }
 
-  task_environment = [
+  task_environment = concat([
     { name = "AUTH_ENABLED", value = "true" },
     { name = "AUTH_ISSUER", value = aws_apigatewayv2_api.uat.api_endpoint },
     { name = "AUTH_PUBLIC_BASE_URL", value = aws_apigatewayv2_api.uat.api_endpoint },
@@ -51,9 +51,11 @@ locals {
     { name = "WEBAUTHN_ORIGIN", value = aws_apigatewayv2_api.uat.api_endpoint },
     { name = "WEBAUTHN_RP_ID", value = trimprefix(aws_apigatewayv2_api.uat.api_endpoint, "https://") },
     { name = "WEBAUTHN_RP_NAME", value = "Casework Owner UAT" },
-  ]
+    ], var.google_client_id == "" ? [] : [
+    { name = "GOOGLE_CLIENT_ID", value = var.google_client_id },
+  ])
 
-  task_secrets = [
+  task_secrets = concat([
     { name = "AUTH_EMAIL_FROM", valueFrom = aws_secretsmanager_secret.auth_email_from.arn },
     { name = "AUTH_ENCRYPTION_KEY", valueFrom = aws_secretsmanager_secret.auth_encryption.arn },
     { name = "AUTH_JWT_SECRET", valueFrom = aws_secretsmanager_secret.auth_jwt.arn },
@@ -61,7 +63,9 @@ locals {
     { name = "OWNER_BETA_EMAIL", valueFrom = aws_secretsmanager_secret.owner_email.arn },
     { name = "SMTP_PASSWORD", valueFrom = aws_secretsmanager_secret.smtp_password.arn },
     { name = "SMTP_USERNAME", valueFrom = aws_secretsmanager_secret.smtp_username.arn },
-  ]
+    ], var.google_client_secret_arn == "" ? [] : [
+    { name = "GOOGLE_CLIENT_SECRET", valueFrom = var.google_client_secret_arn },
+  ])
 
   api_container = {
     name      = "api"
@@ -513,6 +517,27 @@ resource "aws_iam_role_policy_attachment" "execution_base" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "google_login_secret" {
+  count = var.google_client_secret_arn == "" ? 0 : 1
+  name  = "${local.name}-read-google-login-secret"
+  role  = aws_iam_role.execution.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = [var.google_client_secret_arn]
+    }]
+  })
+
+  lifecycle {
+    precondition {
+      condition     = var.google_client_id != ""
+      error_message = "Configure google_client_id with google_client_secret_arn."
+    }
+  }
+}
+
 resource "aws_iam_role_policy" "execution_secrets" {
   name = "${local.name}-read-task-secrets"
   role = aws_iam_role.execution.id
@@ -617,6 +642,13 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions    = jsonencode(local.task_container_definitions)
+
+  lifecycle {
+    precondition {
+      condition     = (var.google_client_id == "") == (var.google_client_secret_arn == "")
+      error_message = "Configure Google client ID and secret ARN together."
+    }
+  }
 }
 
 resource "aws_ecs_task_definition" "bootstrap" {
