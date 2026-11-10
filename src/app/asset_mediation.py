@@ -61,7 +61,7 @@ class MediationUpdate(BaseModel):
 
     expected_revision: int = Field(ge=0, strict=True)
     attempt_ordinal: int = Field(ge=1, strict=True)
-    action: Literal["sent", "response", "response_outcome", "continue", "stop", "complete"]
+    action: Literal["sent", "response", "response_outcome", "counteroffer_details", "continue", "stop", "complete"]
     selection: OverviewScenarioExport | None = None
     outcome: Literal["counteroffer", "rejected", "accepted"] | None = None
     notes: str = Field(default="", max_length=20000)
@@ -108,6 +108,31 @@ def _save(case: Case, state: MediationState) -> None:
     metadata = dict(case.metadata_json or {})
     metadata[KEY] = {**metadata.get(KEY, {}), str(state.attempt_ordinal): state.model_dump(mode="json")}
     case.metadata_json = metadata
+
+
+def _reopened_response_editable(
+    case: Case, state: MediationState, latest: SettlementNegotiationAttempt | None,
+) -> bool:
+    return bool(
+        case.attempts_locked_at and case.closed_at is None and case.status != "finalized"
+        and latest is not None and latest.attempt_ordinal == state.attempt_ordinal
+        and state.completed and state.sent and not state.stopped
+    )
+
+
+def _require_reopened_overwrite_target(case: Case, state: MediationState, target: UUID) -> None:
+    metadata = case.metadata_json or {}
+    other_response_ids = {
+        item
+        for ordinal, saved in metadata.get(KEY, {}).items()
+        for field in ("document_ids", "accepted_document_ids")
+        if ordinal != str(state.attempt_ordinal) or field == "accepted_document_ids"
+        for item in saved.get(field, [])
+    }
+    if (target not in state.document_ids
+        or str(target) in other_response_ids
+        or str(target) in (metadata.get("existing_offer") or {}).get("document_ids", [])):
+        raise HTTPException(status_code=409, detail="This file belongs to read-only case materials. Use a different filename for the counteroffer.")
 
 
 def record_download(db: Session, case: Case, selection: OverviewScenarioExport, format: Literal["docx", "xlsx"]) -> None:
@@ -219,7 +244,7 @@ def update_mediation_state(
             user,
             case_id,
             write=True,
-            allow_locked_attempts=payload.action in {"complete", "response_outcome"},
+            allow_locked_attempts=payload.action in {"complete", "response_outcome", "counteroffer_details"},
         )
         response.headers["Cache-Control"] = "no-store"
         state = read_state(db, case, payload.attempt_ordinal)
@@ -237,8 +262,18 @@ def update_mediation_state(
             raise HTTPException(status_code=409, detail="Only the current attempt can receive a response.")
         if payload.expected_revision != state.revision:
             raise HTTPException(status_code=409, detail="Mediation response changed. Reload and retry.")
+        if payload.action == "counteroffer_details":
+            if not _reopened_response_editable(case, state, latest) or state.outcome != "counteroffer":
+                raise HTTPException(status_code=409, detail="Select Counteroffer received on the latest reopened attempt before editing its details.")
+            if "notes" not in payload.model_fields_set or payload.model_fields_set - {"action", "expected_revision", "attempt_ordinal", "notes"}:
+                raise HTTPException(status_code=422, detail="Only counteroffer notes may change here; attach files through the counteroffer upload.")
+            state.notes = payload.notes
+            state.revision += 1
+            _save(case, state)
+            db.commit()
+            return state
         if payload.action == "response_outcome":
-            if not case.attempts_locked_at or not state.completed or not state.sent or state.stopped:
+            if not _reopened_response_editable(case, state, latest):
                 raise HTTPException(status_code=409, detail="Only the latest reopened accepted attempt can change its response.")
             if payload.model_fields_set - {"action", "expected_revision", "attempt_ordinal", "outcome"}:
                 raise HTTPException(status_code=422, detail="Only the response outcome may change; proposal data and materials remain read-only.")
@@ -367,10 +402,13 @@ async def upload_counteroffer(
     key = None
     stored = False
     try:
-        case = _case(db, user, case_id, write=True)
+        case = _case(db, user, case_id, write=True, allow_locked_attempts=True)
         latest = latest_attempt(db, case_id)
         state = read_state(db, case, ordinal)
-        if case.closed_at is not None or case.status == "finalized" or state.attempts_locked or state.stopped:
+        reopened_counteroffer = _reopened_response_editable(case, state, latest) and state.outcome == "counteroffer"
+        if not reopened_counteroffer:
+            require_attempts_editable(case)
+        if case.closed_at is not None or case.status == "finalized" or state.stopped:
             raise HTTPException(status_code=409, detail="This case workflow is read-only.")
         if latest is None or latest.attempt_ordinal != ordinal or not state.sent or state.outcome not in {"counteroffer", "accepted"}:
             raise HTTPException(status_code=409, detail="Select Counteroffer received or Offer accepted on the current attempt before attaching a file.")
@@ -383,6 +421,8 @@ async def upload_counteroffer(
                 raise HTTPException(status_code=409, detail="Reselect the original counteroffer file to retry.")
             require_scope_active(db, "document", document_id)
             previous_id = existing.overwrite_document_id
+            if reopened_counteroffer and previous_id is not None:
+                _require_reopened_overwrite_target(case, state, previous_id)
             _finish_overwrite(db, user, existing)
             linked = _link_response_file(db, case, ordinal, existing, previous_id)
             return {"id": str(existing.id), "original_filename": filename, "state": linked.model_dump(mode="json")}
@@ -398,6 +438,8 @@ async def upload_counteroffer(
                 })
         elif overwrite_document_id is not None:
             raise HTTPException(status_code=409, detail="The overwrite target changed. Reload and retry.")
+        if reopened_counteroffer and duplicate is not None:
+            _require_reopened_overwrite_target(case, state, duplicate.id)
         enforce_attachment_quota(db, case_id, incoming=0 if duplicate is not None else 1)
         media_type = {
             "pdf": "application/pdf",

@@ -190,7 +190,7 @@ class AssetMediationTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 409)
         self.assertEqual(len(self.db.scalars(select(SettlementNegotiationAttempt)).all()), 1)
 
-    def test_reopened_latest_attempt_can_change_only_response_outcome(self):
+    def test_reopened_outcome_changes_preserve_notes_and_proposal_locks(self):
         from app.case_lifecycle import reopen_case
 
         self.send()
@@ -250,6 +250,36 @@ class AssetMediationTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 404)
         self.assertEqual(self.state().outcome, "counteroffer")
 
+    def test_reopened_counteroffer_restores_and_saves_details_without_unlocking_proposals(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="counteroffer", notes="Original counteroffer")
+        original_id = uuid4()
+        self.upload(original_id, "Original.pdf", quota_fixtures.PDF)
+        self.update("response", outcome="accepted", notes="Original counteroffer", document_ids=[original_id])
+        self.update("complete", confirm=True)
+        attempt = self.db.scalar(select(SettlementNegotiationAttempt))
+        snapshot = deepcopy(attempt.frozen_snapshot_json)
+        locked_at = self.case.attempts_locked_at
+        reopen_case(self.case.id, self.user, self.db)
+        restored = self.update("response_outcome", outcome="counteroffer")
+        self.assertEqual(restored.notes, "Original counteroffer")
+        self.assertEqual(restored.document_ids, [original_id])
+        saved = self.update("counteroffer_details", notes="Revised counteroffer")
+        self.assertEqual(saved.notes, "Revised counteroffer")
+        self.assertEqual(saved.document_ids, [original_id])
+        added_id = uuid4()
+        self.upload(added_id, "Revised.pdf", quota_fixtures.PDF)
+        self.assertEqual(self.state().document_ids, [original_id, added_id])
+        self.assertEqual(self.state().notes, "Revised counteroffer")
+        for action in ("continue", "sent", "response", "stop"):
+            with self.assertRaises(HTTPException):
+                self.update(action, outcome="counteroffer", confirm=True)
+        self.assertEqual(attempt.frozen_snapshot_json, snapshot)
+        self.assertEqual(self.case.attempts_locked_at, locked_at)
+        self.assertEqual(len(self.db.scalars(select(SettlementNegotiationAttempt)).all()), 1)
+
     def test_outcome_only_update_rejects_historical_attempt(self):
         from app.case_lifecycle import reopen_case
 
@@ -268,6 +298,106 @@ class AssetMediationTests(unittest.TestCase):
             self.update("response_outcome", ordinal=1, outcome="accepted")
         self.assertEqual(error.exception.status_code, 409)
         self.assertEqual(self.state(1).outcome, "rejected")
+        with self.assertRaises(HTTPException) as error:
+            self.update("counteroffer_details", ordinal=1, notes="Forbidden history edit")
+        self.assertEqual(error.exception.status_code, 409)
+        with self.assertRaises(HTTPException) as error:
+            self.upload(uuid4(), "Historical.pdf", quota_fixtures.PDF)
+        self.assertEqual(error.exception.status_code, 409)
+
+    def test_reopened_counteroffer_details_enforce_scope_revision_and_allowed_fields(self):
+        from app.case_lifecycle import reopen_case
+
+        with self.assertRaises(HTTPException):
+            self.update("counteroffer_details", notes="Unsent")
+        self.send()
+        self.update("response", outcome="accepted", notes="Keep")
+        self.update("complete", confirm=True)
+        with self.assertRaises(HTTPException):
+            self.update("counteroffer_details", notes="Closed")
+        with self.assertRaises(HTTPException):
+            self.upload(uuid4(), "Closed.pdf", quota_fixtures.PDF)
+        reopen_case(self.case.id, self.user, self.db)
+        for outcome in ("accepted", "rejected"):
+            self.update("response_outcome", outcome=outcome)
+            with self.assertRaises(HTTPException):
+                self.update("counteroffer_details", notes="Wrong outcome")
+            with self.assertRaises(HTTPException):
+                self.upload(uuid4(), "Wrong outcome.pdf", quota_fixtures.PDF)
+        self.update("response_outcome", outcome="counteroffer")
+        with self.assertRaises(HTTPException) as error:
+            self.update("counteroffer_details")
+        self.assertEqual(error.exception.status_code, 422)
+        for extra in ({"outcome": "accepted"}, {"document_ids": []}, {"selection": self.selection}, {"confirm": True}):
+            with self.assertRaises(HTTPException) as error:
+                self.update("counteroffer_details", notes="Invalid fields", **extra)
+            self.assertEqual(error.exception.status_code, 422)
+        revision = self.state().revision
+        self.update("counteroffer_details", notes="Saved")
+        for user, expected_revision, status in (
+            (self.user, revision, 409), (self.stranger, self.state().revision, 404),
+        ):
+            with self.assertRaises(HTTPException) as error:
+                update_mediation_state(
+                    self.case.id, MediationUpdate(action="counteroffer_details", attempt_ordinal=1,
+                        expected_revision=expected_revision, notes="Forbidden"),
+                    Response(), user, self.db,
+                )
+            self.assertEqual(error.exception.status_code, status)
+        self.assertEqual(self.state().notes, "Saved")
+        with self.assertRaises(HTTPException) as error:
+            asyncio.run(upload_counteroffer(
+                self.case.id, 1, uuid4(), UploadFile(filename="Other.pdf", file=BytesIO(quota_fixtures.PDF)),
+                self.stranger, self.db, None,
+            ))
+        self.assertEqual(error.exception.status_code, 404)
+
+    def test_reopened_counteroffer_overwrite_cannot_change_other_case_materials(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="counteroffer", notes="Keep")
+        original = uuid4()
+        self.upload(original, "Counteroffer.pdf", quota_fixtures.PDF)
+        self.update("response", outcome="accepted", notes="Keep", document_ids=[original])
+        self.update("complete", confirm=True)
+        reopen_case(self.case.id, self.user, self.db)
+        self.update("response_outcome", outcome="counteroffer")
+        replacement = uuid4()
+        self.upload(replacement, "Counteroffer.pdf", quota_fixtures.PDF + b" revised", original)
+        self.assertEqual(self.state().document_ids, [replacement])
+        metadata = deepcopy(self.case.metadata_json)
+        metadata["existing_offer"] = {"document_ids": [str(replacement)]}
+        self.case.metadata_json = metadata
+        self.db.commit()
+        with self.assertRaises(HTTPException) as error:
+            self.upload(uuid4(), "Counteroffer.pdf", quota_fixtures.PDF + b" again", replacement)
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertIn("read-only case materials", error.exception.detail)
+        self.assertIsNotNone(self.db.get(Document, replacement))
+        self.assertEqual(self.state().document_ids, [replacement])
+
+    def test_reopened_counteroffer_upload_preserves_quota_and_file_validation(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="counteroffer")
+        for index in range(5):
+            self.upload(uuid4(), f"Counteroffer {index}.pdf", quota_fixtures.PDF)
+        document_ids = self.state().document_ids
+        self.update("response", outcome="accepted", document_ids=document_ids)
+        self.update("complete", confirm=True)
+        reopen_case(self.case.id, self.user, self.db)
+        self.update("response_outcome", outcome="counteroffer")
+        for filename, content, status in (
+            ("Extra.pdf", quota_fixtures.PDF, 409),
+            ("Invalid.txt", b"invalid", 415),
+            ("Oversized.pdf", b"%PDF-1.4" + b"x" * (2 * 1024 * 1024), 413),
+        ):
+            with self.assertRaises(HTTPException) as error:
+                self.upload(uuid4(), filename, content)
+            self.assertEqual(error.exception.status_code, status)
+        self.assertEqual(self.state().document_ids, document_ids)
 
     def test_counteroffer_upload_preserves_filename_and_links_file_with_retry_identity(self):
         self.send()
