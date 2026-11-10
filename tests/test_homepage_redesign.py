@@ -57,7 +57,7 @@ class HomepageRedesignTests(unittest.TestCase):
         page = response.text
         self.assertIn('id="demo1-entry" href="/demo/start?source=demo1"', page)
         self.assertIn('id="demo2-entry" href="/demo/start?source=demo2"', page)
-        self.assertIn('link.href = "/"', page)
+        self.assertIn('link.href = "/?view=case"', page)
         self.assertIn('await enterSignedInAccount(account)', page)
 
 

@@ -1672,7 +1672,7 @@
           </label>
           <span class="account-navigation">
             <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
-            <a class="nav-cta" id="your-case-entry" href="/" hidden>Your case</a>
+            <a class="nav-cta" id="your-case-entry" href="/?view=case" hidden>Your case</a>
             <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
           </span>
           <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
@@ -2087,17 +2087,7 @@
               <div class="onboarding-heading">
                 <p class="eyebrow">Your account</p>
                 <h2 id="account-tools-title">Account</h2>
-                <button class="dashboard-retry" id="account-active-case" type="button" disabled>Active Case</button>
-                <p id="account-active-case-status" role="status" aria-live="polite"></p>
               </div>
-              <section id="active-case-actions" aria-label="Active case actions" hidden>
-                <div class="settlement-case-actions" role="group" aria-label="Case actions">
-                  <button class="dashboard-retry" id="settlement-case-export" type="button">Export all case data</button>
-                  <button class="dashboard-retry" id="settlement-case-close" type="button">Close case</button>
-                  <button class="dashboard-retry" id="settlement-case-delete" type="button">Permanently delete case</button>
-                </div>
-                <p id="settlement-case-action-status" role="status" aria-live="polite"></p>
-              </section>
               <section class="account-profile" id="account-profile" aria-labelledby="account-profile-title">
                 <h3 id="account-profile-title">Account information</h3>
                 <dl>
@@ -2121,6 +2111,19 @@
                   <div class="settlement-export-actions" id="plan-package-list"></div>
                   <p id="plan-packages-status" role="status" aria-live="polite"></p>
                 </div>
+              </section>
+              <section class="closed-cases" id="account-active-case-section" aria-labelledby="account-active-case-title" hidden>
+                <h3 id="account-active-case-title">Active case</h3>
+                <p id="account-active-case-status" role="status" aria-live="polite"></p>
+                <ul class="closed-case-list" id="account-active-case-list"></ul>
+                <details id="active-case-management">
+                  <summary>Manage case</summary>
+                  <div class="settlement-case-actions">
+                    <button class="dashboard-retry" id="settlement-case-close" type="button">Close case</button>
+                    <button class="dashboard-retry" id="settlement-case-delete" type="button">Permanently delete case</button>
+                  </div>
+                  <p id="settlement-case-action-status" role="status" aria-live="polite"></p>
+                </details>
               </section>
               <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
                 <h3 id="closed-cases-title">Closed case</h3>
@@ -2945,9 +2948,12 @@
         const existingCases = document.getElementById("existing-cases");
         const accountToolsSection = document.getElementById("account-tools");
         const accountToolsLink = document.getElementById("account-tools-link");
-        const accountActiveCaseButton = document.getElementById("account-active-case");
+        const accountActiveCaseSection = document.getElementById("account-active-case-section");
+        const accountActiveCaseList = document.getElementById("account-active-case-list");
         const accountActiveCaseStatus = document.getElementById("account-active-case-status");
-        let accountActiveCase = null;
+        const settlementCaseClose = document.getElementById("settlement-case-close");
+        const settlementCaseDelete = document.getElementById("settlement-case-delete");
+        const settlementCaseActionStatus = document.getElementById("settlement-case-action-status");
         const logoutButton = document.getElementById("logout-button");
         const emailEntryForm = document.getElementById("email-entry-form");
         const signupEmail = document.getElementById("signup-email");
@@ -3021,10 +3027,6 @@
         const accountDeletionForm = document.getElementById("account-permanent-deletion-form");
         const accountDeletionStatus = document.getElementById("account-permanent-deletion-status");
         const accountDeletionSubmit = document.getElementById("account-permanent-delete-submit");
-        const settlementCaseExport = document.getElementById("settlement-case-export");
-        const settlementCaseClose = document.getElementById("settlement-case-close");
-        const settlementCaseDelete = document.getElementById("settlement-case-delete");
-        const settlementCaseActionStatus = document.getElementById("settlement-case-action-status");
 
         const settlementPlannerStatus = document.getElementById("settlement-planner-status");
         const settlementPlannerContent = document.getElementById("settlement-planner-content");
@@ -6758,6 +6760,47 @@
           }
         }
 
+        function latestSavedAttemptOrdinal(saved) {
+          if (!Array.isArray(saved.attempts)
+            || saved.attempts.some(attempt => !Number.isSafeInteger(attempt.ordinal) || attempt.ordinal < 1)) {
+            throw new Error("Your saved attempts could not be verified. Refresh and retry.");
+          }
+          return Math.max(1, ...saved.attempts.map(attempt => attempt.ordinal));
+        }
+
+        async function openFinalCaseCircle(account) {
+          let item = account.active_case_count > 0 ? account.cases[0] : null;
+          let closed = false;
+          if (!item) {
+            const result = await settlementApi("/api/v1/closed-cases");
+            if (!Array.isArray(result.cases)) throw new Error("Your closed case could not be verified. Refresh and retry.");
+            item = result.cases[0];
+            closed = true;
+          }
+          if (!item) {
+            showNewCaseStart();
+            return;
+          }
+          const saved = await settlementApi(`/cases/${encodeURIComponent(item.id)}/workspace`);
+          if (saved?.case?.id !== item.id || typeof saved.case.status !== "string"
+            || (closed ? !saved.case.closed_at || saved.case.closed_at !== item.closed_at
+              : saved.case.closed_at || saved.case.status === "finalized")) {
+            throw new Error("Your case could not be verified. Refresh and retry.");
+          }
+          const ordinal = latestSavedAttemptOrdinal(saved);
+          let target = new URL(`/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}`, window.location.origin);
+          if (saved.accepted_offer_url && (closed || !saved.case.attempts_locked_at)) {
+            target = new URL(saved.accepted_offer_url, window.location.origin);
+            if (target.origin !== window.location.origin || target.pathname !== "/settlement-completion"
+              || target.searchParams.get("case_id") !== item.id
+              || !(target.searchParams.get("asset_attempt") || target.searchParams.get("selection_id"))) {
+              throw new Error("Your final timeline destination could not be verified. Refresh and retry.");
+            }
+          }
+          if (closed) target.searchParams.set("view", "closed");
+          window.location.replace(`${target.pathname}${target.search}`);
+        }
+
         function showAccountTools() {
           dashboardLoading.hidden = true;
           accountToolsSection.hidden = false;
@@ -6765,22 +6808,72 @@
           void loadAccountProfile();
         }
 
-        accountActiveCaseButton.addEventListener("click", async () => {
-          if (!accountActiveCase || accountActiveCaseButton.disabled) return;
-          accountActiveCaseButton.disabled = true;
-          accountActiveCaseStatus.dataset.kind = "";
-          accountActiveCaseStatus.textContent = "Opening your active case…";
-          try {
-            await openActiveCase(accountActiveCase);
-            accountToolsSection.hidden = true;
-          } catch (error) {
-            accountActiveCaseStatus.dataset.kind = "error";
-            accountActiveCaseStatus.textContent = error instanceof Error
-              ? error.message : "Your active case could not be opened. Please retry.";
-          } finally {
-            accountActiveCaseButton.disabled = false;
+        async function readAccountActiveCase(item) {
+          const saved = await settlementApi(`/cases/${encodeURIComponent(item.id)}/workspace`);
+          if (saved?.case?.id !== item.id || typeof saved.case.status !== "string"
+            || saved.case.closed_at || saved.case.status === "finalized") {
+            throw new Error("Your active case could not be verified. Refresh Account and retry.");
           }
-        });
+          return latestSavedAttemptOrdinal(saved);
+        }
+
+        async function loadAccountActiveCase(item) {
+          accountActiveCaseSection.hidden = !item;
+          accountActiveCaseList.replaceChildren();
+          accountActiveCaseStatus.textContent = "";
+          accountActiveCaseStatus.dataset.kind = "";
+          if (!item) return;
+          closedCases.hidden = true;
+          const row = document.createElement("li");
+          row.className = "closed-case-item";
+          const title = document.createElement("span");
+          title.className = "case-tile-title";
+          title.textContent = item.title;
+          const actions = document.createElement("span");
+          actions.className = "closed-case-actions";
+          const exportButton = document.createElement("button");
+          exportButton.type = "button";
+          exportButton.className = "dashboard-retry";
+          exportButton.textContent = "Export data";
+          exportButton.setAttribute("aria-label", `Export all data for ${item.title}`);
+          exportButton.addEventListener("click", () =>
+            void downloadCaseExport(item.id, accountActiveCaseStatus, exportButton));
+          const go = document.createElement("button");
+          go.type = "button";
+          go.className = "dashboard-retry";
+          go.textContent = "Loading latest attempt…";
+          go.disabled = true;
+          actions.append(exportButton, go);
+          row.append(title, actions);
+          accountActiveCaseList.append(row);
+          const refreshAttempt = async () => {
+            try {
+              const ordinal = await readAccountActiveCase(item);
+              go.textContent = `Go to attempt #${ordinal}`;
+              accountActiveCaseStatus.textContent = "";
+              accountActiveCaseStatus.dataset.kind = "";
+              return ordinal;
+            } catch (error) {
+              go.textContent = "Retry latest attempt";
+              accountActiveCaseStatus.dataset.kind = "error";
+              accountActiveCaseStatus.textContent = error instanceof Error
+                ? error.message : "Your latest attempt could not be loaded. Please retry.";
+              return null;
+            } finally {
+              go.disabled = false;
+            }
+          };
+          go.addEventListener("click", async () => {
+            if (go.disabled) return;
+            go.disabled = true;
+            const ordinal = await refreshAttempt();
+            if (ordinal !== null) {
+              go.disabled = true;
+              window.location.assign(`/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}`);
+            }
+          });
+          await refreshAttempt();
+        }
 
         function showNewCaseStart() {
           dashboardLoading.hidden = true;
@@ -6800,7 +6893,7 @@
             ["closing-account-cta", "Open your case "],
           ]) {
             const link = document.getElementById(id);
-            link.href = "/";
+            link.href = "/?view=case";
             link.firstChild.textContent = label;
           }
           document.getElementById("account").hidden = true;
@@ -6811,13 +6904,12 @@
           accountToolsSection.hidden = true;
           newCaseEntry.hidden = true;
           accountToolsLink.hidden = false;
-          accountActiveCase = account.active_case_count > 0 ? account.cases[0] ?? null : null;
-          accountActiveCaseButton.disabled = !accountActiveCase;
-          accountActiveCaseStatus.dataset.kind = "";
-          accountActiveCaseStatus.textContent = accountActiveCase ? "" : "You have no active case.";
           planCaseId = account.cases[0]?.id ?? null;
           settlementCaseId = planCaseId;
-          document.getElementById("active-case-actions").hidden = !settlementCaseId;
+          if (new URLSearchParams(window.location.search).get("view") === "case") {
+            await openFinalCaseCircle(account);
+            return;
+          }
           if (startCaseDialogRequested) {
             showNewCaseStart();
             const cleanUrl = new URL(window.location.href);
@@ -6830,7 +6922,12 @@
             return;
           }
           if (accountToolsMode) {
-            await loadClosedCases();
+            if (account.active_case_count > 0 && account.cases.length > 0) {
+              await loadAccountActiveCase(account.cases[0]);
+            } else {
+              await loadAccountActiveCase(null);
+              await loadClosedCases();
+            }
             showAccountTools();
             return;
           }
@@ -12264,9 +12361,6 @@
         planAction.addEventListener("click", togglePlanPackages);
         startPathPage.querySelectorAll("[data-path-mode]").forEach((button) => {
           button.addEventListener("click", () => void chooseStartPath(button.dataset.pathMode));
-        });
-        settlementCaseExport.addEventListener("click", () => {
-          if (settlementCaseId) void downloadCaseExport(settlementCaseId, settlementCaseActionStatus, settlementCaseExport);
         });
         settlementCaseClose.addEventListener("click", () => {
           void closeCaseFromWorkspace();

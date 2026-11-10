@@ -426,7 +426,7 @@ for (const outcome of ["accepted", "rejected"]) {
     });
     await page.goto(`${origin}/?view=account`);
     await page.locator("#your-case-entry").click();
-    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
     await expect(page.locator("#settlement-demo-response-next-case")).toBeEnabled();
     await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
     fixture.verify();
@@ -461,6 +461,83 @@ for (const invalid of ["lookup", "identity", "foreign", "wrong-case", "missing-o
     fixture.verify();
   });
 }
+for (const closed of [false, true]) {
+  for (const accepted of [false, true]) {
+    for (const width of [1280, 320]) {
+      test(`homepage Your case opens final circle: closed=${closed}, accepted=${accepted} at ${width}px`, async ({ page }) => {
+        const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=3`;
+        const saved = { ...workspace, case:{ ...workspace.case,
+          ...(closed ? { closed_at:closedAt, closed_reason:accepted ? "accepted" : "stopped" } : {}) },
+          attempts:[3, 1, 2].map(ordinal => ({ ordinal, frozen:true,
+            profile:{ metadata:{ asset_overview:workspace.asset_overview } } })),
+          accepted_offer_url:accepted ? completionUrl : null,
+        };
+        const fixture = await installFixtures(page, {
+          authenticated:true, hasCase:!closed, workspaceStarted:true,
+          extraReads:{
+            [`/cases/${caseId}/workspace`]:saved,
+            "/api/v1/closed-cases":{ cases:closed ? [{
+              id:caseId, title:"Closed final case", status:"settlement", closed_at:closedAt,
+              closed_reason:accepted ? "accepted" : "stopped",
+            }] : [] },
+            [`/cases/${caseId}/asset-mediation/3`]:{ revision:1, attempt_ordinal:3, attempt_limit:3,
+              sent:true, outcome:accepted ? "accepted" : "rejected", completed:closed && accepted,
+              attempts_locked:closed && accepted, stopped:false, notes:"", document_ids:[],
+              sent_filenames:[], downloaded_formats:[] },
+          },
+        });
+        await page.setViewportSize({ width, height:1000 });
+        await page.goto(`${origin}/?view=home`);
+        await page.locator("#your-case-entry").click();
+        const target = accepted ? `${completionUrl}${closed ? "&view=closed" : ""}`
+          : `/case/assets?case_id=${caseId}&attempt=3${closed ? "&view=closed" : ""}`;
+        await expect(page).toHaveURL(`${origin}${target}`);
+        await expect(page.locator("#account-tools")).toBeHidden();
+        if (accepted) await expectAcceptedCompletionProgress(page);
+        else await expect(page.locator('#demo-attempt-progress-list button[aria-current="step"]')).toContainText("3rd Attempt");
+        await page.reload();
+        await expect(page).toHaveURL(`${origin}${target}`);
+        await page.locator("#your-case-entry").click();
+        await expect(page).toHaveURL(`${origin}${target}`);
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+        fixture.verify();
+      });
+    }
+  }
+}
+
+for (const failure of ["foreign-target", "wrong-case", "stale-closure", "lookup"]) {
+  test(`Your case rejects unverified closed final circle: ${failure}`, async ({ page }) => {
+    let fail = true;
+    const saved = { ...workspace, case:{ ...workspace.case, closed_at:closedAt },
+      attempts:[{ ordinal:3, frozen:true, profile:{ metadata:{} } }] };
+    const fixture = await installFixtures(page, { authenticated:true, hasCase:false,
+      extraReads:{ "/api/v1/closed-cases":{ cases:[{ id:caseId, title:"Closed case",
+        closed_at:closedAt, closed_reason:"stopped" }] } },
+    });
+    await page.route(`**/cases/${caseId}/workspace`, route => {
+      if (fail && failure === "lookup") return route.fulfill({ status:503, json:{ detail:"Final circle unavailable." } });
+      return route.fulfill({ json:{ ...saved,
+        case:{ ...saved.case,
+          ...(fail && failure === "wrong-case" ? { id:"wrong-case" } : {}),
+          ...(fail && failure === "stale-closure" ? { closed_at:"2020-01-01T00:00:00Z" } : {}) },
+        accepted_offer_url:fail && failure === "foreign-target"
+          ? `https://foreign.invalid/settlement-completion?case_id=${caseId}&asset_attempt=3` : null,
+      } });
+    });
+    await page.goto(`${origin}/?view=home`);
+    await page.locator("#your-case-entry").click();
+    await expect(page.locator("#dashboard-error")).toBeVisible();
+    await expect(page.locator("#account-tools")).toBeHidden();
+    await expect(page).toHaveURL(`${origin}/?view=case`);
+    fail = false;
+    await page.locator("#dashboard-retry").click();
+    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3&view=closed`);
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
 test("closed-case Account actions place View before Reopen and Export", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
@@ -474,8 +551,9 @@ test("closed-case Account actions place View before Reopen and Export", async ({
   });
   await page.goto(`${origin}/?view=account`);
   await expect(page.getByRole("heading", { name:"Closed case", exact:true })).toBeVisible();
-  await expect(page.getByRole("button", { name:"Active Case", exact:true })).toBeDisabled();
-  await expect(page.locator("#account-active-case-status")).toHaveText("You have no active case.");
+  await expect(page.locator("#account-active-case-section")).toBeHidden();
+  await expect(page.getByRole("button", { name:"Active Case", exact:true })).toHaveCount(0);
+  await expect(page.getByText("You have no active case.", { exact:true })).toHaveCount(0);
   const row = page.locator("#closed-case-list .closed-case-item");
   await expect(row).toContainText("Synthetic closed case");
   const actions = row.locator(".closed-case-actions button");
@@ -487,35 +565,37 @@ test("closed-case Account actions place View before Reopen and Export", async ({
 });
 
 for (const width of [1280, 320]) {
-  for (const route of ["started", "wizard", "upload", "choice", "accepted"]) {
-    test(`Account Active Case opens ${route} directly at ${width}px`, async ({ page }) => {
-      const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=1`;
+  for (const ordinal of [1, 3]) {
+    test(`Account Active case card opens latest attempt #${ordinal} at ${width}px`, async ({ page }) => {
+      const attempts = ordinal === 1 ? [] : [3, 1, 2].map(ordinal => ({ ordinal, frozen:true,
+        profile:{ metadata:{ asset_overview:workspace.asset_overview } } }));
       const fixture = await installFixtures(page, {
-        authenticated:true, workspaceStarted:route === "started" || route === "accepted",
-        mode:["wizard", "upload"].includes(route) ? route : null,
+        authenticated:true, mode:"wizard",
         extraReads:{
           [`/cases/${caseId}/workspace`]:{ ...workspace,
-            accepted_offer_url:route === "accepted" ? completionUrl : null },
-          [`/cases/${caseId}/asset-mediation/1`]:{ revision:1, sent:true, outcome:"accepted",
-            completed:false, attempts_locked:false, attempt_ordinal:1, attempt_limit:1,
+            attempts, accepted_offer_url:`/settlement-completion?case_id=${caseId}&asset_attempt=${ordinal}` },
+          [`/cases/${caseId}/asset-mediation/${ordinal}`]:{ revision:1, sent:true, outcome:"accepted",
+            completed:false, attempts_locked:false, attempt_ordinal:ordinal, attempt_limit:3,
             notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] },
         },
       });
       await page.setViewportSize({ width, height:1000 });
       await page.goto(`${origin}/?view=account`);
-      const button = page.getByRole("button", { name:"Active Case", exact:true });
+      await expect(page.getByRole("heading", { name:"Active case", exact:true })).toBeVisible();
+      await expect(page.locator("#closed-cases")).toBeHidden();
+      await expect(page.locator("#account-active-case-section")).toHaveClass("closed-cases");
+      const row = page.locator("#account-active-case-list .closed-case-item");
+      await expect(row).toContainText("Synthetic regression case");
+      await expect(row.locator(".closed-case-actions button")).toHaveText(["Export data", `Go to attempt #${ordinal}`]);
+      await expect(page.locator("#account-active-case")).toHaveCount(0);
+      await expect(page.getByText("You have no active case.", { exact:true })).toHaveCount(0);
+      await page.reload();
+      const button = page.getByRole("button", { name:`Go to attempt #${ordinal}`, exact:true });
       await expect(button).toBeVisible();
       await expect(button).toBeEnabled();
       await button.focus();
       await page.keyboard.press("Enter");
-      if (route === "choice") {
-        await expect(page.locator("#start-path-page")).toBeVisible();
-        await expect(page.locator("#account-tools")).toBeHidden();
-      } else {
-        const path = route === "accepted" ? completionUrl : route === "started"
-          ? `/case/assets?case_id=${caseId}` : `/onboarding/${route}?case_id=${caseId}`;
-        await expect(page).toHaveURL(`${origin}${path}`);
-      }
+      await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=${ordinal}`);
       expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       fixture.verify();
@@ -523,18 +603,22 @@ for (const width of [1280, 320]) {
   }
 }
 
-for (const failure of ["closed", "finalized", "identity", "server"]) {
-  test(`Account Active Case blocks ${failure} workspace and allows retry`, async ({ page }) => {
+for (const failure of ["closed", "finalized", "identity", "server", "attempts"]) {
+  test(`Account Active case card blocks ${failure} workspace and allows retry`, async ({ page }) => {
     let fail = true;
     let release;
     const pending = new Promise(resolve => { release = resolve; });
     const fixture = await installFixtures(page, { authenticated:true, workspaceStarted:true });
     await page.goto(`${origin}/?view=account`);
+    await expect(page.getByRole("button", { name:"Go to attempt #1", exact:true })).toBeVisible();
+    await expect(page.getByRole("button", { name:"Go to attempt #1", exact:true })).toBeEnabled();
     await page.route(`**/cases/${caseId}/workspace`, async route => {
       if (fail) {
         await pending;
         if (failure === "server") return route.fulfill({ status:503, json:{ detail:"Active case unavailable. Retry." } });
-        return route.fulfill({ json:{ ...workspace, case:{ ...workspace.case,
+        return route.fulfill({ json:{ ...workspace,
+          attempts:failure === "attempts" ? [{ ordinal:"3" }] : [],
+          case:{ ...workspace.case,
           ...(failure === "closed" ? { closed_at:closedAt } : {}),
           ...(failure === "finalized" ? { status:"finalized" } : {}),
           ...(failure === "identity" ? { id:"wrong-case" } : {}),
@@ -542,32 +626,85 @@ for (const failure of ["closed", "finalized", "identity", "server"]) {
       }
       return route.fulfill({ json:workspace });
     });
-    const button = page.getByRole("button", { name:"Active Case", exact:true });
+    const button = page.locator("#account-active-case-list .closed-case-actions button").nth(1);
     await button.click();
     await expect(button).toBeDisabled();
-    await expect(page.locator("#account-active-case-status")).toHaveText("Opening your active case…");
     release();
     await expect(page.locator("#account-active-case-status")).toHaveAttribute("data-kind", "error");
     await expect(button).toBeEnabled();
     await expect(page.locator("#account-tools")).toBeVisible();
     await expect(page).toHaveURL(`${origin}/?view=account`);
+    await expect(button).toHaveText("Retry latest attempt");
     fail = false;
     await button.click();
-    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
     expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
     fixture.verify();
   });
 }
 
-test("Account with no case disables Active Case without creating or reopening", async ({ page }) => {
+test("Account with no case hides both case cards without an empty active message", async ({ page }) => {
   const fixture = await installFixtures(page, { authenticated:true, hasCase:false });
   await page.goto(`${origin}/?view=account`);
-  const button = page.getByRole("button", { name:"Active Case", exact:true });
-  await expect(button).toBeDisabled();
-  await expect(page.locator("#account-active-case-status")).toHaveText("You have no active case.");
-  await button.dispatchEvent("click");
+  await expect(page.locator("#account-active-case-section")).toBeHidden();
+  await expect(page.locator("#closed-cases")).toBeHidden();
+  await expect(page.locator("#account-active-case")).toHaveCount(0);
+  await expect(page.getByText("You have no active case.", { exact:true })).toHaveCount(0);
   await expect(page).toHaveURL(`${origin}/?view=account`);
   expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
+  fixture.verify();
+});
+
+test("Account card rechecks and opens a newly added latest attempt", async ({ page }) => {
+  const saved = { ...workspace, attempts:[{ ordinal:1, frozen:true, profile:{ metadata:{} } }] };
+  const fixture = await installFixtures(page, { authenticated:true,
+    extraReads:{ [`/cases/${caseId}/workspace`]:saved } });
+  await page.goto(`${origin}/?view=account`);
+  const go = page.getByRole("button", { name:"Go to attempt #1", exact:true });
+  await expect(go).toBeEnabled();
+  saved.attempts.push({ ordinal:3, frozen:false, profile:{ metadata:{} } });
+  await go.click();
+  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
+  fixture.verify();
+});
+
+test("Account card initial lookup and export failures remain explicit and retryable", async ({ page }) => {
+  let lookupFails = true;
+  let exportFails = true;
+  const saved = { ...workspace, attempts:[{ ordinal:3, frozen:false, profile:{ metadata:{} } }] };
+  const fixture = await installFixtures(page, { authenticated:true });
+  await page.route(`**/cases/${caseId}/workspace`, route => lookupFails
+    ? route.fulfill({ status:503, json:{ detail:"Latest attempt lookup unavailable." } })
+    : route.fulfill({ json:saved }));
+  await page.route(`**/cases/${caseId}/export`, route => exportFails
+    ? route.fulfill({ status:503, json:{ detail:"Export unavailable. Please retry." } })
+    : route.fulfill({ contentType:"application/zip", body:"PK-test-export" }));
+  await page.goto(`${origin}/?view=account`);
+  const row = page.locator("#account-active-case-list");
+  await expect(page.locator("#account-active-case-status")).toHaveText("Latest attempt lookup unavailable.");
+  await expect(row.getByRole("button", { name:"Retry latest attempt", exact:true })).toBeEnabled();
+  await expect(row.getByRole("button", { name:/Go to attempt/ })).toHaveCount(0);
+  const exportButton = row.getByRole("button", { name:"Export all data for Synthetic regression case", exact:true });
+  await exportButton.click();
+  await expect(page.locator("#account-active-case-status")).toHaveText("Export unavailable. Please retry.");
+  await expect(exportButton).toBeEnabled();
+  exportFails = false;
+  const downloading = page.waitForEvent("download");
+  await exportButton.click();
+  expect((await downloading).suggestedFilename()).toBe(`case-${caseId}-export.zip`);
+  lookupFails = false;
+  await row.getByRole("button", { name:"Retry latest attempt", exact:true }).click();
+  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
+  fixture.verify();
+});
+
+test("homepage Your case with no saved case keeps the start choice without Account", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated:true, hasCase:false });
+  await page.goto(`${origin}/?view=home`);
+  await page.locator("#your-case-entry").click();
+  await expect(page.locator("#case-create-page")).toBeVisible();
+  await expect(page.locator("#account-tools")).toBeHidden();
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
   fixture.verify();
 });
 
@@ -1814,7 +1951,7 @@ test("signed-in header offers Account, Your case and the existing logout action"
       await expect(page.locator("#your-case-entry")).toBeVisible();
       await expect(page.locator("#logout-button")).toBeVisible();
       await expect(page.locator("#account-entry"), `${path}: authenticated users do not see Get started`).toBeHidden();
-      await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
+      await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/?view=case");
     }
   }
   fixture.verify();
@@ -4704,12 +4841,13 @@ test("Account retains active-case export, closure and deletion with explicit fai
     },
   });
   await page.goto(`${origin}/?view=account`);
-  const actions = page.locator("#active-case-actions");
+  const actions = page.locator("#account-active-case-section");
   await expect(actions).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await actions.getByRole("button", { name: "Export all case data" }).click();
+  await actions.getByRole("button", { name: "Export all data for Synthetic regression case", exact:true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(`case-${caseId}-export.zip`);
+  await page.locator("#active-case-management summary").click();
   await actions.getByRole("button", { name: "Close case", exact: true }).click();
   await expect(page.locator("#app-dialog")).toBeVisible();
   await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");

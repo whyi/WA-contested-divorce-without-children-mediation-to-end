@@ -22,9 +22,10 @@ class ClosedCaseDashboardTests(unittest.TestCase):
         self.assertRegex(PAGE, r"not (a )?(legal )?(determination|resolution)|does not mean")
 
     def test_workspace_has_close_and_export_actions_using_csrf_and_errors(self) -> None:
-        for element_id in ("settlement-case-export", "settlement-case-close"):
+        for element_id in ("account-active-case-list", "settlement-case-close"):
             self.assertIn(f'id="{element_id}"', PAGE)
         self.assertIn("/export`", PAGE)
+        self.assertIn("void downloadCaseExport(item.id, accountActiveCaseStatus, exportButton)", PAGE)
         self.assertIn("/close`", PAGE)
         body = PAGE[PAGE.index("async function downloadCaseExport") :][:1800]
         self.assertIn("csrfHeaders", PAGE)
