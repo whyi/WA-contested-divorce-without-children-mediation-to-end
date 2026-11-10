@@ -553,6 +553,7 @@ def support_configuration(response: Response) -> dict[str, str | None]:
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/pricing", response_class=HTMLResponse, include_in_schema=False)
 def home() -> HTMLResponse:
     return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
 

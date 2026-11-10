@@ -165,7 +165,7 @@ test("public landing contains only supported sections and working local links", 
   expect(await page.locator("main > section").evaluateAll((sections) =>
     sections.map((section) => section.id || section.className)
   )).toEqual([
-    "documents-demo", "wizard-demo", "hero", "homepage-expectations",
+    "documents-demo", "wizard-demo", "hero", "pricing-page", "homepage-expectations",
     "account", "account-dashboard", "closing",
     "settlement-completion-page", "rejection-completion-page",
   ]);
@@ -173,6 +173,30 @@ test("public landing contains only supported sections and working local links", 
     const href = await link.getAttribute("href");
     if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
   }
+  fixture.verify();
+});
+
+test("dedicated pricing page shows one-time tiers and inert buy buttons", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(origin);
+  await expect(page.locator("#pricing-entry")).toBeVisible();
+  await page.locator("#pricing-entry").click();
+  await expect(page).toHaveURL(`${origin}/pricing`);
+  await expect(page).toHaveTitle("Pricing | Casework");
+  await expect(page.locator("#pricing-page")).toBeVisible();
+  await expect(page.locator("#hero-title")).toBeHidden();
+  await expect(page.locator("#pricing-page")).toContainText("1 attempt");
+  await expect(page.locator("#pricing-page")).toContainText("$5");
+  await expect(page.locator("#pricing-page")).toContainText("Up to 3 attempts");
+  await expect(page.locator("#pricing-page")).toContainText("$10");
+  await expect(page.locator("#pricing-page")).toContainText("Up to 10 attempts");
+  await expect(page.locator("#essential-buy-now")).toHaveAttribute("href", "#");
+  await expect(page.locator("#pro-buy-now")).toHaveAttribute("href", "#");
+  await expect(page.locator("#pricing-page")).toContainText("No subscriptions");
+  await expect(page.locator("#pricing-page")).toContainText("Need more than 10 attempts? Contact us");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("#pricing-page")).toBeVisible();
+  await expect(page.locator("#essential-buy-now")).toBeVisible();
   fixture.verify();
 });
 
