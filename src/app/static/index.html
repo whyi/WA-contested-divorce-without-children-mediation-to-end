@@ -2087,7 +2087,8 @@
               <div class="onboarding-heading">
                 <p class="eyebrow">Your account</p>
                 <h2 id="account-tools-title">Account</h2>
-                <p><a id="account-tools-back" href="/">Back to your case</a></p>
+                <button class="dashboard-retry" id="account-active-case" type="button" disabled>Active Case</button>
+                <p id="account-active-case-status" role="status" aria-live="polite"></p>
               </div>
               <section id="active-case-actions" aria-label="Active case actions" hidden>
                 <div class="settlement-case-actions" role="group" aria-label="Case actions">
@@ -2122,7 +2123,7 @@
                 </div>
               </section>
               <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
-                <h3 id="closed-cases-title">Closed cases</h3>
+                <h3 id="closed-cases-title">Closed case</h3>
                 <p>Closing a case does not delete it. Your materials, attempts and remaining attempt credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
                 <p id="closed-cases-status" role="status" aria-live="polite"></p>
                 <ul class="closed-case-list" id="closed-case-list"></ul>
@@ -2685,7 +2686,7 @@
             <p id="rejection-completion-status" class="settlement-completion-status" role="status" aria-live="polite"></p>
             <div id="rejection-completion-auth-content" class="settlement-completion-section" hidden>
               <p class="settlement-completion-thanks">Based on the response you recorded, mediation did not produce an accepted agreement in this workflow.</p>
-              <p>Only your Casework mediation-preparation workspace is closed. This does not resolve or end your divorce case. It does not file anything with a court. It does not delete data. It does not change your legal status or court record. Your case history and credits are preserved; you can reopen this workspace from Closed cases.</p>
+              <p>Only your Casework mediation-preparation workspace is closed. This does not resolve or end your divorce case. It does not file anything with a court. It does not delete data. It does not change your legal status or court record. Your case history and credits are preserved; you can reopen this workspace from Closed case.</p>
               <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading is not delivery. The product does not automatically deliver proposals; provide reviewed files to your mediator yourself.</p>
               <h2>Possible next steps</h2>
               <p>Possible next steps depend on your case. You may wish to discuss possible next steps with your mediator, consult qualified Washington counsel, or learn about court processes from official sources. This is not legal advice and does not recommend a particular path.</p>
@@ -2944,6 +2945,9 @@
         const existingCases = document.getElementById("existing-cases");
         const accountToolsSection = document.getElementById("account-tools");
         const accountToolsLink = document.getElementById("account-tools-link");
+        const accountActiveCaseButton = document.getElementById("account-active-case");
+        const accountActiveCaseStatus = document.getElementById("account-active-case-status");
+        let accountActiveCase = null;
         const logoutButton = document.getElementById("logout-button");
         const emailEntryForm = document.getElementById("email-entry-form");
         const signupEmail = document.getElementById("signup-email");
@@ -4476,7 +4480,7 @@
               || ((caseMediationState.attempts_locked || caseWorkspace.case.attempts_locked_at)
                 && !caseReopenedResponseEditable())) return;
             if (!await showAppConfirm(
-              "Close this Casework case? Nothing is deleted, your unused attempt credits remain available, and you can reopen the case from Closed cases at any time. This does not resolve your divorce case, file documents, or change its legal status.",
+              "Close this Casework case? Nothing is deleted, your unused attempt credits remain available, and you can reopen the case from Closed case at any time. This does not resolve your divorce case, file documents, or change its legal status.",
               { title: "Close this case?", confirmLabel: "Close Case", tone: "danger" },
             )) return;
             caseMediationBusy = true;
@@ -6761,6 +6765,23 @@
           void loadAccountProfile();
         }
 
+        accountActiveCaseButton.addEventListener("click", async () => {
+          if (!accountActiveCase || accountActiveCaseButton.disabled) return;
+          accountActiveCaseButton.disabled = true;
+          accountActiveCaseStatus.dataset.kind = "";
+          accountActiveCaseStatus.textContent = "Opening your active case…";
+          try {
+            await openActiveCase(accountActiveCase);
+            accountToolsSection.hidden = true;
+          } catch (error) {
+            accountActiveCaseStatus.dataset.kind = "error";
+            accountActiveCaseStatus.textContent = error instanceof Error
+              ? error.message : "Your active case could not be opened. Please retry.";
+          } finally {
+            accountActiveCaseButton.disabled = false;
+          }
+        });
+
         function showNewCaseStart() {
           dashboardLoading.hidden = true;
           newCaseEntry.hidden = true;
@@ -6790,6 +6811,10 @@
           accountToolsSection.hidden = true;
           newCaseEntry.hidden = true;
           accountToolsLink.hidden = false;
+          accountActiveCase = account.active_case_count > 0 ? account.cases[0] ?? null : null;
+          accountActiveCaseButton.disabled = !accountActiveCase;
+          accountActiveCaseStatus.dataset.kind = "";
+          accountActiveCaseStatus.textContent = accountActiveCase ? "" : "You have no active case.";
           planCaseId = account.cases[0]?.id ?? null;
           settlementCaseId = planCaseId;
           document.getElementById("active-case-actions").hidden = !settlementCaseId;
@@ -7194,7 +7219,7 @@
         async function closeCaseFromWorkspace() {
           if (!settlementCaseId) return;
           const confirmed = await showAppConfirm(
-            "Close this case? Nothing is deleted, your attempt credits do not expire, and you can reopen it from Closed cases at any time.",
+            "Close this case? Nothing is deleted, your attempt credits do not expire, and you can reopen it from Closed case at any time.",
             { title: "Close this case?", confirmLabel: "Close case" },
           );
           if (!confirmed) return;
@@ -7335,7 +7360,7 @@
           } catch {
             closedCases.hidden = false;
             closedCaseList.replaceChildren();
-            closedCasesStatus.textContent = "Closed cases could not be loaded. Try again from Refresh.";
+            closedCasesStatus.textContent = "Closed case could not be loaded. Try again from Refresh.";
             return 0;
           }
         }
@@ -9894,7 +9919,7 @@
             || settlementOfferResponseState?.outcome !== "rejected"
             || !(settlementOfferResponseState?.outcome_choices || []).includes("stop_case")) return;
           const confirmed = await showAppConfirm(
-            "Stop mediation work and close this Casework case? This closes only the product workspace. It does not resolve your divorce case or delete data; you can reopen the workspace from Closed cases.",
+            "Stop mediation work and close this Casework case? This closes only the product workspace. It does not resolve your divorce case or delete data; you can reopen the workspace from Closed case.",
             { title: "Close this case workspace", confirmLabel: "Close workspace", tone: "danger" },
           );
           if (!confirmed) return;

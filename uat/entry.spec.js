@@ -473,6 +473,9 @@ test("closed-case Account actions place View before Reopen and Export", async ({
     },
   });
   await page.goto(`${origin}/?view=account`);
+  await expect(page.getByRole("heading", { name:"Closed case", exact:true })).toBeVisible();
+  await expect(page.getByRole("button", { name:"Active Case", exact:true })).toBeDisabled();
+  await expect(page.locator("#account-active-case-status")).toHaveText("You have no active case.");
   const row = page.locator("#closed-case-list .closed-case-item");
   await expect(row).toContainText("Synthetic closed case");
   const actions = row.locator(".closed-case-actions button");
@@ -480,6 +483,91 @@ test("closed-case Account actions place View before Reopen and Export", async ({
   await expect(actions.nth(0)).toHaveAccessibleName("View Synthetic closed case read-only");
   await expect(actions.nth(1)).toHaveAccessibleName("Reopen Synthetic closed case");
   await expect(actions.nth(2)).toHaveAccessibleName("Export all data for Synthetic closed case");
+  fixture.verify();
+});
+
+for (const width of [1280, 320]) {
+  for (const route of ["started", "wizard", "upload", "choice", "accepted"]) {
+    test(`Account Active Case opens ${route} directly at ${width}px`, async ({ page }) => {
+      const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=1`;
+      const fixture = await installFixtures(page, {
+        authenticated:true, workspaceStarted:route === "started" || route === "accepted",
+        mode:["wizard", "upload"].includes(route) ? route : null,
+        extraReads:{
+          [`/cases/${caseId}/workspace`]:{ ...workspace,
+            accepted_offer_url:route === "accepted" ? completionUrl : null },
+          [`/cases/${caseId}/asset-mediation/1`]:{ revision:1, sent:true, outcome:"accepted",
+            completed:false, attempts_locked:false, attempt_ordinal:1, attempt_limit:1,
+            notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] },
+        },
+      });
+      await page.setViewportSize({ width, height:1000 });
+      await page.goto(`${origin}/?view=account`);
+      const button = page.getByRole("button", { name:"Active Case", exact:true });
+      await expect(button).toBeVisible();
+      await expect(button).toBeEnabled();
+      await button.focus();
+      await page.keyboard.press("Enter");
+      if (route === "choice") {
+        await expect(page.locator("#start-path-page")).toBeVisible();
+        await expect(page.locator("#account-tools")).toBeHidden();
+      } else {
+        const path = route === "accepted" ? completionUrl : route === "started"
+          ? `/case/assets?case_id=${caseId}` : `/onboarding/${route}?case_id=${caseId}`;
+        await expect(page).toHaveURL(`${origin}${path}`);
+      }
+      expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      fixture.verify();
+    });
+  }
+}
+
+for (const failure of ["closed", "finalized", "identity", "server"]) {
+  test(`Account Active Case blocks ${failure} workspace and allows retry`, async ({ page }) => {
+    let fail = true;
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    const fixture = await installFixtures(page, { authenticated:true, workspaceStarted:true });
+    await page.goto(`${origin}/?view=account`);
+    await page.route(`**/cases/${caseId}/workspace`, async route => {
+      if (fail) {
+        await pending;
+        if (failure === "server") return route.fulfill({ status:503, json:{ detail:"Active case unavailable. Retry." } });
+        return route.fulfill({ json:{ ...workspace, case:{ ...workspace.case,
+          ...(failure === "closed" ? { closed_at:closedAt } : {}),
+          ...(failure === "finalized" ? { status:"finalized" } : {}),
+          ...(failure === "identity" ? { id:"wrong-case" } : {}),
+        } } });
+      }
+      return route.fulfill({ json:workspace });
+    });
+    const button = page.getByRole("button", { name:"Active Case", exact:true });
+    await button.click();
+    await expect(button).toBeDisabled();
+    await expect(page.locator("#account-active-case-status")).toHaveText("Opening your active case…");
+    release();
+    await expect(page.locator("#account-active-case-status")).toHaveAttribute("data-kind", "error");
+    await expect(button).toBeEnabled();
+    await expect(page.locator("#account-tools")).toBeVisible();
+    await expect(page).toHaveURL(`${origin}/?view=account`);
+    fail = false;
+    await button.click();
+    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+    expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
+test("Account with no case disables Active Case without creating or reopening", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated:true, hasCase:false });
+  await page.goto(`${origin}/?view=account`);
+  const button = page.getByRole("button", { name:"Active Case", exact:true });
+  await expect(button).toBeDisabled();
+  await expect(page.locator("#account-active-case-status")).toHaveText("You have no active case.");
+  await button.dispatchEvent("click");
+  await expect(page).toHaveURL(`${origin}/?view=account`);
+  expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
   fixture.verify();
 });
 
