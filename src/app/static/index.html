@@ -1275,7 +1275,8 @@
       body.authenticated-view:not([data-demo-page]) .nav a.demo-entry { display: none; }
       .authenticated-view .nav #your-case-entry:not([hidden]),
       body.signed-in-home .nav #your-case-entry:not([hidden]) { display: inline-flex !important; }
-      body.signed-in-home #account-entry { display: none; }
+      body.signed-in-home #account-entry,
+      #account-entry[hidden] { display: none !important; }
       .authenticated-view main > section:not(#account-dashboard):not(#case-documents-layout):not(#preparation-view):not(#settlement-planner) { display: none; }
 
       @media (max-width: 850px) {
@@ -1673,7 +1674,7 @@
             <button class="nav-cta" id="logout-button" type="button" hidden>Log out</button>
           </span>
           <a class="nav-cta auth-entry login-entry" id="login-entry" href="/?auth=login">Log in</a>
-          <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup">Get started <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup" hidden>Get started <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
       </header>
       <p class="theme-status" id="theme-status" role="status" aria-live="polite"></p>
@@ -5085,11 +5086,17 @@
           preparationView.hidden = true;
           if (caseDocumentsLayout) caseDocumentsLayout.hidden = true;
           document.body.classList.remove("authenticated-view");
+          const currentUrl = new URL(window.location.href);
+          document.getElementById("account-entry").hidden = currentUrl.pathname !== "/"
+            || currentUrl.searchParams.has("auth")
+            || currentUrl.searchParams.has("view")
+            || document.body.classList.contains("signed-in-home");
         }
 
         function showDashboardShell() {
           dashboard.hidden = false;
           document.body.classList.add("authenticated-view");
+          document.getElementById("account-entry").hidden = true;
         }
 
         function loadDemoCaseData() {
@@ -6605,6 +6612,7 @@
         function showSignedInHome() {
           showPublicPage();
           document.body.classList.add("signed-in-home");
+          document.getElementById("account-entry").hidden = true;
           dashboardLoading.hidden = true;
           accountToolsLink.hidden = false;
           for (const [id, label] of [
