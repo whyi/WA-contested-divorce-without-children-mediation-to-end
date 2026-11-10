@@ -80,9 +80,9 @@ class WizardBackAndContinueTests(unittest.TestCase):
 
 class SignedInHomeTests(unittest.TestCase):
     def test_logo_opens_the_home_page_for_signed_in_users(self) -> None:
-        self.assertIn('id="brand-link" href="/" aria-label="Casework home"', PAGE)
+        self.assertIn('id="brand-link" href="/?view=home" aria-label="Casework home"', PAGE)
         status = _function_body("loadDashboardStatus")
-        self.assertIn('brandLink.href = "/?view=home"', status)
+        self.assertNotIn("brandLink", PAGE)
         self.assertLess(status.index("else if (homeMode)"), status.index("await enterSignedInAccount(account)"))
         self.assertIn('new URLSearchParams(window.location.search).get("view") === "home"', PAGE)
 

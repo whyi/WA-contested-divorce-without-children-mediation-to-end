@@ -1742,7 +1742,7 @@
     </div>
     <div class="shell">
       <header class="topbar">
-        <a class="brand" id="brand-link" href="/" aria-label="Casework home">
+        <a class="brand" id="brand-link" href="/?view=home" aria-label="Casework home">
           <span class="brand-mark" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="18" text-anchor="middle" fill="currentColor" font-family="Georgia, serif" font-size="20" font-weight="700">C</text></svg>
           </span>
@@ -3100,7 +3100,6 @@
         const newCaseStart = document.getElementById("new-case-start");
         const accountToolsMode = new URLSearchParams(window.location.search).get("view") === "account";
         const homeMode = new URLSearchParams(window.location.search).get("view") === "home";
-        const brandLink = document.getElementById("brand-link");
         const startPathPage = document.getElementById("start-path-page");
         const startPathStatus = document.getElementById("start-path-status");
 
@@ -12417,7 +12416,6 @@
             showDashboardShell();
             delete document.documentElement.dataset.sessionChecking;
             showSignedInNavigation();
-            brandLink.href = "/?view=home";
             if (preparationMode) {
               dashboardLoading.hidden = true;
               accountToolsLink.hidden = false;
