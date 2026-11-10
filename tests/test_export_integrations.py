@@ -31,7 +31,7 @@ class ExportIntegrationTests(unittest.TestCase):
                     response = _connection_result_page(provider, connected)
                     page = bytes(response.body).decode()
                     self.assertIn("<header>", page)
-                    self.assertIn('aria-label="Casework home"', page)
+                    self.assertIn('href="/?view=home" aria-label="Casework home"', page)
                     self.assertIn("<footer>", page)
                     self.assertLess(page.index("<header>"), page.index("<main>"))
                     self.assertLess(page.index("</main>"), page.index("<footer>"))

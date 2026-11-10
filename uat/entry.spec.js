@@ -176,6 +176,41 @@ test("public landing contains only supported sections and working local links", 
   fixture.verify();
 });
 
+test.describe("logo always opens the homepage", () => {
+  for (const authenticated of [false, true]) {
+    for (const path of ["/pricing", "/?view=account", `/onboarding/upload?case_id=${caseId}`, "/demo/start?source=demo1"]) {
+      test(`${authenticated ? "signed-in" : "signed-out"} logo from ${path} before session verification`, async ({ page }) => {
+        const fixture = await installFixtures(page, { authenticated, hasCase: false });
+        let release;
+        const pending = new Promise((resolve) => { release = resolve; });
+        let held = false;
+        await page.route("**/api/v1/dashboard/status", async (route) => {
+          if (!held) {
+            held = true;
+            await pending;
+          }
+          await route.fallback();
+        });
+        try {
+          await page.goto(`${origin}${path}`);
+          const logo = page.getByRole("link", { name: "Casework home", exact: true });
+          await expect(logo).toHaveAttribute("href", "/?view=home");
+          await logo.click();
+          await expect(page).toHaveURL(`${origin}/?view=home`);
+        } finally {
+          release();
+        }
+        await expect(page.locator(".hero")).toBeVisible();
+        if (authenticated) await expect(page.locator("body")).toHaveClass(/signed-in-home/);
+        else await expect(page.locator("#account-entry")).toBeVisible();
+        await expect(page.locator("#case-create-page")).toBeHidden();
+        await expect(page.locator("#account-profile")).toBeHidden();
+        fixture.verify();
+      });
+    }
+  }
+});
+
 test("dedicated pricing page shows one-time tiers and inert buy buttons", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);
