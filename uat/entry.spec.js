@@ -227,6 +227,7 @@ async function expectClosedCompletionActions(page) {
   const banner = page.locator("#settlement-completion-page #closed-case-view-banner");
   await expect(banner).toBeVisible();
   await expect(banner).toContainText("Closed case · Read-only");
+  await expect(banner.locator("a")).toHaveCount(0);
   await expect(banner).toContainText("is closed. You can review saved information and files, but changes are unavailable until you explicitly reopen it.");
   const positions = await banner.evaluate(element => ({
     bannerBottom: element.getBoundingClientRect().bottom,
@@ -402,7 +403,8 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
   await expect(page.locator("#case-file-layout .demo-file-manager-toolbar")).toBeHidden();
   await expect(page.locator("#case-saved-files-list button")).toHaveCount(0);
   expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
-  await page.locator("#closed-case-view-account").click();
+  await expect(page.locator("#closed-case-view-banner a")).toHaveCount(0);
+  await page.locator("#account-tools-link").click();
   await expect(page).toHaveURL(`${origin}/?view=account`);
   await expect(page.locator("#closed-case-list .closed-case-item")).toHaveCount(1);
   fixture.verify();
