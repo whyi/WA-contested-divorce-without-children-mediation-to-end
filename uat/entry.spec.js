@@ -360,33 +360,38 @@ async function expectClosedCompletionActions(page) {
   expect(positions.bannerBottom).toBeLessThanOrEqual(positions.progressTop);
 }
 
-for (const kind of ["asset", "selection"]) {
+for (const kind of ["asset", "selection", "locked-asset", "locked-selection"]) {
   for (const ordinal of [1, 3]) {
     for (const width of [1280, 320]) {
       test(`Your case resumes open accepted completion: ${kind}, attempt ${ordinal}, ${width}px`, async ({ page }) => {
         const selectionId = "00000000-0000-4000-8000-000000000076";
-        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? `asset_attempt=${ordinal}` : `selection_id=${selectionId}`}`;
+        const locked = kind.startsWith("locked-");
+        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind.endsWith("asset") ? `asset_attempt=${ordinal}` : `selection_id=${selectionId}`}`;
         const fixture = await installFixtures(page, {
           authenticated: true, mode: "upload", workspaceStarted: true,
           extraReads: {
             [`/cases/${caseId}/workspace`]: {
-              ...workspace, accepted_offer_url: completionUrl,
+              ...workspace, case: { ...workspace.case, attempts_locked_at: locked ? closedAt : null },
+              accepted_offer_url: completionUrl,
               attempts: Array.from({ length: ordinal }, (_, index) => ({
                 ordinal: index + 1, frozen: true, profile: { ...workspace.case, metadata: {} },
               })),
             },
             [`/cases/${caseId}/asset-mediation/${ordinal}`]: {
               revision: 1, attempt_ordinal: ordinal, attempt_limit: 3, sent: true, outcome: "accepted",
+              completed: locked, attempts_locked: locked,
               sent_filenames: [], document_ids: [], downloaded_formats: [],
             },
             [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
               outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+              completed: locked, attempts_locked: locked,
             },
           },
         });
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${origin}${completionUrl}`);
         await expectAcceptedCompletionProgress(page);
+        if (locked) await expect(page.locator("#settlement-completion-status")).toContainText("All attempts remain locked");
         await page.locator("#your-case-entry").click();
         await expect(page).toHaveURL(`${origin}${completionUrl}`);
         await expectAcceptedCompletionProgress(page);
@@ -410,7 +415,7 @@ for (const kind of ["asset", "selection"]) {
   }
 }
 
-for (const outcome of ["accepted", "rejected"]) {
+for (const outcome of ["rejected", "counteroffer"]) {
   test(`Your case preserves reopened locked attempt entry with ${outcome} response`, async ({ page }) => {
     const fixture = await installFixtures(page, {
       authenticated: true, workspaceStarted: true,

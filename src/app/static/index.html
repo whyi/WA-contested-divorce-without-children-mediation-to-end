@@ -6799,7 +6799,7 @@
             throw new Error("Your case could not be verified. Refresh and retry.");
           }
           const ordinal = latestSavedAttemptOrdinal(saved);
-          const target = ((closed || !saved.case.attempts_locked_at) && acceptedCaseDestination(item, saved))
+          const target = acceptedCaseDestination(item, saved)
             || new URL(`/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}`, window.location.origin);
           if (closed) target.searchParams.set("view", "closed");
           window.location.replace(`${target.pathname}${target.search}`);
