@@ -123,6 +123,43 @@ backups, or provider credentials for UAT.
 
 ## One-click deployment from GitHub Actions
 
+### Optional Google sign-in
+
+Google sign-in requires a Web application OAuth client with the exact redirect
+URI `<uat_url>/api/auth/oidc/google/callback`. Start the login on that same
+HTTPS endpoint, not a local preview. The owner-email allowlist remains enforced.
+Existing password accounts must explicitly link Google instead of automatically
+merging identities with matching email addresses.
+
+Store the Google client secret as a **plaintext string** in an existing
+Secrets Manager secret in `us-west-2`, in the deployment account, using the
+default Secrets Manager encryption key. Never put its value in GitHub variables,
+Terraform variables/state, source control, or deployment logs.
+
+Set these GitHub Environment variables in `owner-beta-uat`:
+
+- `UAT_GOOGLE_CLIENT_ID`: the OAuth client ID.
+- `UAT_GOOGLE_CLIENT_SECRET_ARN`: the existing secret ARN (not the secret value).
+
+Configure both variables together. The image deployment injects the client ID
+and secret reference into each task container without fetching the secret. It
+preserves other runtime settings, including owner-only access. With neither
+variable set, existing task configuration is preserved.
+
+In the existing Terraform workspace, also set `google_client_id` and
+`google_client_secret_arn` to the same values. Terraform wires the task settings
+and grants the ECS **execution role** `secretsmanager:GetSecretValue` on only
+that secret. This permission must exist before deployment; the Actions deploy
+role does not need permission to read the secret or edit IAM. If the matching
+inline policy was provisioned separately, import it before applying Terraform:
+resource `aws_iam_role_policy.google_login_secret[0]`, import ID
+`<project_name>-execution:<project_name>-read-google-login-secret`.
+
+Run **Deploy UAT** to build latest `main`, run migrations and deploy the image
+with these settings. Verify `/healthz`, `/readyz` and `/api/auth/providers`
+(`google: true`). Then complete Google consent in a browser using an allowed
+test account; provider availability alone does not prove a successful login.
+
 After the initial local provisioning, **Actions > Deploy UAT > Run workflow**
 deploys the latest `main` to the existing UAT service. It builds an immutable
 image, runs forward migrations, updates ECS, and checks `/healthz` and `/readyz`.

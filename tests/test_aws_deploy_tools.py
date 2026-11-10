@@ -38,6 +38,56 @@ build_database_url = DATABASE_URL_MODULE.build_database_url
 
 
 class TaskDefinitionImageTests(unittest.TestCase):
+    def test_injects_google_configuration_without_reading_secret_or_losing_settings(self) -> None:
+        secret_arn = "arn:aws:secretsmanager:us-west-2:123456789012:secret:google-secret-abcdef"
+        described = {
+            "executionRoleArn": "arn:aws:iam::123456789012:role/execution",
+            "containerDefinitions": [{
+                "name": "api",
+                "environment": [
+                    {"name": "OWNER_BETA_ENABLED", "value": "true"},
+                    {"name": "GOOGLE_CLIENT_SECRET", "value": "old-plaintext"},
+                    {"name": "GOOGLE_CLIENT_ID", "value": "old-client"},
+                ],
+                "secrets": [{"name": "DATABASE_URL", "valueFrom": "database-arn"}],
+            }, {"name": "worker"}],
+        }
+        result = task_definition_for_image(
+            described, "repo:latest", "api",
+            google_client_id="synthetic.apps.googleusercontent.com",
+            google_client_secret_arn=secret_arn,
+        )
+        for container in result["containerDefinitions"]:
+            self.assertIn(
+                {"name": "GOOGLE_CLIENT_ID", "value": "synthetic.apps.googleusercontent.com"},
+                container["environment"],
+            )
+            self.assertIn(
+                {"name": "GOOGLE_CLIENT_SECRET", "valueFrom": secret_arn},
+                container["secrets"],
+            )
+            self.assertFalse(any(entry["name"] == "GOOGLE_CLIENT_SECRET" for entry in container["environment"]))
+        self.assertIn({"name": "OWNER_BETA_ENABLED", "value": "true"}, result["containerDefinitions"][0]["environment"])
+        self.assertEqual(len(described["containerDefinitions"][0]["environment"]), 3)
+
+    def test_rejects_partial_or_wrong_account_google_configuration(self) -> None:
+        described = {
+            "executionRoleArn": "arn:aws:iam::123456789012:role/execution",
+            "containerDefinitions": [{"name": "api"}],
+        }
+        for client, secret in [
+            ("synthetic.apps.googleusercontent.com", ""),
+            ("", "arn:aws:secretsmanager:us-west-2:123456789012:secret:google-secret"),
+            ("invalid", "arn:aws:secretsmanager:us-west-2:123456789012:secret:google-secret"),
+            ("synthetic.apps.googleusercontent.com", "plaintext-not-an-arn"),
+            ("synthetic.apps.googleusercontent.com", "arn:aws:secretsmanager:us-west-2:999999999999:secret:google-secret"),
+        ]:
+            with self.subTest(client=client, secret=secret), self.assertRaises(ValueError):
+                task_definition_for_image(
+                    described, "repo:latest", "api",
+                    google_client_id=client, google_client_secret_arn=secret,
+                )
+
     def test_replaces_all_container_images_and_strips_describe_only_fields(self) -> None:
         described = {
             "family": "owner-beta",

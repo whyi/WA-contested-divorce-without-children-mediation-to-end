@@ -26,6 +26,8 @@ jobs:
       AWS_PAGER: ""
       UAT_DEPLOYMENT_OUTPUTS_JSON: ${{ vars.UAT_DEPLOYMENT_OUTPUTS_JSON }}
       UAT_AWS_ROLE_ARN: ${{ vars.UAT_AWS_ROLE_ARN }}
+      UAT_GOOGLE_CLIENT_ID: ${{ vars.UAT_GOOGLE_CLIENT_ID }}
+      UAT_GOOGLE_CLIENT_SECRET_ARN: ${{ vars.UAT_GOOGLE_CLIENT_SECRET_ARN }}
     steps:
       - uses: actions/checkout@v4
         with:

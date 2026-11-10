@@ -4,6 +4,23 @@ variable "aws_region" {
   default     = "us-west-2"
 }
 
+variable "google_client_id" {
+  description = "Optional Google OAuth client ID; configure together with google_client_secret_arn."
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret_arn" {
+  description = "Existing Google OAuth plaintext secret ARN, not its value. Use the default Secrets Manager KMS key."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.google_client_secret_arn == "" || can(regex("^arn:aws:secretsmanager:us-west-2:[0-9]{12}:secret:", var.google_client_secret_arn))
+    error_message = "Use an existing Secrets Manager secret ARN in us-west-2."
+  }
+}
+
 variable "project_name" {
   description = "Short, globally unique prefix for owner-beta resources."
   type        = string
