@@ -157,7 +157,7 @@ test("public landing contains only supported sections and working local links", 
   await page.goto(origin);
   await expect(page.locator("#account-entry")).toBeVisible();
   await expect(page.locator("#account-entry")).toHaveAccessibleName("Get started");
-  for (const width of [1280, 390, 320]) {
+  for (const width of [1280, 800, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.locator("#theme-select"), `${width}px: theme selector`).toBeVisible();
     await expect(page.locator("#theme-select"), `${width}px: theme selector accessible name`).toHaveAccessibleName("Theme");
@@ -203,15 +203,36 @@ test("dedicated pricing page shows one-time tiers and inert buy buttons", async 
 test("signed-in account can navigate to and view the pricing page", async ({ page }) => {
   const fixture = await installFixtures(page, { hasCase: false });
   await signIn(page);
-  await expect(page.locator("#logout-button")).toBeVisible();
-  await expect(page.locator("#pricing-entry")).toBeVisible();
-  await page.locator("#pricing-entry").click();
-  await expect(page).toHaveURL(`${origin}/pricing`);
-  await expect(page.locator("body")).toHaveClass(/authenticated-view/);
-  await expect(page.locator("#pricing-page")).toBeVisible();
-  await expect(page.locator("#pricing-title")).toBeVisible();
-  await expect(page.locator("#pricing-entry")).toBeVisible();
-  await expect(page.locator("#essential-buy-now")).toBeVisible();
+  const headerControls = [
+    "#theme-select", "#account-tools-link", "#your-case-entry", "#logout-button",
+    "#pricing-entry", "#login-entry", "#account-entry", "#demo1-entry", "#demo2-entry",
+  ].join(", ");
+  const visibleHeader = async () => page.locator(headerControls).evaluateAll((controls) =>
+    controls.flatMap((control) => {
+      const rect = control.getBoundingClientRect();
+      const style = window.getComputedStyle(control);
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+        ? [{ id: control.id, x: rect.x, y: rect.y, width: rect.width, height: rect.height }]
+        : [];
+    }),
+  );
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${origin}/?view=home`);
+    await expect(page.locator("body")).toHaveClass(/signed-in-home/);
+    await expect(page.locator("#logout-button")).toBeVisible();
+    const homeHeader = await visibleHeader();
+    expect(homeHeader.map(({ id }) => id)).toEqual([
+      "pricing-entry", "theme-select", "account-tools-link", "your-case-entry", "logout-button",
+    ]);
+
+    await page.locator("#pricing-entry").click();
+    await expect(page).toHaveURL(`${origin}/pricing`);
+    await expect(page.locator("#pricing-page")).toBeVisible();
+    await expect(page.locator("#pricing-title")).toBeVisible();
+    expect(await visibleHeader(), `${width}px signed-in Pricing header matches homepage`).toEqual(homeHeader);
+    await expect(page.locator("#essential-buy-now")).toBeVisible();
+  }
   fixture.verify();
 });
 
