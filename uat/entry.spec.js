@@ -1029,7 +1029,7 @@ test("reopened accepted attempt enables response-only controls and removes the O
 
 for (const plan of ["free", "paid"]) {
   for (const width of [1280, 320]) {
-    test(`reopened outcome persists and nonaccepted Next requires subscription: ${plan} at ${width}px`, async ({ page }) => {
+    test(`reopened outcome persists and nonaccepted continuation requires subscription: ${plan} at ${width}px`, async ({ page }) => {
       const state = {
         revision: 3, attempt_ordinal: 2, attempt_limit: 3, sent: true, outcome: "accepted",
         notes: eligibleCounterofferNotes, document_ids: [], sent_filenames: ["sent.docx", "sent.xlsx"],
@@ -1088,7 +1088,7 @@ for (const plan of ["free", "paid"]) {
       for (const outcome of ["rejected", "counteroffer"]) {
         await outcomes.locator(`input[value="${outcome}"]`).check();
         next = page.locator(outcome === "counteroffer"
-          ? "#settlement-demo-add-counteroffer-case" : "#settlement-demo-response-next-case");
+          ? "#settlement-demo-add-counteroffer-case" : "#settlement-demo-next-attempt-case");
         await expect.poll(() => state.outcome).toBe(outcome);
         await expect(next).toBeEnabled();
         await page.reload();
@@ -1102,8 +1102,11 @@ for (const plan of ["free", "paid"]) {
           )).toBe(true);
           await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
         } else {
+          await expect(next).toHaveText("Try another attempt");
+          await expect(page.locator("#settlement-demo-stop-case")).toHaveText("Close Case");
+          await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
           expect(await next.evaluate(element =>
-            element.parentElement.id === "settlement-demo-response-files-case"
+            element.parentElement.id === "settlement-demo-rejection-choices-case"
           )).toBe(true);
         }
         for (const selector of ["#settlement-demo-counteroffer-notes-case", "#settlement-demo-counteroffer-file-case"]) {
@@ -1476,10 +1479,14 @@ test("reopened outcome save failure preserves the saved selection and permits re
   await expect(outcomes.locator('input[value="accepted"]')).toBeChecked();
   await expect(outcomes.locator('input[value="rejected"]')).toBeEnabled();
   await expect(page.locator("#settlement-demo-response-next-case")).toBeEnabled();
+  await expect(page.locator("#settlement-demo-rejection-choices-case")).toBeHidden();
   failSave = false;
   await outcomes.locator('input[value="rejected"]').check();
   await expect(outcomes.locator('input[value="rejected"]')).toBeChecked();
   await expect.poll(() => state.outcome).toBe("rejected");
+  await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
+  await expect(page.locator("#settlement-demo-next-attempt-case")).toBeEnabled();
+  await expect(page.locator("#settlement-demo-stop-case")).toBeEnabled();
   fixture.verify();
 });
 
@@ -1513,13 +1520,17 @@ test("reopened outcome save disables response and Next until persistence finishe
   await rejected.check();
   await expect(rejected).toBeDisabled();
   await expect(next).toBeDisabled();
+  await expect(page.locator("#settlement-demo-next-attempt-case")).toBeDisabled();
+  await expect(page.locator("#settlement-demo-stop-case")).toBeDisabled();
   await next.dispatchEvent("click");
   await expect(page.locator("#app-dialog")).toBeHidden();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
   release();
   await expect(rejected).toBeEnabled();
   await expect(rejected).toBeChecked();
-  await expect(next).toBeEnabled();
+  await expect(next).toBeHidden();
+  await expect(page.locator("#settlement-demo-next-attempt-case")).toBeEnabled();
+  await expect(page.locator("#settlement-demo-stop-case")).toBeEnabled();
   expect(saves).toBe(1);
   fixture.verify();
 });
@@ -3715,6 +3726,14 @@ for (const outcome of ["accepted", "rejected"]) {
           state.revision++;
           return { body:"PK-test-document", contentType:"application/octet-stream" };
         }
+        if (request.url().endsWith(`/cases/${caseId}/close`)) {
+          expect(request.postDataJSON()).toEqual({ reason:"stopped" });
+          expect(state.outcome).toBe("rejected");
+          currentWorkspace.case = { ...currentWorkspace.case, closed_at:closedAt, closed_reason:"stopped" };
+          closed.cases.push({ id:caseId, title:"Closed rejected case",
+            status:currentWorkspace.case.status, closed_at:closedAt, closed_reason:"stopped" });
+          return { body:currentWorkspace.case };
+        }
         if (!request.url().endsWith("/asset-mediation")) return null;
         const payload = request.postDataJSON();
         mutations.push(payload);
@@ -3733,10 +3752,6 @@ for (const outcome of ["accepted", "rejected"]) {
           }
           state.outcome = payload.outcome;
           state.notes = payload.notes;
-        } else if (payload.action === "stop") {
-          expect(state.outcome).toBe("rejected");
-          state.stopped = true;
-          closed.cases.push({ id:caseId, closed_reason:"stopped" });
         } else if (payload.action === "complete") {
           expect(state.outcome).toBe("accepted");
           state.completed = true;
@@ -3815,13 +3830,14 @@ for (const outcome of ["accepted", "rejected"]) {
       await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
       expect(state.completed).toBe(false);
     } else {
-      await expect(page.locator("#settlement-demo-next-attempt-case")).toHaveAttribute("aria-disabled", "true");
+      await expect(page.locator("#settlement-demo-next-attempt-case")).toHaveAttribute("aria-disabled", "false");
       await page.locator("#settlement-demo-stop-case").click();
       await expect(page.locator("#app-dialog")).toBeVisible();
-      await expect(page.locator("#app-dialog-title")).toHaveText("Stop this workflow?");
+      await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");
       await page.locator("#app-dialog-confirm").click();
-      await expect(page).toHaveURL(new RegExp("/rejection-completion\\?case_id="));
-      await expect(page.locator("#rejection-completion-status")).toContainText("history and credits remain preserved");
+      await expect(page).toHaveURL(`${origin}/?view=account`);
+      await expect(page.locator("#closed-case-list")).toContainText("Closed rejected case");
+      expect(state.stopped).toBe(false);
     }
     expect(mutations.some(item => item.action === "continue")).toBe(false);
     await fixture.verify();
@@ -4076,7 +4092,7 @@ for (const { ordinal, limit } of [{ ordinal:1, limit:1 }, { ordinal:3, limit:3 }
     const next = page.locator("#settlement-demo-next-attempt-case");
     await expect(next).toBeVisible();
     if (ordinal >= limit) {
-      await expect(next).toHaveAttribute("aria-disabled", "true");
+      await expect(next).toHaveAttribute("aria-disabled", "false");
       const currentUrl = page.url();
       await next.scrollIntoViewIfNeeded();
       const bounds = await next.boundingBox();
@@ -4086,7 +4102,7 @@ for (const { ordinal, limit } of [{ ordinal:1, limit:1 }, { ordinal:3, limit:3 }
       await page.locator("#app-dialog-confirm").click();
       await page.reload();
       await expect(next).toBeVisible();
-      await expect(next).toHaveAttribute("aria-disabled", "true");
+      await expect(next).toHaveAttribute("aria-disabled", "false");
       await expect(next).toHaveJSProperty("disabled", false);
       await next.focus();
       await expect(next).toBeFocused();
@@ -4127,11 +4143,109 @@ for (const inactive of ["stopped", "closed", "finalized", "historical"]) {
         [`/cases/${caseId}/asset-mediation/1`]:state,
       },
     });
-    await page.goto(`${origin}/case/assets?case_id=${caseId}${inactive === "historical" ? "&asset_attempt=1" : ""}`);
+    await page.goto(`${origin}/case/assets?case_id=${caseId}${inactive === "historical" ? "&attempt=1" : ""}`);
     await expect(page.locator("#settlement-demo-next-attempt-case")).toBeDisabled();
+    const close = page.locator("#settlement-demo-stop-case");
+    await expect(close).toBeDisabled();
+    await close.dispatchEvent("click");
     await expect(page.locator("#app-dialog")).not.toBeVisible();
     fixture.verify();
   });
+}
+
+for (const reopened of [false, true]) {
+  for (const width of [1280, 320]) {
+    test(`final rejected offer retry and reversible closure: reopened=${reopened} at ${width}px`, async ({ page }) => {
+      const state = {
+        revision:3, attempt_ordinal:3, attempt_limit:3, sent:true, outcome:"rejected",
+        notes:"Retained counteroffer notes", document_ids:[], sent_filenames:["sent.docx", "sent.xlsx"],
+        selection:null, downloaded_formats:["docx", "xlsx"], stopped:false,
+        completed:reopened, attempts_locked:reopened,
+      };
+      const saved = { ...workspace, case:{ ...workspace.case,
+        attempts_locked_at:reopened ? closedAt : null },
+        attempts:[1, 2, 3].map(ordinal => ({ ordinal, frozen:true,
+          profile:{ metadata:{ asset_overview:workspace.asset_overview } } })),
+      };
+      const closedCases = { cases:[] };
+      const closures = [];
+      let response = "failure";
+      let releaseClose;
+      const fixture = await installFixtures(page, {
+        authenticated:true,
+        extraReads:{
+          [`/cases/${caseId}/workspace`]:saved,
+          [`/cases/${caseId}/asset-mediation/3`]:state,
+          "/api/v1/closed-cases":closedCases,
+        },
+        mutationHandler:async request => {
+          expect(new URL(request.url()).pathname).toBe(`/cases/${caseId}/close`);
+          expect(request.postDataJSON()).toEqual({ reason:"stopped" });
+          closures.push(request.postDataJSON());
+          if (response === "failure") return { status:503, body:{ detail:"Closure unavailable. Please retry." } };
+          if (response === "unverified") return { body:{ status:"settlement", closed_at:null } };
+          if (response === "wrong-case") return { body:{ id:"another-case", closed_at:closedAt } };
+          await new Promise(resolve => { releaseClose = resolve; });
+          saved.case = { ...saved.case, closed_at:closedAt, closed_reason:"stopped" };
+          closedCases.cases.push({ id:caseId, title:"Closed rejected case",
+            status:saved.case.status, closed_at:closedAt, closed_reason:"stopped" });
+          return { body:saved.case };
+        },
+      });
+      await page.setViewportSize({ width, height:1000 });
+      const attemptUrl = `${origin}/case/assets?case_id=${caseId}&attempt=3`;
+      await page.goto(attemptUrl);
+      const retry = page.locator("#settlement-demo-next-attempt-case");
+      const close = page.locator("#settlement-demo-stop-case");
+      const status = page.locator("#settlement-demo-response-status-case");
+      await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
+      await expect(retry).toHaveText("Try another attempt");
+      await expect(close).toHaveText("Close Case");
+      await expect(retry).toBeEnabled();
+      await expect(close).toBeEnabled();
+      const a = await retry.boundingBox();
+      const b = await close.boundingBox();
+      expect(Math.abs(a.y - b.y)).toBeLessThan(1);
+      expect(a.x + a.width).toBeLessThanOrEqual(b.x);
+      expect(b.x + b.width).toBeLessThanOrEqual(width);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      await retry.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.locator("#app-dialog-title")).toHaveText(reopened ? "Subscription required" : "More attempts need credits");
+      await page.locator("#app-dialog-confirm").click();
+      await close.click();
+      await expect(page.locator("#app-dialog-description")).toContainText("Nothing is deleted");
+      await expect(page.locator("#app-dialog-description")).toContainText("unused attempt credits remain available");
+      await expect(page.locator("#app-dialog-description")).toContainText("reopen");
+      await page.locator("#app-dialog-cancel").click();
+      expect(closures).toHaveLength(0);
+      for (const mode of ["failure", "unverified", "wrong-case"]) {
+        response = mode;
+        await close.click();
+        await page.locator("#app-dialog-confirm").click();
+        await expect(status).toContainText(mode === "failure" ? "Closure unavailable" : "closure could not be verified");
+        await expect(status).toHaveAttribute("data-kind", "error");
+        await expect(page).toHaveURL(attemptUrl);
+        await expect(close).toBeEnabled();
+        await expect(retry).toBeEnabled();
+      }
+      response = "success";
+      await close.click();
+      await page.locator("#app-dialog-confirm").click();
+      await expect.poll(() => Boolean(releaseClose)).toBe(true);
+      await expect(close).toBeDisabled();
+      await expect(retry).toBeDisabled();
+      await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeDisabled();
+      releaseClose();
+      await expect(page).toHaveURL(`${origin}/?view=account`);
+      await expect(page.locator("#closed-case-list")).toContainText("Closed rejected case");
+      expect(saved.case.attempts_locked_at).toBe(reopened ? closedAt : null);
+      expect(state.notes).toBe("Retained counteroffer notes");
+      expect(state.stopped).toBe(false);
+      expect(closures).toHaveLength(4);
+      fixture.verify();
+    });
+  }
 }
 
 test("case milestone add, edit and removal persist without resetting saved balances", async ({ page }) => {
