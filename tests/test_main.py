@@ -412,6 +412,23 @@ class MainWorkflowTests(unittest.TestCase):
         self.assertIn('id="dashboard-retry"', page)
         self.assertIn('"/api/v1/dashboard/status"', page)
 
+    def test_pricing_route_serves_the_dedicated_one_time_tier_page(self) -> None:
+        status, body = asyncio.run(request_app("/pricing"))
+
+        self.assertEqual(status, 200)
+        page = body.decode()
+        self.assertIn('id="pricing-page"', page)
+        self.assertIn('id="pricing-entry" href="/pricing">Pricing</a>', page)
+        self.assertIn("Up to 3 attempts", page)
+        self.assertIn('$5 <small>one time</small>', page)
+        self.assertIn("Up to 10 attempts", page)
+        self.assertIn('$10 <small>one time</small>', page)
+        self.assertIn('id="essential-buy-now" href="#">Buy now</a>', page)
+        self.assertIn('id="pro-buy-now" href="#">Buy now</a>', page)
+        self.assertNotIn('id="free-buy-now"', page)
+        self.assertIn("No subscriptions", page)
+        self.assertIn("Need more than 10 attempts? Contact us", page)
+
     def test_demo_entry_routes_open_single_case_flows(self) -> None:
         legacy_entry_paths = (
             ("/demo/1", "/demo/start?source=demo1"),
