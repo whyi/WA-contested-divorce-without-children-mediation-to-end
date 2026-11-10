@@ -4348,6 +4348,7 @@
         let caseScenarioDownloading = false;
         let caseMediationState = null;
         let caseMediationBusy = false;
+        let caseMediationNotesDirty = false;
         let caseMediationTimer = null;
         const caseCounterofferUploads = new WeakMap();
 
@@ -4400,6 +4401,10 @@
           }
           caseAssetElement("settlement-demo-counteroffer-notes").addEventListener("input", () => {
             clearTimeout(caseMediationTimer);
+            caseMediationNotesDirty = true;
+            const next = caseAssetElement("settlement-demo-add-counteroffer");
+            next.disabled = true;
+            next.setAttribute("aria-disabled", "true");
             caseMediationTimer = setTimeout(() => void saveCaseMediation("response"), 500);
           });
           caseAssetElement("settlement-demo-counteroffer-file").addEventListener("change", event =>
@@ -4407,6 +4412,12 @@
           const continueAttempt = async () => {
             if (!caseMediationState || caseMediationBusy || caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal
               || caseMediationState.stopped || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized") return;
+            clearTimeout(caseMediationTimer);
+            if (caseMediationState.outcome === "counteroffer") {
+              if (!caseAssetElement("settlement-demo-counteroffer-notes").value.trim()
+                && !caseMediationState.document_ids.length) return;
+              if (!await saveCaseMediation("response")) return;
+            }
             if (caseMediationState.attempt_ordinal >= caseMediationState.attempt_limit) {
               await showAppNotice(
                 "Upgrade your plan or purchase attempt credits to prepare another attempt. Your counteroffer notes and files remain saved.",
@@ -4414,8 +4425,7 @@
               );
               return;
             }
-            clearTimeout(caseMediationTimer);
-            if (!await saveCaseMediation("response")) return;
+            if (caseMediationState.outcome !== "counteroffer" && !await saveCaseMediation("response")) return;
             if (await saveCaseMediation("continue")) {
               window.location.assign(`/case/assets?case_id=${encodeURIComponent(preparationCaseId)}`);
             }
@@ -4453,6 +4463,7 @@
 
         async function loadCaseMediation() {
           caseMediationState = null;
+          caseMediationNotesDirty = false;
           const status = caseAssetElement("settlement-demo-response-status");
           status.textContent = "Loading saved mediation response…";
           try {
@@ -4511,7 +4522,7 @@
           const counteroffer = state.outcome === "counteroffer";
           caseAssetElement("settlement-demo-counteroffer-panel").hidden = !counteroffer;
           const notes = caseAssetElement("settlement-demo-counteroffer-notes");
-          if (document.activeElement !== notes) notes.value = state.notes;
+          if (!caseMediationNotesDirty && document.activeElement !== notes) notes.value = state.notes;
           notes.disabled = Boolean(caseMediationBusy || inactive);
           caseAssetElement("settlement-demo-counteroffer-file").disabled = Boolean(caseMediationBusy || inactive);
           const fileStatus = caseAssetElement("settlement-demo-counteroffer-file-status");
@@ -4526,8 +4537,9 @@
           }
           const counterofferNext = caseAssetElement("settlement-demo-add-counteroffer");
           counterofferNext.hidden = !counteroffer || reopenedResponse;
-          counterofferNext.disabled = Boolean(caseMediationBusy || inactive);
-          counterofferNext.setAttribute("aria-disabled", String(!canContinue || caseMediationBusy));
+          counterofferNext.disabled = Boolean(caseMediationBusy || caseMediationNotesDirty || inactive
+            || (!state.notes.trim() && !state.document_ids.length));
+          counterofferNext.setAttribute("aria-disabled", String(counterofferNext.disabled));
           const limit = `Your ${state.attempt_limit === 1 ? "Free" : "paid"} plan allows ${state.attempt_limit} attempt${state.attempt_limit === 1 ? "" : "s"}.`;
           caseAssetElement("settlement-demo-counteroffer-limit").hidden = true;
           caseAssetElement("settlement-demo-counteroffer-help").textContent = state.attempt_ordinal >= state.attempt_limit
@@ -4540,6 +4552,9 @@
           rejectedNext.setAttribute("aria-disabled", String(!canContinue || caseMediationBusy));
           caseAssetElement("settlement-demo-stop").disabled = Boolean(inactive || caseMediationBusy);
           const next = caseAssetElement("settlement-demo-response-next");
+          const nextContainer = caseAssetElement(counteroffer && reopenedResponse
+            ? "settlement-demo-counteroffer-panel" : "settlement-demo-response-files");
+          if (next.parentElement !== nextContainer) nextContainer.append(next);
           next.hidden = !reopenedResponse && ["counteroffer", "rejected"].includes(state.outcome);
           next.disabled = Boolean(caseMediationBusy || (!reopenedResponse && (inactive || state.outcome !== "accepted")));
           caseAssetElement("settlement-demo-response-status").textContent = state.stopped ? "This workflow has stopped. Your case materials remain saved."
@@ -4576,6 +4591,7 @@
               }),
             });
             caseMediationBusy = false;
+            caseMediationNotesDirty = false;
             if (["response", "response_outcome"].includes(action) && caseWorkspaceViewingOrdinal === caseWorkspaceCurrentOrdinal) {
               caseWorkspace.accepted_offer_url = caseMediationState.sent && caseMediationState.outcome === "accepted"
                 ? `/settlement-completion?case_id=${encodeURIComponent(preparationCaseId)}&asset_attempt=${caseWorkspaceViewingOrdinal}`
@@ -4586,6 +4602,7 @@
             return true;
           } catch (error) {
             caseMediationBusy = false;
+            caseMediationNotesDirty = true;
             renderCaseMediation();
             caseAssetElement("settlement-demo-counteroffer-notes").value = notes;
             status.textContent = error instanceof Error ? error.message : "Mediation response was not saved. Your entries remain here; retry.";
