@@ -4309,8 +4309,10 @@ for (const reopened of [false, true]) {
       expect(closures).toHaveLength(0);
       for (const mode of ["failure", "unverified", "wrong-case"]) {
         response = mode;
+        const beforeClose = closures.length;
         await close.click();
         await page.locator("#app-dialog-confirm").click();
+        await expect.poll(() => closures.length).toBe(beforeClose + 1);
         await expect(status).toContainText(mode === "failure" ? "Closure unavailable" : "closure could not be verified");
         await expect(status).toHaveAttribute("data-kind", "error");
         await expect(page).toHaveURL(attemptUrl);
