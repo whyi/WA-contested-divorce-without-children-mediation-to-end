@@ -56,7 +56,7 @@ class RemovedNegotiationPlannerTests(unittest.TestCase):
             'id="new-case-entry"', 1
         )[0]
         for element_id in (
-            "settlement-case-export",
+            "account-active-case-list",
             "settlement-case-close",
             "settlement-case-delete",
             "settlement-case-action-status",
