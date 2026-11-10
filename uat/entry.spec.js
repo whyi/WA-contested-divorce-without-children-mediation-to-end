@@ -24,7 +24,7 @@ const missingWizardAttempt = {
   report: null,
 };
 
-async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, loginStatus = 200, workspaceStarted = false, intake = {}, wizardAttempt = missingWizardAttempt, extraReads = {}, mutationHandler = null } = {}) {
+async function installFixtures(page, { mode = null, hasCase = true, authenticated = false, dashboardStatus = 200, dashboardDelay = 0, loginStatus = 200, workspaceStarted = false, intake = {}, wizardAttempt = missingWizardAttempt, extraReads = {}, mutationHandler = null } = {}) {
   let signedIn = authenticated;
   const unexpected = [];
   const requests = [];
@@ -71,6 +71,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
       await route.abort("blockedbyclient");
       return;
     } else if (path === "/api/v1/dashboard/status") {
+      if (dashboardDelay) await new Promise(resolve => setTimeout(resolve, dashboardDelay));
       status = signedIn ? dashboardStatus : 401;
       body = status === 200 ? {
         data: {
@@ -152,6 +153,8 @@ async function signIn(page) {
 test("public landing contains only supported sections and working local links", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);
+  await expect(page.locator("#account-entry")).toBeVisible();
+  await expect(page.locator("#account-entry")).toHaveAccessibleName("Get started");
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.locator("#theme-select"), `${width}px: theme selector`).toBeVisible();
@@ -168,6 +171,16 @@ test("public landing contains only supported sections and working local links", 
     const href = await link.getAttribute("href");
     if (href.length > 1) await expect(page.locator(href)).toHaveCount(1);
   }
+  fixture.verify();
+});
+
+test("Get started stays hidden until the public homepage session check confirms sign-out", async ({ page }) => {
+  const fixture = await installFixtures(page, { dashboardDelay: 250 });
+  await page.goto(origin);
+  await expect(page.locator("#account-entry")).toBeHidden();
+  await expect(page.locator("#account-entry")).toBeVisible();
+  await page.goto(`${origin}/?view=home`);
+  await expect(page.locator("#account-entry")).toBeVisible();
   fixture.verify();
 });
 
@@ -561,6 +574,7 @@ test("public authentication pages keep the theme selector visible", async ({ pag
       await page.goto(`${origin}${path}`);
       await expect(page.locator("#theme-select"), `${path}: theme selector`).toBeVisible();
       await expect(page.locator("#theme-select"), `${path}: theme selector accessible name`).toHaveAccessibleName("Theme");
+      await expect(page.locator("#account-entry"), `${path}: Get started is homepage-only`).toBeHidden();
     }
   }
   fixture.verify();
@@ -577,6 +591,7 @@ test("signed-in header offers Account, Your case and the existing logout action"
       await expect(page.locator("#account-tools-link")).toBeVisible();
       await expect(page.locator("#your-case-entry")).toBeVisible();
       await expect(page.locator("#logout-button")).toBeVisible();
+      await expect(page.locator("#account-entry"), `${path}: authenticated users do not see Get started`).toBeHidden();
       await expect(page.locator("#your-case-entry")).toHaveAttribute("href", "/");
     }
   }
@@ -1040,9 +1055,11 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
   await expect(page.locator("#account-tools-link")).toBeVisible();
   await expect(page.locator("#logout-button")).toBeVisible();
   await expect(page.locator("#login-entry")).toBeHidden();
+  await expect(page.locator("#account-entry")).toBeHidden();
   await page.locator("#logout-button").click();
   await expect(page).toHaveURL(`${origin}/`);
   await expect(page.locator("#login-entry")).toBeVisible();
+  await expect(page.locator("#account-entry")).toBeVisible();
   await expect(page.locator("#logout-button")).toBeHidden();
   expect(posted).toEqual(["synthetic-csrf"]);
   fixture.verify();
