@@ -1276,6 +1276,8 @@
       .authenticated-view .nav #your-case-entry:not([hidden]),
       body.signed-in-home .nav #your-case-entry:not([hidden]) { display: inline-flex !important; }
       body.signed-in-home #account-entry,
+      body.authenticated-view #account-entry,
+      body[data-auth-view="true"] #account-entry,
       #account-entry[hidden] { display: none !important; }
       .authenticated-view main > section:not(#account-dashboard):not(#case-documents-layout):not(#preparation-view):not(#settlement-planner) { display: none; }
 
@@ -5081,16 +5083,18 @@
           }
         });
 
-        function showPublicPage() {
+        function showPublicPage({ signedOut = false } = {}) {
           dashboard.hidden = true;
           preparationView.hidden = true;
           if (caseDocumentsLayout) caseDocumentsLayout.hidden = true;
           document.body.classList.remove("authenticated-view");
           const currentUrl = new URL(window.location.href);
           const requestedView = currentUrl.searchParams.get("view");
-          document.getElementById("account-entry").hidden = currentUrl.pathname !== "/"
+          document.getElementById("account-entry").hidden = !signedOut
+            || currentUrl.pathname !== "/"
             || currentUrl.searchParams.has("auth")
             || (requestedView !== null && requestedView !== "home")
+            || document.body.dataset.authView === "true"
             || document.body.classList.contains("signed-in-home");
         }
 
@@ -11881,7 +11885,7 @@
             if (response.status === 401) {
               if (isWorkingPage()) window.location.replace("/");
               else if (!isStartup) showSignIn("Your session has expired. Please sign in again.");
-              else showPublicPage();
+              else showPublicPage({ signedOut: true });
               return;
             }
             if (!response.ok) {
