@@ -258,7 +258,7 @@ test("signed-in account can navigate to and view the pricing page", async ({ pag
     await expect(page.locator("#logout-button")).toBeVisible();
     const homeHeader = await visibleHeader();
     expect(homeHeader.map(({ id }) => id)).toEqual([
-      "pricing-entry", "theme-select", "account-tools-link", "your-case-entry", "logout-button",
+      "theme-select", "pricing-entry", "account-tools-link", "your-case-entry", "logout-button",
     ]);
 
     await page.locator("#pricing-entry").click();
@@ -396,6 +396,40 @@ test.describe("immediate session navigation", () => {
     await expect(page.locator("#account-entry")).toBeVisible();
     fixture.verify();
   });
+});
+
+test.describe("shared header control order", () => {
+  for (const authenticated of [false, true]) {
+    for (const path of ["/?view=home", "/pricing"]) {
+      test(`${authenticated ? "signed-in" : "signed-out"} order at ${path}`, async ({ page }) => {
+        const fixture = await installFixtures(page, { authenticated, hasCase: false });
+        const expected = authenticated
+          ? ["theme-select", "pricing-entry", "account-tools-link", "your-case-entry", "logout-button"]
+          : ["theme-select", "pricing-entry", "login-entry", ...(path === "/?view=home" ? ["account-entry"] : [])];
+        for (const width of [1280, 800, 390, 320]) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto(`${origin}${path}`);
+          await expect(page.locator(authenticated ? "#logout-button" : "#login-entry")).toBeVisible();
+          if (!authenticated && path === "/?view=home") await expect(page.locator("#account-entry")).toBeVisible();
+          const controls = await page.locator("header nav a:visible, header nav button:visible, header nav select:visible").evaluateAll((elements) =>
+            elements.map((element) => {
+              const { x, y, height } = element.getBoundingClientRect();
+              return { id: element.id, x, center: y + height / 2 };
+            }),
+          );
+          expect(controls.map(({ id }) => id)).toEqual(expected);
+          expect([...controls].sort((a, b) => Math.abs(a.center - b.center) < 1 ? a.x - b.x : a.center - b.center)
+            .map(({ id }) => id)).toEqual(expected);
+          await page.locator("#theme-select").focus();
+          for (const id of expected) {
+            await expect(page.locator(`#${id}`)).toBeFocused();
+            await page.keyboard.press("Tab");
+          }
+        }
+        fixture.verify();
+      });
+    }
+  }
 });
 
 test("Get started stays hidden until the public homepage session check confirms sign-out", async ({ page }) => {
@@ -2322,6 +2356,7 @@ async function expectHomepageNavigationSpacing(page, referenceGap, signedIn) {
   expect(header.x).toBeGreaterThanOrEqual(0);
   expect(header.x + header.width).toBeLessThanOrEqual(page.viewportSize().width);
   const controls = await headerControlBoxes(page);
+  expect(controls[0].id, "Theme is visually first on every page").toBe("theme-control");
   expect(controls.length).toBeGreaterThan(1);
   for (const control of controls) {
     expect(control.x, `${control.id}: left boundary`).toBeGreaterThanOrEqual(header.x - 0.5);
@@ -2383,10 +2418,7 @@ for (const width of [1280, 901, 900, 851, 850, 601, 600, 421, 420, 390, 320]) {
       if (signedIn) await expect(page.locator("#logout-button")).toBeVisible();
       else await expect(page.locator("#login-entry")).toBeVisible();
       const homepageControls = await headerControlBoxes(page);
-      const pair = signedIn
-        ? ["account-tools-link", "your-case-entry"]
-        : ["login-entry", "account-entry"];
-      const [first, second] = pair.map((id) => homepageControls.find((control) => control.id === id));
+      const [first, second] = homepageControls;
       const referenceGap = second.x - first.x - first.width;
       expect(referenceGap, "unchanged homepage reference").toBeCloseTo(width > 850 ? 10 : 8, 0);
       let paths;

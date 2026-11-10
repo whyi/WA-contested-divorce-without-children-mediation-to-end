@@ -1480,7 +1480,7 @@
       .pricing-terms { margin: 10px auto 0; }
       body[data-pricing-page="true"] .preview-bar,
       body[data-pricing-page="true"] .theme-status { display: none; }
-      body[data-pricing-page="true"]:not(.authenticated-view):not(.signed-in-home) .nav > :not(.pricing-page-nav):not(.auth-entry) { display: none; }
+      body[data-pricing-page="true"]:not(.authenticated-view):not(.signed-in-home) .nav > :not(.theme-control):not(.pricing-page-nav):not(.auth-entry) { display: none; }
       body[data-pricing-page="true"] .nav #pricing-entry { display: inline-flex; }
       body[data-pricing-page="true"]:is(.authenticated-view, .signed-in-home) .topbar { min-height: 84px; }
       body[data-pricing-page="true"]:is(.authenticated-view, .signed-in-home) .nav > .demo-entry { display: none; }
@@ -1582,7 +1582,6 @@
           flex-wrap: wrap;
         }
         body[data-pricing-page="true"]:is(.authenticated-view, .signed-in-home) .nav { width: 100%; }
-        body[data-pricing-page="true"]:is(.authenticated-view, .signed-in-home) .nav .theme-control { order: 1; }
         body[data-pricing-page="true"]:is(.authenticated-view, .signed-in-home) .brand-name { font-size: 20px; }
         body[data-pricing-page="true"]:is(.authenticated-view, .signed-in-home) .brand-mark { width: 30px; height: 30px; }
         body[data-pricing-page="true"]:is(.authenticated-view, .signed-in-home) .nav-cta {
@@ -1691,7 +1690,6 @@
           flex-wrap: wrap;
         }
         .nav { width: 100%; }
-        .nav .theme-control { order: 1; }
         body[data-public-landing="true"]:not(.authenticated-view) .brand-name { font-size: 20px; }
         body[data-public-landing="true"]:not(.authenticated-view) .brand-mark { width: 30px; height: 30px; }
         body[data-public-landing="true"]:not(.authenticated-view) .nav-cta { padding: 8px 9px; font-size: 11px; }
@@ -1749,9 +1747,6 @@
           <span class="brand-name">Casework</span>
         </a>
         <nav class="nav" aria-label="Main navigation">
-          <a class="nav-cta auth-entry pricing-page-nav" id="pricing-entry" href="/pricing">Pricing</a>
-          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/start?source=demo1">Demo 1 — Free</a>
-          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/start?source=demo2">Demo 2 — Essential</a>
           <label class="theme-control" for="theme-select">
             <span>Theme</span>
             <select id="theme-select" name="theme">
@@ -1760,6 +1755,9 @@
               <option value="dark">Dark</option>
             </select>
           </label>
+          <a class="nav-cta auth-entry pricing-page-nav" id="pricing-entry" href="/pricing">Pricing</a>
+          <a class="nav-cta demo-entry" id="demo1-entry" href="/demo/start?source=demo1">Demo 1 — Free</a>
+          <a class="nav-cta demo-entry" id="demo2-entry" href="/demo/start?source=demo2">Demo 2 — Essential</a>
           <span class="account-navigation">
             <a class="nav-cta account-tools-link" id="account-tools-link" href="/?view=account" hidden>Account</a>
             <a class="nav-cta" id="your-case-entry" href="/?view=case" hidden>Your case</a>
