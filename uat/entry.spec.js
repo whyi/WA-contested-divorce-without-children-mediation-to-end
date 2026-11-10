@@ -1084,6 +1084,17 @@ for (const plan of ["free", "paid"]) {
         await expect(outcomes.locator(`input[value="${outcome}"]`)).toBeChecked();
         await expect(next).toBeVisible();
         await expect(next).toBeEnabled();
+        if (outcome === "counteroffer") {
+          expect(await next.evaluate(element =>
+            element.parentElement.id === "settlement-demo-counteroffer-panel-case"
+              && element === element.parentElement.lastElementChild
+          )).toBe(true);
+          await expect(page.locator("#settlement-demo-add-counteroffer-case")).toBeHidden();
+        } else {
+          expect(await next.evaluate(element =>
+            element.parentElement.id === "settlement-demo-response-files-case"
+          )).toBe(true);
+        }
         await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toBeDisabled();
         await expect(page.locator("#settlement-demo-counteroffer-file-case")).toBeDisabled();
         const beforeNext = saves;
@@ -3427,7 +3438,11 @@ for (const outcome of ["accepted", "rejected"]) {
     await expect(page.locator("#settlement-demo-counteroffer-help-case")).toHaveText("Your Free plan allows 1 attempt. The attempt limit is reached.");
     const counterofferNext = page.locator("#settlement-demo-add-counteroffer-case");
     await expect(counterofferNext).toBeVisible();
+    await expect(counterofferNext).toBeDisabled();
     await expect(counterofferNext).toHaveAttribute("aria-disabled", "true");
+    await page.locator("#settlement-demo-counteroffer-notes-case").fill("Actual received counteroffer notes");
+    await expect.poll(() => state.notes).toBe("Actual received counteroffer notes");
+    await expect(counterofferNext).toBeEnabled();
     await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("");
     const mutationCount = mutations.length;
     const nextUrl = page.url();
@@ -3443,14 +3458,14 @@ for (const outcome of ["accepted", "rejected"]) {
     await page.keyboard.press("Enter");
     await expect(page.locator("#app-dialog")).toBeVisible();
     await page.locator("#app-dialog-confirm").click();
-    expect(mutations).toHaveLength(mutationCount);
+    expect(mutations.slice(mutationCount).every(item => item.action === "response")).toBe(true);
     expect(page.url()).toBe(nextUrl);
     await page.locator("#settlement-demo-counteroffer-notes-case").fill("Actual received counteroffer notes");
     await expect.poll(() => state.notes).toBe("Actual received counteroffer notes");
     await page.reload();
     await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toHaveValue("Actual received counteroffer notes");
     await expect(counterofferNext).toBeVisible();
-    await expect(counterofferNext).toHaveAttribute("aria-disabled", "true");
+    await expect(counterofferNext).toHaveAttribute("aria-disabled", "false");
     await expect(sent).toBeDisabled();
     await page.locator(`#settlement-demo-response-files-case input[value="${outcome}"]`).check();
     if (outcome === "accepted") {
@@ -3476,6 +3491,101 @@ for (const outcome of ["accepted", "rejected"]) {
     expect(mutations.some(item => item.action === "continue")).toBe(false);
     await fixture.verify();
   });
+}
+
+for (const limit of [1, 3]) {
+  for (const width of [1280, 390]) {
+    test(`final counteroffer Next requires saved input inside its panel: ${limit} attempts at ${width}px`, async ({ page }) => {
+      const state = { revision:1, attempt_ordinal:limit, attempt_limit:limit, sent:true,
+        outcome:"counteroffer", notes:"", document_ids:[], sent_filenames:[],
+        selection:null, downloaded_formats:[], stopped:false, completed:false };
+      let failSave = false;
+      let failUpload = true;
+      const mutations = [];
+      const fixture = await installFixtures(page, {
+        authenticated:true,
+        extraReads:{
+          [`/cases/${caseId}/workspace`]:{ ...workspace,
+            attempts:[{ ordinal:limit, frozen:true, profile:{ metadata:{ asset_overview:workspace.asset_overview } } }],
+          },
+          [`/cases/${caseId}/asset-mediation/${limit}`]:state,
+        },
+        mutationHandler: async request => {
+          const path = new URL(request.url()).pathname;
+          if (path === `/cases/${caseId}/asset-mediation`) {
+            const payload = request.postDataJSON();
+            mutations.push(payload.action);
+            expect(payload.action).toBe("response");
+            if (failSave) return { status:503, body:{ detail:"Response storage unavailable" } };
+            state.notes = payload.notes;
+            state.revision++;
+            return { body:state };
+          }
+          if (path.startsWith(`/cases/${caseId}/asset-mediation/${limit}/files/`)) {
+            if (failUpload) return { status:422, body:{ detail:"Counteroffer file is invalid" } };
+            state.document_ids = ["counteroffer-file"];
+            state.revision++;
+            return { body:{ id:"counteroffer-file", original_filename:"counteroffer.pdf", state } };
+          }
+          return null;
+        },
+      });
+      await page.setViewportSize({ width, height:1000 });
+      await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+      const panel = page.locator("#settlement-demo-counteroffer-panel-case");
+      const next = panel.getByRole("button", { name:"Next", exact:true });
+      const notes = panel.locator("textarea");
+      await expect(next).toBeVisible();
+      await expect(next).toBeDisabled();
+      await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
+      expect(await next.evaluate(element => element === element.parentElement.lastElementChild)).toBe(true);
+      const bounds = await panel.boundingBox();
+      const nextBounds = await next.boundingBox();
+      const helpBounds = await panel.locator(".offer-intake-help").boundingBox();
+      expect(nextBounds.y).toBeGreaterThanOrEqual(helpBounds.y + helpBounds.height);
+      expect(nextBounds.y + nextBounds.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+      await notes.fill("   ");
+      await expect.poll(() => state.notes).toBe("   ");
+      await expect(next).toBeDisabled();
+      await notes.fill("Received revised terms");
+      await expect(next).toBeEnabled();
+      await next.click();
+      await expect(page.locator("#app-dialog-title")).toHaveText("More attempts need credits");
+      await page.locator("#app-dialog-confirm").click();
+      await page.reload();
+      await expect(next).toBeEnabled();
+      await notes.fill("");
+      await expect(next).toBeDisabled();
+      await expect.poll(() => state.notes).toBe("");
+      await expect(next).toBeDisabled();
+      failSave = true;
+      await notes.fill("Unsaved terms");
+      await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("Response storage unavailable");
+      await expect(next).toBeDisabled();
+      failSave = false;
+      await notes.fill("");
+      await expect.poll(() => mutations.length).toBeGreaterThan(4);
+      await expect(page.locator("#settlement-demo-counteroffer-file-case")).toBeEnabled();
+      await panel.locator("input[type=file]").setInputFiles({
+        name:"counteroffer.pdf", mimeType:"application/pdf", buffer:Buffer.from("%PDF-1.4 synthetic"),
+      });
+      await expect(page.locator("#settlement-demo-counteroffer-file-status-case")).toHaveText("Counteroffer file is invalid");
+      await expect(next).toBeDisabled();
+      failUpload = false;
+      await panel.locator("input[type=file]").setInputFiles({
+        name:"counteroffer.pdf", mimeType:"application/pdf", buffer:Buffer.from("%PDF-1.4 synthetic"),
+      });
+      await expect(next).toBeEnabled();
+      await expect(notes).toHaveValue("");
+      await next.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.locator("#app-dialog-title")).toHaveText("More attempts need credits");
+      await page.locator("#app-dialog-confirm").click();
+      await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+      expect(mutations).not.toContain("continue");
+      fixture.verify();
+    });
+  }
 }
 
 for (const { ordinal, limit, closed } of [
