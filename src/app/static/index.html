@@ -6768,8 +6768,8 @@
           return Math.max(1, ...saved.attempts.map(attempt => attempt.ordinal));
         }
 
-        function acceptedCaseDestination(item, saved, closed = false) {
-          if (!saved.accepted_offer_url || (!closed && saved.case.attempts_locked_at)) return null;
+        function acceptedCaseDestination(item, saved) {
+          if (!saved.accepted_offer_url) return null;
           const target = new URL(saved.accepted_offer_url, window.location.origin);
           if (target.origin !== window.location.origin || target.pathname !== "/settlement-completion"
             || target.searchParams.get("case_id") !== item.id
@@ -6799,7 +6799,7 @@
             throw new Error("Your case could not be verified. Refresh and retry.");
           }
           const ordinal = latestSavedAttemptOrdinal(saved);
-          const target = acceptedCaseDestination(item, saved, closed)
+          const target = ((closed || !saved.case.attempts_locked_at) && acceptedCaseDestination(item, saved))
             || new URL(`/case/assets?case_id=${encodeURIComponent(item.id)}&attempt=${ordinal}`, window.location.origin);
           if (closed) target.searchParams.set("view", "closed");
           window.location.replace(`${target.pathname}${target.search}`);

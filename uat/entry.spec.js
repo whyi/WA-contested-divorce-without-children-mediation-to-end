@@ -605,13 +605,14 @@ for (const width of [1280, 320]) {
 }
 
 for (const width of [1280, 320]) {
-  for (const kind of ["asset", "selection", "reopened"]) {
+  for (const kind of ["asset", "selection", "reopened", "reopened-selection"]) {
     test(`Account accepted card destination: ${kind} at ${width}px`, async ({ page }) => {
       const selectionId = "00000000-0000-4000-8000-000000000076";
-      const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "selection"
+      const reopened = kind.startsWith("reopened");
+      const completionUrl = `/settlement-completion?case_id=${caseId}&${kind.includes("selection")
         ? `selection_id=${selectionId}` : "asset_attempt=3"}`;
       const saved = { ...workspace, case:{ ...workspace.case,
-        attempts_locked_at:kind === "reopened" ? closedAt : null },
+        attempts_locked_at:reopened ? closedAt : null },
         attempts:[1, 2, 3].map(ordinal => ({ ordinal, frozen:true,
           profile:{ metadata:{ asset_overview:workspace.asset_overview } } })),
         accepted_offer_url:completionUrl,
@@ -622,15 +623,16 @@ for (const width of [1280, 320]) {
           [`/cases/${caseId}/workspace`]:saved,
           [`/cases/${caseId}/asset-mediation/3`]:{ revision:1, attempt_ordinal:3, attempt_limit:3,
             sent:true, outcome:"accepted", notes:"", document_ids:[], sent_filenames:[],
-            downloaded_formats:[], completed:kind === "reopened", attempts_locked:kind === "reopened" },
+            downloaded_formats:[], completed:reopened, attempts_locked:reopened },
           [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]:{
             outcome:"accepted", sent_confirmed:true, sent_documents_complete:true,
+            attempts_locked:reopened,
           },
         },
       });
       await page.setViewportSize({ width, height:1000 });
       await page.goto(`${origin}/?view=account`);
-      const label = kind === "reopened" ? "Go to attempt #3" : "Go to offer accepted page";
+      const label = "Go to offer accepted page";
       const actions = page.locator("#account-active-case-list .closed-case-actions button");
       await expect(actions).toHaveText(["Export data", label]);
       await page.reload();
@@ -638,13 +640,39 @@ for (const width of [1280, 320]) {
       await expect(go).toBeEnabled();
       await go.focus();
       await page.keyboard.press("Enter");
-      await expect(page).toHaveURL(`${origin}${kind === "reopened"
-        ? `/case/assets?case_id=${caseId}&attempt=3` : completionUrl}`);
-      if (kind !== "reopened") await expectAcceptedCompletionProgress(page);
+      await expect(page).toHaveURL(`${origin}${completionUrl}`);
+      await expectAcceptedCompletionProgress(page);
+      if (reopened) {
+        expect(saved.case.attempts_locked_at).toBe(closedAt);
+        await expect(page.locator("#settlement-completion-status")).toContainText("All attempts remain locked");
+      }
       expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
       fixture.verify();
     });
   }
+}
+
+for (const outcome of ["rejected", "counteroffer"]) {
+  test(`Account reopened ${outcome} without accepted target keeps latest attempt`, async ({ page }) => {
+    const saved = { ...workspace, case:{ ...workspace.case, attempts_locked_at:closedAt },
+      attempts:[{ ordinal:3, frozen:true, profile:{ metadata:{ asset_overview:workspace.asset_overview } } }],
+      accepted_offer_url:null };
+    const fixture = await installFixtures(page, { authenticated:true,
+      extraReads:{
+        [`/cases/${caseId}/workspace`]:saved,
+        [`/cases/${caseId}/asset-mediation/3`]:{ revision:1, attempt_ordinal:3, attempt_limit:3,
+          sent:true, outcome, completed:true, attempts_locked:true, stopped:false,
+          notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] },
+      } });
+    await page.goto(`${origin}/?view=account`);
+    await expect(page.getByRole("button", { name:"Go to offer accepted page", exact:true })).toHaveCount(0);
+    await page.getByRole("button", { name:"Go to attempt #3", exact:true }).click();
+    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
+    await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+    expect(saved.case.attempts_locked_at).toBe(closedAt);
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
 }
 
 for (const failure of ["foreign", "identity", "missing-context"]) {
