@@ -235,6 +235,109 @@ async function expectClosedCompletionActions(page) {
   expect(positions.bannerBottom).toBeLessThanOrEqual(positions.progressTop);
 }
 
+for (const kind of ["asset", "selection"]) {
+  for (const ordinal of [1, 3]) {
+    for (const width of [1280, 320]) {
+      test(`Your case resumes open accepted completion: ${kind}, attempt ${ordinal}, ${width}px`, async ({ page }) => {
+        const selectionId = "00000000-0000-4000-8000-000000000076";
+        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? `asset_attempt=${ordinal}` : `selection_id=${selectionId}`}`;
+        const fixture = await installFixtures(page, {
+          authenticated: true, mode: "upload", workspaceStarted: true,
+          extraReads: {
+            [`/cases/${caseId}/workspace`]: {
+              ...workspace, accepted_offer_url: completionUrl,
+              attempts: Array.from({ length: ordinal }, (_, index) => ({
+                ordinal: index + 1, frozen: true, profile: { ...workspace.case, metadata: {} },
+              })),
+            },
+            [`/cases/${caseId}/asset-mediation/${ordinal}`]: {
+              revision: 1, attempt_ordinal: ordinal, attempt_limit: 3, sent: true, outcome: "accepted",
+              sent_filenames: [], document_ids: [], downloaded_formats: [],
+            },
+            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+              outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+            },
+          },
+        });
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${origin}${completionUrl}`);
+        await expectAcceptedCompletionProgress(page);
+        await page.locator("#your-case-entry").click();
+        await expect(page).toHaveURL(`${origin}${completionUrl}`);
+        await expectAcceptedCompletionProgress(page);
+        await page.reload();
+        await expectAcceptedCompletionProgress(page);
+        await page.getByRole("link", { name: `Back to attempt #${ordinal}`, exact: true }).click();
+        await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=${ordinal}`);
+        await expect(page.locator("#case-assets-view")).toBeVisible();
+        await page.locator("#your-case-entry").click();
+        await expect(page).toHaveURL(`${origin}${completionUrl}`);
+        await page.goto(`${origin}/?view=account`);
+        await page.locator("#your-case-entry").click();
+        await expect(page).toHaveURL(`${origin}${completionUrl}`);
+        await page.goto(`${origin}/?view=home`);
+        await page.locator("#your-case-entry").click();
+        await expect(page).toHaveURL(`${origin}${completionUrl}`);
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+        fixture.verify();
+      });
+    }
+  }
+}
+
+for (const outcome of ["accepted", "rejected"]) {
+  test(`Your case preserves reopened locked attempt entry with ${outcome} response`, async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true, workspaceStarted: true,
+      extraReads: {
+        [`/cases/${caseId}/workspace`]: {
+          ...workspace, case: { ...workspace.case, attempts_locked_at: closedAt },
+          accepted_offer_url: outcome === "accepted" ? `/settlement-completion?case_id=${caseId}&asset_attempt=1` : null,
+        },
+        [`/cases/${caseId}/asset-mediation/1`]: {
+          revision: 1, attempt_ordinal: 1, attempt_limit: 1, sent: true, outcome,
+          completed: true, attempts_locked: true, sent_filenames: [], document_ids: [], downloaded_formats: [],
+        },
+      },
+    });
+    await page.goto(`${origin}/?view=account`);
+    await page.locator("#your-case-entry").click();
+    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+    await expect(page.locator("#settlement-demo-response-next-case")).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+    fixture.verify();
+  });
+}
+
+for (const invalid of ["lookup", "identity", "foreign", "wrong-case", "missing-offer", "closed"]) {
+  test(`Your case shows explicit accepted-entry failure: ${invalid}`, async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true, workspaceStarted: true,
+      extraReads: {
+        [`/cases/${caseId}/workspace`]: {
+          ...workspace,
+          case: { ...workspace.case, id: invalid === "identity" ? "another-case" : caseId,
+            closed_at: invalid === "closed" ? closedAt : null },
+          accepted_offer_url: `${invalid === "foreign" ? "https://example.invalid" : ""}/settlement-completion?case_id=${invalid === "wrong-case" ? "another-case" : caseId}${invalid === "missing-offer" ? "" : "&asset_attempt=1"}`,
+        },
+      },
+    });
+    if (invalid === "lookup") {
+      await page.route(`**/cases/${caseId}/workspace`, route => route.fulfill({
+        status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Workspace unavailable. Retry." }),
+      }));
+    }
+    await page.goto(origin);
+    await expect(page.locator("#dashboard-error")).toBeVisible();
+    await expect(page.locator("#dashboard-error-message")).toContainText(
+      invalid === "lookup" ? "Workspace unavailable." : "could not be verified",
+    );
+    await expect(page).toHaveURL(`${origin}/`);
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
 test("closed-case Account actions place View before Reopen and Export", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,

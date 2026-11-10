@@ -6617,6 +6617,23 @@
         async function openActiveCase(item) {
           settlementCaseId = item.id;
           dashboardLoading.hidden = true;
+          if (new URLSearchParams(window.location.search).get("start_path") !== "1") {
+            const saved = await settlementApi(`/cases/${encodeURIComponent(item.id)}/workspace`);
+            if (saved?.case?.id !== item.id || typeof saved.case.status !== "string"
+              || saved.case.closed_at || saved.case.status === "finalized") {
+              throw new Error("Your active case could not be verified. Refresh and retry.");
+            }
+            if (saved.accepted_offer_url && !saved.case.attempts_locked_at) {
+              const target = new URL(saved.accepted_offer_url, window.location.origin);
+              if (target.origin !== window.location.origin || target.pathname !== "/settlement-completion"
+                || target.searchParams.get("case_id") !== item.id
+                || !(target.searchParams.get("asset_attempt") || target.searchParams.get("selection_id"))) {
+                throw new Error("Your accepted offer destination could not be verified. Refresh and retry.");
+              }
+              window.location.replace(`${target.pathname}${target.search}`);
+              return;
+            }
+          }
           if (item.workspace_started === true
             && new URLSearchParams(window.location.search).get("start_path") !== "1") {
             window.location.replace(`/case/assets?case_id=${encodeURIComponent(item.id)}`);
