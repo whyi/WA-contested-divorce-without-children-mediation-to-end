@@ -134,6 +134,7 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
     requests,
     signIn: () => { signedIn = true; },
     signOut: () => { signedIn = false; },
+    setHasCase: value => { hasCase = value; },
     verify: () => {
       expect(unexpected, "Unexpected API requests must not be silently mocked").toEqual([]);
       expect(scriptErrors, "Full application script must execute without errors").toEqual([]);
@@ -3654,7 +3655,7 @@ test("document selection stays local until Next, supports removal, then imports 
   await page.getByRole("link", { name: "Casework home", exact: true }).click();
   await expect(page).toHaveURL(`${origin}/?view=home`);
   await page.locator("#your-case-entry").click();
-  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}`);
+  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
   await expect(page.locator("#case-assets-view")).toBeVisible();
   await page.reload();
   await expect(page.locator("#case-assets-view")).toBeVisible();
@@ -3955,6 +3956,7 @@ for (const outcome of ["accepted", "rejected"]) {
           expect(request.postDataJSON()).toEqual({ reason:"stopped" });
           expect(state.outcome).toBe("rejected");
           currentWorkspace.case = { ...currentWorkspace.case, closed_at:closedAt, closed_reason:"stopped" };
+          fixture.setHasCase(false);
           closed.cases.push({ id:caseId, title:"Closed rejected case",
             status:currentWorkspace.case.status, closed_at:closedAt, closed_reason:"stopped" });
           return { body:currentWorkspace.case };
@@ -4412,6 +4414,7 @@ for (const reopened of [false, true]) {
           if (response === "wrong-case") return { body:{ id:"another-case", closed_at:closedAt } };
           await new Promise(resolve => { releaseClose = resolve; });
           saved.case = { ...saved.case, closed_at:closedAt, closed_reason:"stopped" };
+          fixture.setHasCase(false);
           closedCases.cases.push({ id:caseId, title:"Closed rejected case",
             status:saved.case.status, closed_at:closedAt, closed_reason:"stopped" });
           return { body:saved.case };
