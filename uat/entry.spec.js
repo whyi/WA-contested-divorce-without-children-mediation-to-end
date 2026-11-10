@@ -360,33 +360,38 @@ async function expectClosedCompletionActions(page) {
   expect(positions.bannerBottom).toBeLessThanOrEqual(positions.progressTop);
 }
 
-for (const kind of ["asset", "selection"]) {
+for (const kind of ["asset", "selection", "locked-asset", "locked-selection"]) {
   for (const ordinal of [1, 3]) {
     for (const width of [1280, 320]) {
       test(`Your case resumes open accepted completion: ${kind}, attempt ${ordinal}, ${width}px`, async ({ page }) => {
         const selectionId = "00000000-0000-4000-8000-000000000076";
-        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? `asset_attempt=${ordinal}` : `selection_id=${selectionId}`}`;
+        const locked = kind.startsWith("locked-");
+        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind.endsWith("asset") ? `asset_attempt=${ordinal}` : `selection_id=${selectionId}`}`;
         const fixture = await installFixtures(page, {
           authenticated: true, mode: "upload", workspaceStarted: true,
           extraReads: {
             [`/cases/${caseId}/workspace`]: {
-              ...workspace, accepted_offer_url: completionUrl,
+              ...workspace, case: { ...workspace.case, attempts_locked_at: locked ? closedAt : null },
+              accepted_offer_url: completionUrl,
               attempts: Array.from({ length: ordinal }, (_, index) => ({
                 ordinal: index + 1, frozen: true, profile: { ...workspace.case, metadata: {} },
               })),
             },
             [`/cases/${caseId}/asset-mediation/${ordinal}`]: {
               revision: 1, attempt_ordinal: ordinal, attempt_limit: 3, sent: true, outcome: "accepted",
+              completed: locked, attempts_locked: locked,
               sent_filenames: [], document_ids: [], downloaded_formats: [],
             },
             [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
               outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+              completed: locked, attempts_locked: locked,
             },
           },
         });
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${origin}${completionUrl}`);
         await expectAcceptedCompletionProgress(page);
+        if (locked) await expect(page.locator("#settlement-completion-status")).toContainText("All attempts remain locked");
         await page.locator("#your-case-entry").click();
         await expect(page).toHaveURL(`${origin}${completionUrl}`);
         await expectAcceptedCompletionProgress(page);
@@ -410,7 +415,7 @@ for (const kind of ["asset", "selection"]) {
   }
 }
 
-for (const outcome of ["accepted", "rejected"]) {
+for (const outcome of ["rejected", "counteroffer"]) {
   test(`Your case preserves reopened locked attempt entry with ${outcome} response`, async ({ page }) => {
     const fixture = await installFixtures(page, {
       authenticated: true, workspaceStarted: true,
@@ -574,7 +579,7 @@ for (const width of [1280, 320]) {
         authenticated:true, mode:"wizard",
         extraReads:{
           [`/cases/${caseId}/workspace`]:{ ...workspace,
-            attempts, accepted_offer_url:`/settlement-completion?case_id=${caseId}&asset_attempt=${ordinal}` },
+            attempts, accepted_offer_url:null },
           [`/cases/${caseId}/asset-mediation/${ordinal}`]:{ revision:1, sent:true, outcome:"accepted",
             completed:false, attempts_locked:false, attempt_ordinal:ordinal, attempt_limit:3,
             notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] },
@@ -602,6 +607,120 @@ for (const width of [1280, 320]) {
       fixture.verify();
     });
   }
+}
+
+for (const width of [1280, 320]) {
+  for (const kind of ["asset", "selection", "reopened", "reopened-selection"]) {
+    test(`Account accepted card destination: ${kind} at ${width}px`, async ({ page }) => {
+      const selectionId = "00000000-0000-4000-8000-000000000076";
+      const reopened = kind.startsWith("reopened");
+      const completionUrl = `/settlement-completion?case_id=${caseId}&${kind.includes("selection")
+        ? `selection_id=${selectionId}` : "asset_attempt=3"}`;
+      const saved = { ...workspace, case:{ ...workspace.case,
+        attempts_locked_at:reopened ? closedAt : null },
+        attempts:[1, 2, 3].map(ordinal => ({ ordinal, frozen:true,
+          profile:{ metadata:{ asset_overview:workspace.asset_overview } } })),
+        accepted_offer_url:completionUrl,
+      };
+      const fixture = await installFixtures(page, {
+        authenticated:true, workspaceStarted:true,
+        extraReads:{
+          [`/cases/${caseId}/workspace`]:saved,
+          [`/cases/${caseId}/asset-mediation/3`]:{ revision:1, attempt_ordinal:3, attempt_limit:3,
+            sent:true, outcome:"accepted", notes:"", document_ids:[], sent_filenames:[],
+            downloaded_formats:[], completed:reopened, attempts_locked:reopened },
+          [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]:{
+            outcome:"accepted", sent_confirmed:true, sent_documents_complete:true,
+            attempts_locked:reopened,
+          },
+        },
+      });
+      await page.setViewportSize({ width, height:1000 });
+      await page.goto(`${origin}/?view=account`);
+      const label = "Go to offer accepted page";
+      const actions = page.locator("#account-active-case-list .closed-case-actions button");
+      await expect(actions).toHaveText(["Export data", label]);
+      await page.reload();
+      const go = page.getByRole("button", { name:label, exact:true });
+      await expect(go).toBeEnabled();
+      await go.focus();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(`${origin}${completionUrl}`);
+      await expectAcceptedCompletionProgress(page);
+      if (reopened) {
+        expect(saved.case.attempts_locked_at).toBe(closedAt);
+        await expect(page.locator("#settlement-completion-status")).toContainText("All attempts remain locked");
+      }
+      expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+      fixture.verify();
+    });
+  }
+}
+
+for (const outcome of ["rejected", "counteroffer"]) {
+  test(`Account reopened ${outcome} without accepted target keeps latest attempt`, async ({ page }) => {
+    const saved = { ...workspace, case:{ ...workspace.case, attempts_locked_at:closedAt },
+      attempts:[{ ordinal:3, frozen:true, profile:{ metadata:{ asset_overview:workspace.asset_overview } } }],
+      accepted_offer_url:null };
+    const fixture = await installFixtures(page, { authenticated:true,
+      extraReads:{
+        [`/cases/${caseId}/workspace`]:saved,
+        [`/cases/${caseId}/asset-mediation/3`]:{ revision:1, attempt_ordinal:3, attempt_limit:3,
+          sent:true, outcome, completed:true, attempts_locked:true, stopped:false,
+          notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] },
+      } });
+    await page.goto(`${origin}/?view=account`);
+    await expect(page.getByRole("button", { name:"Go to offer accepted page", exact:true })).toHaveCount(0);
+    await page.getByRole("button", { name:"Go to attempt #3", exact:true }).click();
+    await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
+    await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+    expect(saved.case.attempts_locked_at).toBe(closedAt);
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
+for (const failure of ["foreign", "identity", "missing-context"]) {
+  test(`Account accepted card rejects ${failure} target and permits retry`, async ({ page }) => {
+    const saved = { ...workspace, accepted_offer_url:failure === "foreign"
+      ? `https://foreign.invalid/settlement-completion?case_id=${caseId}&asset_attempt=1`
+      : failure === "identity" ? "/settlement-completion?case_id=wrong&asset_attempt=1"
+        : `/settlement-completion?case_id=${caseId}` };
+    const fixture = await installFixtures(page, { authenticated:true,
+      extraReads:{ [`/cases/${caseId}/workspace`]:saved,
+        [`/cases/${caseId}/asset-mediation/1`]:{ revision:1, attempt_ordinal:1, attempt_limit:1,
+          sent:true, outcome:"accepted", notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] } } });
+    await page.goto(`${origin}/?view=account`);
+    await expect(page.locator("#account-active-case-status")).toContainText("could not be verified");
+    const retry = page.getByRole("button", { name:"Retry latest attempt", exact:true });
+    await expect(retry).toBeEnabled();
+    await expect(page).toHaveURL(`${origin}/?view=account`);
+    saved.accepted_offer_url = `/settlement-completion?case_id=${caseId}&asset_attempt=1`;
+    await retry.click();
+    await expect(page).toHaveURL(`${origin}${saved.accepted_offer_url}`);
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
+for (const acceptedAtLoad of [false, true]) {
+  test(`Account card rechecks acceptance on activation: acceptedAtLoad=${acceptedAtLoad}`, async ({ page }) => {
+    const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=1`;
+    const saved = { ...workspace, accepted_offer_url:acceptedAtLoad ? completionUrl : null };
+    const fixture = await installFixtures(page, { authenticated:true,
+      extraReads:{ [`/cases/${caseId}/workspace`]:saved,
+        [`/cases/${caseId}/asset-mediation/1`]:{ revision:1, attempt_ordinal:1, attempt_limit:1,
+          sent:true, outcome:"accepted", notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] } } });
+    await page.goto(`${origin}/?view=account`);
+    const actions = page.locator("#account-active-case-list .closed-case-actions button");
+    await expect(actions).toHaveText(["Export data", acceptedAtLoad ? "Go to offer accepted page" : "Go to attempt #1"]);
+    saved.accepted_offer_url = acceptedAtLoad ? null : completionUrl;
+    await actions.nth(1).click();
+    await expect(page).toHaveURL(`${origin}${acceptedAtLoad
+      ? `/case/assets?case_id=${caseId}&attempt=1` : completionUrl}`);
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
 }
 
 for (const failure of ["closed", "finalized", "identity", "server", "attempts"]) {
