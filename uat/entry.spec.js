@@ -179,6 +179,8 @@ test("Get started stays hidden until the public homepage session check confirms 
   await page.goto(origin);
   await expect(page.locator("#account-entry")).toBeHidden();
   await expect(page.locator("#account-entry")).toBeVisible();
+  await page.goto(`${origin}/?view=home`);
+  await expect(page.locator("#account-entry")).toBeVisible();
   fixture.verify();
 });
 
