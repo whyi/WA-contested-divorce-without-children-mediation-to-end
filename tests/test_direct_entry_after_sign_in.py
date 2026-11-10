@@ -39,6 +39,7 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         workflow = (root / ".github/workflows/test.yml").read_text(encoding="utf-8")
         browser_job = workflow.split("  entry-regressions:", 1)[1].split("  test:", 1)[0]
         self.assertIn("runs-on: ubuntu-24.04", browser_job)
+        self.assertIn("timeout-minutes: 15", browser_job)
         self.assertIn("run: npm ci", browser_job)
         self.assertIn("run: npx playwright install --with-deps chromium", browser_job)
         self.assertIn("run: npm run entry", browser_job)

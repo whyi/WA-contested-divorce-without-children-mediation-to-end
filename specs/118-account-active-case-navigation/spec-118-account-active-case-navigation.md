@@ -29,3 +29,5 @@
 - No-case/closed-only accounts, stale closed/finalized workspace, wrong-case
   response, pending request and retry after server failure.
 - Exact singular heading and preserved closed-case actions.
+- Keep the complete browser suite mandatory; allow a 15-minute CI job budget
+  for browser installation and the expanded serial regression suite.
