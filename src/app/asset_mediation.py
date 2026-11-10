@@ -61,7 +61,7 @@ class MediationUpdate(BaseModel):
 
     expected_revision: int = Field(ge=0, strict=True)
     attempt_ordinal: int = Field(ge=1, strict=True)
-    action: Literal["sent", "response", "continue", "stop", "complete"]
+    action: Literal["sent", "response", "response_outcome", "continue", "stop", "complete"]
     selection: OverviewScenarioExport | None = None
     outcome: Literal["counteroffer", "rejected", "accepted"] | None = None
     notes: str = Field(default="", max_length=20000)
@@ -219,7 +219,7 @@ def update_mediation_state(
             user,
             case_id,
             write=True,
-            allow_locked_attempts=payload.action == "complete",
+            allow_locked_attempts=payload.action in {"complete", "response_outcome"},
         )
         response.headers["Cache-Control"] = "no-store"
         state = read_state(db, case, payload.attempt_ordinal)
@@ -237,6 +237,18 @@ def update_mediation_state(
             raise HTTPException(status_code=409, detail="Only the current attempt can receive a response.")
         if payload.expected_revision != state.revision:
             raise HTTPException(status_code=409, detail="Mediation response changed. Reload and retry.")
+        if payload.action == "response_outcome":
+            if not case.attempts_locked_at or not state.completed or not state.sent or state.stopped:
+                raise HTTPException(status_code=409, detail="Only the latest reopened accepted attempt can change its response.")
+            if payload.model_fields_set - {"action", "expected_revision", "attempt_ordinal", "outcome"}:
+                raise HTTPException(status_code=422, detail="Only the response outcome may change; proposal data and materials remain read-only.")
+            if payload.outcome is None:
+                raise HTTPException(status_code=422, detail="Choose the response you received.")
+            state.outcome = payload.outcome
+            state.revision += 1
+            _save(case, state)
+            db.commit()
+            return state
         if state.stopped:
             raise HTTPException(status_code=409, detail="This workflow has been stopped.")
         if payload.action == "sent":
