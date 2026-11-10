@@ -200,6 +200,21 @@ test("dedicated pricing page shows one-time tiers and inert buy buttons", async 
   fixture.verify();
 });
 
+test("signed-in account can navigate to and view the pricing page", async ({ page }) => {
+  const fixture = await installFixtures(page, { hasCase: false });
+  await signIn(page);
+  await expect(page.locator("#logout-button")).toBeVisible();
+  await expect(page.locator("#pricing-entry")).toBeVisible();
+  await page.locator("#pricing-entry").click();
+  await expect(page).toHaveURL(`${origin}/pricing`);
+  await expect(page.locator("body")).toHaveClass(/authenticated-view/);
+  await expect(page.locator("#pricing-page")).toBeVisible();
+  await expect(page.locator("#pricing-title")).toBeVisible();
+  await expect(page.locator("#pricing-entry")).toBeVisible();
+  await expect(page.locator("#essential-buy-now")).toBeVisible();
+  fixture.verify();
+});
+
 test("Get started stays hidden until the public homepage session check confirms sign-out", async ({ page }) => {
   const fixture = await installFixtures(page, { dashboardDelay: 250 });
   await page.goto(origin);
