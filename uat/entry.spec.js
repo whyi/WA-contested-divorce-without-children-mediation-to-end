@@ -1012,7 +1012,7 @@ test("reopened accepted attempt enables response-only controls and removes the O
   await page.goto(`${origin}/case/assets?case_id=${caseId}`);
   const next = page.locator("#settlement-demo-response-next-case");
   await expect(next).toBeEnabled();
-  await expect(page.locator("#settlement-demo-response-status-case")).toContainText("Proposal values and materials remain read-only.");
+  await expect(page.locator("#settlement-demo-response-status-case")).toContainText("Proposal values and sent documents remain read-only.");
   await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeEnabled();
   await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
   await page.reload();
@@ -1053,6 +1053,14 @@ for (const plan of ["free", "paid"]) {
         mutationHandler: async request => {
           expect(new URL(request.url()).pathname).toBe(`/cases/${caseId}/asset-mediation`);
           const payload = request.postDataJSON();
+          if (payload.action === "counteroffer_details") {
+            expect(payload).toEqual({
+              action:"counteroffer_details", attempt_ordinal:2, expected_revision:state.revision, notes:state.notes,
+            });
+            state.revision += 1;
+            saves += 1;
+            return { body:state };
+          }
           expect(payload).toEqual({
             action: "response_outcome", attempt_ordinal: 2,
             expected_revision: state.revision, outcome: payload.outcome,
@@ -1067,7 +1075,7 @@ for (const plan of ["free", "paid"]) {
       await page.setViewportSize({ width, height: 900 });
       const attemptUrl = `${origin}/case/assets?case_id=${caseId}&attempt=2`;
       await page.goto(attemptUrl);
-      const next = page.locator("#settlement-demo-response-next-case");
+      let next = page.locator("#settlement-demo-response-next-case");
       const outcomes = page.locator("#settlement-demo-response-files-case");
       await expect(next).toBeEnabled();
       await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
@@ -1078,6 +1086,8 @@ for (const plan of ["free", "paid"]) {
       await page.goto(attemptUrl);
       for (const outcome of ["rejected", "counteroffer"]) {
         await outcomes.locator(`input[value="${outcome}"]`).check();
+        next = page.locator(outcome === "counteroffer"
+          ? "#settlement-demo-add-counteroffer-case" : "#settlement-demo-response-next-case");
         await expect.poll(() => state.outcome).toBe(outcome);
         await expect(next).toBeEnabled();
         await page.reload();
@@ -1089,24 +1099,27 @@ for (const plan of ["free", "paid"]) {
             element.parentElement.id === "settlement-demo-counteroffer-panel-case"
               && element === element.parentElement.lastElementChild
           )).toBe(true);
-          await expect(page.locator("#settlement-demo-add-counteroffer-case")).toBeHidden();
+          await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
         } else {
           expect(await next.evaluate(element =>
             element.parentElement.id === "settlement-demo-response-files-case"
           )).toBe(true);
         }
-        await expect(page.locator("#settlement-demo-counteroffer-notes-case")).toBeDisabled();
-        await expect(page.locator("#settlement-demo-counteroffer-file-case")).toBeDisabled();
+        for (const selector of ["#settlement-demo-counteroffer-notes-case", "#settlement-demo-counteroffer-file-case"]) {
+          if (outcome === "counteroffer") await expect(page.locator(selector)).toBeEnabled();
+          else await expect(page.locator(selector)).toBeDisabled();
+        }
         const beforeNext = saves;
         await next.click();
         await expect(page.locator("#app-dialog-title")).toHaveText("Subscription required");
         await expect(page.locator("#app-dialog")).toContainText("A subscription is required");
         await page.locator("#app-dialog-confirm").click();
         await expect(page).toHaveURL(attemptUrl);
-        expect(saves).toBe(beforeNext);
+        expect(saves).toBe(beforeNext + (outcome === "counteroffer" ? 1 : 0));
         await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
       }
       await outcomes.locator('input[value="accepted"]').check();
+      next = page.locator("#settlement-demo-response-next-case");
       await expect.poll(() => state.outcome).toBe("accepted");
       await expect(next).toBeEnabled();
       await page.reload();
@@ -1122,7 +1135,129 @@ for (const plan of ["free", "paid"]) {
   }
 }
 
+for (const limit of [1, 3]) {
+  for (const width of [1280, 390]) {
+    test(`reopened final counteroffer restores editable details: ${limit} attempts at ${width}px`, async ({ page }) => {
+      const state = {
+        revision:3, attempt_ordinal:limit, attempt_limit:limit, sent:true, completed:true,
+        attempts_locked:true, outcome:"accepted", notes:"Previously saved counteroffer",
+        document_ids:["original-file"], sent_filenames:["sent.docx", "sent.xlsx"],
+        downloaded_formats:["docx", "xlsx"], stopped:false,
+      };
+      const saved = {
+        ...workspace, case:{ ...workspace.case, status:"settlement", attempts_locked_at:closedAt },
+        attempts:Array.from({ length:limit }, (_, index) => ({
+          ordinal:index + 1, frozen:true, profile:{ ...workspace.case, metadata:{} },
+        })),
+        documents:[{ id:"original-file", original_filename:"Original counteroffer.pdf" }],
+      };
+      let failSave = false;
+      let failUpload = true;
+      const mutations = [];
+      const fixture = await installFixtures(page, {
+        authenticated:true,
+        extraReads:{
+          "/api/billing/account/entitlement":{ status:limit === 1 ? "free" : "paid" },
+          [`/cases/${caseId}/workspace`]:saved,
+          [`/cases/${caseId}/asset-mediation/${limit}`]:state,
+        },
+        mutationHandler: async request => {
+          const path = new URL(request.url()).pathname;
+          if (path === `/cases/${caseId}/asset-mediation`) {
+            const payload = request.postDataJSON();
+            mutations.push(payload.action);
+            expect(payload.expected_revision).toBe(state.revision);
+            expect(payload.attempt_ordinal).toBe(limit);
+            if (payload.action === "response_outcome") {
+              expect(Object.keys(payload).sort()).toEqual(["action", "attempt_ordinal", "expected_revision", "outcome"]);
+              state.outcome = payload.outcome;
+            } else {
+              expect(payload.action).toBe("counteroffer_details");
+              expect(Object.keys(payload).sort()).toEqual(["action", "attempt_ordinal", "expected_revision", "notes"]);
+              if (failSave) return { status:503, body:{ detail:"Counteroffer notes were not saved" } };
+              state.notes = payload.notes;
+            }
+            state.revision++;
+            return { body:state };
+          }
+          if (path.startsWith(`/cases/${caseId}/asset-mediation/${limit}/files/`)) {
+            if (failUpload) return { status:503, body:{ detail:"Counteroffer upload failed" } };
+            state.document_ids.push("new-file");
+            saved.documents.push({ id:"new-file", original_filename:"Updated counteroffer.pdf" });
+            state.revision++;
+            return { body:{ id:"new-file", original_filename:"Updated counteroffer.pdf", state } };
+          }
+          return null;
+        },
+      });
+      await page.setViewportSize({ width, height:1000 });
+      const url = `${origin}/case/assets?case_id=${caseId}&attempt=${limit}`;
+      await page.goto(url);
+      const outcomes = page.locator("#settlement-demo-response-files-case");
+      await outcomes.locator('input[value="counteroffer"]').check();
+      const panel = page.locator("#settlement-demo-counteroffer-panel-case");
+      const notes = panel.locator("textarea");
+      const file = panel.locator("input[type=file]");
+      const next = panel.getByRole("button", { name:"Next", exact:true });
+      await expect(notes).toHaveValue("Previously saved counteroffer");
+      await expect(notes).toBeEnabled();
+      await expect(file).toBeEnabled();
+      await expect(panel.getByRole("link", { name:"Original counteroffer.pdf" })).toBeVisible();
+      await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+      await expect(page.locator("#settlement-demo-mark-sent-case")).toBeDisabled();
+      await expect(page.locator("#settlement-demo-response-next-case")).toBeHidden();
+      expect(await next.evaluate(element => element === element.parentElement.lastElementChild)).toBe(true);
+      failSave = true;
+      await notes.fill("Retryable edited notes");
+      await expect(next).toBeDisabled();
+      await expect(page.locator("#settlement-demo-response-status-case")).toHaveText("Counteroffer notes were not saved");
+      await expect(notes).toHaveValue("Retryable edited notes");
+      await expect(next).toBeDisabled();
+      failSave = false;
+      await notes.fill("Saved revised counteroffer");
+      await expect(next).toBeEnabled();
+      await expect.poll(() => state.notes).toBe("Saved revised counteroffer");
+      await notes.fill("Edited before switching response");
+      await outcomes.locator('input[value="rejected"]').check();
+      await expect.poll(() => state.notes).toBe("Edited before switching response");
+      await expect.poll(() => state.outcome).toBe("rejected");
+      await outcomes.locator('input[value="counteroffer"]').check();
+      await expect(next).toBeEnabled();
+      await page.reload();
+      await expect(notes).toHaveValue("Edited before switching response");
+      await expect(notes).toBeEnabled();
+      const upload = { name:"Updated counteroffer.pdf", mimeType:"application/pdf", buffer:Buffer.from("%PDF-1.4 synthetic") };
+      await file.setInputFiles(upload);
+      await expect(page.locator("#settlement-demo-counteroffer-file-status-case")).toHaveText("Counteroffer upload failed");
+      expect(state.document_ids).toEqual(["original-file"]);
+      failUpload = false;
+      await file.setInputFiles(upload);
+      await expect(panel.getByRole("link", { name:"Updated counteroffer.pdf" })).toBeVisible();
+      await notes.fill("");
+      await expect(next).toBeDisabled();
+      await expect(next).toBeEnabled();
+      await next.click();
+      await expect(page.locator("#app-dialog-title")).toHaveText("Subscription required");
+      await page.locator("#app-dialog-confirm").click();
+      await expect(page).toHaveURL(url);
+      await outcomes.locator('input[value="rejected"]').check();
+      await expect(notes).toBeDisabled();
+      await outcomes.locator('input[value="counteroffer"]').check();
+      await expect(notes).toBeEnabled();
+      await expect(notes).toHaveValue("");
+      await page.reload();
+      await expect(notes).toHaveValue("");
+      await expect(panel.getByRole("link", { name:"Original counteroffer.pdf" })).toBeVisible();
+      await expect(panel.getByRole("link", { name:"Updated counteroffer.pdf" })).toBeVisible();
+      expect(mutations.every(action => ["response_outcome", "counteroffer_details"].includes(action))).toBe(true);
+      expect(saved.case.attempts_locked_at).toBe(closedAt);
+      fixture.verify();
+    });
+  }
+}
+
 test("reopened outcome save failure preserves the saved selection and permits retry", async ({ page }) => {
+  let failSave = true;
   const state = {
     revision: 3, attempt_ordinal: 1, attempt_limit: 1, sent: true, outcome: "accepted",
     notes: "", document_ids: [], sent_filenames: [], downloaded_formats: [],
@@ -1136,7 +1271,14 @@ test("reopened outcome save failure preserves the saved selection and permits re
       },
       [`/cases/${caseId}/asset-mediation/1`]: state,
     },
-    mutationHandler: async () => ({ status: 503, body: { detail: "Response was not saved. Retry." } }),
+    mutationHandler: async request => {
+      const payload = request.postDataJSON();
+      expect(payload.action).toBe("response_outcome");
+      if (failSave) return { status:503, body:{ detail:"Response was not saved. Retry." } };
+      state.outcome = payload.outcome;
+      state.revision++;
+      return { body:state };
+    },
   });
   await page.goto(`${origin}/case/assets?case_id=${caseId}`);
   const outcomes = page.locator("#settlement-demo-response-files-case");
@@ -1145,6 +1287,10 @@ test("reopened outcome save failure preserves the saved selection and permits re
   await expect(outcomes.locator('input[value="accepted"]')).toBeChecked();
   await expect(outcomes.locator('input[value="rejected"]')).toBeEnabled();
   await expect(page.locator("#settlement-demo-response-next-case")).toBeEnabled();
+  failSave = false;
+  await outcomes.locator('input[value="rejected"]').check();
+  await expect(outcomes.locator('input[value="rejected"]')).toBeChecked();
+  await expect.poll(() => state.outcome).toBe("rejected");
   fixture.verify();
 });
 
