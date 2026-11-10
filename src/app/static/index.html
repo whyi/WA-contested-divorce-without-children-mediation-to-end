@@ -1491,6 +1491,7 @@
       body[data-pricing-page="true"].authenticated-view .nav #your-case-entry:not([hidden]),
       body[data-pricing-page="true"].authenticated-view .nav #logout-button:not([hidden]) { display: inline-flex; }
       .authenticated-view .nav #pricing-entry { display: inline-flex; }
+      .authenticated-view .nav #login-entry:not([hidden]) { display: inline-flex; }
       .expectations-mark {
         display: grid;
         width: 42px;
@@ -1768,6 +1769,22 @@
           <a class="nav-cta auth-entry" id="account-entry" href="/?auth=signup" hidden>Get started <span class="arrow" aria-hidden="true">→</span></a>
         </nav>
       </header>
+      <script>
+        (() => {
+          if (window.location.pathname.startsWith("/demo")
+            || !document.cookie.split(";").some((cookie) => /^auth_csrf=.+/.test(cookie.trim()))) return;
+          // Cookie presence is a navigation hint, never proof of authentication.
+          document.body.dataset.navigationPending = "true";
+          if (["/", "/pricing"].includes(window.location.pathname)) {
+            document.body.classList.add("signed-in-home");
+          }
+          for (const id of ["account-tools-link", "your-case-entry", "logout-button"]) {
+            document.getElementById(id).hidden = false;
+          }
+          document.getElementById("login-entry").hidden = true;
+          document.getElementById("account-entry").hidden = true;
+        })();
+      </script>
       <p class="theme-status" id="theme-status" role="status" aria-live="polite"></p>
 
       <main>
@@ -5344,6 +5361,7 @@
         });
 
         function showPublicPage({ signedOut = false } = {}) {
+          if (signedOut || document.body.dataset.navigationPending === "true") showSignedOutNavigation();
           dashboard.hidden = true;
           preparationView.hidden = true;
           if (caseDocumentsLayout) caseDocumentsLayout.hidden = true;
@@ -12311,6 +12329,7 @@
           try {
             const response = await fetch("/api/v1/dashboard/status", { credentials:"same-origin", cache:"no-store", headers:{ Accept:"application/json" } });
             if (response.status === 401) {
+              showSignedOutNavigation();
               window.location.replace("/");
               return false;
             }
@@ -12327,6 +12346,7 @@
             delete document.documentElement.dataset.sessionChecking;
             return true;
           } catch (error) {
+            if (document.body.dataset.navigationPending === "true") showSignedOutNavigation();
             delete document.documentElement.dataset.sessionChecking;
             showDashboardShell();
             dashboardLoading.hidden = true;
@@ -12361,6 +12381,7 @@
             });
             const result = await response.json();
             if (response.status === 401) {
+              showSignedOutNavigation();
               if (isWorkingPage()) window.location.replace("/");
               else if (!isStartup) showSignIn("Your session has expired. Please sign in again.");
               else showPublicPage({ signedOut: true });
@@ -12416,6 +12437,7 @@
               await enterSignedInAccount(account);
             }
           } catch (error) {
+            if (document.body.dataset.navigationPending === "true") showSignedOutNavigation();
             delete document.documentElement.dataset.sessionChecking;
             showDashboardShell();
             showDashboardError(
@@ -13264,10 +13286,19 @@
           finally { signupBusy = false; updateSignupSubmit(); }
         });
         function showSignedInNavigation() {
+          delete document.body.dataset.navigationPending;
           accountToolsLink.hidden = false;
           document.getElementById("your-case-entry").hidden = false;
           logoutButton.hidden = false;
           document.getElementById("login-entry").hidden = true;
+        }
+        function showSignedOutNavigation() {
+          delete document.body.dataset.navigationPending;
+          document.body.classList.remove("signed-in-home");
+          accountToolsLink.hidden = true;
+          document.getElementById("your-case-entry").hidden = true;
+          logoutButton.hidden = true;
+          document.getElementById("login-entry").hidden = false;
         }
         logoutButton.addEventListener("click", async () => {
           logoutButton.disabled = true;
@@ -13278,6 +13309,7 @@
               headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf) : "" },
             });
             if (!response.ok && response.status !== 401) throw new Error("Log out failed. Please retry.");
+            showSignedOutNavigation();
             window.location.replace("/");
           } catch (error) {
             await showAppNotice(
