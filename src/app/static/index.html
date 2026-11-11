@@ -1718,6 +1718,13 @@
     </style>
   </head>
   <body>
+    <script>
+      (() => {
+        const path = window.location.pathname.replace(/\/+$/, "") || "/";
+        if (path === "/") document.body.dataset.publicLanding = "true";
+        if (path === "/pricing") document.body.dataset.pricingPage = "true";
+      })();
+    </script>
     <dialog class="app-dialog" id="app-dialog" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-description">
       <div class="app-dialog-content">
         <div class="app-dialog-accent" aria-hidden="true"></div>
@@ -3456,10 +3463,8 @@
         const closedCaseViewStatus = document.getElementById("closed-case-view-status");
         const landingAuthMode = demoMode ? null : new URLSearchParams(window.location.search).get("auth");
         const publicLandingMode = window.location.pathname === "/";
-        if (publicLandingMode) document.body.dataset.publicLanding = "true";
         const pricingPageMode = window.location.pathname === "/pricing";
         if (pricingPageMode) {
-          document.body.dataset.pricingPage = "true";
           document.getElementById("pricing-page").hidden = false;
           document.title = "Pricing | Casework";
         }
