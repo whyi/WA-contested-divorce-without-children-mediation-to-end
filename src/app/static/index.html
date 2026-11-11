@@ -1257,24 +1257,23 @@
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
-      .plan-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 16px; margin: 0 0 24px; padding: 18px 22px; border:1px solid var(--line); border-radius: 12px; background:var(--surface-background); }
-      .plan-card-main { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
-      .plan-card h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 650; text-align: right; }
-      .plan-card-main .eyebrow { margin: 0; color:var(--muted); font-size: 12px; font-weight: 400; letter-spacing: normal; text-transform: none; }
-      #plan-summary { grid-column: 1 / -1; margin: 0; color:var(--muted); font-size: 13px; line-height: 1.65; }
-      .plan-card-action { justify-self: end; }
-      .plan-card-action[hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
-      .plan-packages { grid-column: 1 / -1; padding-top: 14px; border-top:1px solid var(--line); }
+      .account-plan-value { display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
+      .account-plan-value > span, .account-plan-value .button { white-space: nowrap; flex-shrink: 0; }
+      #plan-summary { margin: 8px 0 0; color:var(--muted); font-size: 13px; line-height: 1.65; }
+      .account-plan-value [hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
+      .plan-packages { margin-top: 14px; padding-top: 14px; border-top:1px solid var(--line); text-align: left; }
       .plan-packages p { margin: 0 0 10px; color:var(--muted); font-size: 13px; line-height: 1.6; }
       .account-profile { margin: 0 0 24px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background:var(--surface-background); }
       .account-profile h3 { margin: 0 0 14px; font-size: 18px; }
       .account-profile dl { margin: 0; }
       .account-profile dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: center; gap: 16px; min-height: 58px; padding: 14px 0; border-top: 1px solid var(--line); }
       .account-profile dl > div:first-child { border-top: 0; }
-      #plan-card > h3 { grid-column: 1 / -1; margin: 0; font-size: 18px; text-align: left; }
-      .account-tools > .closed-cases { margin: 0 0 24px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-background); }
+      .account-profile dl > div[hidden] { display: none; }
+      .account-profile dl > .account-case-row { grid-template-columns: max-content minmax(0, 1fr); }
+      .account-case-row p:empty, #account-profile-status:empty { display: none; }
+      .account-case-row p { margin: 0 0 8px; color:var(--muted); font-size:13px; font-weight:400; }
       .account-tools .closed-case-list { margin: 0; }
-      .account-tools .closed-case-item { padding: 14px 0 0; border: 0; border-radius: 0; }
+      .account-tools .closed-case-item { justify-content: flex-end; padding: 0; border: 0; border-radius: 0; }
       .account-tools .closed-case-actions { margin-left: auto; }
       .account-danger-title { color: #a52b23 !important; }
       :root[data-theme="dark"] .account-danger-title { color: #ffaba2 !important; }
@@ -1320,9 +1319,10 @@
         .account-panel { gap: 22px; padding: 25px 20px; }
         .dashboard-panel { padding: 25px 20px; }
         .demo-workspace-header { flex-direction: column; gap: 12px; }
-        .plan-card { gap: 12px 8px; }
-        .plan-card-main { gap: 8px; }
-        .plan-card-action .button { min-width: 0; padding: 10px; }
+        .account-profile { padding: 18px 12px; }
+        .account-profile dl > div { grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+        .account-plan-value { gap: 6px; font-size: 12px; }
+        .account-plan-value .button { min-width: 0; padding: 10px 8px; font-size: 12px; }
         .onboarding-actions { grid-template-columns: 1fr; }
         .case-grid { grid-template-columns:repeat(auto-fill, minmax(145px, 1fr)); gap:12px; }
         .case-tile { min-height:170px; padding:15px; border-radius:15px; }
@@ -2249,39 +2249,39 @@
                   <div><dt>Last name</dt><dd id="account-profile-last-name">Loading…</dd></div>
                   <div><dt>Email</dt><dd id="account-profile-email">Loading…</dd></div>
                   <div><dt>Password</dt><dd id="account-profile-password">Not displayed for security</dd></div>
+                  <div id="plan-card">
+                    <dt>Your plan</dt>
+                    <dd>
+                      <div class="account-plan-value">
+                        <span id="plan-name">Checking your plan…</span>
+                        <button class="button button-primary" id="plan-action" type="button" aria-expanded="false" aria-controls="plan-packages" hidden>Upgrade</button>
+                      </div>
+                      <p id="plan-summary" role="status" aria-live="polite" hidden></p>
+                      <div class="plan-packages" id="plan-packages" hidden>
+                        <p id="plan-packages-note"></p>
+                        <div class="settlement-export-actions" id="plan-package-list"></div>
+                        <p id="plan-packages-status" role="status" aria-live="polite"></p>
+                      </div>
+                    </dd>
+                  </div>
+                  <div class="account-case-row" id="account-active-case-section" hidden>
+                    <dt id="account-active-case-title">Your case</dt>
+                    <dd>
+                      <p id="account-active-case-status" role="status" aria-live="polite"></p>
+                      <ul class="closed-case-list" id="account-active-case-list"></ul>
+                    </dd>
+                  </div>
+                  <div class="account-case-row" id="closed-cases" title="Closing a case does not delete it. Closed does not mean the legal matter is resolved." hidden>
+                    <dt id="closed-cases-title">Your case</dt>
+                    <dd>
+                      <p id="closed-cases-status" role="status" aria-live="polite"></p>
+                      <ul class="closed-case-list" id="closed-case-list"></ul>
+                    </dd>
+                  </div>
                 </dl>
                 <p id="account-profile-status" role="status" aria-live="polite"></p>
               </section>
-              <section class="plan-card" id="plan-card" aria-labelledby="plan-name">
-                <h3 id="account-plan-title">Your plan</h3>
-                <div class="plan-card-main">
-                  <p class="eyebrow">Plan</p>
-                  <h3 id="plan-name">Checking your plan…</h3>
-                </div>
-                <div class="plan-card-action">
-                  <button class="button button-primary" id="plan-action" type="button" aria-expanded="false" aria-controls="plan-packages" hidden>Upgrade</button>
-                </div>
-                <p id="plan-summary" role="status" aria-live="polite"></p>
-                <div class="plan-packages" id="plan-packages" hidden>
-                  <p id="plan-packages-note"></p>
-                  <div class="settlement-export-actions" id="plan-package-list"></div>
-                  <p id="plan-packages-status" role="status" aria-live="polite"></p>
-                </div>
-              </section>
-              <section class="closed-cases" id="account-active-case-section" aria-labelledby="account-active-case-title" hidden>
-                <h3 id="account-active-case-title">Your case</h3>
-                <p id="account-active-case-status" role="status" aria-live="polite"></p>
-                <ul class="closed-case-list" id="account-active-case-list"></ul>
-              </section>
-              <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" title="Closing a case does not delete it. Closed does not mean the legal matter is resolved." hidden>
-                <h3 id="closed-cases-title">Your case</h3>
-                <p id="closed-cases-status" role="status" aria-live="polite"></p>
-                <ul class="closed-case-list" id="closed-case-list"></ul>
-              </section>
-              <section class="closed-cases" id="account-permanent-deletion" aria-labelledby="account-permanent-deletion-title">
-                <h3 class="account-danger-title" id="account-permanent-deletion-title">Permanently delete data</h3>
-                <button class="button account-danger-button" id="account-delete-open" type="button" aria-haspopup="dialog">Delete my account</button>
-              </section>
+              <button class="button account-danger-button" id="account-delete-open" type="button" aria-haspopup="dialog">Permanently delete my account</button>
               <dialog class="app-dialog" id="account-delete-dialog" aria-labelledby="account-delete-dialog-title" aria-describedby="account-delete-dialog-description" data-tone="danger">
                 <div class="app-dialog-content">
                 <h2 class="account-danger-title" id="account-delete-dialog-title">Permanently delete your account?</h2>
@@ -3175,7 +3175,6 @@
         const closedCases = document.getElementById("closed-cases");
         const closedCaseList = document.getElementById("closed-case-list");
         const closedCasesStatus = document.getElementById("closed-cases-status");
-        const accountDeletionSection = document.getElementById("account-permanent-deletion");
         const accountDeletionForm = document.getElementById("account-permanent-deletion-form");
         const accountDeletionStatus = document.getElementById("account-permanent-deletion-status");
         const accountDeletionSubmit = document.getElementById("account-permanent-delete-submit");
@@ -7156,6 +7155,7 @@
         async function loadPlanCard() {
           planName.textContent = "Checking your plan…";
           planSummary.textContent = "";
+          planSummary.hidden = true;
           planAction.hidden = true;
           planPackages.hidden = true;
           planAction.setAttribute("aria-expanded", "false");
@@ -7175,6 +7175,7 @@
           } catch {
             planName.textContent = "Plan unavailable";
             planSummary.textContent = "Your plan could not be loaded. Try again later.";
+            planSummary.hidden = false;
           }
         }
 

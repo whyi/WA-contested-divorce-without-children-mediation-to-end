@@ -813,7 +813,7 @@ test("closed-case Account actions place View before Reopen and Export", async ({
     },
   });
   await page.goto(`${origin}/?view=account`);
-  await expect(page.getByRole("heading", { name:"Your case", exact:true })).toBeVisible();
+  await expect(page.locator("#account-profile #closed-cases-title")).toHaveText("Your case");
   await expect(page.locator("#account-active-case-section")).toBeHidden();
   await expect(page.getByRole("button", { name:"Active Case", exact:true })).toHaveCount(0);
   await expect(page.getByText("You have no active case.", { exact:true })).toHaveCount(0);
@@ -844,9 +844,9 @@ for (const width of [1280, 320]) {
       });
       await page.setViewportSize({ width, height:1000 });
       await page.goto(`${origin}/?view=account`);
-      await expect(page.getByRole("heading", { name:"Your case", exact:true })).toBeVisible();
+      await expect(page.locator("#account-profile #account-active-case-title")).toHaveText("Your case");
       await expect(page.locator("#closed-cases")).toBeHidden();
-      await expect(page.locator("#account-active-case-section")).toHaveClass("closed-cases");
+      await expect(page.locator("#account-active-case-section")).toHaveClass("account-case-row");
       const row = page.locator("#account-active-case-list .closed-case-item");
       await expect(row).not.toContainText("Synthetic regression case");
       await expect(row.locator(".closed-case-actions button")).toHaveText(["Export data", "Close case", `Go to attempt #${ordinal}`]);
@@ -2967,8 +2967,8 @@ for (const paid of [false, true]) {
       await expect(page.locator("#account-profile-first-name")).toHaveText("Synthetic");
       await expect(page.locator("#plan-name")).toHaveText(paid ? "Essential plan" : "Free plan");
       await expect(page.locator("#plan-action")).toHaveText("Upgrade");
-      const rows = page.locator("#account-profile dl > div");
-      await expect(rows.locator("dt")).toHaveText(["First name", "Last name", "Email", "Password"]);
+      const rows = page.locator("#account-profile dl > div:visible");
+      await expect(rows.locator("dt")).toHaveText(["First name", "Last name", "Email", "Password", "Your plan"]);
       await expect(page.locator("#account-profile-password")).toHaveText("Not displayed for security");
       let previousBottom = 0;
       for (const row of await rows.all()) {
@@ -2978,12 +2978,21 @@ for (const paid of [false, true]) {
         expect(value.x + value.width).toBeCloseTo(bounds.x + bounds.width, 0);
         previousBottom = bounds.y + bounds.height;
       }
-      const label = await page.locator(".plan-card-main .eyebrow").boundingBox();
+      const label = await page.locator("#plan-card dt").boundingBox();
       const plan = await page.locator("#plan-name").boundingBox();
       const action = await page.locator("#plan-action").boundingBox();
       expect(label.x + label.width).toBeLessThanOrEqual(plan.x);
       expect(plan.x + plan.width).toBeLessThanOrEqual(action.x);
       expect(Math.abs(plan.y + plan.height / 2 - action.y - action.height / 2)).toBeLessThan(1);
+      for (const selector of ["#plan-name", "#plan-action", "#plan-card dt"]) {
+        expect(await page.locator(selector).evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return range.getClientRects().length;
+        })).toBe(1);
+      }
+      await expect(page.locator("#plan-summary")).toBeHidden();
+      await expect(page.locator("#account-tools > .plan-card")).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.locator("#plan-action").click();
       await expect(page.locator("#plan-packages")).toBeVisible();
@@ -2995,9 +3004,9 @@ for (const paid of [false, true]) {
   });
 }
 
-test.describe("Account cards and deletion dialog", () => {
+test.describe("Account inline rows and deletion dialog", () => {
   for (const width of [1280, 390, 320]) {
-    test(`neutral cards, unnamed case, and cancellable danger dialog at ${width}px`, async ({ page }) => {
+    test(`consolidated rows, unnamed case, and cancellable danger dialog at ${width}px`, async ({ page }) => {
       const fixture = await installFixtures(page, {
         authenticated: true, hasCase: false,
         extraReads: { "/api/v1/closed-cases": { cases: [{
@@ -3009,13 +3018,19 @@ test.describe("Account cards and deletion dialog", () => {
       await page.goto(`${origin}/?view=account`);
       await expect(page.locator("#closed-cases-title")).toHaveText("Your case");
       await expect(page.locator("#closed-case-list")).not.toContainText("Essential test case");
-      const background = await page.locator("#account-profile").evaluate((el) => getComputedStyle(el).backgroundColor);
-      for (const id of ["plan-card", "closed-cases", "account-permanent-deletion"]) {
-        expect(await page.locator(`#${id}`).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(background);
-      }
+      await expect(page.locator("#account-profile dl > div:visible > dt")).toHaveText([
+        "First name", "Last name", "Email", "Password", "Your plan", "Your case",
+      ]);
+      await expect(page.locator("#account-tools > section")).toHaveCount(1);
+      await expect(page.locator("#account-permanent-deletion")).toHaveCount(0);
+      await expect(page.locator("#account-profile #closed-cases")).toBeVisible();
+      expect(await page.locator("#closed-cases").evaluate((el) => getComputedStyle(el).borderRadius)).toBe("0px");
       expect(await page.locator("#account-profile dl > div").first()
         .evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("0px");
-      await expect(page.locator("#account-permanent-deletion button")).toHaveText(["Delete my account"]);
+      await expect(page.locator("#account-tools > #account-delete-open")).toHaveText("Permanently delete my account");
+      const profile = await page.locator("#account-profile").boundingBox();
+      const deleteButton = await page.locator("#account-delete-open").boundingBox();
+      expect(deleteButton.y).toBeGreaterThanOrEqual(profile.y + profile.height);
       await expect(page.locator("#account-delete-password")).toBeHidden();
       await page.locator("#account-delete-open").click();
       const dialog = page.locator("#account-delete-dialog");
@@ -3038,6 +3053,37 @@ test.describe("Account cards and deletion dialog", () => {
       fixture.verify();
     });
   }
+
+  test("active case stays in the last Account information row", async ({ page }) => {
+    const fixture = await installFixtures(page, { authenticated: true });
+    await page.goto(`${origin}/?view=account`);
+    await expect(page.locator("#account-profile #account-active-case-section")).toBeVisible();
+    await expect(page.locator("#closed-cases")).toBeHidden();
+    await expect(page.locator("#account-profile dl > div:visible > dt")).toHaveText([
+      "First name", "Last name", "Email", "Password", "Your plan", "Your case",
+    ]);
+    await expect(page.locator("#account-active-case-list")).toContainText("Active");
+    await expect(page.locator("#account-active-case-list")).not.toContainText("Synthetic regression case");
+    await expect(page.locator("#account-active-case-list button")).toHaveText([
+      "Export data", "Close case", "Go to attempt #1",
+    ]);
+    fixture.verify();
+  });
+
+  test("plan loading failures remain visible in the inline row", async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true, hasCase: false,
+    });
+    await page.route("**/api/billing/account/entitlement", route => route.fulfill({
+      status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Unavailable" }),
+    }));
+    await page.goto(`${origin}/?view=account`);
+    await expect(page.locator("#plan-name")).toHaveText("Plan unavailable");
+    await expect(page.locator("#plan-summary")).toBeVisible();
+    await expect(page.locator("#plan-summary")).toContainText("could not be loaded");
+    await expect(page.locator("#plan-action")).toBeHidden();
+    fixture.verify();
+  });
 
   test("deletion validates, blocks duplicate requests, reports failure and retries successfully", async ({ page }) => {
     let response = "failure";
