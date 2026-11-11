@@ -46,7 +46,8 @@ async function installFixtures(page, { mode = null, hasCase = true, authenticate
     const path = url.pathname;
     requests.push(`${request.method()} ${path}`);
     if (request.isNavigationRequest()) {
-      await route.fulfill({ contentType: "text/html", body: html });
+      await route.fulfill({ contentType: "text/html", body: signedIn
+        ? html.replace('<html lang="en">', '<html lang="en" data-header-session="verified">') : html });
       return;
     }
     let status = 200;
@@ -329,10 +330,44 @@ test.describe("immediate session navigation", () => {
   const accountControls = ["account-tools-link", "your-case-entry", "logout-button"];
   const sessionHint = { name: "auth_csrf", value: "synthetic-navigation-hint", url: origin };
 
+  test("stale CSRF cookie never shows account controls on logo navigation or refresh", async ({ page }) => {
+    await page.context().addCookies([sessionHint]);
+    const fixture = await installFixtures(page);
+    await page.addInitScript(() => {
+      window.accountHeaderFlashes = [];
+      const observer = new MutationObserver(() => {
+        const logout = document.getElementById("logout-button");
+        if (logout && !logout.hidden) window.accountHeaderFlashes.push("logout-shown");
+      });
+      observer.observe(document, { subtree: true, attributes: true, childList: true });
+    });
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    await page.route("**/api/v1/dashboard/status", async (route) => {
+      await pending;
+      await route.fallback();
+    });
+    try {
+      await page.goto(`${origin}/pricing`);
+      await expect(page.locator("#logout-button")).toBeHidden();
+      await page.locator("#brand-link").click();
+      await expect(page).toHaveURL(`${origin}/?view=home`);
+      await expect(page.locator("#logout-button")).toBeHidden();
+      expect(await page.evaluate(() => window.accountHeaderFlashes)).toEqual([]);
+      await page.reload();
+      await expect(page.locator("#logout-button")).toBeHidden();
+      expect(await page.evaluate(() => window.accountHeaderFlashes)).toEqual([]);
+      release();
+      await expect(page.locator("#account-entry")).toBeVisible();
+      expect(await page.evaluate(() => window.accountHeaderFlashes)).toEqual([]);
+    } finally { release(); }
+    fixture.verify();
+  });
+
   test("header renders before the main application script executes", async ({ page }) => {
     await page.context().addCookies([sessionHint]);
     let scripts = 0;
-    const headerOnlyHtml = html.replace(/<script>[\s\S]*?<\/script>/g, (script) =>
+    const headerOnlyHtml = html.replace('<html lang="en">', '<html lang="en" data-header-session="verified">').replace(/<script>[\s\S]*?<\/script>/g, (script) =>
       ++scripts === 3 ? "" : script,
     );
     await page.route("**/*", (route) => route.fulfill({ contentType: "text/html", body: headerOnlyHtml }));
@@ -380,7 +415,7 @@ test.describe("immediate session navigation", () => {
   for (const failure of ["expired", "unavailable", "network", "malformed"]) {
     test(`a ${failure} session clears provisional account controls`, async ({ page }) => {
       await page.context().addCookies([sessionHint]);
-      const fixture = await installFixtures(page);
+      const fixture = await installFixtures(page, { authenticated: true });
       let release;
       const pending = new Promise((resolve) => { release = resolve; });
       await page.route("**/api/v1/dashboard/status", async (route) => {

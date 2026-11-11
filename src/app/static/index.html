@@ -1775,8 +1775,8 @@
       <script>
         (() => {
           if (window.location.pathname.startsWith("/demo")
-            || !document.cookie.split(";").some((cookie) => /^auth_csrf=.+/.test(cookie.trim()))) return;
-          // Cookie presence is a navigation hint, never proof of authentication.
+            || document.documentElement.dataset.headerSession !== "verified") return;
+          // Only the server-verified session may enable initial account navigation.
           document.body.dataset.navigationPending = "true";
           if (["/", "/pricing"].includes(window.location.pathname)) {
             document.body.classList.add("signed-in-home");
