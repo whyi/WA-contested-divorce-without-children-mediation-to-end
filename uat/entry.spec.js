@@ -1078,6 +1078,90 @@ test("Account card initial lookup and export failures remain explicit and retrya
   fixture.verify();
 });
 
+test.describe("Your case entry never flashes the homepage", () => {
+  test("initial HTML hides homepage before application execution", async ({ page }) => {
+    const firstScriptOnly = html.replace(/<script>[\s\S]*?<\/script>/g, (script, offset) =>
+      offset === html.indexOf("<script>") ? script : "");
+    await page.route("**/*", route => route.fulfill({ contentType: "text/html", body: firstScriptOnly }));
+    await page.goto(`${origin}/?view=case`);
+    await expect(page.locator("html")).toHaveAttribute("data-session-checking", "true");
+    await expect(page.locator(".hero")).toBeHidden();
+  });
+
+  for (const width of [1280, 320]) {
+    test(`working page click, delayed verification, refresh and destination at ${width}px`, async ({ page }) => {
+      const fixture = await installFixtures(page, { authenticated: true });
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(() => {
+        window.homepageFrames = [];
+        const check = () => {
+          const hero = document.querySelector(".hero");
+          if (new URLSearchParams(location.search).get("view") === "case" && hero
+            && getComputedStyle(hero).visibility === "visible" && hero.getBoundingClientRect().height > 0) {
+            window.homepageFrames.push("homepage");
+          }
+          requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      });
+      await page.goto(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
+      await expect(page.locator("#your-case-entry")).toBeVisible();
+      let releaseDashboard;
+      let releaseWorkspace;
+      let workspaceRequested = false;
+      const dashboardPending = new Promise(resolve => { releaseDashboard = resolve; });
+      const workspacePending = new Promise(resolve => { releaseWorkspace = resolve; });
+      await page.route("**/api/v1/dashboard/status", async route => {
+        await dashboardPending;
+        await route.fallback();
+      });
+      await page.route(`**/cases/${caseId}/workspace`, async route => {
+        workspaceRequested = true;
+        await workspacePending;
+        await route.fallback();
+      });
+      try {
+        await page.locator("#your-case-entry").click();
+        await expect(page).toHaveURL(`${origin}/?view=case`);
+        await expect(page.locator("#dashboard-loading")).toBeVisible();
+        await expect(page.locator(".hero")).toBeHidden();
+        await page.waitForTimeout(100);
+        expect(await page.evaluate(() => window.homepageFrames)).toEqual([]);
+        await page.reload();
+        await expect(page.locator("#dashboard-loading")).toBeVisible();
+        await expect(page.locator(".hero")).toBeHidden();
+        releaseDashboard();
+        await expect.poll(() => workspaceRequested).toBe(true);
+        await page.waitForTimeout(100);
+        await expect(page.locator(".hero")).toBeHidden();
+        expect(await page.evaluate(() => window.homepageFrames)).toEqual([]);
+        releaseWorkspace();
+        await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
+      } finally {
+        releaseDashboard();
+        releaseWorkspace();
+      }
+      fixture.verify();
+    });
+  }
+
+  for (const state of ["signed-out", "unavailable", "no-case"]) {
+    test(`${state} resolves without a stuck render gate`, async ({ page }) => {
+      const fixture = await installFixtures(page, {
+        authenticated: state !== "signed-out", hasCase: false,
+        dashboardStatus: state === "unavailable" ? 503 : 200,
+      });
+      await page.goto(`${origin}/?view=case`);
+      if (state === "signed-out") await expect(page.locator(".hero")).toBeVisible();
+      else if (state === "unavailable") await expect(page.locator("#dashboard-error")).toBeVisible();
+      else await expect(page.locator("#case-create-page")).toBeVisible();
+      await expect(page.locator("html")).not.toHaveAttribute("data-session-checking");
+      if (state !== "signed-out") await expect(page.locator(".hero")).toBeHidden();
+      fixture.verify();
+    });
+  }
+});
+
 test("homepage Your case with no saved case keeps the start choice without Account", async ({ page }) => {
   const fixture = await installFixtures(page, { authenticated:true, hasCase:false });
   await page.goto(`${origin}/?view=home`);
