@@ -1257,7 +1257,7 @@
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
-      .account-plan-value { display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
+      .account-plan-value { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
       .account-plan-value > span, .account-plan-value .button { white-space: nowrap; flex-shrink: 0; }
       #plan-summary { margin: 8px 0 0; color:var(--muted); font-size: 13px; line-height: 1.65; }
       .account-plan-value [hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
@@ -1273,8 +1273,8 @@
       .account-case-row p:empty, #account-profile-status:empty { display: none; }
       .account-case-row p { margin: 0 0 8px; color:var(--muted); font-size:13px; font-weight:400; }
       .account-tools .closed-case-list { margin: 0; }
-      .account-tools .closed-case-item { justify-content: flex-end; padding: 0; border: 0; border-radius: 0; }
-      .account-tools .closed-case-actions { margin-left: auto; }
+      .account-tools .closed-case-item { flex-direction: column; align-items: flex-end; padding: 0; border: 0; border-radius: 0; }
+      .account-tools .closed-case-actions { justify-content: flex-end; margin-left: auto; }
       .account-danger-title { color: #a52b23 !important; }
       :root[data-theme="dark"] .account-danger-title { color: #ffaba2 !important; }
       .account-danger-button,
@@ -2242,8 +2242,7 @@
                 <p class="eyebrow">Your account</p>
                 <h2 id="account-tools-title">Account</h2>
               </div>
-              <section class="account-profile" id="account-profile" aria-labelledby="account-profile-title">
-                <h3 id="account-profile-title">Account information</h3>
+              <section class="account-profile" id="account-profile" aria-label="Account details">
                 <dl>
                   <div><dt>First name</dt><dd id="account-profile-first-name">Loading…</dd></div>
                   <div><dt>Last name</dt><dd id="account-profile-last-name">Loading…</dd></div>

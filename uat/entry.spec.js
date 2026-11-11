@@ -2967,6 +2967,7 @@ for (const paid of [false, true]) {
       await expect(page.locator("#account-profile-first-name")).toHaveText("Synthetic");
       await expect(page.locator("#plan-name")).toHaveText(paid ? "Essential plan" : "Free plan");
       await expect(page.locator("#plan-action")).toHaveText("Upgrade");
+      await expect(page.locator("#account-profile h3")).toHaveCount(0);
       const rows = page.locator("#account-profile dl > div:visible");
       await expect(rows.locator("dt")).toHaveText(["First name", "Last name", "Email", "Password", "Your plan"]);
       await expect(page.locator("#account-profile-password")).toHaveText("Not displayed for security");
@@ -2982,8 +2983,8 @@ for (const paid of [false, true]) {
       const plan = await page.locator("#plan-name").boundingBox();
       const action = await page.locator("#plan-action").boundingBox();
       expect(label.x + label.width).toBeLessThanOrEqual(plan.x);
-      expect(plan.x + plan.width).toBeLessThanOrEqual(action.x);
-      expect(Math.abs(plan.y + plan.height / 2 - action.y - action.height / 2)).toBeLessThan(1);
+      expect(action.y).toBeGreaterThan(plan.y + plan.height);
+      expect(action.x + action.width).toBeCloseTo(plan.x + plan.width, 0);
       for (const selector of ["#plan-name", "#plan-action", "#plan-card dt"]) {
         expect(await page.locator(selector).evaluate((el) => {
           const range = document.createRange();
@@ -3018,6 +3019,10 @@ test.describe("Account inline rows and deletion dialog", () => {
       await page.goto(`${origin}/?view=account`);
       await expect(page.locator("#closed-cases-title")).toHaveText("Your case");
       await expect(page.locator("#closed-case-list")).not.toContainText("Essential test case");
+      const state = await page.locator("#closed-case-list .case-tile-meta").boundingBox();
+      const actions = await page.locator("#closed-case-list .closed-case-actions").boundingBox();
+      expect(actions.y).toBeGreaterThan(state.y + state.height);
+      expect(actions.x + actions.width).toBeCloseTo(state.x + state.width, 0);
       await expect(page.locator("#account-profile dl > div:visible > dt")).toHaveText([
         "First name", "Last name", "Email", "Password", "Your plan", "Your case",
       ]);
@@ -3067,6 +3072,9 @@ test.describe("Account inline rows and deletion dialog", () => {
     await expect(page.locator("#account-active-case-list button")).toHaveText([
       "Export data", "Close case", "Go to attempt #1",
     ]);
+    const state = await page.locator("#account-active-case-list .case-tile-meta").boundingBox();
+    const actions = await page.locator("#account-active-case-list .closed-case-actions").boundingBox();
+    expect(actions.y).toBeGreaterThan(state.y + state.height);
     fixture.verify();
   });
 
