@@ -9,8 +9,9 @@
     <script>
       (() => {
         const path = window.location.pathname.replace(/\/+$/, "");
-        const accountPage = path === "" && new URLSearchParams(window.location.search).get("view") === "account";
-        if (accountPage || ["/settlement-completion", "/rejection-completion", "/case", "/onboarding"].includes(path)
+        const view = new URLSearchParams(window.location.search).get("view");
+        const protectedEntry = path === "" && (view === "account" || view === "case");
+        if (protectedEntry || ["/settlement-completion", "/rejection-completion", "/case", "/onboarding"].includes(path)
           || path.startsWith("/case/") || path.startsWith("/onboarding/")) {
           document.documentElement.dataset.sessionChecking = "true";
         }
@@ -1258,19 +1259,31 @@
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
-      .plan-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 16px; margin: 0 0 26px; padding: 18px 22px; border:1px solid var(--line); border-radius: 12px; background:var(--theme-background-f7faf7); }
-      .plan-card-main { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
-      .plan-card h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 650; text-align: right; }
-      .plan-card-main .eyebrow { margin: 0; color:var(--muted); font-size: 12px; font-weight: 400; letter-spacing: normal; text-transform: none; }
-      #plan-summary { grid-column: 1 / -1; margin: 0; color:var(--muted); font-size: 13px; line-height: 1.65; }
-      .plan-card-action { justify-self: end; }
-      .plan-card-action[hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
-      .plan-packages { grid-column: 1 / -1; padding-top: 14px; border-top:1px solid var(--line); }
+      .account-plan-value { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+      .account-plan-value > span, .account-plan-value .button { white-space: nowrap; flex-shrink: 0; }
+      #plan-summary { margin: 8px 0 0; color:var(--muted); font-size: 13px; line-height: 1.65; }
+      .account-plan-value [hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
+      .plan-packages { margin-top: 14px; padding-top: 14px; border-top:1px solid var(--line); text-align: left; }
       .plan-packages p { margin: 0 0 10px; color:var(--muted); font-size: 13px; line-height: 1.6; }
       .account-profile { margin: 0 0 24px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background:var(--surface-background); }
       .account-profile h3 { margin: 0 0 14px; font-size: 18px; }
       .account-profile dl { margin: 0; }
       .account-profile dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: center; gap: 16px; min-height: 58px; padding: 14px 0; border-top: 1px solid var(--line); }
+      .account-profile dl > div:first-child { border-top: 0; }
+      .account-profile dl > div[hidden] { display: none; }
+      .account-profile dl > .account-case-row { grid-template-columns: max-content minmax(0, 1fr); }
+      .account-case-row p:empty, #account-profile-status:empty { display: none; }
+      .account-case-row p { margin: 0 0 8px; color:var(--muted); font-size:13px; font-weight:400; }
+      .account-tools .closed-case-list { margin: 0; }
+      .account-tools .closed-case-item { flex-direction: column; align-items: flex-end; padding: 0; border: 0; border-radius: 0; }
+      .account-tools .closed-case-actions { justify-content: flex-end; margin-left: auto; }
+      .account-danger-title { color: #a52b23 !important; }
+      :root[data-theme="dark"] .account-danger-title { color: #ffaba2 !important; }
+      .account-danger-button,
+      .app-dialog-actions .account-danger-button { border: 1px solid #9c3228; color: #fff; background: #9c3228; cursor: pointer; }
+      .account-danger-button:hover:not(:disabled),
+      .app-dialog-actions .account-danger-button:hover:not(:disabled) { color: #fff; background: #7e261e; }
+      .account-danger-button:disabled { opacity: .6; cursor: not-allowed; }
       .account-profile dt { color:var(--muted); font-size: 12px; }
       .account-profile dd { margin: 0; overflow-wrap: anywhere; font-weight: 650; font-size: 14px; text-align: right; }
       .account-tools-link[hidden] { display: none; }
@@ -1308,9 +1321,10 @@
         .account-panel { gap: 22px; padding: 25px 20px; }
         .dashboard-panel { padding: 25px 20px; }
         .demo-workspace-header { flex-direction: column; gap: 12px; }
-        .plan-card { gap: 12px 8px; }
-        .plan-card-main { gap: 8px; }
-        .plan-card-action .button { min-width: 0; padding: 10px; }
+        .account-profile { padding: 18px 12px; }
+        .account-profile dl > div { grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+        .account-plan-value { gap: 6px; font-size: 12px; }
+        .account-plan-value .button { min-width: 0; padding: 10px 8px; font-size: 12px; }
         .onboarding-actions { grid-template-columns: 1fr; }
         .case-grid { grid-template-columns:repeat(auto-fill, minmax(145px, 1fr)); gap:12px; }
         .case-tile { min-height:170px; padding:15px; border-radius:15px; }
@@ -2237,13 +2251,41 @@
                 <p class="eyebrow">Your account</p>
                 <h2 id="account-tools-title">Account</h2>
               </div>
-              <section class="account-profile" id="account-profile" aria-labelledby="account-profile-title">
-                <h3 id="account-profile-title">Account information</h3>
+              <section class="account-profile" id="account-profile" aria-label="Account details">
                 <dl>
                   <div><dt>First name</dt><dd id="account-profile-first-name">Loading…</dd></div>
                   <div><dt>Last name</dt><dd id="account-profile-last-name">Loading…</dd></div>
                   <div><dt>Email</dt><dd id="account-profile-email">Loading…</dd></div>
                   <div><dt>Password</dt><dd id="account-profile-password">Not displayed for security</dd></div>
+                  <div id="plan-card">
+                    <dt>Your plan</dt>
+                    <dd>
+                      <div class="account-plan-value">
+                        <span id="plan-name">Checking your plan…</span>
+                        <button class="button button-primary" id="plan-action" type="button" aria-expanded="false" aria-controls="plan-packages" hidden>Upgrade</button>
+                      </div>
+                      <p id="plan-summary" role="status" aria-live="polite" hidden></p>
+                      <div class="plan-packages" id="plan-packages" hidden>
+                        <p id="plan-packages-note"></p>
+                        <div class="settlement-export-actions" id="plan-package-list"></div>
+                        <p id="plan-packages-status" role="status" aria-live="polite"></p>
+                      </div>
+                    </dd>
+                  </div>
+                  <div class="account-case-row" id="account-active-case-section" hidden>
+                    <dt id="account-active-case-title">Your case</dt>
+                    <dd>
+                      <p id="account-active-case-status" role="status" aria-live="polite"></p>
+                      <ul class="closed-case-list" id="account-active-case-list"></ul>
+                    </dd>
+                  </div>
+                  <div class="account-case-row" id="closed-cases" title="Closing a case does not delete it. Closed does not mean the legal matter is resolved." hidden>
+                    <dt id="closed-cases-title">Your case</dt>
+                    <dd>
+                      <p id="closed-cases-status" role="status" aria-live="polite"></p>
+                      <ul class="closed-case-list" id="closed-case-list"></ul>
+                    </dd>
+                  </div>
                 </dl>
                 <p id="account-profile-status" role="status" aria-live="polite"></p>
               </section>
@@ -2261,35 +2303,11 @@
                 </form>
                 <p id="google-link-status" role="status" aria-live="polite"></p>
               </section>
-              <section class="plan-card" id="plan-card" aria-labelledby="plan-name">
-                <div class="plan-card-main">
-                  <p class="eyebrow">Your plan</p>
-                  <h3 id="plan-name">Checking your plan…</h3>
-                </div>
-                <div class="plan-card-action">
-                  <button class="button button-primary" id="plan-action" type="button" aria-expanded="false" aria-controls="plan-packages" hidden>Upgrade</button>
-                </div>
-                <p id="plan-summary" role="status" aria-live="polite"></p>
-                <div class="plan-packages" id="plan-packages" hidden>
-                  <p id="plan-packages-note"></p>
-                  <div class="settlement-export-actions" id="plan-package-list"></div>
-                  <p id="plan-packages-status" role="status" aria-live="polite"></p>
-                </div>
-              </section>
-              <section class="closed-cases" id="account-active-case-section" aria-labelledby="account-active-case-title" hidden>
-                <h3 id="account-active-case-title">Active case</h3>
-                <p id="account-active-case-status" role="status" aria-live="polite"></p>
-                <ul class="closed-case-list" id="account-active-case-list"></ul>
-              </section>
-              <section class="closed-cases" id="closed-cases" aria-labelledby="closed-cases-title" hidden>
-                <h3 id="closed-cases-title">Closed case</h3>
-                <p>Closing a case does not delete it. Your materials, attempts and remaining attempt credits are kept with no expiry, and you can reopen a case at any time. Closed does not mean the legal matter is resolved.</p>
-                <p id="closed-cases-status" role="status" aria-live="polite"></p>
-                <ul class="closed-case-list" id="closed-case-list"></ul>
-              </section>
-              <section class="closed-cases" id="account-permanent-deletion" aria-labelledby="account-permanent-deletion-title">
-                <h3 id="account-permanent-deletion-title">Permanently delete account data</h3>
-                <p>This is irreversible and separate from closing a case. It deletes this account and the case you own; your access to other people's cases is removed. Reauthenticate with your password and type the confirmation phrase.</p>
+              <button class="button account-danger-button" id="account-delete-open" type="button" aria-haspopup="dialog">Permanently delete my account</button>
+              <dialog class="app-dialog" id="account-delete-dialog" aria-labelledby="account-delete-dialog-title" aria-describedby="account-delete-dialog-description" data-tone="danger">
+                <div class="app-dialog-content">
+                <h2 class="account-danger-title" id="account-delete-dialog-title">Permanently delete your account?</h2>
+                <p class="app-dialog-description" id="account-delete-dialog-description">This cannot be undone. It deletes this account and the case you own. Closing a case does not delete it. Reauthenticate and type the confirmation phrase to permanently delete your data.</p>
                 <p>Active database records and known S3 object versions are removed. This deployment does not configure or verify provider-managed database backup/snapshot purge or restore reconciliation.</p>
                 <form id="account-permanent-deletion-form" class="account-form">
                   <label for="account-delete-password">Current password
@@ -2301,10 +2319,14 @@
                   <label for="account-delete-confirmation">Type DELETE MY ACCOUNT
                     <input id="account-delete-confirmation" name="confirmation" type="text" autocomplete="off" required>
                   </label>
-                  <button class="dashboard-retry" id="account-permanent-delete-submit" type="submit">Delete my account permanently</button>
+                  <p id="account-permanent-deletion-status" role="status" aria-live="polite"></p>
+                  <div class="app-dialog-actions">
+                    <button class="account-danger-button" id="account-permanent-delete-submit" type="submit">Permanently Delete</button>
+                    <button id="account-delete-cancel" type="button">Cancel</button>
+                  </div>
                 </form>
-                <p id="account-permanent-deletion-status" role="status" aria-live="polite"></p>
-              </section>
+                </div>
+              </dialog>
             </section>
             <section class="new-case-entry" id="new-case-entry" aria-labelledby="new-case-entry-title" hidden>
               <div class="onboarding-heading">
@@ -3124,6 +3146,7 @@
         const newCaseEntry = document.getElementById("new-case-entry");
         const newCaseStart = document.getElementById("new-case-start");
         const accountToolsMode = new URLSearchParams(window.location.search).get("view") === "account";
+        const caseEntryMode = new URLSearchParams(window.location.search).get("view") === "case";
         const homeMode = new URLSearchParams(window.location.search).get("view") === "home";
         const startPathPage = document.getElementById("start-path-page");
         const startPathStatus = document.getElementById("start-path-status");
@@ -3175,7 +3198,6 @@
         const closedCases = document.getElementById("closed-cases");
         const closedCaseList = document.getElementById("closed-case-list");
         const closedCasesStatus = document.getElementById("closed-cases-status");
-        const accountDeletionSection = document.getElementById("account-permanent-deletion");
         const accountDeletionForm = document.getElementById("account-permanent-deletion-form");
         const accountDeletionStatus = document.getElementById("account-permanent-deletion-status");
         const accountDeletionSubmit = document.getElementById("account-permanent-delete-submit");
@@ -6994,15 +7016,15 @@
           const row = document.createElement("li");
           row.className = "closed-case-item";
           const title = document.createElement("span");
-          title.className = "case-tile-title";
-          title.textContent = item.title;
+          title.className = "case-tile-meta";
+          title.textContent = "Active";
           const actions = document.createElement("span");
           actions.className = "closed-case-actions";
           const exportButton = document.createElement("button");
           exportButton.type = "button";
           exportButton.className = "dashboard-retry";
           exportButton.textContent = "Export data";
-          exportButton.setAttribute("aria-label", `Export all data for ${item.title}`);
+          exportButton.setAttribute("aria-label", "Export all case data");
           exportButton.addEventListener("click", () =>
             void downloadCaseExport(item.id, accountActiveCaseStatus, exportButton));
           const go = document.createElement("button");
@@ -7155,6 +7177,7 @@
         async function loadPlanCard() {
           planName.textContent = "Checking your plan…";
           planSummary.textContent = "";
+          planSummary.hidden = true;
           planAction.hidden = true;
           planPackages.hidden = true;
           planAction.setAttribute("aria-expanded", "false");
@@ -7174,6 +7197,7 @@
           } catch {
             planName.textContent = "Plan unavailable";
             planSummary.textContent = "Your plan could not be loaded. Try again later.";
+            planSummary.hidden = false;
           }
         }
 
@@ -7566,32 +7590,29 @@
               const row = document.createElement("li");
               row.className = "closed-case-item";
               const copy = document.createElement("span");
-              const title = document.createElement("span");
-              title.className = "case-tile-title";
-              title.textContent = item.title;
               const meta = document.createElement("span");
               meta.className = "case-tile-meta";
               meta.textContent = `Closed ${new Date(item.closed_at).toLocaleDateString()} · ${item.closed_reason === "accepted" ? "offer accepted" : "stopped"}`;
-              copy.append(title, meta);
+              copy.append(meta);
               const actions = document.createElement("span");
               actions.className = "closed-case-actions";
               const view = document.createElement("button");
               view.type = "button";
               view.className = "dashboard-retry";
               view.textContent = "View";
-              view.setAttribute("aria-label", `View ${item.title} read-only`);
+              view.setAttribute("aria-label", "View your case read-only");
               view.addEventListener("click", () => void viewClosedCase(item, view));
               const reopen = document.createElement("button");
               reopen.type = "button";
               reopen.className = "dashboard-retry";
               reopen.textContent = "Reopen";
-              reopen.setAttribute("aria-label", `Reopen ${item.title}`);
+              reopen.setAttribute("aria-label", "Reopen your case");
               reopen.addEventListener("click", () => void reopenClosedCase(item, reopen));
               const exportButton = document.createElement("button");
               exportButton.type = "button";
               exportButton.className = "dashboard-retry";
               exportButton.textContent = "Export data";
-              exportButton.setAttribute("aria-label", `Export all data for ${item.title}`);
+              exportButton.setAttribute("aria-label", "Export all case data");
               exportButton.addEventListener("click", () => void downloadCaseExport(item.id, closedCasesStatus, exportButton));
               actions.append(view, reopen, exportButton);
               row.append(copy, actions);
@@ -12384,8 +12405,8 @@
           delete document.body.dataset.startPage;
           dashboard.removeAttribute("aria-labelledby");
           dashboard.setAttribute("aria-label", "Your account");
-          if (!isStartup || preparationMode || accountToolsMode) showDashboardShell();
-          if (accountToolsMode) delete document.documentElement.dataset.sessionChecking;
+          if (!isStartup || preparationMode || accountToolsMode || caseEntryMode) showDashboardShell();
+          if (accountToolsMode || caseEntryMode) delete document.documentElement.dataset.sessionChecking;
           dashboardLoading.hidden = false;
           dashboardError.hidden = true;
           existingCases.hidden = true;
@@ -12511,19 +12532,33 @@
         startPathPage.querySelectorAll("[data-path-mode]").forEach((button) => {
           button.addEventListener("click", () => void chooseStartPath(button.dataset.pathMode));
         });
+        const accountDeleteDialog = document.getElementById("account-delete-dialog");
+        const accountDeleteCancel = document.getElementById("account-delete-cancel");
+        document.getElementById("account-delete-open").addEventListener("click", () => {
+          accountDeletionForm.reset();
+          accountDeletionStatus.textContent = "";
+          accountDeleteDialog.showModal();
+          document.getElementById("account-delete-password").focus();
+        });
+        accountDeleteCancel.addEventListener("click", () => accountDeleteDialog.close());
+        accountDeleteDialog.addEventListener("cancel", (event) => {
+          if (accountDeletionSubmit.disabled) event.preventDefault();
+        });
+        accountDeleteDialog.addEventListener("close", () => {
+          accountDeletionForm.reset();
+          accountDeletionStatus.textContent = "";
+        });
         accountDeletionForm.addEventListener("submit", async (event) => {
           event.preventDefault();
+          if (accountDeletionSubmit.disabled) return;
           if (!accountDeletionForm.reportValidity()) return;
           const form = new FormData(accountDeletionForm);
           if (form.get("confirmation") !== "DELETE MY ACCOUNT") {
             accountDeletionStatus.textContent = 'Type "DELETE MY ACCOUNT" exactly to continue.';
             return;
           }
-          if (!await showAppConfirm(
-            "Permanently delete your account and every case you own? This cannot be undone and is separate from case closure.",
-            { title: "Permanently delete your account?", confirmLabel: "Delete account", tone: "danger" },
-          )) return;
           accountDeletionSubmit.disabled = true;
+          accountDeleteCancel.disabled = true;
           accountDeletionStatus.textContent = "Removing account data and object versions…";
           void settlementApi("/api/v1/account/permanent-deletion", {
             method: "DELETE",
@@ -12534,6 +12569,7 @@
             }),
           }).then(() => {
             accountDeletionForm.reset();
+            accountDeleteDialog.close();
             showSignIn(
               "Active account data and known S3 object versions were deleted. Provider-managed database backups and snapshots are not configured or verified by this deployment.",
             );
@@ -12543,6 +12579,7 @@
               : "Account deletion is incomplete. Please retry.";
           }).finally(() => {
             accountDeletionSubmit.disabled = false;
+            accountDeleteCancel.disabled = false;
           });
         });
 
