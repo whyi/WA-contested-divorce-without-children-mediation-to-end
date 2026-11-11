@@ -200,6 +200,7 @@ async def authenticate_and_authorize_case_data(
         try:
             with SessionLocal() as db:
                 require_current_user(request, db)
+            request.state.header_session_verified = True
         except HTTPException as error:
             if error.status_code == 401 or (
                 error.status_code == 503 and error.detail == "Authentication is not configured."
@@ -552,10 +553,31 @@ def support_configuration(response: Response) -> dict[str, str | None]:
     return {"contact_url": settings.support_contact_url}
 
 
+def _application_page(*, signed_in: bool = False) -> HTMLResponse:
+    html = LOGIN_PAGE.read_text(encoding="utf-8")
+    if signed_in:
+        html = html.replace('<html lang="en">', '<html lang="en" data-header-session="verified">', 1)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store", "Vary": "Cookie, Authorization"})
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/pricing", response_class=HTMLResponse, include_in_schema=False)
-def home() -> HTMLResponse:
-    return HTMLResponse(LOGIN_PAGE.read_text(encoding="utf-8"))
+def home(request: Request) -> HTMLResponse:
+    signed_in = False
+    if request.cookies.get("auth_access") or request.headers.get("authorization", "").startswith("Bearer "):
+        try:
+            with SessionLocal() as db:
+                require_current_user(request, db)
+            signed_in = True
+        except HTTPException as error:
+            if error.status_code != 401 and not (
+                error.status_code == 503 and error.detail == "Authentication is not configured."
+            ):
+                raise
+        except SQLAlchemyError as error:
+            log_failure_event(logger, "public_page_session_check_failed", error)
+            raise HTTPException(status_code=503, detail="Your session could not be verified. Please retry.") from error
+    return _application_page(signed_in=signed_in)
 
 
 @app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
@@ -575,7 +597,7 @@ def demo_asset_overview(request: Request) -> Response:
         raise HTTPException(status_code=400, detail="Invalid demo source.")
     if not case_id:
         return RedirectResponse(f"/demo/start?source={source}")
-    return home()
+    return _application_page()
 
 
 @app.get("/demo/start", response_class=HTMLResponse, include_in_schema=False)
@@ -583,7 +605,7 @@ def demo_start_page(request: Request) -> Response:
     source = request.query_params.get("source", "demo1")
     if source not in {"demo1", "demo2"}:
         raise HTTPException(status_code=400, detail="Invalid demo source.")
-    return home()
+    return _application_page()
 
 
 @app.get(
@@ -605,8 +627,8 @@ def demo_start_page(request: Request) -> Response:
 @app.get("/onboarding/wizard", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/case/assets", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/case/files", response_class=HTMLResponse, include_in_schema=False)
-def onboarding_page() -> HTMLResponse:
-    return home()
+def onboarding_page(request: Request) -> HTMLResponse:
+    return _application_page(signed_in=getattr(request.state, "header_session_verified", False))
 
 
 @app.get("/demo/1", include_in_schema=False)

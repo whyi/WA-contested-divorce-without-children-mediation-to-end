@@ -27,6 +27,42 @@ from app.main import (
 from app.deletion import PermanentDeletionConfirmation
 from app.models import AuthSession, Case, CaseMembership, Document, User
 from app.property_tracing import PropertyTracingUpdate
+from sqlalchemy.exc import SQLAlchemyError
+
+
+class InitialHeaderSessionTests(unittest.TestCase):
+    def test_public_header_ignores_csrf_only_and_verifies_access_sessions(self) -> None:
+        for path in ("/", "/?view=home", "/pricing"):
+            for state in ("anonymous", "csrf-only", "valid", "expired", "revoked"):
+                with self.subTest(path=path, state=state):
+                    headers = []
+                    if state != "anonymous":
+                        cookie = "auth_csrf=stale"
+                        if state not in ("csrf-only",):
+                            cookie += "; auth_access=synthetic"
+                        headers = [(b"cookie", cookie.encode())]
+                    with patch("app.main.SessionLocal"), patch("app.main.require_current_user") as verify:
+                        if state in ("expired", "revoked"):
+                            verify.side_effect = HTTPException(status_code=401, detail="Authentication required.")
+                        status, body = asyncio.run(request_app(path, headers=headers))
+                    self.assertEqual(status, 200)
+                    self.assertEqual(b'data-header-session="verified"' in body, state == "valid")
+                    self.assertEqual(verify.call_count, int(state not in ("anonymous", "csrf-only")))
+
+    def test_public_session_database_failure_is_explicit(self) -> None:
+        with patch("app.main.SessionLocal"), patch(
+            "app.main.require_current_user", side_effect=SQLAlchemyError("synthetic unavailable")
+        ), patch("app.main.log_failure_event") as log:
+            status, body = asyncio.run(request_app("/", headers=[(b"cookie", b"auth_access=synthetic")]))
+        self.assertEqual(status, 503)
+        self.assertIn(b"Your session could not be verified", body)
+        log.assert_called_once()
+
+    def test_public_header_responses_are_not_cacheable(self) -> None:
+        client = TestClient(app)
+        response = client.get("/pricing", headers={"cookie": "auth_csrf=stale"})
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertIn("Cookie", response.headers["vary"])
 
 
 async def request_app(
