@@ -9,7 +9,8 @@
     <script>
       (() => {
         const path = window.location.pathname.replace(/\/+$/, "");
-        if (["/settlement-completion", "/rejection-completion", "/case", "/onboarding"].includes(path)
+        const casePage = path === "" && new URLSearchParams(window.location.search).get("view") === "case";
+        if (casePage || ["/settlement-completion", "/rejection-completion", "/case", "/onboarding"].includes(path)
           || path.startsWith("/case/") || path.startsWith("/onboarding/")) {
           document.documentElement.dataset.sessionChecking = "true";
         }
@@ -3123,6 +3124,7 @@
         const newCaseEntry = document.getElementById("new-case-entry");
         const newCaseStart = document.getElementById("new-case-start");
         const accountToolsMode = new URLSearchParams(window.location.search).get("view") === "account";
+        const caseEntryMode = new URLSearchParams(window.location.search).get("view") === "case";
         const homeMode = new URLSearchParams(window.location.search).get("view") === "home";
         const startPathPage = document.getElementById("start-path-page");
         const startPathStatus = document.getElementById("start-path-status");
@@ -12382,7 +12384,8 @@
           delete document.body.dataset.startPage;
           dashboard.removeAttribute("aria-labelledby");
           dashboard.setAttribute("aria-label", "Your account");
-          if (!isStartup || preparationMode) showDashboardShell();
+          if (!isStartup || preparationMode || caseEntryMode) showDashboardShell();
+          if (caseEntryMode) delete document.documentElement.dataset.sessionChecking;
           dashboardLoading.hidden = false;
           dashboardError.hidden = true;
           existingCases.hidden = true;
