@@ -7,15 +7,14 @@ PAGE = (Path(__file__).parents[1] / "src" / "app" / "static" / "index.html").rea
 
 class ClosedCaseDashboardTests(unittest.TestCase):
     def test_dashboard_lists_closed_cases_with_accessible_reopen_and_export(self) -> None:
-        section = re.search(r'<section[^>]*id="closed-cases"[^>]*>', PAGE)
-        self.assertIsNotNone(section)
-        self.assertIn("aria-labelledby=\"closed-cases-title\"", section.group(0))
+        self.assertRegex(PAGE, r'<div[^>]*id="closed-cases"[^>]*>')
+        self.assertIn('<dt id="closed-cases-title">Your case</dt>', PAGE)
         self.assertIn('id="closed-cases-status"', PAGE)
         self.assertRegex(PAGE, r'id="closed-cases-status"[^>]*role="status"[^>]*aria-live="polite"')
         self.assertIn("/api/v1/closed-cases", PAGE)
         self.assertIn("/reopen", PAGE)
-        self.assertIn("Reopen ${", PAGE)
-        self.assertIn("Export all data for ${", PAGE)
+        self.assertIn("Reopen your case", PAGE)
+        self.assertIn("Export all case data", PAGE)
 
     def test_closed_case_copy_says_nothing_is_deleted_and_no_legal_resolution(self) -> None:
         self.assertRegex(PAGE, r"Closing a case does not delete it")
