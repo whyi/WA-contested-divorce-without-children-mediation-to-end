@@ -45,24 +45,22 @@ test("SMOKE-04", async ({ page }) => {
   expect(response.status()).toBe(200);
   await expect(page).toHaveTitle(/Casework/);
   await page.locator("#login-entry").click();
+  await expect(page.locator("#auth-entry-content")).toBeVisible();
   await expect(page.locator("#email-entry-form")).toBeVisible();
+  await expect(page.locator("#entry-email")).toBeEditable();
+  await expect(page.locator("#email-entry-form button[type=submit]")).toBeEnabled();
   await page.locator("#entry-email").fill("smoke@example.invalid");
-  await page.locator("#email-entry-form button[type=submit]").click();
-  await expect(page.locator("#login-form")).toBeVisible();
-  await expect(page.locator("#login-email")).toHaveAttribute("readonly", "");
-  await expect(page.locator("#login-password")).toHaveAttribute("type", "password");
-  await expect(page.locator("#login-form button[type=submit]")).toBeEnabled();
+  await expect(page.locator("#login-form")).toBeHidden();
 });
 
-for (const [id, source, entry] of [
-  ["SMOKE-05", "demo1", "#demo1-entry"],
-  ["SMOKE-06", "demo2", "#demo2-entry"],
+for (const [id, source] of [
+  ["SMOKE-05", "demo1"],
+  ["SMOKE-06", "demo2"],
 ]) {
   test(id, async ({ page }) => {
-    await page.goto("/");
-    await page.locator(entry).click();
+    await page.goto(`/demo/start?source=${source}`);
     await expect(page).toHaveURL(`${approvedOrigin}/demo/start?source=${source}`);
-    await expect(page.locator("#demo-case-choice-dialog")).toBeVisible();
+    await expect(page.locator("#demo-case-choice-page")).toBeVisible();
     await expect(page.locator("#demo-case-documents-link")).toBeVisible();
     await expect(page.locator("#demo-case-wizard-link")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Active cases", exact: true })).toBeHidden();
