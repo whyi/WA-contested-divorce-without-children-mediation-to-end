@@ -366,10 +366,10 @@ test.describe("immediate session navigation", () => {
 
   test("header renders before the main application script executes", async ({ page }) => {
     await page.context().addCookies([sessionHint]);
-    let scripts = 0;
-    const headerOnlyHtml = html.replace('<html lang="en">', '<html lang="en" data-header-session="verified">').replace(/<script>[\s\S]*?<\/script>/g, (script) =>
-      ++scripts === 3 ? "" : script,
-    );
+    const mainScriptStart = html.lastIndexOf("<script>");
+    const mainScriptEnd = html.indexOf("</script>", mainScriptStart) + "</script>".length;
+    const headerOnlyHtml = `${html.slice(0, mainScriptStart)}${html.slice(mainScriptEnd)}`
+      .replace('<html lang="en">', '<html lang="en" data-header-session="verified">');
     await page.route("**/*", (route) => route.fulfill({ contentType: "text/html", body: headerOnlyHtml }));
     await page.goto(origin);
     for (const id of accountControls) await expect(page.locator(`#${id}`)).toBeVisible();
