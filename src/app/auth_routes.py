@@ -1172,13 +1172,13 @@ def google_oidc_start(payload: ConsentRequest, request: Request, response: Respo
     return {"authorization_url": f"https://accounts.google.com/o/oauth2/v2/auth?{query}"}
 
 
-@router.post("/oidc/google/link/start")
+@router.post("/oidc/google/link/start", response_model=None)
 def google_oidc_link_start(
     payload: GoogleLinkRequest,
     request: Request,
     user: Annotated[User, Depends(require_current_user)],
     db: DbSession,
-) -> Response:
+) -> Response | dict[str, str]:
     settings = get_settings()
     if not settings.google_client_id or not settings.google_client_secret:
         raise HTTPException(status_code=503, detail="Google sign-in is not configured.")
@@ -1226,9 +1226,12 @@ def google_oidc_link_start(
             "code_challenge_method": "S256",
         }
     )
+    authorization_url = f"https://accounts.google.com/o/oauth2/v2/auth?{query}"
+    if "application/json" in request.headers.get("accept", ""):
+        return {"authorization_url": authorization_url}
     return Response(
         status_code=302,
-        headers={"Location": f"https://accounts.google.com/o/oauth2/v2/auth?{query}"},
+        headers={"Location": authorization_url},
     )
 
 
