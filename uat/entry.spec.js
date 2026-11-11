@@ -3046,6 +3046,52 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
   fixture.verify();
 });
 
+for (const paid of [false, true]) {
+  test(`Account settings use single rows and Upgrade for ${paid ? "paid" : "free"} accounts`, async ({ page }) => {
+    const fixture = await installFixtures(page, {
+      authenticated: true, hasCase: false,
+      extraReads: {
+        "/api/auth/account": {
+          email: "long-synthetic-account-address-for-layout@example.invalid",
+          first_name: "Synthetic", last_name: "User",
+        },
+        "/api/billing/account/entitlement": { status: paid ? "paid" : "free" },
+      },
+    });
+    for (const width of [1280, 800, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${origin}/?view=account`);
+      await expect(page.locator("#account-profile-first-name")).toHaveText("Synthetic");
+      await expect(page.locator("#plan-name")).toHaveText(paid ? "Essential plan" : "Free plan");
+      await expect(page.locator("#plan-action")).toHaveText("Upgrade");
+      const rows = page.locator("#account-profile dl > div");
+      await expect(rows.locator("dt")).toHaveText(["First name", "Last name", "Email", "Password"]);
+      await expect(page.locator("#account-profile-password")).toHaveText("Not displayed for security");
+      let previousBottom = 0;
+      for (const row of await rows.all()) {
+        const bounds = await row.boundingBox();
+        const value = await row.locator("dd").boundingBox();
+        expect(bounds.y).toBeGreaterThanOrEqual(previousBottom);
+        expect(value.x + value.width).toBeCloseTo(bounds.x + bounds.width, 0);
+        previousBottom = bounds.y + bounds.height;
+      }
+      const label = await page.locator(".plan-card-main .eyebrow").boundingBox();
+      const plan = await page.locator("#plan-name").boundingBox();
+      const action = await page.locator("#plan-action").boundingBox();
+      expect(label.x + label.width).toBeLessThanOrEqual(plan.x);
+      expect(plan.x + plan.width).toBeLessThanOrEqual(action.x);
+      expect(Math.abs(plan.y + plan.height / 2 - action.y - action.height / 2)).toBeLessThan(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.locator("#plan-action").click();
+      await expect(page.locator("#plan-packages")).toBeVisible();
+      await expect(page.locator("#plan-packages-note")).toContainText("Create your case first");
+      await page.locator("#plan-action").click();
+      await expect(page.locator("#plan-packages")).toBeHidden();
+    }
+    fixture.verify();
+  });
+}
+
 test("Account shows the signed-in email and names and labels paid entitlement Essential", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,

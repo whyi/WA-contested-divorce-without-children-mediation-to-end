@@ -1258,18 +1258,21 @@
       .asset-analysis-back { min-height: 42px; margin: 4px 0 18px; padding: 0 13px; border:1px solid var(--theme-border-d5ded6); border-radius: 7px; color:var(--green-dark); background:var(--theme-background-fff); cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
       [hidden].asset-analysis { display: none; }
       .authenticated-view .nav a:not(.demo-entry) { display: none; }
-      .plan-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 24px; margin: 0 0 26px; padding: 20px 22px; border:1px solid var(--line); border-radius: 12px; background:var(--theme-background-f7faf7); }
-      .plan-card h3 { margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; font-size: 24px; }
-      .plan-card-main p { margin: 0; color:var(--muted); font-size: 14px; line-height: 1.65; }
+      .plan-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 16px; margin: 0 0 26px; padding: 18px 22px; border:1px solid var(--line); border-radius: 12px; background:var(--theme-background-f7faf7); }
+      .plan-card-main { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+      .plan-card h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 650; text-align: right; }
+      .plan-card-main .eyebrow { margin: 0; color:var(--muted); font-size: 12px; font-weight: 400; letter-spacing: normal; text-transform: none; }
+      #plan-summary { grid-column: 1 / -1; margin: 0; color:var(--muted); font-size: 13px; line-height: 1.65; }
       .plan-card-action { justify-self: end; }
       .plan-card-action[hidden], .plan-packages[hidden], .demo-flow-actions[hidden] { display: none; }
       .plan-packages { grid-column: 1 / -1; padding-top: 14px; border-top:1px solid var(--line); }
       .plan-packages p { margin: 0 0 10px; color:var(--muted); font-size: 13px; line-height: 1.6; }
       .account-profile { margin: 0 0 24px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background:var(--surface-background); }
       .account-profile h3 { margin: 0 0 14px; font-size: 18px; }
-      .account-profile dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 24px; margin: 0; }
+      .account-profile dl { margin: 0; }
+      .account-profile dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: center; gap: 16px; min-height: 58px; padding: 14px 0; border-top: 1px solid var(--line); }
       .account-profile dt { color:var(--muted); font-size: 12px; }
-      .account-profile dd { margin: 4px 0 0; overflow-wrap: anywhere; font-weight: 650; }
+      .account-profile dd { margin: 0; overflow-wrap: anywhere; font-weight: 650; font-size: 14px; text-align: right; }
       .account-tools-link[hidden] { display: none; }
       .authenticated-view .nav a.account-tools-link:not([hidden]) { display: inline-block; }
       #your-case-entry[hidden] { display: none; }
@@ -1305,8 +1308,9 @@
         .account-panel { gap: 22px; padding: 25px 20px; }
         .dashboard-panel { padding: 25px 20px; }
         .demo-workspace-header { flex-direction: column; gap: 12px; }
-        .plan-card { grid-template-columns: 1fr; }
-        .plan-card-action { justify-self: start; }
+        .plan-card { gap: 12px 8px; }
+        .plan-card-main { gap: 8px; }
+        .plan-card-action .button { min-width: 0; padding: 10px; }
         .onboarding-actions { grid-template-columns: 1fr; }
         .case-grid { grid-template-columns:repeat(auto-fill, minmax(145px, 1fr)); gap:12px; }
         .case-tile { min-height:170px; padding:15px; border-radius:15px; }
@@ -2229,9 +2233,10 @@
               <section class="account-profile" id="account-profile" aria-labelledby="account-profile-title">
                 <h3 id="account-profile-title">Account information</h3>
                 <dl>
-                  <div><dt>Email</dt><dd id="account-profile-email">Loading…</dd></div>
                   <div><dt>First name</dt><dd id="account-profile-first-name">Loading…</dd></div>
                   <div><dt>Last name</dt><dd id="account-profile-last-name">Loading…</dd></div>
+                  <div><dt>Email</dt><dd id="account-profile-email">Loading…</dd></div>
+                  <div><dt>Password</dt><dd id="account-profile-password">Not displayed for security</dd></div>
                 </dl>
                 <p id="account-profile-status" role="status" aria-live="polite"></p>
               </section>
@@ -2253,11 +2258,11 @@
                 <div class="plan-card-main">
                   <p class="eyebrow">Your plan</p>
                   <h3 id="plan-name">Checking your plan…</h3>
-                  <p id="plan-summary" role="status" aria-live="polite"></p>
                 </div>
                 <div class="plan-card-action">
                   <button class="button button-primary" id="plan-action" type="button" aria-expanded="false" aria-controls="plan-packages" hidden>Upgrade</button>
                 </div>
+                <p id="plan-summary" role="status" aria-live="polite"></p>
                 <div class="plan-packages" id="plan-packages" hidden>
                   <p id="plan-packages-note"></p>
                   <div class="settlement-export-actions" id="plan-package-list"></div>
@@ -7159,7 +7164,7 @@
             planSummary.textContent = paid
               ? "Your Essential account includes paid features. Attempt credits are shown and managed separately."
               : "Your case includes one free finalized attempt. Upgrade to buy one-time attempt credits for more.";
-            planAction.textContent = paid ? "Buy more credits" : "Upgrade";
+            planAction.textContent = "Upgrade";
             planAction.hidden = false;
           } catch {
             planName.textContent = "Plan unavailable";
