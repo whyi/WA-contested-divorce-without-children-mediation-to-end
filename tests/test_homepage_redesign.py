@@ -40,6 +40,23 @@ class HomepageRedesignTests(unittest.TestCase):
         self.assertIn('href="/?auth=login"', page)
         self.assertIn('href="/?auth=signup"', page)
 
+    def test_public_navigation_layout_is_selected_before_header_markup(self) -> None:
+        client = TestClient(app)
+        for path, marker in (
+            ("/", 'document.body.dataset.publicLanding = "true"'),
+            ("/pricing", 'document.body.dataset.pricingPage = "true"'),
+        ):
+            with self.subTest(path=path):
+                response = client.get(path)
+
+                self.assertEqual(response.status_code, 200)
+                page = response.text
+                body = page.index("<body>")
+                state = page.index(marker)
+                header = page.index('<header class="topbar">')
+                self.assertLess(body, state)
+                self.assertLess(state, header)
+
     def test_auth_links_open_the_requested_form_without_changing_auth_endpoints(self) -> None:
         response = TestClient(app).get("/")
 
