@@ -2757,6 +2757,49 @@ test("Google consent refusal never starts authentication, sends personal data, o
   fixture.verify();
 });
 
+test("Account connects Google with CSRF and reauthentication, preserving retry on failure", async ({ page }) => {
+  const posted = [];
+  let success = false;
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    extraReads: { "/api/auth/providers": { google: true } },
+    mutationHandler: async request => {
+      if (new URL(request.url()).pathname !== "/api/auth/oidc/google/link/start") return null;
+      posted.push({ body: request.postDataJSON(), csrf: request.headers()["x-csrf-token"] });
+      return success
+        ? { body: { authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?synthetic=1" } }
+        : { status: 401, body: { detail: "Recent account verification is required." } };
+    },
+  });
+  await page.context().addCookies([{ name: "auth_csrf", value: "synthetic-csrf", url: origin }]);
+  await page.route("https://accounts.google.com/**", route => route.fulfill({ contentType: "text/html", body: "<h1>Synthetic Google consent</h1>" }));
+  await page.goto(`${origin}/?view=account`);
+  await expect(page.locator("#google-link-form")).toBeVisible();
+  await page.locator("#google-link-password").fill("synthetic-password");
+  await page.locator("#google-link-submit").click();
+  await expect(page.locator("#google-link-status")).toHaveText("Recent account verification is required.");
+  await expect(page.locator("#google-link-password")).toHaveValue("");
+  await expect(page.locator("#google-link-submit")).toBeEnabled();
+  success = true;
+  await page.locator("#google-link-password").fill("synthetic-password");
+  await page.locator("#google-link-totp").fill("123456");
+  await page.locator("#google-link-submit").click();
+  await expect(page).toHaveURL("https://accounts.google.com/o/oauth2/v2/auth?synthetic=1");
+  expect(posted).toEqual([
+    { body: { password: "synthetic-password", totp_code: null }, csrf: "synthetic-csrf" },
+    { body: { password: "synthetic-password", totp_code: "123456" }, csrf: "synthetic-csrf" },
+  ]);
+  fixture.verify();
+});
+
+test("Account hides Google linking when the provider is unavailable", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true });
+  await page.goto(`${origin}/?view=account`);
+  await expect(page.locator("#account-profile")).toBeVisible();
+  await expect(page.locator("#google-link-section")).toBeHidden();
+  fixture.verify();
+});
+
 test("Google only starts after explicit agreement", async ({ page }) => {
   const posted = [];
   const fixture = await installFixtures(page, {

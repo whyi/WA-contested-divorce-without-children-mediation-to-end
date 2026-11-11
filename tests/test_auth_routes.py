@@ -14,6 +14,7 @@ from app.auth import hash_token
 from app.auth_routes import (
     CONSENT_VERSION,
     EmailRequest,
+    GoogleLinkRequest,
     LoginRequest,
     PasskeyAuthenticationOptionsRequest,
     PasswordResetRequest,
@@ -26,6 +27,7 @@ from app.auth_routes import (
     _verify_totp,
     forgot_password,
     google_oidc_callback,
+    google_oidc_link_start,
     login,
     passkey_authentication_options,
     refresh,
@@ -41,6 +43,63 @@ from app.main import app
 
 
 class AuthenticationRouteTests(unittest.TestCase):
+    def test_google_link_supports_json_and_preserves_redirect(self) -> None:
+        settings = Settings(
+            google_client_id="synthetic-client",
+            google_client_secret="synthetic-secret",
+            auth_public_base_url="https://casework.example",
+        )
+        user = SimpleNamespace(id=uuid4(), password_hash="synthetic-hash", mfa_enabled=False)
+        for accept in [b"application/json", b"text/html"]:
+            with self.subTest(accept=accept):
+                db = Mock()
+                with (
+                    patch("app.auth_routes.get_settings", return_value=settings),
+                    patch("app.auth_routes._rate_limit"),
+                    patch("app.auth_routes.verify_password", return_value=True),
+                ):
+                    result = google_oidc_link_start(
+                        GoogleLinkRequest(password="synthetic-password"),
+                        self.request("POST", "/api/auth/oidc/google/link/start", [(b"accept", accept)]),
+                        user, db,
+                    )
+                db.commit.assert_called_once()
+                challenge = db.add.call_args.args[0]
+                self.assertEqual(challenge.user_id, user.id)
+                self.assertEqual(challenge.purpose, "google_oidc_link")
+                if isinstance(result, dict):
+                    self.assertEqual(accept, b"application/json")
+                    url = result["authorization_url"]
+                else:
+                    self.assertEqual(result.status_code, 302)
+                    url = result.headers["location"]
+                self.assertTrue(url.startswith("https://accounts.google.com/"))
+                self.assertIn("code_challenge_method=S256", url)
+                self.assertNotIn("synthetic-secret", url)
+                self.assertNotIn("synthetic-password", url)
+
+    def test_google_link_rejects_bad_password_and_missing_mfa(self) -> None:
+        settings = Settings(google_client_id="client", google_client_secret="secret")
+        for valid_password, mfa in [(False, False), (True, True)]:
+            with self.subTest(valid_password=valid_password, mfa=mfa):
+                db = Mock()
+                db.scalar.return_value = None
+                user = SimpleNamespace(id=uuid4(), password_hash="hash", mfa_enabled=mfa)
+                with (
+                    patch("app.auth_routes.get_settings", return_value=settings),
+                    patch("app.auth_routes._rate_limit"),
+                    patch("app.auth_routes.verify_password", return_value=valid_password),
+                    self.assertRaises(HTTPException) as raised,
+                ):
+                    google_oidc_link_start(
+                        GoogleLinkRequest(password="synthetic"),
+                        self.request("POST", "/api/auth/oidc/google/link/start"),
+                        user, db,
+                    )
+                self.assertEqual(raised.exception.status_code, 401)
+                db.add.assert_not_called()
+                db.commit.assert_not_called()
+
     @staticmethod
     def owner_beta_settings() -> Settings:
         return Settings(

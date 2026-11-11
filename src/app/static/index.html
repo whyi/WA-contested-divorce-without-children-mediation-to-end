@@ -2234,6 +2234,20 @@
                 </dl>
                 <p id="account-profile-status" role="status" aria-live="polite"></p>
               </section>
+              <section class="account-profile" id="google-link-section" aria-labelledby="google-link-title" hidden>
+                <h3 id="google-link-title">Connect Google sign-in</h3>
+                <p>Already have a Casework account? Connect Google here to sign in to this same account with Google. Confirm your current Casework password, then choose the Google account you want to connect.</p>
+                <form class="account-form" id="google-link-form">
+                  <label for="google-link-password">Current Casework password
+                    <input id="google-link-password" type="password" autocomplete="current-password" maxlength="1024" required>
+                  </label>
+                  <label for="google-link-totp">Two-factor code (if enabled)
+                    <input id="google-link-totp" type="text" autocomplete="one-time-code" maxlength="128">
+                  </label>
+                  <button class="button button-primary" id="google-link-submit" type="submit">Connect Google account</button>
+                </form>
+                <p id="google-link-status" role="status" aria-live="polite"></p>
+              </section>
               <section class="plan-card" id="plan-card" aria-labelledby="plan-name">
                 <div class="plan-card-main">
                   <p class="eyebrow">Your plan</p>
@@ -13131,6 +13145,41 @@
           cancelGoogleConsent();
           googleButton.focus();
         });
+        document.getElementById("google-link-form").addEventListener("submit", async event => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          if (!form.reportValidity()) return;
+          const button = document.getElementById("google-link-submit");
+          const feedback = document.getElementById("google-link-status");
+          const password = document.getElementById("google-link-password");
+          const totp = document.getElementById("google-link-totp");
+          button.disabled = true;
+          feedback.textContent = "";
+          feedback.removeAttribute("data-kind");
+          try {
+            const csrf = document.cookie.split("; ").find(value => value.startsWith("auth_csrf="))?.split("=")[1];
+            const response = await fetch("/api/auth/oidc/google/link/start", {
+              method: "POST", credentials: "same-origin", cache: "no-store",
+              headers: {
+                Accept: "application/json", "Content-Type": "application/json",
+                "X-CSRF-Token": csrf ? decodeURIComponent(csrf) : "",
+              },
+              body: JSON.stringify({ password: password.value, totp_code: totp.value.trim() || null }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "Google account could not be connected. Please retry.");
+            const url = new URL(result.authorization_url);
+            if (url.origin !== "https://accounts.google.com") throw new Error("Google returned an invalid sign-in address.");
+            window.location.assign(url.href);
+          } catch (error) {
+            feedback.textContent = error instanceof Error ? error.message : "Google account could not be connected. Please retry.";
+            feedback.dataset.kind = "error";
+          } finally {
+            password.value = "";
+            totp.value = "";
+            button.disabled = false;
+          }
+        });
         async function authRequest(endpoint, body) {
           status.textContent = "";
           status.removeAttribute("data-kind");
@@ -13332,6 +13381,7 @@
             })
             .then((providers) => {
               googleButton.disabled = !providers.google;
+              document.getElementById("google-link-section").hidden = !providers.google;
               googleStatus.textContent = providers.google ? ""
                 : "Google sign-in is not configured. Continue with email.";
             })
