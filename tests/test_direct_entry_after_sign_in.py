@@ -119,7 +119,9 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         )
         self.assertIsNotNone(section)
         self.assertIn('id="closed-cases"', section.group(1))
-        self.assertIn('id="account-permanent-deletion"', section.group(1))
+        self.assertIn('id="account-delete-open"', section.group(1))
+        self.assertIn(">Permanently delete my account</button>", section.group(1))
+        self.assertNotIn('id="account-permanent-deletion"', section.group(1))
         existing = PAGE[PAGE.index('id="existing-cases"') :]
         self.assertIn('id="case-create-page"', existing)
         self.assertNotIn('id="settlement-planner"', existing)

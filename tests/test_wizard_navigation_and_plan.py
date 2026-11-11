@@ -105,14 +105,15 @@ class SignedInHomeTests(unittest.TestCase):
 
 
 class AccountPlanCardTests(unittest.TestCase):
-    def test_plan_card_is_a_labelled_region_in_the_account_area(self) -> None:
+    def test_plan_is_a_labelled_row_inside_account_information(self) -> None:
         match = re.search(
-            r'<section class="account-tools" id="account-tools".*?<section class="plan-card" id="plan-card" aria-labelledby="plan-name">(.*?)</section>\s*<section class="closed-cases"',
+            r'<section class="account-profile" id="account-profile".*?<div id="plan-card">\s*<dt>Your plan</dt>(.*?)</dd>\s*</div>',
             PAGE,
             re.S,
         )
         self.assertIsNotNone(match)
         card = match.group(1)
+        self.assertNotIn('<section class="plan-card"', PAGE)
         self.assertIn('id="plan-name"', card)
         self.assertRegex(card, r'id="plan-summary" role="status" aria-live="polite"')
         self.assertRegex(card, r'id="plan-action"[^>]*aria-expanded="false" aria-controls="plan-packages" hidden>Upgrade</button>')
