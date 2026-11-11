@@ -813,17 +813,17 @@ test("closed-case Account actions place View before Reopen and Export", async ({
     },
   });
   await page.goto(`${origin}/?view=account`);
-  await expect(page.getByRole("heading", { name:"Closed case", exact:true })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Your case", exact:true })).toBeVisible();
   await expect(page.locator("#account-active-case-section")).toBeHidden();
   await expect(page.getByRole("button", { name:"Active Case", exact:true })).toHaveCount(0);
   await expect(page.getByText("You have no active case.", { exact:true })).toHaveCount(0);
   const row = page.locator("#closed-case-list .closed-case-item");
-  await expect(row).toContainText("Synthetic closed case");
+  await expect(row).not.toContainText("Synthetic closed case");
   const actions = row.locator(".closed-case-actions button");
   await expect(actions).toHaveText(["View", "Reopen", "Export data"]);
-  await expect(actions.nth(0)).toHaveAccessibleName("View Synthetic closed case read-only");
-  await expect(actions.nth(1)).toHaveAccessibleName("Reopen Synthetic closed case");
-  await expect(actions.nth(2)).toHaveAccessibleName("Export all data for Synthetic closed case");
+  await expect(actions.nth(0)).toHaveAccessibleName("View your case read-only");
+  await expect(actions.nth(1)).toHaveAccessibleName("Reopen your case");
+  await expect(actions.nth(2)).toHaveAccessibleName("Export all case data");
   fixture.verify();
 });
 
@@ -844,11 +844,11 @@ for (const width of [1280, 320]) {
       });
       await page.setViewportSize({ width, height:1000 });
       await page.goto(`${origin}/?view=account`);
-      await expect(page.getByRole("heading", { name:"Active case", exact:true })).toBeVisible();
+      await expect(page.getByRole("heading", { name:"Your case", exact:true })).toBeVisible();
       await expect(page.locator("#closed-cases")).toBeHidden();
       await expect(page.locator("#account-active-case-section")).toHaveClass("closed-cases");
       const row = page.locator("#account-active-case-list .closed-case-item");
-      await expect(row).toContainText("Synthetic regression case");
+      await expect(row).not.toContainText("Synthetic regression case");
       await expect(row.locator(".closed-case-actions button")).toHaveText(["Export data", "Close case", `Go to attempt #${ordinal}`]);
       await expect(page.locator("#active-case-management, #settlement-case-delete")).toHaveCount(0);
       await expect(row.getByRole("button", { name:"Close case", exact:true })).toBeVisible();
@@ -1064,7 +1064,7 @@ test("Account card initial lookup and export failures remain explicit and retrya
   await expect(page.locator("#account-active-case-status")).toHaveText("Latest attempt lookup unavailable.");
   await expect(row.getByRole("button", { name:"Retry latest attempt", exact:true })).toBeEnabled();
   await expect(row.getByRole("button", { name:/Go to attempt/ })).toHaveCount(0);
-  const exportButton = row.getByRole("button", { name:"Export all data for Synthetic regression case", exact:true });
+  const exportButton = row.getByRole("button", { name:"Export all case data", exact:true });
   await exportButton.click();
   await expect(page.locator("#account-active-case-status")).toHaveText("Export unavailable. Please retry.");
   await expect(exportButton).toBeEnabled();
@@ -1113,7 +1113,7 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
     },
   });
   await page.goto(`${origin}/?view=account`);
-  await page.getByRole("button", { name: "View Synthetic closed case read-only" }).click();
+  await page.getByRole("button", { name: "View your case read-only" }).click();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&view=closed`);
   await expect(page.locator("#closed-case-view-banner")).toBeVisible();
   await expect(page.locator("#closed-case-view-banner")).toContainText("Closed case");
@@ -1164,7 +1164,7 @@ for (const kind of ["asset", "selection"]) {
       });
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${origin}/?view=account`);
-      await page.getByRole("button", { name: "View Accepted regression case read-only" }).click();
+      await page.getByRole("button", { name: "View your case read-only" }).click();
       await expect(page).toHaveURL(`${origin}${completionUrl}&view=closed`);
       await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
       await expectClosedCompletionActions(page);
@@ -1198,7 +1198,7 @@ for (const invalid of ["missing-target", "wrong-case", "reopened", "stale-closur
       },
     });
     await page.goto(`${origin}/?view=account`);
-    const view = page.getByRole("button", { name: "View Unverifiable accepted case read-only" });
+    const view = page.getByRole("button", { name: "View your case read-only" });
     await view.click();
     await expect(page.locator("#closed-cases-status")).toContainText("could not be verified");
     await expect(page).toHaveURL(`${origin}/?view=account`);
@@ -1225,7 +1225,7 @@ test("Account accepted View reports lookup failure and allows retry", async ({ p
       body: JSON.stringify({ detail: "Accepted case unavailable. Please retry." }) });
   });
   await page.goto(`${origin}/?view=account`);
-  const view = page.getByRole("button", { name: "View Unavailable accepted case read-only" });
+  const view = page.getByRole("button", { name: "View your case read-only" });
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     await view.click();
     await expect(page.locator("#closed-cases-status")).toHaveText("Accepted case unavailable. Please retry.");
@@ -2995,6 +2995,102 @@ for (const paid of [false, true]) {
   });
 }
 
+test.describe("Account cards and deletion dialog", () => {
+  for (const width of [1280, 390, 320]) {
+    test(`neutral cards, unnamed case, and cancellable danger dialog at ${width}px`, async ({ page }) => {
+      const fixture = await installFixtures(page, {
+        authenticated: true, hasCase: false,
+        extraReads: { "/api/v1/closed-cases": { cases: [{
+          id: caseId, title: "Essential test case", status: "finalized",
+          closed_at: closedAt, closed_reason: "stopped",
+        }] } },
+      });
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${origin}/?view=account`);
+      await expect(page.locator("#closed-cases-title")).toHaveText("Your case");
+      await expect(page.locator("#closed-case-list")).not.toContainText("Essential test case");
+      const background = await page.locator("#account-profile").evaluate((el) => getComputedStyle(el).backgroundColor);
+      for (const id of ["plan-card", "closed-cases", "account-permanent-deletion"]) {
+        expect(await page.locator(`#${id}`).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(background);
+      }
+      expect(await page.locator("#account-profile dl > div").first()
+        .evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("0px");
+      await expect(page.locator("#account-permanent-deletion button")).toHaveText(["Delete my account"]);
+      await expect(page.locator("#account-delete-password")).toBeHidden();
+      await page.locator("#account-delete-open").click();
+      const dialog = page.locator("#account-delete-dialog");
+      await expect(dialog).toBeVisible();
+      await expect(page.locator("#account-delete-password")).toBeFocused();
+      await expect(dialog.locator("button")).toHaveText(["Permanently Delete", "Cancel"]);
+      const red = await page.locator("#account-delete-open").evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(await page.locator("#account-permanent-delete-submit")
+        .evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(red);
+      await page.locator("#account-delete-password").fill("synthetic-not-a-secret");
+      await page.locator("#account-delete-cancel").click();
+      await expect(dialog).toBeHidden();
+      await expect(page.locator("#account-delete-open")).toBeFocused();
+      await page.locator("#account-delete-open").click();
+      await expect(page.locator("#account-delete-password")).toHaveValue("");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      expect(fixture.requests.filter((r) => r.startsWith("DELETE"))).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      fixture.verify();
+    });
+  }
+
+  test("deletion validates, blocks duplicate requests, reports failure and retries successfully", async ({ page }) => {
+    let response = "failure";
+    let release;
+    let calls = 0;
+    const pending = new Promise((resolve) => { release = resolve; });
+    const fixture = await installFixtures(page, {
+      authenticated: true, hasCase: false,
+      mutationHandler: async (request) => {
+        if (new URL(request.url()).pathname !== "/api/v1/account/permanent-deletion") return null;
+        expect(request.method()).toBe("DELETE");
+        expect(request.postDataJSON()).toEqual({
+          confirmation: "DELETE MY ACCOUNT", password: "synthetic-password", totp_code: "123456",
+        });
+        calls++;
+        if (response === "failure") {
+          await pending;
+          return { status: 503, body: { detail: "Deletion incomplete. Please retry." } };
+        }
+        fixture.signOut();
+        return { status: 200, body: {} };
+      },
+    });
+    await page.goto(`${origin}/?view=account`);
+    await page.locator("#account-delete-open").click();
+    await page.locator("#account-permanent-delete-submit").click();
+    expect(calls).toBe(0);
+    await page.locator("#account-delete-password").fill("synthetic-password");
+    await page.locator("#account-delete-totp").fill("123456");
+    await page.locator("#account-delete-confirmation").fill("incorrect");
+    await page.locator("#account-permanent-delete-submit").click();
+    await expect(page.locator("#account-permanent-deletion-status")).toContainText('Type "DELETE MY ACCOUNT"');
+    expect(calls).toBe(0);
+    await page.locator("#account-delete-confirmation").fill("DELETE MY ACCOUNT");
+    try {
+      await page.locator("#account-permanent-delete-submit").click();
+      await expect.poll(() => calls).toBe(1);
+      await expect(page.locator("#account-permanent-delete-submit")).toBeDisabled();
+      await expect(page.locator("#account-delete-cancel")).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#account-delete-dialog")).toBeVisible();
+    } finally { release(); }
+    await expect(page.locator("#account-permanent-deletion-status")).toHaveText("Deletion incomplete. Please retry.");
+    await expect(page.locator("#account-permanent-delete-submit")).toBeEnabled();
+    response = "success";
+    await page.locator("#account-permanent-delete-submit").click();
+    await expect(page.locator("#account-delete-dialog")).toBeHidden();
+    await expect(page.locator("#email-entry-form")).toBeVisible();
+    expect(calls).toBe(2);
+    fixture.verify();
+  });
+});
+
 test("Account shows the signed-in email and names and labels paid entitlement Essential", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
@@ -4537,7 +4633,7 @@ for (const outcome of ["accepted", "rejected"]) {
       await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");
       await page.locator("#app-dialog-confirm").click();
       await expect(page).toHaveURL(`${origin}/?view=account`);
-      await expect(page.locator("#closed-case-list")).toContainText("Closed rejected case");
+      await expect(page.locator("#closed-case-list")).toContainText("stopped");
       expect(state.stopped).toBe(false);
     }
     expect(mutations.some(item => item.action === "continue")).toBe(false);
@@ -4942,7 +5038,7 @@ for (const reopened of [false, true]) {
       await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeDisabled();
       releaseClose();
       await expect(page).toHaveURL(`${origin}/?view=account`);
-      await expect(page.locator("#closed-case-list")).toContainText("Closed rejected case");
+      await expect(page.locator("#closed-case-list")).toContainText("stopped");
       expect(saved.case.attempts_locked_at).toBe(reopened ? closedAt : null);
       expect(state.notes).toBe("Retained counteroffer notes");
       expect(state.stopped).toBe(false);
@@ -5353,7 +5449,7 @@ test("Account inline close preserves export, cancellation and explicit failure r
   const actions = page.locator("#account-active-case-section");
   await expect(actions).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await actions.getByRole("button", { name: "Export all data for Synthetic regression case", exact:true }).click();
+  await actions.getByRole("button", { name: "Export all case data", exact:true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(`case-${caseId}-export.zip`);
   await expect(page.locator("#active-case-management, #settlement-case-delete")).toHaveCount(0);
