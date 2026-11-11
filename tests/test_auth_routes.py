@@ -663,6 +663,73 @@ class AuthenticationRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"google": True, "demo": False})
 
+    def test_logout_http_response_revokes_session_and_clears_cookies(self) -> None:
+        settings = Settings(
+            auth_enabled=True,
+            auth_jwt_secret="secure-test-signing-secret-that-is-long-enough",
+        )
+        session = SimpleNamespace(user_id=uuid4(), revoked_at=None, revoke_reason=None)
+        db = Mock()
+        db.get.return_value = session
+        original_db_override = app.dependency_overrides.get(get_db)
+        app.dependency_overrides[get_db] = lambda: db
+
+        try:
+            with (
+                patch("app.auth_routes.get_settings", return_value=settings),
+                patch("app.auth_routes.verify_token", return_value={"sid": str(uuid4())}),
+                patch("app.auth_routes._audit"),
+            ):
+                client = TestClient(app)
+                csrf_rejected = client.post(
+                    "/api/auth/logout",
+                    headers={
+                        "Cookie": "auth_csrf=csrf-token",
+                        "X-CSRF-Token": "invalid-token",
+                    },
+                )
+                response = client.post(
+                    "/api/auth/logout",
+                    headers={
+                        "Cookie": "auth_csrf=csrf-token; auth_refresh=refresh-token",
+                        "X-CSRF-Token": "csrf-token",
+                    },
+                )
+                with patch(
+                    "app.auth_routes.verify_token",
+                    side_effect=ValueError("invalid refresh token"),
+                ):
+                    invalid_session = client.post(
+                        "/api/auth/logout",
+                        headers={
+                            "Cookie": "auth_csrf=csrf-token; auth_refresh=invalid-refresh-token",
+                            "X-CSRF-Token": "csrf-token",
+                        },
+                    )
+        finally:
+            if original_db_override is None:
+                app.dependency_overrides.pop(get_db, None)
+            else:
+                app.dependency_overrides[get_db] = original_db_override
+
+        self.assertEqual(csrf_rejected.status_code, 403)
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+        self.assertEqual(session.revoke_reason, "logout")
+        self.assertIsNotNone(session.revoked_at)
+        db.commit.assert_called_once_with()
+        cookies = response.headers.get_list("set-cookie")
+        self.assertEqual(len(cookies), 3)
+        self.assertTrue(all("Max-Age=0" in cookie for cookie in cookies))
+        self.assertCountEqual(
+            [cookie.split("=", 1)[0] for cookie in cookies],
+            ["auth_access", "auth_refresh", "auth_csrf"],
+        )
+        self.assertEqual(invalid_session.status_code, 204)
+        self.assertEqual(invalid_session.content, b"")
+        self.assertEqual(len(invalid_session.headers.get_list("set-cookie")), 3)
+        db.rollback.assert_called_once_with()
+
     def test_google_callback_redirects_without_returning_auth_tokens(self) -> None:
         settings = Settings(
             auth_enabled=True,

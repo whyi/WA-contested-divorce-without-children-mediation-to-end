@@ -427,7 +427,7 @@ class AuthenticationRouteCoverageTests(unittest.TestCase):
             patch("app.auth_routes._audit") as audit,
         ):
             result = logout(request, response, db)
-        self.assertIs(result, response)
+        self.assertIsNone(result)
         self.assertEqual(session.revoke_reason, "logout")
         audit.assert_called_once()
         db.commit.assert_called_once_with()

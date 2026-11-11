@@ -873,7 +873,7 @@ def refresh(request: Request, response: Response, db: DbSession) -> dict:
 
 
 @router.post("/logout", status_code=204)
-def logout(request: Request, response: Response, db: DbSession) -> Response:
+def logout(request: Request, response: Response, db: DbSession) -> None:
     _require_secret_config()
     _require_csrf(request)
     raw_token = request.cookies.get(_REFRESH_COOKIE)
@@ -890,8 +890,6 @@ def logout(request: Request, response: Response, db: DbSession) -> Response:
         except (ValueError, KeyError):
             db.rollback()
     clear_auth_cookies(response)
-    response.status_code = 204
-    return response
 
 
 @router.post("/password/forgot", status_code=202)
