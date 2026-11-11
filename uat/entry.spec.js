@@ -152,6 +152,60 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
+test.describe("Account entry does not flash the homepage", () => {
+  for (const width of [1280, 390, 320]) {
+    test(`pending session, repeat click, and reload at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.context().addCookies([{ name: "auth_csrf", value: "synthetic-account-hint", url: origin }]);
+      const fixture = await installFixtures(page, { authenticated: true, hasCase: false });
+      await page.goto(`${origin}/pricing`);
+      await expect(page.locator("body")).not.toHaveAttribute("data-navigation-pending");
+      let release;
+      let pending = new Promise((resolve) => { release = resolve; });
+      await page.route("**/api/v1/dashboard/status", async (route) => {
+        await pending;
+        await route.fallback();
+      });
+      try {
+        await page.locator("#account-tools-link").click();
+        await expect(page).toHaveURL(`${origin}/?view=account`);
+        await expect(page.locator(".hero")).toBeHidden();
+        await expect(page.locator("#dashboard-loading")).toBeVisible();
+        await expect(page.locator("#account-tools-link")).toBeVisible();
+        release();
+        await expect(page.locator("#account-profile")).toBeVisible();
+        const requestCount = fixture.requests.length;
+        await page.locator("#account-tools-link").click();
+        await expect(page.locator("#account-profile")).toBeVisible();
+        expect(fixture.requests).toHaveLength(requestCount);
+        pending = new Promise((resolve) => { release = resolve; });
+        await page.reload();
+        await expect(page.locator(".hero")).toBeHidden();
+        await expect(page.locator("#dashboard-loading")).toBeVisible();
+        release();
+        await expect(page.locator("#account-profile")).toBeVisible();
+      } finally {
+        release();
+      }
+      fixture.verify();
+    });
+  }
+
+  for (const status of [401, 503]) {
+    test(`Account session ${status} leaves no hidden-content gate`, async ({ page }) => {
+      const fixture = await installFixtures(page, { authenticated: true, dashboardStatus: status });
+      await page.goto(`${origin}/?view=account`);
+      await expect(page.locator("html")).not.toHaveAttribute("data-session-checking");
+      if (status === 401) await expect(page.locator(".hero")).toBeVisible();
+      else {
+        await expect(page.locator("#dashboard-error")).toBeVisible();
+        await expect(page.locator(".hero")).toBeHidden();
+      }
+      fixture.verify();
+    });
+  }
+});
+
 test("public landing contains only supported sections and working local links", async ({ page }) => {
   const fixture = await installFixtures(page);
   await page.goto(origin);

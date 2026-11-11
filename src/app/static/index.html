@@ -9,7 +9,8 @@
     <script>
       (() => {
         const path = window.location.pathname.replace(/\/+$/, "");
-        if (["/settlement-completion", "/rejection-completion", "/case", "/onboarding"].includes(path)
+        const accountPage = path === "" && new URLSearchParams(window.location.search).get("view") === "account";
+        if (accountPage || ["/settlement-completion", "/rejection-completion", "/case", "/onboarding"].includes(path)
           || path.startsWith("/case/") || path.startsWith("/onboarding/")) {
           document.documentElement.dataset.sessionChecking = "true";
         }
@@ -2276,7 +2277,7 @@
               </section>
               <section class="closed-cases" id="account-permanent-deletion" aria-labelledby="account-permanent-deletion-title">
                 <h3 id="account-permanent-deletion-title">Permanently delete account data</h3>
-                <p>This is irreversible and separate from closing a case. It deletes this account and every case you own; your access to other people's cases is removed. Reauthenticate with your password and type the confirmation phrase.</p>
+                <p>This is irreversible and separate from closing a case. It deletes this account and the case you own; your access to other people's cases is removed. Reauthenticate with your password and type the confirmation phrase.</p>
                 <p>Active database records and known S3 object versions are removed. This deployment does not configure or verify provider-managed database backup/snapshot purge or restore reconciliation.</p>
                 <form id="account-permanent-deletion-form" class="account-form">
                   <label for="account-delete-password">Current password
@@ -5373,6 +5374,7 @@
         });
 
         function showPublicPage({ signedOut = false } = {}) {
+          delete document.documentElement.dataset.sessionChecking;
           if (signedOut || document.body.dataset.navigationPending === "true") showSignedOutNavigation();
           dashboard.hidden = true;
           preparationView.hidden = true;
@@ -12372,7 +12374,8 @@
           delete document.body.dataset.startPage;
           dashboard.removeAttribute("aria-labelledby");
           dashboard.setAttribute("aria-label", "Your account");
-          if (!isStartup || preparationMode) showDashboardShell();
+          if (!isStartup || preparationMode || accountToolsMode) showDashboardShell();
+          if (accountToolsMode) delete document.documentElement.dataset.sessionChecking;
           dashboardLoading.hidden = false;
           dashboardError.hidden = true;
           existingCases.hidden = true;
@@ -13337,6 +13340,13 @@
           } catch (error) { authError(error); }
           finally { signupBusy = false; updateSignupSubmit(); }
         });
+        accountToolsLink.addEventListener("click", (event) => {
+          if (accountToolsMode && !accountToolsSection.hidden && event.button === 0
+            && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+            event.preventDefault();
+          }
+        });
+
         function showSignedInNavigation() {
           delete document.body.dataset.navigationPending;
           accountToolsLink.hidden = false;
