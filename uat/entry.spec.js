@@ -3242,7 +3242,8 @@ test.describe("Account inline rows and deletion dialog", () => {
       await expect(page.locator("#account-profile dl > div:visible > dt")).toHaveText([
         "First name", "Last name", "Email", "Password", "Your plan", "Your case",
       ]);
-      await expect(page.locator("#account-tools > section")).toHaveCount(1);
+      await expect(page.locator("#account-tools > section:not(#google-link-section)")).toHaveCount(1);
+      await expect(page.locator("#google-link-section")).toBeHidden();
       await expect(page.locator("#account-permanent-deletion")).toHaveCount(0);
       await expect(page.locator("#account-profile #closed-cases")).toBeVisible();
       expect(await page.locator("#closed-cases").evaluate((el) => getComputedStyle(el).borderRadius)).toBe("0px");
