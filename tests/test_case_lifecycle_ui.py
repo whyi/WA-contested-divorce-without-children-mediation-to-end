@@ -14,8 +14,8 @@ class ClosedCaseDashboardTests(unittest.TestCase):
         self.assertRegex(PAGE, r'id="closed-cases-status"[^>]*role="status"[^>]*aria-live="polite"')
         self.assertIn("/api/v1/closed-cases", PAGE)
         self.assertIn("/reopen", PAGE)
-        self.assertIn("Reopen ${", PAGE)
-        self.assertIn("Export all data for ${", PAGE)
+        self.assertIn("Reopen your case", PAGE)
+        self.assertIn("Export all case data", PAGE)
 
     def test_closed_case_copy_says_nothing_is_deleted_and_no_legal_resolution(self) -> None:
         self.assertRegex(PAGE, r"Closing a case does not delete it")
