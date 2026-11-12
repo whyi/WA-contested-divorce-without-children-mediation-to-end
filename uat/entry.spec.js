@@ -153,6 +153,15 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
+async function expectButtonOnlyCloseDialog(page) {
+  const dialog = page.locator("#app-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("#app-dialog-input-wrap")).toBeHidden();
+  await expect(dialog.locator("#app-dialog-copy-wrap")).toBeHidden();
+  await expect(dialog.locator("input:visible, textarea:visible, select:visible")).toHaveCount(0);
+  await expect(dialog.getByRole("button")).toHaveText(["Cancel", /Close/i]);
+}
+
 test.describe("Account entry does not flash the homepage", () => {
   for (const width of [1280, 390, 320]) {
     test(`pending session, repeat click, and reload at ${width}px`, async ({ page }) => {
@@ -5490,6 +5499,7 @@ for (const outcome of ["accepted", "rejected"]) {
       await page.locator("#settlement-demo-stop-case").click();
       await expect(page.locator("#app-dialog")).toBeVisible();
       await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");
+      await expectButtonOnlyCloseDialog(page);
       await page.locator("#app-dialog-confirm").click();
       await expect(page).toHaveURL(`${origin}/?view=account`);
       await expect(page.locator("#closed-case-list")).toContainText("stopped");
@@ -6282,6 +6292,12 @@ for (const width of [1280, 320]) {
     await expect(actions.locator("button")).toHaveText(["Export data", "Close case", "Go to attempt #1"]);
     await actions.getByRole("button", { name:"Close case", exact:true }).click();
     await expect(page.locator("#app-dialog")).toContainText("Nothing is deleted");
+    await expectButtonOnlyCloseDialog(page);
+    await expect(page.locator("#app-dialog-confirm")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.locator("#app-dialog-cancel")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("#app-dialog-confirm")).toBeFocused();
     await page.locator("#app-dialog-confirm").click();
     await expect(page.locator("#account-active-case-section")).toBeHidden();
     await expect(page.locator("#closed-case-list .closed-case-actions button")).toHaveText(["View", "Reopen", "Export data"]);
@@ -6441,6 +6457,7 @@ for (const [backend, reopened] of [
     await page.getByRole("button", { name: "Close your case", exact: true }).click();
     await expect(page.locator("#app-dialog-title")).toHaveText("Close your case?");
     await expect(page.locator("#app-dialog")).toContainText("permanently read-only");
+    await expectButtonOnlyCloseDialog(page);
     await page.locator("#app-dialog-confirm").click();
     await expect(page).toHaveURL(`${origin}/?view=account`);
     expect(fixture.requests).toContain(`POST ${expectedPath}`);
