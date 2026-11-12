@@ -5209,8 +5209,7 @@
             item.append(button);
             list.append(item);
           }
-          const reopenedAccepted = !caseClosed && workspace.case.attempts_locked_at;
-          if (completion || (workspace.accepted_offer_url && !reopenedAccepted)) {
+          if (completion || workspace.accepted_offer_url) {
             const target = new URL(completion ? window.location.href : workspace.accepted_offer_url, window.location.origin);
             if (closedCaseViewMode || caseClosed) target.searchParams.set("view", "closed");
             appendAcceptedOfferStep(list, `${target.pathname}${target.search}`, completion);

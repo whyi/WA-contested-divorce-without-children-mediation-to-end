@@ -1863,6 +1863,70 @@ for (const width of [1280, 390, 320]) {
 
 for (const kind of ["asset", "selection"]) {
   for (const lifecycle of ["open", "reopened"]) {
+    for (const width of [1280, 320]) {
+      test(`accepted circle stays green while reviewing attempts: ${kind}, ${lifecycle}, ${width}px`, async ({ page }) => {
+        const selectionId = "00000000-0000-4000-8000-000000000076";
+        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+        const fixture = await installFixtures(page, {
+          authenticated: true,
+          extraReads: {
+            "/api/billing/account/entitlement": { status: "paid" },
+            [`/cases/${caseId}/workspace`]: {
+              ...workspace, accepted_offer_url: completionUrl,
+              case: { ...workspace.case, attempts_locked_at: lifecycle === "reopened" ? closedAt : null },
+              attempts: [1, 2, 3].map(ordinal => ({
+                ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+              })),
+            },
+            [`/cases/${caseId}/asset-mediation/3`]: {
+              revision: 1, attempt_ordinal: 3, attempt_limit: 3, sent: true, outcome: "accepted",
+              notes: "", document_ids: [], sent_filenames: [], downloaded_formats: [],
+              stopped: false, completed: true, attempts_locked: lifecycle === "reopened",
+            },
+            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+              outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+              attempts_locked: lifecycle === "reopened",
+            },
+          },
+        });
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${origin}${completionUrl}`);
+        await expectAcceptedCompletionProgress(page);
+        for (const ordinal of [3, 2, 1]) {
+          await page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`).click();
+          await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=${ordinal}`);
+          const accepted = page.getByRole("button", { name: "Offer Accepted", exact: true });
+          for (const refresh of [false, true]) {
+            if (refresh) await page.reload();
+            await expect(accepted).toBeVisible();
+            await expect(accepted).toBeEnabled();
+            await expect(accepted).toHaveAttribute("data-state", "current");
+            await expect(accepted).not.toHaveAttribute("aria-current");
+            await expect(page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`))
+              .toHaveAttribute("aria-current", "step");
+            expect(await accepted.locator(".demo-attempt-circle").evaluate(circle => {
+              const style = getComputedStyle(circle);
+              const sample = document.createElement("span");
+              sample.style.backgroundColor = "var(--green)";
+              circle.append(sample);
+              const expected = getComputedStyle(sample).backgroundColor;
+              sample.remove();
+              return style.backgroundColor === expected;
+            })).toBe(true);
+          }
+          await accepted.click();
+          await expect(page).toHaveURL(`${origin}${completionUrl}`);
+          await expectAcceptedCompletionProgress(page);
+        }
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+        fixture.verify();
+      });
+    }
+  }
+}
+
+for (const kind of ["asset", "selection"]) {
+  for (const lifecycle of ["open", "reopened"]) {
     for (const width of [1280, 390, 320]) {
       test(`accepted completion progress: ${kind}, ${lifecycle}, third attempt at ${width}px`, async ({ page }) => {
         const selectionId = "00000000-0000-4000-8000-000000000076";
@@ -1964,17 +2028,17 @@ for (const kind of ["asset", "selection"]) {
         const latest = page.locator('#demo-attempt-progress-list button[data-ordinal="3"]');
         await expect(latest).toHaveAttribute("aria-current", "step");
         await expect(latest).toHaveAttribute("data-state", "current");
-        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
         await expect(page.locator("#settlement-demo-response-next-case")).toBeEnabled();
         await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeEnabled();
         await expect(page.locator("#closed-case-view-banner")).toBeHidden();
         await page.reload();
         await expect(latest).toHaveAttribute("aria-current", "step");
-        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
         await page.locator("#demo-file-management-link").click();
-        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
         await page.reload();
-        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
         expect(saved.case.attempts_locked_at).toBe(closedAt);
         expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([
           `POST /cases/${caseId}/reopen`,
@@ -2112,7 +2176,7 @@ test("open accepted attempt keeps Next enabled and the original guidance", async
   fixture.verify();
 });
 
-test("reopened accepted attempt enables response-only controls and removes the Offer Accepted timeline circle", async ({ page }) => {
+test("reopened accepted attempt enables response-only controls and keeps the Offer Accepted timeline circle", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated: true,
     extraReads: {
@@ -2133,9 +2197,9 @@ test("reopened accepted attempt enables response-only controls and removes the O
   await expect(next).toBeEnabled();
   await expect(page.locator("#settlement-demo-response-status-case")).toContainText("Proposal values and sent documents remain read-only.");
   await expect(page.locator('#settlement-demo-response-files-case input[value="accepted"]')).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
   await next.click();
   await expect(page).toHaveURL(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
   await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
@@ -2197,6 +2261,7 @@ for (const plan of ["free", "paid"]) {
       let next = page.locator("#settlement-demo-response-next-case");
       const outcomes = page.locator("#settlement-demo-response-files-case");
       await expect(next).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
       await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
       await expect(page.locator("#settlement-demo-mark-sent-case")).toBeDisabled();
       await page.goto(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
@@ -2244,8 +2309,10 @@ for (const plan of ["free", "paid"]) {
       next = page.locator("#settlement-demo-response-next-case");
       await expect.poll(() => state.outcome).toBe("accepted");
       await expect(next).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
       await page.reload();
       await expect(outcomes.locator('input[value="accepted"]')).toBeChecked();
+      await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toBeVisible();
       const beforeNext = saves;
       await next.click();
       await expect(page).toHaveURL(`${origin}${completionUrl}`);
