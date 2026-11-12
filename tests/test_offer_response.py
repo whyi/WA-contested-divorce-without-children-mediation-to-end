@@ -31,6 +31,7 @@ from app.offer_response import (
     start_new_proposal_version,
     update_offer_attempt_state,
     update_offer_response,
+    reset_accepted_response,
     upload_offer_response_attachment,
 )
 from app.settlement_routes import list_settlement_offer_responses
@@ -66,6 +67,37 @@ class AsyncUpload:
 
 
 class OfferResponseAuthorizationTests(unittest.TestCase):
+    def test_reset_rejects_closed_historical_stale_and_unconfirmed_responses(self) -> None:
+        for invalid in ("closed", "historical", "stale", "unconfirmed", "rejected"):
+            with self.subTest(invalid=invalid):
+                case = SimpleNamespace(
+                    id=uuid4(), status="settlement",
+                    closed_at=object() if invalid == "closed" else None,
+                )
+                selection = SimpleNamespace(id=uuid4(), case_id=case.id)
+                attempt = SimpleNamespace(id=uuid4(), revision=3)
+                latest = SimpleNamespace(id=uuid4()) if invalid == "historical" else attempt
+                record = SimpleNamespace(outcome="rejected" if invalid == "rejected" else "accepted")
+                current = SimpleNamespace(sent_confirmed=invalid != "unconfirmed")
+                db = Mock()
+                with (
+                    patch("app.offer_response._authorized_selection", return_value=(case, selection)),
+                    patch("app.offer_response._lock_case", return_value=case),
+                    patch("app.offer_response._attempt_for_selection", return_value=attempt),
+                    patch("app.asset_mediation.latest_attempt", return_value=latest),
+                    patch("app.offer_response._response_record", return_value=record),
+                    patch("app.offer_response._read_response", return_value=current),
+                ):
+                    with self.assertRaises(HTTPException) as error:
+                        reset_accepted_response(
+                            case.id, selection.id,
+                            OfferSentConfirmation(expected_attempt_revision=2 if invalid == "stale" else 3),
+                            Response(), SimpleNamespace(id=uuid4()), db,
+                        )
+                self.assertEqual(error.exception.status_code, 409)
+                db.commit.assert_not_called()
+                self.assertEqual(record.outcome, "rejected" if invalid == "rejected" else "accepted")
+
     def test_case_write_authorization_precedes_selection_lookup(self) -> None:
         user = SimpleNamespace(id=uuid4())
         db = Mock()

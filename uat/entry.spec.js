@@ -2134,24 +2134,48 @@ for (const kind of ["asset", "selection"]) {
       test(`accepted completion progress: ${kind}, ${lifecycle}, third attempt at ${width}px`, async ({ page }) => {
         const selectionId = "00000000-0000-4000-8000-000000000076";
         const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+        const saved = {
+          ...workspace, accepted_offer_url: completionUrl,
+          case: { ...workspace.case, attempts_locked_at: lifecycle === "reopened" ? closedAt : null },
+          attempts: [1, 2, 3].map(ordinal => ({
+            ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+          })),
+        };
+        const mediation = {
+          revision: 1, attempt_ordinal: 3, attempt_limit: 3,
+          sent: true, outcome: "accepted", attempts_locked: lifecycle === "reopened",
+          notes: "Retained response notes", document_ids: [], sent_filenames: ["sent.docx", "sent.xlsx"],
+          downloaded_formats: ["docx", "xlsx"], completed: lifecycle === "reopened", stopped: false,
+        };
+        const offer = {
+          attempt_revision: 4, attempt_ordinal: 3, outcome: "accepted",
+          sent_confirmed: true, sent_documents_complete: true, attempts_locked: lifecycle === "reopened",
+        };
+        let release;
+        const pending = new Promise(resolve => { release = resolve; });
+        const resetPath = kind === "asset"
+          ? `/cases/${caseId}/asset-mediation`
+          : `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/reset`;
         const fixture = await installFixtures(page, {
           authenticated: true,
           extraReads: {
-            [`/cases/${caseId}/workspace`]: {
-              ...workspace, accepted_offer_url: completionUrl,
-              case: { ...workspace.case, attempts_locked_at: lifecycle === "reopened" ? closedAt : null },
-              attempts: [1, 2, 3].map(ordinal => ({
-                ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
-              })),
-            },
-            [`/cases/${caseId}/asset-mediation/3`]: {
-              revision: 1, attempt_ordinal: 3, attempt_limit: 3,
-              sent: true, outcome: "accepted", attempts_locked: lifecycle === "reopened",
-            },
-            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
-              outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
-              attempts_locked: lifecycle === "reopened",
-            },
+            [`/cases/${caseId}/workspace`]: saved,
+            [`/cases/${caseId}/asset-mediation/3`]: mediation,
+            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: offer,
+          },
+          mutationHandler: async request => {
+            expect(new URL(request.url()).pathname).toBe(resetPath);
+            expect(request.method()).toBe("POST");
+            expect(request.postDataJSON()).toEqual(kind === "asset"
+              ? { action: "reset_response", attempt_ordinal: 3, expected_revision: 1 }
+              : { expected_attempt_revision: 4 });
+            await pending;
+            mediation.outcome = null;
+            mediation.revision += 1;
+            offer.outcome = null;
+            offer.attempt_revision += 1;
+            saved.accepted_offer_url = null;
+            return { body: kind === "asset" ? mediation : offer };
           },
         });
         await page.setViewportSize({ width, height: 900 });
@@ -2162,13 +2186,71 @@ for (const kind of ["asset", "selection"]) {
         await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible"))
           .toHaveText(["Back to attempt #3", "Close your case"]);
         await expect(page.locator("#closed-case-view-banner")).toBeHidden();
-        await page.getByRole("link", { name: "Back to attempt #3", exact: true }).click();
+        const back = page.getByRole("link", { name: "Back to attempt #3", exact: true });
+        await back.click();
+        await expect(back).toHaveAttribute("aria-disabled", "true");
+        await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+        await back.dispatchEvent("click");
+        await expect(page).toHaveURL(`${origin}${completionUrl}`);
+        release();
         await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
-        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+        for (const reload of [false, true]) {
+          if (reload) await page.reload();
+          await expectViewedAttemptHighlight(page, 3);
+          await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+          const outcomes = page.locator('#settlement-demo-response-files-case input[type="radio"]');
+          await expect(outcomes).toHaveCount(3);
+          for (const radio of await outcomes.all()) {
+            await expect(radio).not.toBeChecked();
+            await expect(radio).toBeEnabled();
+          }
+          await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+          expect(saved.case.attempts_locked_at).toBe(lifecycle === "reopened" ? closedAt : null);
+        }
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([`POST ${resetPath}`]);
         fixture.verify();
       });
     }
   }
+}
+
+for (const failure of ["save-error", "stale", "invalid-confirmation"]) {
+  test(`Back to attempt preserves accepted completion on ${failure}`, async ({ page }) => {
+    const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=1`;
+    const fixture = await installFixtures(page, {
+      authenticated: true,
+      extraReads: {
+        [`/cases/${caseId}/workspace`]: { ...workspace, accepted_offer_url: completionUrl },
+        [`/cases/${caseId}/asset-mediation/1`]: {
+          revision: 2, attempt_ordinal: 1, sent: true, outcome: "accepted",
+        },
+      },
+      mutationHandler: async request => {
+        expect(request.postDataJSON()).toEqual({
+          action: "reset_response", attempt_ordinal: 1, expected_revision: 2,
+        });
+        return failure === "invalid-confirmation"
+          ? { body: { outcome: "accepted", attempt_ordinal: 1 } }
+          : { status: failure === "stale" ? 409 : 503, body: { detail: "Response was not cleared. Reload and retry." } };
+      },
+    });
+    await page.goto(`${origin}${completionUrl}`);
+    const back = page.getByRole("link", { name: "Back to attempt #1", exact: true });
+    await back.click();
+    await expect(page.locator("#settlement-completion-status")).toHaveAttribute("data-kind", "error");
+    await expect(page.locator("#settlement-completion-status")).toContainText(
+      failure === "invalid-confirmation" ? "cancellation could not be verified" : "Response was not cleared",
+    );
+    await expect(page).toHaveURL(`${origin}${completionUrl}`);
+    await expect(back).not.toHaveAttribute("aria-disabled");
+    await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
+    const accepted = page.getByRole("button", { name: "Offer Accepted", exact: true });
+    await expect(accepted).toHaveAttribute("aria-current", "step");
+    await expect(accepted).toHaveAttribute("data-state", "current");
+    expect(fixture.requests.filter(request => !request.startsWith("GET ")))
+      .toEqual([`POST /cases/${caseId}/asset-mediation`]);
+    fixture.verify();
+  });
 }
 
 for (const kind of ["asset", "selection"]) {

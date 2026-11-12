@@ -1474,6 +1474,62 @@ async def upload_offer_response_attachment(
     )
 
 
+@router.post("/reset", response_model=OfferResponseRead)
+def reset_accepted_response(
+    case_id: UUID,
+    selection_id: UUID,
+    payload: OfferSentConfirmation,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> OfferResponseRead:
+    from app.asset_mediation import _save, latest_attempt, read_state
+
+    _, selection = _authorized_selection(
+        case_id, selection_id, user, db, write=True, allow_locked_attempts=True,
+    )
+    case = _lock_case(db, case_id)
+    db.refresh(case)
+    if case.closed_at is not None or case.status == "finalized":
+        raise HTTPException(status_code=409, detail="This case is closed or read-only.")
+    attempt = _attempt_for_selection(db, selection)
+    latest = latest_attempt(db, case_id)
+    if attempt is None or latest is None or latest.id != attempt.id:
+        raise HTTPException(status_code=409, detail="Only the current attempt's response can be cleared.")
+    record = _response_record(db, selection)
+    current = _read_response(db, selection, record)
+    if (record is not None and record.outcome is None and current.sent_confirmed
+        and attempt.revision == payload.expected_attempt_revision + 1):
+        if read_state(db, case, attempt.attempt_ordinal).outcome is None:
+            response.headers["Cache-Control"] = "no-store"
+            return current
+    if attempt.revision != payload.expected_attempt_revision:
+        raise HTTPException(status_code=409, detail="Negotiation attempt changed. Reload and retry.")
+    if record is None or record.outcome != "accepted" or not current.sent_confirmed:
+        raise HTTPException(status_code=409, detail="Only an accepted, confirmed response can be cleared.")
+    state = read_state(db, case, attempt.attempt_ordinal)
+    state.sent = True
+    state.outcome = None
+    state.completed = state.completed or case.attempts_locked_at is not None
+    if not state.sent_filenames:
+        state.sent_filenames = [
+            item.filename for item in current.attachments if item.kind in {"sent_docx", "sent_xlsx"}
+        ]
+    state.revision += 1
+    _save(case, state)
+    record.outcome = None
+    attempt.revision += 1
+    try:
+        db.commit()
+        db.refresh(record)
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.error("Accepted-response reset failed (%s).", type(error).__name__)
+        raise HTTPException(status_code=503, detail="The accepted response could not be cleared. Please retry.") from error
+    response.headers["Cache-Control"] = "no-store"
+    return _read_response(db, selection, record)
+
+
 @router.put("", response_model=OfferResponseRead)
 def update_offer_response(
     case_id: UUID,

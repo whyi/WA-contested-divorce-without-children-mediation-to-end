@@ -10421,6 +10421,7 @@
 
         let settlementCompletionCaseClosed = false;
         let settlementCompletionLatestOrdinal = 1;
+        let settlementCompletionReturnBusy = false;
 
         function renderSettlementCompletionActions(workspace, documentsComplete = true) {
           const assetAttempt = new URLSearchParams(window.location.search).get("asset_attempt");
@@ -10617,8 +10618,59 @@
           }
         }
 
+        async function returnFromAcceptedOffer() {
+          if (settlementCompletionReturnBusy || settlementCompletionCaseClosed || closedCaseViewMode
+            || settlementCompletionBackToCases.hidden || !settlementCompletionState) return;
+          const query = new URLSearchParams(window.location.search);
+          const caseId = query.get("case_id");
+          const assetAttempt = query.get("asset_attempt");
+          const selectionId = query.get("selection_id");
+          const closeDisabled = settlementCompletionCloseCase.disabled;
+          settlementCompletionReturnBusy = true;
+          settlementCompletionBackToCases.setAttribute("aria-disabled", "true");
+          settlementCompletionCloseCase.disabled = true;
+          settlementCompletionStatus.dataset.kind = "";
+          settlementCompletionStatus.textContent = "Clearing the accepted response before returning to your attempt…";
+          try {
+            const cleared = assetAttempt
+              ? await settlementApi(`/cases/${encodeURIComponent(caseId)}/asset-mediation`, {
+                method: "POST",
+                body: JSON.stringify({
+                  action: "reset_response",
+                  attempt_ordinal: Number(assetAttempt),
+                  expected_revision: settlementCompletionState.revision,
+                }),
+              })
+              : await settlementApi(
+                `/cases/${encodeURIComponent(caseId)}/settlement-planning/selections/${encodeURIComponent(selectionId)}/offer-response/reset`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({ expected_attempt_revision: settlementCompletionState.attempt_revision }),
+                },
+              );
+            if (cleared.outcome !== null || cleared.attempt_ordinal !== settlementCompletionLatestOrdinal
+              || (settlementCompletionState.attempts_locked && cleared.attempts_locked !== true)) {
+              throw new Error("The accepted response cancellation could not be verified. Reload and retry.");
+            }
+            window.location.assign(settlementCompletionBackToCases.href);
+          } catch (error) {
+            settlementCompletionStatus.dataset.kind = "error";
+            settlementCompletionStatus.textContent = error instanceof Error
+              ? error.message : "The accepted response could not be cleared. Please retry.";
+            settlementCompletionReturnBusy = false;
+            settlementCompletionBackToCases.removeAttribute("aria-disabled");
+            settlementCompletionCloseCase.disabled = closeDisabled;
+          }
+        }
+
+        settlementCompletionBackToCases.addEventListener("click", event => {
+          if (demoSettlementCompletionMode) return;
+          event.preventDefault();
+          void returnFromAcceptedOffer();
+        });
+
         async function closeAcceptedCase() {
-          if (closedCaseViewMode || settlementCompletionCaseClosed) return;
+          if (closedCaseViewMode || settlementCompletionCaseClosed || settlementCompletionReturnBusy) return;
           const query = new URLSearchParams(window.location.search);
           const caseId = query.get("case_id");
           const selectionId = query.get("selection_id");
