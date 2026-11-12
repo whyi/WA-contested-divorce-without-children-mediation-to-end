@@ -7048,13 +7048,8 @@
               || saved.case.closed_at || saved.case.status === "finalized") {
               throw new Error("Your active case could not be verified. Refresh and retry.");
             }
-            if (saved.accepted_offer_url && !saved.case.attempts_locked_at) {
-              const target = new URL(saved.accepted_offer_url, window.location.origin);
-              if (target.origin !== window.location.origin || target.pathname !== "/settlement-completion"
-                || target.searchParams.get("case_id") !== item.id
-                || !(target.searchParams.get("asset_attempt") || target.searchParams.get("selection_id"))) {
-                throw new Error("Your accepted offer destination could not be verified. Refresh and retry.");
-              }
+            const target = acceptedCaseDestination(item, saved);
+            if (target) {
               window.location.replace(`${target.pathname}${target.search}`);
               return;
             }
@@ -7273,11 +7268,7 @@
             await openActiveCase(account.cases[0]);
             return;
           }
-          if (await loadClosedCases() > 0) {
-            showAccountTools();
-            return;
-          }
-          showNewCaseStart();
+          await openFinalCaseCircle(account);
         }
 
         async function readBillingJson(url) {

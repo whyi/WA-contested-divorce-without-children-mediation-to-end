@@ -1023,6 +1023,60 @@ for (const kind of ["asset", "selection", "locked-asset", "locked-selection"]) {
   }
 }
 
+for (const closed of [false, true]) {
+  for (const kind of ["asset", "selection", "attempt"]) {
+    for (const width of [1280, 390]) {
+      test(`password login opens final case step: closed=${closed}, ${kind}, ${width}px`, async ({ page }) => {
+        const selectionId = "00000000-0000-4000-8000-000000000076";
+        const accepted = kind !== "attempt";
+        const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset"
+          ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+        const fixture = await installFixtures(page, {
+          hasCase: !closed, mode: "upload", workspaceStarted: true,
+          extraReads: {
+            [`/cases/${caseId}/workspace`]: {
+              ...workspace,
+              case: { ...workspace.case, attempts_locked_at: accepted ? closedAt : null,
+                closed_at: closed ? closedAt : null,
+                closed_reason: closed ? accepted ? "accepted" : "stopped" : null },
+              accepted_offer_url: accepted ? completionUrl : null,
+              attempts: [1, 2, 3].map(ordinal => ({ ordinal, frozen: true,
+                profile: { metadata: { asset_overview: workspace.asset_overview } } })),
+            },
+            "/api/v1/closed-cases": { cases: closed ? [{
+              id: caseId, title: "Closed case", closed_at: closedAt,
+              closed_reason: accepted ? "accepted" : "stopped",
+            }] : [] },
+            [`/cases/${caseId}/asset-mediation/3`]: {
+              revision: 1, attempt_ordinal: 3, attempt_limit: 3, sent: true,
+              outcome: accepted ? "accepted" : "rejected", completed: accepted,
+              attempts_locked: accepted, notes: "", document_ids: [], sent_filenames: [], downloaded_formats: [],
+            },
+            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+              outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
+              completed: true, attempts_locked: true,
+            },
+          },
+        });
+        await page.setViewportSize({ width, height: 900 });
+        await signIn(page);
+        const target = accepted ? `${completionUrl}${closed ? "&view=closed" : ""}`
+          : `/case/assets?case_id=${caseId}${closed ? "&attempt=3&view=closed" : ""}`;
+        await expect(page).toHaveURL(`${origin}${target}`);
+        if (accepted) await expectAcceptedCompletionProgress(page);
+        else await expect(page.locator('#demo-attempt-progress-list button[aria-current="step"]')).toContainText("3rd Attempt");
+        if (closed) await expect(page.locator("#closed-case-view-banner")).toBeVisible();
+        await expect(page.locator("#account-tools")).toBeHidden();
+        await page.goto(origin);
+        await expect(page).toHaveURL(`${origin}${target}`);
+        await expect(page.locator("#account-tools")).toBeHidden();
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual(["POST /api/auth/login"]);
+        fixture.verify();
+      });
+    }
+  }
+}
+
 for (const outcome of ["rejected", "counteroffer"]) {
   test(`Your case preserves reopened locked attempt entry with ${outcome} response`, async ({ page }) => {
     const fixture = await installFixtures(page, {
@@ -1048,13 +1102,14 @@ for (const outcome of ["rejected", "counteroffer"]) {
 }
 
 for (const invalid of ["lookup", "identity", "foreign", "wrong-case", "missing-offer", "closed"]) {
-  test(`Your case shows explicit accepted-entry failure: ${invalid}`, async ({ page }) => {
+  test(`password login rejects invalid locked accepted entry: ${invalid}`, async ({ page }) => {
     const fixture = await installFixtures(page, {
-      authenticated: true, workspaceStarted: true,
+      workspaceStarted: true,
       extraReads: {
         [`/cases/${caseId}/workspace`]: {
           ...workspace,
           case: { ...workspace.case, id: invalid === "identity" ? "another-case" : caseId,
+            attempts_locked_at: closedAt,
             closed_at: invalid === "closed" ? closedAt : null },
           accepted_offer_url: `${invalid === "foreign" ? "https://example.invalid" : ""}/settlement-completion?case_id=${invalid === "wrong-case" ? "another-case" : caseId}${invalid === "missing-offer" ? "" : "&asset_attempt=1"}`,
         },
@@ -1065,13 +1120,13 @@ for (const invalid of ["lookup", "identity", "foreign", "wrong-case", "missing-o
         status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Workspace unavailable. Retry." }),
       }));
     }
-    await page.goto(origin);
+    await signIn(page);
     await expect(page.locator("#dashboard-error")).toBeVisible();
     await expect(page.locator("#dashboard-error-message")).toContainText(
       invalid === "lookup" ? "Workspace unavailable." : "could not be verified",
     );
     await expect(page).toHaveURL(`${origin}/`);
-    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual(["POST /api/auth/login"]);
     fixture.verify();
   });
 }
