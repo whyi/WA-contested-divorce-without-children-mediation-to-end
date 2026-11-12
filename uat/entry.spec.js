@@ -380,7 +380,10 @@ test.describe("signed-out public header navigation stays stable", () => {
       ];
 
       const releaseInitialDashboard = holdDashboard();
+      const initialDashboardRequest = page.waitForRequest((request) =>
+        request.url().endsWith("/api/v1/dashboard/status"));
       await page.goto(`${origin}/pricing`);
+      await initialDashboardRequest;
       await expect(page.locator("#account-entry")).toBeHidden();
       const pendingGeometry = await geometry();
       releaseInitialDashboard();
@@ -396,10 +399,13 @@ test.describe("signed-out public header navigation stays stable", () => {
           expect(await geometry(), `${source} before navigating to ${destination}`).toEqual(stableGeometry);
 
           const releaseDashboard = holdDashboard();
+          const dashboardRequest = page.waitForRequest((request) =>
+            request.url().endsWith("/api/v1/dashboard/status"));
           const dashboardResponse = page.waitForResponse((response) =>
             response.url().endsWith("/api/v1/dashboard/status"));
           await page.locator(selector).click();
           await expect(page).toHaveURL(`${origin}${destination}`);
+          await dashboardRequest;
           await expect(page.locator("#account-entry")).toBeVisible();
           expect(await geometry(), `${source} to ${destination} while session status is pending`)
             .toEqual(stableGeometry);
