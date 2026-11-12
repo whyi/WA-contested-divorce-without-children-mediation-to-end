@@ -245,12 +245,14 @@ def update_mediation_state(
             user,
             case_id,
             write=True,
-            allow_locked_attempts=payload.action in {"complete", "response_outcome", "counteroffer_details"},
+            allow_locked_attempts=payload.action in {"complete", "response_outcome", "counteroffer_details", "stop"},
         )
         response.headers["Cache-Control"] = "no-store"
         state = read_state(db, case, payload.attempt_ordinal)
         if (payload.action == "complete" and state.completed and case.closed_at is not None) or (payload.action == "stop" and state.stopped):
             return state
+        if payload.action == "stop":
+            require_attempts_editable(case)
         if case.closed_at is not None or case.status == "finalized":
             raise HTTPException(status_code=409, detail="This case is closed or read-only.")
         latest = latest_attempt(db, case_id)
@@ -346,6 +348,7 @@ def update_mediation_state(
                     raise HTTPException(status_code=409, detail="Confirm stopping after the rejection.")
                 state.stopped = True
                 close_case_record(db, case, user.id, "stopped")
+                state.attempts_locked = True
             elif payload.action == "continue":
                 if state.outcome not in {"counteroffer", "rejected"} or state.selection is None:
                     raise HTTPException(status_code=409, detail="Record a counteroffer or rejection first.")

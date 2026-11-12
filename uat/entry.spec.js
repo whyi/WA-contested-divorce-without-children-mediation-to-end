@@ -153,6 +153,19 @@ async function signIn(page) {
   await page.locator("#login-form button[type=submit]").click();
 }
 
+async function expectButtonOnlyCloseDialog(page) {
+  const dialog = page.locator("#app-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("#app-dialog-title")).toHaveText("Close your case?");
+  await expect(dialog.locator("#app-dialog-description")).toHaveText(
+    "Close this Casework case? Every negotiation attempt will become permanently read-only, even if you later reopen the case. Your case data is not deleted; you can reopen it for review and export. This does not resolve your divorce case, file documents, or change its legal status.",
+  );
+  await expect(dialog.locator("#app-dialog-input-wrap")).toBeHidden();
+  await expect(dialog.locator("#app-dialog-copy-wrap")).toBeHidden();
+  await expect(dialog.locator("input:visible, textarea:visible, select:visible")).toHaveCount(0);
+  await expect(dialog.getByRole("button")).toHaveText(["Cancel", /Close/i]);
+}
+
 test.describe("Account entry does not flash the homepage", () => {
   for (const width of [1280, 390, 320]) {
     test(`pending session, repeat click, and reload at ${width}px`, async ({ page }) => {
@@ -960,7 +973,7 @@ async function expectClosedCompletionActions(page) {
   await expect(banner).toBeVisible();
   await expect(banner).toContainText("Closed case · Read-only");
   await expect(banner.locator("a")).toHaveCount(0);
-  await expect(banner).toContainText("is closed. You can review saved information and files, but changes are unavailable until you explicitly reopen it.");
+  await expect(banner).toContainText("is closed. You can review saved information and files. Negotiation attempts remain permanently read-only, even after reopening for review and export.");
   const positions = await banner.evaluate(element => ({
     bannerBottom: element.getBoundingClientRect().bottom,
     progressTop: document.querySelector("#demo-case-navigation").getBoundingClientRect().top,
@@ -1686,7 +1699,9 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
   await expect(page.locator("#closed-case-view-banner")).toBeVisible();
   await expect(page.locator("#closed-case-view-banner")).toContainText("Closed case");
   await expect(page.locator("#closed-case-view-banner")).toContainText("Read-only");
-  await expect(page.locator("#closed-case-view-status")).toContainText("changes are unavailable");
+  await expect(page.locator("#closed-case-view-status")).toContainText(
+    "Negotiation attempts remain permanently read-only, even after reopening for review and export.",
+  );
   await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
   await expect(page.locator("#case-asset-layout .settlement-export-actions")).toBeHidden();
   await expect(page.locator("#demo-file-management-link")).toHaveAttribute(
@@ -5613,7 +5628,8 @@ for (const outcome of ["accepted", "rejected"]) {
       await expect(page.locator("#settlement-demo-next-attempt-case")).toHaveAttribute("aria-disabled", "false");
       await page.locator("#settlement-demo-stop-case").click();
       await expect(page.locator("#app-dialog")).toBeVisible();
-      await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");
+      await expect(page.locator("#app-dialog-title")).toHaveText("Close your case?");
+      await expectButtonOnlyCloseDialog(page);
       await page.locator("#app-dialog-confirm").click();
       await expect(page).toHaveURL(`${origin}/?view=account`);
       await expect(page.locator("#closed-case-list")).toContainText("stopped");
@@ -5995,8 +6011,7 @@ for (const reopened of [false, true]) {
       await expect(page.locator("#app-dialog-title")).toHaveText(reopened ? "Subscription required" : "More attempts need credits");
       await page.locator("#app-dialog-confirm").click();
       await close.click();
-      await expect(page.locator("#app-dialog-description")).toContainText("Nothing is deleted");
-      await expect(page.locator("#app-dialog-description")).toContainText("unused attempt credits remain available");
+      await expectButtonOnlyCloseDialog(page);
       await expect(page.locator("#app-dialog-description")).toContainText("reopen");
       await page.locator("#app-dialog-cancel").click();
       expect(closures).toHaveLength(0);
@@ -6383,6 +6398,31 @@ for (const success of [true, false]) {
   });
 }
 
+test("reopened ordinary case retains read-only asset and mediation controls", async ({ page }) => {
+  const fixture = await installFixtures(page, {
+    authenticated: true,
+    extraReads: {
+      [`/cases/${caseId}/workspace`]: {
+        ...workspace, case: { ...workspace.case, attempts_locked_at: closedAt },
+      },
+      [`/cases/${caseId}/asset-mediation/1`]: {
+        revision: 1, attempt_ordinal: 1, attempt_limit: 1, sent: true,
+        outcome: "rejected", stopped: false, completed: false, attempts_locked: true,
+        notes: "Retained response", document_ids: [], sent_filenames: [], downloaded_formats: [],
+      },
+    },
+  });
+  await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+  await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+  for (const radio of await page.locator('#settlement-demo-response-files-case input[type="radio"]').all()) {
+    await expect(radio).toBeDisabled();
+  }
+  await expect(page.locator("#settlement-demo-next-attempt-case")).toBeDisabled();
+  await expect(page.locator("#settlement-demo-stop-case")).toBeDisabled();
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+  fixture.verify();
+});
+
 for (const width of [1280, 320]) {
   test(`Account inline close refreshes to Closed case at ${width}px`, async ({ page }) => {
     let fixture;
@@ -6405,7 +6445,13 @@ for (const width of [1280, 320]) {
     const actions = page.locator("#account-active-case-list .closed-case-actions");
     await expect(actions.locator("button")).toHaveText(["Export data", "Close case", "Go to attempt #1"]);
     await actions.getByRole("button", { name:"Close case", exact:true }).click();
-    await expect(page.locator("#app-dialog")).toContainText("Nothing is deleted");
+    await expect(page.locator("#app-dialog")).toContainText("Your case data is not deleted");
+    await expectButtonOnlyCloseDialog(page);
+    await expect(page.locator("#app-dialog-confirm")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.locator("#app-dialog-cancel")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("#app-dialog-confirm")).toBeFocused();
     await page.locator("#app-dialog-confirm").click();
     await expect(page.locator("#account-active-case-section")).toBeHidden();
     await expect(page.locator("#closed-case-list .closed-case-actions button")).toHaveText(["View", "Reopen", "Export data"]);
@@ -6442,7 +6488,7 @@ test("Account inline close preserves export, cancellation and explicit failure r
   await expect(page.locator("#settlement-case-close")).toBeEnabled();
   await actions.getByRole("button", { name: "Close case", exact: true }).click();
   await expect(page.locator("#app-dialog")).toBeVisible();
-  await expect(page.locator("#app-dialog-title")).toHaveText("Close this case?");
+  await expectButtonOnlyCloseDialog(page);
   await page.locator("#app-dialog-confirm").click();
   await expect(page.locator("#account-active-case-status")).toHaveText("Synthetic case action unavailable.");
   await expect(page.locator("#settlement-case-close")).toBeEnabled();
@@ -6565,6 +6611,7 @@ for (const [backend, reopened] of [
     await page.getByRole("button", { name: "Close your case", exact: true }).click();
     await expect(page.locator("#app-dialog-title")).toHaveText("Close your case?");
     await expect(page.locator("#app-dialog")).toContainText("permanently read-only");
+    await expectButtonOnlyCloseDialog(page);
     await page.locator("#app-dialog-confirm").click();
     await expect(page).toHaveURL(`${origin}/?view=account`);
     expect(fixture.requests).toContain(`POST ${expectedPath}`);

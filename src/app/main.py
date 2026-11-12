@@ -26,7 +26,7 @@ from app.auth import verify_token
 from app.auth_routes import require_current_user, router as auth_router
 from app.billing_routes import router as billing_router
 from app.case_access import resolve_case_access
-from app.case_lifecycle import lifecycle_write_allowed, router as case_lifecycle_router
+from app.case_lifecycle import lifecycle_write_allowed, require_attempts_editable, router as case_lifecycle_router
 from app.case_limits import require_active_case_slot
 from app.config import get_settings
 from app.database import SessionLocal, get_db
@@ -884,6 +884,7 @@ def save_case_asset_overview(
             raise HTTPException(status_code=404, detail="Case not found.")
         if membership.role != "owner":
             raise HTTPException(status_code=403, detail="Only the case owner can edit asset values.")
+        require_attempts_editable(case)
         if case.closed_at is not None or case.status == "finalized":
             raise HTTPException(status_code=409, detail="This case is read-only.")
         latest = db.scalar(

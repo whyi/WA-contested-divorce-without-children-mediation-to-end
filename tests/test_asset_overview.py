@@ -96,6 +96,15 @@ class AssetOverviewTests(unittest.TestCase):
                 self.assertEqual(error.exception.status_code, 409)
         self.db.commit.assert_not_called()
 
+    def test_reopened_case_cannot_edit_asset_values_even_without_a_frozen_attempt(self) -> None:
+        self.response = Response()
+        self.case.attempts_locked_at = datetime.now(UTC)
+        with self.assertRaises(HTTPException) as error:
+            self.save()
+        self.assertEqual(error.exception.status_code, 409)
+        self.db.commit.assert_not_called()
+        self.assertNotIn("asset_overview", self.case.metadata_json)
+
     def test_storage_failure_is_logged_rolled_back_and_retryable(self) -> None:
         self.response = Response()
         self.db.commit.side_effect = SQLAlchemyError("Synthetic")
