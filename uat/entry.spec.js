@@ -1035,7 +1035,7 @@ for (const kind of ["asset", "selection", "locked-asset", "locked-selection"]) {
         await expectAcceptedCompletionProgress(page);
         await page.reload();
         await expectAcceptedCompletionProgress(page);
-        await page.getByRole("link", { name: `Back to attempt #${ordinal}`, exact: true }).click();
+        await page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`).click();
         await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=${ordinal}`);
         await expect(page.locator("#case-assets-view")).toBeVisible();
         await page.locator("#your-case-entry").click();
@@ -5685,6 +5685,9 @@ for (const outcome of ["accepted", "rejected"]) {
         } else if (payload.action === "complete") {
           expect(state.outcome).toBe("accepted");
           state.completed = true;
+        } else if (payload.action === "reset_response") {
+          expect(state.outcome).toBe("accepted");
+          state.outcome = null;
         }
         state.revision++;
         return { body:state };
@@ -5759,6 +5762,9 @@ for (const outcome of ["accepted", "rejected"]) {
       await page.getByRole("link", { name:"Back to attempt #1", exact:true }).click();
       await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
       expect(state.completed).toBe(false);
+      expect(state.outcome).toBeNull();
+      expect(state.notes).toBe(eligibleCounterofferNotes);
+      await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
     } else {
       await expect(page.locator("#settlement-demo-next-attempt-case")).toHaveAttribute("aria-disabled", "false");
       await page.locator("#settlement-demo-stop-case").click();
@@ -6664,7 +6670,7 @@ for (const accepted of [true, false]) {
   });
 }
 
-test("accepted real page uses the exact demo guidance and only returns to its case without mutation", async ({ page }) => {
+test("accepted real page matches demo guidance and timeline review stays read-only", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated:true,
     extraReads:{ [`/cases/${caseId}/asset-mediation/1`]:{
@@ -6693,7 +6699,7 @@ test("accepted real page uses the exact demo guidance and only returns to its ca
   await expect(page.getByRole("link", { name:"Back to mediation", exact:true })).toHaveCount(0);
   await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible")).toHaveCount(2);
   await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
-  await page.getByRole("link", { name:"Back to attempt #1", exact:true }).click();
+  await page.locator('#demo-attempt-progress-list button[data-ordinal="1"]').click();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
   expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
   fixture.verify();
