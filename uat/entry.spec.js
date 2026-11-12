@@ -1699,7 +1699,9 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
   await expect(page.locator("#closed-case-view-banner")).toBeVisible();
   await expect(page.locator("#closed-case-view-banner")).toContainText("Closed case");
   await expect(page.locator("#closed-case-view-banner")).toContainText("Read-only");
-  await expect(page.locator("#closed-case-view-status")).toContainText("changes are unavailable");
+  await expect(page.locator("#closed-case-view-status")).toContainText(
+    "Negotiation attempts remain permanently read-only, even after reopening for review and export.",
+  );
   await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
   await expect(page.locator("#case-asset-layout .settlement-export-actions")).toBeHidden();
   await expect(page.locator("#demo-file-management-link")).toHaveAttribute(
