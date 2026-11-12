@@ -1120,6 +1120,75 @@ for (const closed of [false, true]) {
   }
 }
 
+test("Your case does not reload the current closed asset attempt", async ({ page }) => {
+  const currentUrl = `/case/assets?case_id=${caseId}&attempt=3&view=closed`;
+  const fixture = await installFixtures(page, {
+    authenticated:true, hasCase:false, workspaceStarted:true,
+    extraReads:{
+      [`/cases/${caseId}/workspace`]:{
+        ...workspace, case:{ ...workspace.case, closed_at:closedAt, closed_reason:"stopped" },
+        attempts:[1, 2, 3].map(ordinal => ({ ordinal, frozen:true,
+          profile:{ metadata:{ asset_overview:workspace.asset_overview } } })),
+      },
+      "/api/v1/closed-cases":{ cases:[{
+        id:caseId, title:"Closed final case", status:"settlement", closed_at:closedAt,
+        closed_reason:"stopped",
+      }] },
+      [`/cases/${caseId}/asset-mediation/3`]:{ revision:1, attempt_ordinal:3, attempt_limit:3,
+        sent:true, outcome:"rejected", completed:false, attempts_locked:false, stopped:false,
+        notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] },
+    },
+  });
+  await page.goto(`${origin}${currentUrl}`);
+  await expect(page.locator("#case-assets-view")).toBeVisible();
+  await expect(page.locator("#closed-case-view-banner")).toBeVisible();
+  let mainFrameNavigations = 0;
+  page.on("framenavigated", frame => {
+    if (frame === page.mainFrame()) mainFrameNavigations++;
+  });
+  await page.locator("#your-case-entry").click();
+  await page.waitForTimeout(100);
+  expect(mainFrameNavigations).toBe(0);
+  await expect(page).toHaveURL(`${origin}${currentUrl}`);
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+  fixture.verify();
+});
+
+test("Your case does not reload the current closed accepted completion", async ({ page }) => {
+  const currentUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=3&view=closed`;
+  const fixture = await installFixtures(page, {
+    authenticated:true, hasCase:false, workspaceStarted:true,
+    extraReads:{
+      [`/cases/${caseId}/workspace`]:{
+        ...workspace, case:{ ...workspace.case, closed_at:closedAt, closed_reason:"accepted" },
+        accepted_offer_url:`/settlement-completion?case_id=${caseId}&asset_attempt=3`,
+        attempts:[1, 2, 3].map(ordinal => ({ ordinal, frozen:true,
+          profile:{ metadata:{ asset_overview:workspace.asset_overview } } })),
+      },
+      "/api/v1/closed-cases":{ cases:[{
+        id:caseId, title:"Closed accepted case", status:"settlement", closed_at:closedAt,
+        closed_reason:"accepted",
+      }] },
+      [`/cases/${caseId}/asset-mediation/3`]:{ revision:1, attempt_ordinal:3, attempt_limit:3,
+        sent:true, outcome:"accepted", completed:true, attempts_locked:true,
+        notes:"", document_ids:[], sent_filenames:[], downloaded_formats:[] },
+    },
+  });
+  await page.goto(`${origin}${currentUrl}`);
+  await expectAcceptedCompletionProgress(page);
+  await expect(page.locator("#settlement-completion-status")).toContainText("This case is closed");
+  let mainFrameNavigations = 0;
+  page.on("framenavigated", frame => {
+    if (frame === page.mainFrame()) mainFrameNavigations++;
+  });
+  await page.locator("#your-case-entry").click();
+  await page.waitForTimeout(100);
+  expect(mainFrameNavigations).toBe(0);
+  await expect(page).toHaveURL(`${origin}${currentUrl}`);
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+  fixture.verify();
+});
+
 for (const failure of ["foreign-target", "wrong-case", "stale-closure", "lookup"]) {
   test(`Your case rejects unverified closed final circle: ${failure}`, async ({ page }) => {
     let fail = true;
@@ -1440,8 +1509,17 @@ test.describe("Your case entry never flashes the homepage", () => {
   });
 
   for (const width of [1280, 320]) {
-    test(`working page click, delayed verification, refresh and destination at ${width}px`, async ({ page }) => {
-      const fixture = await installFixtures(page, { authenticated: true });
+    test(`different final destination keeps the gated entry at ${width}px`, async ({ page }) => {
+      const fixture = await installFixtures(page, {
+        authenticated: true,
+        extraReads: {
+          [`/cases/${caseId}/workspace`]: {
+            ...workspace,
+            attempts: [1, 2].map(ordinal => ({ ordinal, frozen: true,
+              profile: { metadata: { asset_overview: workspace.asset_overview } } })),
+          },
+        },
+      });
       await page.setViewportSize({ width, height: 900 });
       await page.addInitScript(() => {
         window.homepageFrames = [];
@@ -1487,7 +1565,7 @@ test.describe("Your case entry never flashes the homepage", () => {
         await expect(page.locator(".hero")).toBeHidden();
         expect(await page.evaluate(() => window.homepageFrames)).toEqual([]);
         releaseWorkspace();
-        await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
+        await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=2`);
       } finally {
         releaseDashboard();
         releaseWorkspace();

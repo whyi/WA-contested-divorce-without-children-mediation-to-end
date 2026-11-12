@@ -1893,6 +1893,12 @@
               window.scrollTo({ top: 0, behavior: "smooth" });
             });
           }
+          const yourCaseLink = document.getElementById("your-case-entry");
+          yourCaseLink.addEventListener("click", (event) => {
+            if (yourCaseLink.dataset.selfNavigationTarget !== "true"
+              || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+          });
           if (document.documentElement.dataset.headerSignedOut === "true") {
             document.getElementById("account-entry").hidden = false;
           }
@@ -5325,6 +5331,18 @@
               && !result.attempts.some((attempt) => attempt.ordinal === caseWorkspaceViewingOrdinal))) {
             throw new Error("The requested attempt is unavailable.");
           }
+          if (!result.accepted_offer_url) {
+            const yourCaseTarget = new URL(
+              `/case/assets?case_id=${encodeURIComponent(preparationCaseId)}&attempt=${caseWorkspaceCurrentOrdinal}`,
+              window.location.origin,
+            );
+            if (closedCaseViewMode || result.case.closed_at || result.case.status === "finalized") {
+              yourCaseTarget.searchParams.set("view", "closed");
+            }
+            syncYourCaseSelfNavigation(yourCaseTarget);
+          } else {
+            syncYourCaseSelfNavigation();
+          }
           document.body.dataset.caseWorkspace = "true";
           renderCaseWorkspaceNavigation();
           if (preparationMode === "assets") {
@@ -7074,6 +7092,16 @@
             throw new Error("Your final timeline destination could not be verified. Refresh and retry.");
           }
           return target;
+        }
+
+        function syncYourCaseSelfNavigation(target = null) {
+          const link = document.getElementById("your-case-entry");
+          delete link.dataset.selfNavigationTarget;
+          link.href = "/?view=case";
+          if (!target || target.origin !== window.location.origin
+            || target.pathname !== window.location.pathname || target.search !== window.location.search) return;
+          link.href = `${target.pathname}${target.search}`;
+          link.dataset.selfNavigationTarget = "true";
         }
 
         async function openFinalCaseCircle(account) {
@@ -10516,6 +10544,11 @@
             try {
               const state = await settlementApi(`/cases/${encodeURIComponent(caseId)}/asset-mediation/${encodeURIComponent(assetAttempt)}`);
               if (!state.sent || state.outcome !== "accepted") throw new Error("This page requires an accepted, confirmed offer.");
+              const yourCaseTarget = acceptedCaseDestination({ id: caseId }, completionWorkspace);
+              if (yourCaseTarget && settlementCompletionCaseClosed) {
+                yourCaseTarget.searchParams.set("view", "closed");
+              }
+              syncYourCaseSelfNavigation(yourCaseTarget);
               showSettlementCompletionProgress(completionWorkspace);
               settlementCompletionState = state;
               settlementCompletionDemoContent.hidden = false;
@@ -10545,6 +10578,11 @@
             if (response.outcome !== "accepted" || !response.sent_confirmed) {
               throw new Error("This completion page is only available for an accepted, confirmed offer.");
             }
+            const yourCaseTarget = acceptedCaseDestination({ id: caseId }, completionWorkspace);
+            if (yourCaseTarget && settlementCompletionCaseClosed) {
+              yourCaseTarget.searchParams.set("view", "closed");
+            }
+            syncYourCaseSelfNavigation(yourCaseTarget);
             showSettlementCompletionProgress(completionWorkspace);
             settlementCompletionState = response;
             settlementCompletionDemoContent.hidden = false;
