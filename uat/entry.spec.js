@@ -916,6 +916,23 @@ test.describe("Get started visibility contract", () => {
     fixture.verify();
   });
 });
+async function expectViewedAttemptHighlight(page, ordinal) {
+  const selected = page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`);
+  await expect(selected).toHaveAttribute("aria-current", "step");
+  await expect(selected).toHaveAttribute("data-state", "current");
+  const greenOrdinals = await page.locator("#demo-attempt-progress-list button[data-ordinal]").evaluateAll(buttons => {
+    const sample = document.createElement("span");
+    sample.style.backgroundColor = "var(--green)";
+    buttons[0].append(sample);
+    const green = getComputedStyle(sample).backgroundColor;
+    sample.remove();
+    return buttons.filter(button =>
+      getComputedStyle(button.querySelector(".demo-attempt-circle")).backgroundColor === green,
+    ).map(button => Number(button.dataset.ordinal));
+  });
+  expect(greenOrdinals).toEqual([ordinal]);
+}
+
 async function expectAcceptedCompletionProgress(page) {
   const progress = page.locator("#settlement-completion-page #demo-attempt-progress");
   await expect(progress).toBeVisible();
@@ -2054,6 +2071,7 @@ for (const kind of ["asset", "selection"]) {
             await expect(accepted).not.toHaveAttribute("aria-current");
             await expect(page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`))
               .toHaveAttribute("aria-current", "step");
+            await expectViewedAttemptHighlight(page, ordinal);
             expect(await accepted.locator(".demo-attempt-circle").evaluate(circle => {
               const style = getComputedStyle(circle);
               const sample = document.createElement("span");
@@ -2064,6 +2082,10 @@ for (const kind of ["asset", "selection"]) {
               return style.backgroundColor === expected;
             })).toBe(true);
           }
+          await page.locator("#demo-file-management-link").click();
+          await expectViewedAttemptHighlight(page, ordinal);
+          await page.reload();
+          await expectViewedAttemptHighlight(page, ordinal);
           await accepted.click();
           await expect(page).toHaveURL(`${origin}${completionUrl}`);
           await expectAcceptedCompletionProgress(page);
@@ -2074,6 +2096,37 @@ for (const kind of ["asset", "selection"]) {
     }
   }
 }
+
+test("demo accepted timeline moves the green attempt highlight to each viewed snapshot", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${origin}/demo/start?source=demo2`);
+  await page.locator("#demo-case-documents-link").click();
+  const query = new URL(page.url()).search;
+  await page.goto(`${origin}/demo${query}`);
+  for (const ordinal of [1, 2]) {
+    await page.locator("#settlement-demo-mark-sent").click();
+    await page.locator('#settlement-demo-response-files input[value="rejected"]').check();
+    await page.locator("#settlement-demo-next-attempt").click();
+    await expectViewedAttemptHighlight(page, ordinal + 1);
+  }
+  await page.locator("#settlement-demo-mark-sent").click();
+  await page.locator('#settlement-demo-response-files input[value="accepted"]').check();
+  const accepted = page.getByRole("button", { name: "Offer Accepted", exact: true });
+  await accepted.click();
+  await expectAcceptedCompletionProgress(page);
+  for (const ordinal of [2, 1, 3]) {
+    await page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`).click();
+    await expect(page).toHaveURL(`${origin}/demo${query}&attempt=${ordinal}`);
+    await expectViewedAttemptHighlight(page, ordinal);
+    await page.reload();
+    await expectViewedAttemptHighlight(page, ordinal);
+    await accepted.click();
+    await expectAcceptedCompletionProgress(page);
+  }
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+  fixture.verify();
+});
 
 for (const kind of ["asset", "selection"]) {
   for (const lifecycle of ["open", "reopened"]) {

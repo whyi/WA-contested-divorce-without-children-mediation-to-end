@@ -5198,7 +5198,7 @@
             const button = document.createElement("button");
             button.type = "button";
             button.dataset.ordinal = String(ordinal);
-            button.dataset.state = future ? "future" : current && !caseClosed && !acceptedSelected ? "current" : "past";
+            button.dataset.state = future ? "future" : ordinal === viewingOrdinal && !caseClosed && !acceptedSelected ? "current" : "past";
             const unavailable = !current && !attempt?.profile;
             button.disabled = future || unavailable
               || (preparationMode === "assets" && current && viewingOrdinal === currentOrdinal);
@@ -5228,6 +5228,7 @@
           document.getElementById("demo-attempt-progress-status").textContent =
             acceptedSelected ? "Offer Accepted is the current step."
               : caseClosed ? "All attempts are read-only. This case is closed."
+              : viewingOrdinal !== currentOrdinal ? `Viewing ${caseAttemptLabel(viewingOrdinal)} read-only. Select the current attempt to return.`
               : `${caseAttemptLabel(currentOrdinal)} is current.`;
         }
 
@@ -8555,7 +8556,9 @@
             const circle = document.createElement("span");
             const label = document.createElement("span");
             button.type = "button";
-            button.dataset.state = past || acceptedSelected ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
+            button.dataset.ordinal = String(ordinal);
+            button.dataset.state = ordinal > settlementDemoAttemptOrdinal ? "future"
+              : ordinal === settlementDemoViewingOrdinal && !acceptedSelected ? "current" : "past";
             button.disabled = ordinal > settlementDemoAttemptOrdinal || (past && !snapshot)
               || (demoMode && ordinal === settlementDemoAttemptOrdinal
                 && settlementDemoViewingOrdinal === settlementDemoAttemptOrdinal);
