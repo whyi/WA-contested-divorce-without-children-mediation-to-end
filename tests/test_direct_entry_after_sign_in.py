@@ -67,8 +67,7 @@ class DirectEntryAfterSignInTests(unittest.TestCase):
         order = [
             body.index("accountToolsMode"),
             body.index("openActiveCase(account.cases[0])"),
-            body.index("await loadClosedCases() > 0"),
-            body.rindex("showNewCaseStart()"),
+            body.rindex("await openFinalCaseCircle(account)"),
         ]
         self.assertEqual(order, sorted(order))
         self.assertIn("account.active_case_count > 0", body)
