@@ -151,6 +151,27 @@ class AssetMediationTests(unittest.TestCase):
         self.assertIsNotNone(self.case.closed_at)
         self.assertIn("asset_overview", self.case.metadata_json)
 
+    def test_stopped_case_reopens_without_unlocking_or_changing_saved_attempt(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="rejected", notes="Retain this response")
+        stopped = self.update("stop", confirm=True)
+        self.assertTrue(stopped.attempts_locked)
+        snapshot = deepcopy(self.case.metadata_json)
+        locked_at = self.case.attempts_locked_at
+        reopen_case(self.case.id, self.user, self.db)
+        for action in ("response", "response_outcome", "counteroffer_details", "continue", "sent"):
+            with self.subTest(action=action), self.assertRaises(HTTPException) as error:
+                self.update(action, outcome="counteroffer", notes="Do not save", confirm=True)
+            self.assertEqual(error.exception.status_code, 409)
+        with self.assertRaises(HTTPException) as error:
+            record_download(self.db, self.case, self.selection, "docx")
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(self.case.metadata_json, snapshot)
+        self.assertEqual(self.case.attempts_locked_at, locked_at)
+        self.assertTrue(self.state().stopped)
+
     def test_counteroffer_continuation_requires_150_trimmed_characters_or_saved_file(self):
         self.send()
         with patch("app.asset_mediation.attachment_limit", return_value=100):

@@ -3110,6 +3110,13 @@
           return showAppDialog({ title, message, confirmLabel, cancelLabel, tone, allowCancel: true });
         }
 
+        function confirmCaseClosure() {
+          return showAppConfirm(
+            "Close this Casework case? Every negotiation attempt will become permanently read-only, even if you later reopen the case. Your case data is not deleted; you can reopen it for review and export. This does not resolve your divorce case, file documents, or change its legal status.",
+            { title: "Close your case?", confirmLabel: "Close case", tone: "danger" },
+          );
+        }
+
         function showAppPhraseConfirmation(message, confirmationPhrase, {
           title = "Confirm permanent deletion",
           confirmLabel = "Delete permanently",
@@ -4270,7 +4277,8 @@
           if (!caseAssetOverview || !caseAssetLayout) return;
           const snapshotRecord = caseWorkspace.attempts.find(item => item.ordinal === caseWorkspaceViewingOrdinal);
           const readOnly = caseWorkspaceViewingOrdinal !== caseWorkspaceCurrentOrdinal || snapshotRecord?.frozen
-            || caseWorkspace.case.closed_at || caseWorkspace.case.status === "finalized";
+            || caseWorkspace.case.closed_at || caseWorkspace.case.attempts_locked_at
+            || caseWorkspace.case.status === "finalized";
           const dates = caseAssetDates();
           if (!dates.includes(caseAssetSelectedDate)) caseAssetSelectedDate = dates.at(-1) || "";
           const snapshot = caseAssetOverview.overview.snapshots.find(item => item.date === caseAssetSelectedDate);
@@ -4767,10 +4775,7 @@
               || caseMediationState.stopped
               || ((caseMediationState.attempts_locked || caseWorkspace.case.attempts_locked_at)
                 && !caseReopenedResponseEditable())) return;
-            if (!await showAppConfirm(
-              "Close this Casework case? Nothing is deleted, your unused attempt credits remain available, and you can reopen the case from Closed case at any time. This does not resolve your divorce case, file documents, or change its legal status.",
-              { title: "Close this case?", confirmLabel: "Close Case", tone: "danger" },
-            )) return;
+            if (!await confirmCaseClosure()) return;
             caseMediationBusy = true;
             renderCaseMediation();
             const status = caseAssetElement("settlement-demo-response-status");
@@ -5294,7 +5299,7 @@
         function renderClosedCaseBanner(caseRecord) {
           document.body.dataset.closedCaseView = "true";
           closedCaseViewStatus.textContent =
-            `${caseRecord.metadata_json?.case_title || "This case"} is closed. You can review saved information and files, but changes are unavailable until you explicitly reopen it.`;
+            `${caseRecord.metadata_json?.case_title || "This case"} is closed. You can review saved information and files. Negotiation attempts remain permanently read-only, even after reopening for review and export.`;
           closedCaseViewBanner.hidden = false;
         }
 
@@ -7651,10 +7656,7 @@
           accountActiveCaseStatus.textContent = "";
           accountActiveCaseStatus.dataset.kind = "";
           try {
-            const confirmed = await showAppConfirm(
-              "Close this case? Nothing is deleted, your attempt credits do not expire, and you can reopen it from Closed case at any time.",
-              { title: "Close this case?", confirmLabel: "Close case" },
-            );
+            const confirmed = await confirmCaseClosure();
             if (!confirmed) return;
             await settlementApi(`/cases/${encodeURIComponent(caseId)}/close`, {
               method: "POST",
@@ -7837,7 +7839,7 @@
             && options.method === "POST"
             && url === `/cases/${encodeURIComponent(preparationCaseId)}/reopen`;
           if (closedCaseViewMode && (options.method || "GET").toUpperCase() !== "GET" && !completionReopen) {
-            throw new Error("This closed case is open for read-only review. Reopen it from My Account to make changes.");
+            throw new Error("This closed case is open for read-only review. Reopening retains its attempt locks and allows review and export.");
           }
           const response = await fetch(url, {
             credentials: "same-origin",
@@ -10601,10 +10603,7 @@
           const selectionId = query.get("selection_id");
           const assetAttempt = query.get("asset_attempt");
           if (!caseId || (!selectionId && !assetAttempt)) return;
-          if (!await showAppConfirm(
-            "Close this Casework case? Every negotiation attempt will become permanently read-only, even if you later reopen the case. Your case data is not deleted; you can reopen it for review and export. This does not resolve your divorce case, file documents, or change its legal status.",
-            { title: "Close your case?", confirmLabel: "Close case", tone: "danger" },
-          )) return;
+          if (!await confirmCaseClosure()) return;
 
           settlementCompletionCloseCase.disabled = true;
           settlementCompletionStatus.dataset.kind = "";

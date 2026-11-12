@@ -36,7 +36,7 @@ class ClosedCaseDashboardTests(unittest.TestCase):
 
     def test_close_requires_confirmation_and_reopen_refreshes_dashboard(self) -> None:
         close_fn = PAGE[PAGE.index("async function closeCaseFromWorkspace") :][:1500]
-        self.assertIn("await showAppConfirm(", close_fn)
+        self.assertIn("await confirmCaseClosure()", close_fn)
         self.assertIn("loadDashboardStatus", close_fn)
         reopen_fn = PAGE[PAGE.index("async function reopenClosedCase") :][:1500]
         self.assertIn("loadDashboardStatus", reopen_fn)

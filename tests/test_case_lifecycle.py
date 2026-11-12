@@ -165,7 +165,7 @@ class LifecycleFixture(unittest.TestCase):
 
 
 class CloseAndReopenTests(LifecycleFixture):
-    def test_reopen_resumes_only_current_stopped_mediation(self) -> None:
+    def test_reopen_preserves_stopped_mediation_without_restoring_editability(self) -> None:
         self.attempt.attempt_ordinal = 3
         current = {
             "revision": 7, "stopped": True, "sent": True, "outcome": "rejected",
@@ -181,7 +181,7 @@ class CloseAndReopenTests(LifecycleFixture):
         reopen_case(self.case.id, self.user, self.db)
         self.db.refresh(self.case)
         saved = self.case.metadata_json["asset_mediation"]
-        self.assertEqual(saved["3"], {**current, "stopped": False, "revision": 8})
+        self.assertEqual(saved["3"], current)
         self.assertEqual(saved["1"], historical)
         self.assertEqual(self.attempt.snapshot_json, {"snap": 1})
         self.assertEqual(self.case.attempt_credit_balance, 3)
@@ -216,7 +216,7 @@ class CloseAndReopenTests(LifecycleFixture):
         ).all()
         self.assertCountEqual(events, ["closed", "reopened"])
 
-    def test_rejected_closure_preserves_response_and_does_not_add_accepted_lock(self) -> None:
+    def test_rejected_closure_preserves_response_and_permanent_attempt_lock(self) -> None:
         response = {
             "revision": 4, "outcome": "rejected", "sent": True,
             "stopped": False, "notes": "Retained response", "document_ids": [],
@@ -228,11 +228,12 @@ class CloseAndReopenTests(LifecycleFixture):
         self.assertIsNotNone(result.closed_at)
         self.assertEqual(result.closed_reason, "stopped")
         self.assertEqual(result.status, "settlement")
-        self.assertIsNone(self.case.attempts_locked_at)
+        self.assertIsNotNone(self.case.attempts_locked_at)
+        locked_at = self.case.attempts_locked_at
         reopen_case(self.case.id, self.user, self.db)
         self.db.refresh(self.case)
         self.assertEqual(self.case.metadata_json["asset_mediation"]["1"], response)
-        self.assertIsNone(self.case.attempts_locked_at)
+        self.assertEqual(self.case.attempts_locked_at, locked_at)
         self.assertEqual(self.case.attempt_credit_balance, 3)
         self.assertEqual(self.storage.deleted, [])
 
@@ -263,9 +264,19 @@ class CloseAndReopenTests(LifecycleFixture):
             require_attempts_editable(self.case)
         self.assertEqual(caught.exception.status_code, 409)
 
-    def test_nonaccepted_closure_does_not_permanently_lock_attempts(self) -> None:
-        close_case(self.case.id, CaseCloseRequest(reason="stopped"), self.user, self.db)
-        self.assertIsNone(self.case.attempts_locked_at)
+    def test_every_closure_locks_attempts_across_reopen_and_repeated_closure(self) -> None:
+        for reason in ("stopped", "closed"):
+            with self.subTest(reason=reason):
+                close_case(self.case.id, CaseCloseRequest(reason=reason), self.user, self.db)
+                self.db.refresh(self.case)
+                locked_at = self.case.attempts_locked_at
+                self.assertIsNotNone(locked_at)
+                reopen_case(self.case.id, self.user, self.db)
+                self.db.refresh(self.case)
+                self.assertEqual(self.case.attempts_locked_at, locked_at)
+                with self.assertRaises(HTTPException) as caught:
+                    require_attempts_editable(self.case)
+                self.assertEqual(caught.exception.status_code, 409)
 
     def test_legacy_finalized_case_reopens_to_settlement(self) -> None:
         self.case.status = "finalized"
@@ -273,6 +284,7 @@ class CloseAndReopenTests(LifecycleFixture):
         reopen_case(self.case.id, self.user, self.db)
         self.db.refresh(self.case)
         self.assertEqual(self.case.status, "settlement")
+        self.assertIsNotNone(self.case.attempts_locked_at)
 
     def test_only_owners_can_close_or_reopen(self) -> None:
         for call in (
@@ -364,7 +376,7 @@ class ExportTests(LifecycleFixture):
             _, manifest = self.export()
         self.assertEqual(manifest["case"]["status"], "settlement")
         self.assertIsNotNone(manifest["case"]["closed_at"])
-        self.assertIsNone(manifest["case"]["attempts_locked_at"])
+        self.assertIsNotNone(manifest["case"]["attempts_locked_at"])
         self.assertEqual(self.db.get(Case, self.case.id).closed_reason, "stopped")
 
     def test_accepted_case_export_includes_persistent_attempt_lock(self) -> None:

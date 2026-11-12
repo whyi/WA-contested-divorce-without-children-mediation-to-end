@@ -22,7 +22,6 @@ from app.models import (
     CaseMembership,
     DeletionTombstone,
     Document,
-    SettlementNegotiationAttempt,
     User,
 )
 from app.storage import ObjectStorage
@@ -123,13 +122,13 @@ def require_attempts_editable(case: Case) -> None:
     if isinstance(getattr(case, "attempts_locked_at", None), datetime):
         raise HTTPException(
             status_code=409,
-            detail="This accepted case is closed. Its negotiation attempts remain read-only.",
+            detail="This case was closed. Its negotiation attempts remain read-only.",
         )
 
 
 def close_case_record(db: Session, case: Case, user_id: UUID, reason: str) -> None:
     closed_at = datetime.now(UTC)
-    if reason == "accepted" and getattr(case, "attempts_locked_at", None) is None:
+    if getattr(case, "attempts_locked_at", None) is None:
         case.attempts_locked_at = closed_at
     if case.closed_at is not None:
         return
@@ -210,27 +209,14 @@ def reopen_case(
     case = _owned_case(db, case_id, user)
     if case.closed_at is None and case.status != "finalized":
         raise HTTPException(status_code=409, detail="This case is already open.")
+    if case.attempts_locked_at is None:
+        case.attempts_locked_at = case.closed_at or datetime.now(UTC)
     # Reopening restores an existing case; it is never gated by plan or other cases.
     restored = case.status_before_close
     case.status = restored if restored and restored != "finalized" else "settlement"
     case.closed_at = None
     case.closed_reason = None
     case.status_before_close = None
-    latest_ordinal = db.scalar(
-        select(SettlementNegotiationAttempt.attempt_ordinal)
-        .where(SettlementNegotiationAttempt.case_id == case.id)
-        .order_by(SettlementNegotiationAttempt.attempt_ordinal.desc())
-        .limit(1)
-    )
-    metadata = dict(case.metadata_json or {})
-    mediation = dict(metadata.get("asset_mediation", {}))
-    current_key = str(latest_ordinal or 1)
-    current = mediation.get(current_key)
-    if current and current.get("stopped"):
-        mediation[current_key] = {
-            **current, "stopped": False, "revision": current.get("revision", 0) + 1,
-        }
-        case.metadata_json = {**metadata, "asset_mediation": mediation}
     db.add(
         CaseLifecycleEvent(case_id=case.id, user_id_snapshot=user.id, event_type="reopened")
     )
