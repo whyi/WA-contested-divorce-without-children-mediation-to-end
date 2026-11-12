@@ -346,6 +346,71 @@ test.describe("signed-out public header navigation stays stable", () => {
     fixture.verify();
   });
 
+  for (const width of [1280, 390]) {
+    test(`keeps stable geometry across all public route pairs at ${width}px`, async ({ page }) => {
+      const fixture = await installFixtures(page);
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      let dashboardGate = null;
+      await page.route("**/api/v1/dashboard/status", async (route) => {
+        const currentGate = dashboardGate;
+        if (currentGate) await currentGate.promise;
+        await route.fallback();
+      });
+      const holdDashboard = () => {
+        let release;
+        const gate = { promise: new Promise((resolve) => { release = resolve; }), release: null };
+        gate.release = release;
+        dashboardGate = gate;
+        return () => {
+          if (dashboardGate === gate) dashboardGate = null;
+          gate.release();
+        };
+      };
+      const geometry = () => page.locator(
+        "#theme-select, #pricing-entry, #login-entry, #account-entry",
+      ).evaluateAll((controls) => controls.map((control) => {
+        const { x, y, width, height } = control.getBoundingClientRect();
+        return { id: control.id, x, y, width, height };
+      }));
+      const routes = [
+        ["/?view=home", "#brand-link"],
+        ["/pricing", "#pricing-entry"],
+        ["/?auth=login", "#login-entry"],
+        ["/?auth=signup", "#account-entry"],
+      ];
+
+      const releaseInitialDashboard = holdDashboard();
+      await page.goto(`${origin}/pricing`);
+      await expect(page.locator("#account-entry")).toBeHidden();
+      const pendingGeometry = await geometry();
+      releaseInitialDashboard();
+      await expect(page.locator("#account-entry")).toBeVisible();
+      const stableGeometry = await geometry();
+      expect(stableGeometry).toEqual(pendingGeometry);
+
+      for (const [source] of routes) {
+        for (const [destination, selector] of routes) {
+          if (destination === source) continue;
+          await page.goto(`${origin}${source}`);
+          await expect(page.locator("#account-entry")).toBeVisible();
+          expect(await geometry(), `${source} before navigating to ${destination}`).toEqual(stableGeometry);
+
+          const releaseDashboard = holdDashboard();
+          const dashboardResponse = page.waitForResponse((response) =>
+            response.url().endsWith("/api/v1/dashboard/status"));
+          await page.locator(selector).click();
+          await expect(page).toHaveURL(`${origin}${destination}`);
+          await expect(page.locator("#account-entry")).toBeVisible();
+          expect(await geometry(), `${source} to ${destination} while session status is pending`)
+            .toEqual(stableGeometry);
+          releaseDashboard();
+          await dashboardResponse;
+        }
+      }
+      fixture.verify();
+    });
+  }
+
   test("public header positions match at desktop widths", async ({ page }) => {
     const fixture = await installFixtures(page);
     await page.setViewportSize({ width: 1280, height: 900 });
