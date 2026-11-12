@@ -8738,6 +8738,16 @@
             settlementDocumentCreditStatus.removeAttribute("data-kind");
           }
           const finalized = Boolean(current?.finalized);
+          const canStartNewVersion = Boolean(
+            !finalized
+            && current?.proposal_issued
+            && !current?.proposal_draft_unlocked
+            && !current?.frozen
+            && !current?.sent_confirmed
+            && !current?.outcome
+          );
+          settlementNewProposalVersion.hidden = !canStartNewVersion;
+          settlementNewProposalVersion.disabled = !canStartNewVersion;
           const canDownload = Boolean(settlementSelectedScenario && settlementAttemptStateLoaded);
           settlementOfferDownload.disabled = !canDownload;
           settlementScheduleDownload.disabled = !canDownload;
@@ -8920,16 +8930,6 @@
               : "Checkout could not be started.";
             settlementDocumentCreditStatus.dataset.kind = "error";
           }
-          const canStartNewVersion = Boolean(
-            !finalized
-            && current?.proposal_issued
-            && !current?.proposal_draft_unlocked
-            && !current?.frozen
-            && !current?.sent_confirmed
-            && !current?.outcome
-          );
-          settlementNewProposalVersion.hidden = !canStartNewVersion;
-          settlementNewProposalVersion.disabled = !canStartNewVersion;
         }
 
         function updateSettlementResponseControls() {

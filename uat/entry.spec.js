@@ -3641,6 +3641,129 @@ test("real account can open, calculate, and select a server-backed proposal scen
   fixture.verify();
 });
 
+test("attempt credit checkout failure is reported and proposal version controls follow offer state", async ({ page }) => {
+  const selectionId = "00000000-0000-4000-8000-000000000075";
+  const scenarioResult = {
+    scenario: {
+      id: "synthetic-scenario",
+      label: "Synthetic scenario",
+      relationship_window: { label: "Marriage-only dates", start_date: "2020-01-01", separation_date: "2024-01-01" },
+      tracing_method: "explicit",
+      community_share_bps: 5000,
+    },
+    ledgers: [],
+    user_net_cents: 0,
+    other_net_cents: 0,
+    unresolved_cents: 0,
+  };
+  const offerResponse = {
+    outcome: null,
+    sent_confirmed: false,
+    frozen: false,
+    finalized: false,
+    proposal_issued: true,
+    proposal_draft_unlocked: false,
+    proposal_version_ordinal: 1,
+    scenario_result: scenarioResult,
+    proposal_downloaded_formats: [],
+    attachments: [],
+    editable_state: {
+      offer_from: "Synthetic party A",
+      offer_to: "Synthetic party B",
+      county: null,
+      cause_number: null,
+      proposed_effective_date: null,
+      proposed_response_date: null,
+      scenario_assumptions: null,
+      milestones: [],
+      proposed_values: [],
+      proposal_terms: ["Synthetic test term."],
+      sent_offer_mode: null,
+    },
+  };
+  let attemptRevision = 0;
+  const fixture = await installFixtures(page, {
+    mode: "upload",
+    extraReads: {
+      [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: offerResponse,
+      "/api/billing/packages": {
+        packages: [{ credits: 5, price: "USD $5.00 before applicable tax", available: true }],
+        checkout_configured: true,
+      },
+      [`/cases/${caseId}/settlement-planning/document-credits`]: {
+        remaining: 0,
+        free_first_finalization_available: false,
+      },
+    },
+    mutationHandler: async (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === `/cases/${caseId}/settlement-planning/scenarios`) {
+        return {
+          body: {
+            profile_revision: 0,
+            settlement_revision: 0,
+            run_id: "synthetic-run",
+            scenarios: [scenarioResult],
+            ranking: { ranked: [], unranked_reason: "Synthetic unranked result." },
+          },
+        };
+      }
+      if (path === `/cases/${caseId}/settlement-planning/selections`) {
+        return { body: { selection_id: selectionId } };
+      }
+      if (path === `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/attempt`) {
+        const editableState = request.postDataJSON();
+        attemptRevision += 1;
+        offerResponse.editable_state = editableState;
+        offerResponse.attempt_revision = attemptRevision;
+        return {
+          body: {
+            editable_state: editableState,
+            revision: attemptRevision,
+            proposal_downloaded_formats: offerResponse.proposal_downloaded_formats,
+            scenario_recalculated: false,
+            proposal_documents_updated: false,
+          },
+        };
+      }
+      if (path === `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/new-proposal-version`) {
+        offerResponse.proposal_draft_unlocked = true;
+        offerResponse.proposal_version_ordinal = 2;
+        attemptRevision += 1;
+        return {
+          body: {
+            proposal_draft_unlocked: true,
+            proposal_version_ordinal: 2,
+            attempt_revision: attemptRevision,
+          },
+        };
+      }
+      if (path === `/api/billing/cases/${caseId}/checkout`) {
+        return { status: 503, body: { detail: "Checkout temporarily unavailable." } };
+      }
+      return null;
+    },
+  });
+  await signIn(page);
+  await page.locator("#open-proposal-workspace").click();
+  await page.locator("#settlement-generate").click();
+  await page.getByRole("button", { name: "Choose scenario", exact: true }).click();
+
+  const newVersion = page.locator("#settlement-new-proposal-version");
+  await expect(newVersion).toBeVisible();
+  await expect(newVersion).toBeEnabled();
+  await newVersion.click();
+  await expect(newVersion).toBeHidden();
+  await expect(page.locator("#settlement-planner-status")).toContainText("Version 2 is open for free editing.");
+
+  const checkout = page.locator("#attempt-credit-packages button").filter({ hasText: "Buy 5 attempt credits" });
+  await expect(checkout).toBeEnabled();
+  await checkout.click();
+  await expect(page.locator("#settlement-document-credit-status")).toContainText("Checkout temporarily unavailable.");
+  await expect(page.locator("#settlement-document-credit-status")).toHaveAttribute("data-kind", "error");
+  fixture.verify();
+});
+
 test("real account can edit and save reported counteroffer values", async ({ page }) => {
   const selectionId = "00000000-0000-4000-8000-000000000073";
   const assetId = "00000000-0000-4000-8000-000000000074";
