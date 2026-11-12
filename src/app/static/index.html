@@ -2283,7 +2283,6 @@
                 <p class="demo-attempt-progress-status" id="demo-attempt-progress-status" role="status" aria-live="polite"></p>
               </nav>
               <div class="demo-case-nav-links">
-                <a id="demo-mediation-link" class="demo-case-nav-link" href="/demo">Asset Overview</a>
                 <a id="demo-file-management-link" class="demo-case-nav-link" href="/demo/files">Case file management</a>
               </div>
               <p class="demo-case-state-status" id="demo-case-state-status" role="status" aria-live="polite" hidden></p>
@@ -3606,8 +3605,13 @@
         let demoCaseData = null;
         let pendingDemoCase = null;
         const demoCaseNavigation = document.getElementById("demo-case-navigation");
-        const demoMediationLink = document.getElementById("demo-mediation-link");
         const demoFileManagementLink = document.getElementById("demo-file-management-link");
+        demoFileManagementLink.addEventListener("click", (event) => {
+          if (demoFileManagementLink.getAttribute("aria-current") === "page"
+            && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+            event.preventDefault();
+          }
+        });
         const demoFileManager = document.getElementById("demo-file-manager");
         const demoFileManagerCaseLabel = document.getElementById("demo-file-manager-case-label");
         const demoCaseFilesInput = document.getElementById("demo-case-files-input");
@@ -5159,19 +5163,20 @@
           const progress = document.getElementById("demo-attempt-progress");
           progress.setAttribute("aria-label", "Case negotiation attempts");
           progress.hidden = false;
-          demoMediationLink.href = `/case/assets?case_id=${encodeURIComponent(preparationCaseId)}`;
-          demoFileManagementLink.href = `/case/files?case_id=${encodeURIComponent(preparationCaseId)}`;
-          if (closedCaseViewMode || caseClosed) {
-            for (const link of [demoMediationLink, demoFileManagementLink]) {
-              const target = new URL(link.href, window.location.origin);
-              target.searchParams.set("view", "closed");
-              link.href = `${target.pathname}${target.search}`;
-            }
+          const assetTarget = new URL("/case/assets", window.location.origin);
+          const fileTarget = new URL("/case/files", window.location.origin);
+          for (const target of [assetTarget, fileTarget]) {
+            target.searchParams.set("case_id", preparationCaseId);
+            if (closedCaseViewMode || caseClosed) target.searchParams.set("view", "closed");
           }
-          demoMediationLink.removeAttribute("aria-current");
+          const filePage = window.location.pathname === "/case/files";
+          const acceptedSelected = completion || (filePage
+            && demoQuery.get("step") === "accepted" && Boolean(workspace.accepted_offer_url));
+          if (acceptedSelected) fileTarget.searchParams.set("step", "accepted");
+          else if (demoQuery.has("attempt")) fileTarget.searchParams.set("attempt", String(viewingOrdinal));
+          demoFileManagementLink.href = `${fileTarget.pathname}${fileTarget.search}`;
           demoFileManagementLink.removeAttribute("aria-current");
-          if (!completion && preparationMode === "assets") demoMediationLink.setAttribute("aria-current", "page");
-          if (!completion && preparationMode === "upload") demoFileManagementLink.setAttribute("aria-current", "page");
+          if (filePage) demoFileManagementLink.setAttribute("aria-current", "page");
           const list = document.getElementById("demo-attempt-progress-list");
           list.replaceChildren();
           const ordinals = new Set([1, currentOrdinal,
@@ -5187,12 +5192,12 @@
             const button = document.createElement("button");
             button.type = "button";
             button.dataset.ordinal = String(ordinal);
-            button.dataset.state = future ? "future" : current && !caseClosed && !completion ? "current" : "past";
+            button.dataset.state = future ? "future" : current && !caseClosed && !acceptedSelected ? "current" : "past";
             const unavailable = !current && !attempt?.profile;
             button.disabled = future || unavailable
-              || (!completion && current && viewingOrdinal === currentOrdinal);
-            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${future ? ", future" : current && !caseClosed && !completion ? ", current" : unavailable ? ", snapshot unavailable" : ", read-only"}`);
-            if (!completion && ordinal === viewingOrdinal) button.setAttribute("aria-current", "step");
+              || (preparationMode === "assets" && current && viewingOrdinal === currentOrdinal);
+            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${future ? ", future" : current && !caseClosed && !acceptedSelected ? ", current" : unavailable ? ", snapshot unavailable" : ", read-only"}`);
+            if (!acceptedSelected && ordinal === viewingOrdinal) button.setAttribute("aria-current", "step");
             const circle = document.createElement("span");
             circle.className = "demo-attempt-circle";
             circle.textContent = String(ordinal);
@@ -5202,7 +5207,7 @@
             button.append(circle, label);
             button.addEventListener("click", () => {
               if (button.disabled) return;
-              const target = new URL(demoMediationLink.href);
+              const target = new URL(assetTarget);
               target.searchParams.set("attempt", String(ordinal));
               window.location.assign(target.href);
             });
@@ -5212,10 +5217,10 @@
           if (completion || workspace.accepted_offer_url) {
             const target = new URL(completion ? window.location.href : workspace.accepted_offer_url, window.location.origin);
             if (closedCaseViewMode || caseClosed) target.searchParams.set("view", "closed");
-            appendAcceptedOfferStep(list, `${target.pathname}${target.search}`, completion);
+            appendAcceptedOfferStep(list, `${target.pathname}${target.search}`, acceptedSelected, completion);
           }
           document.getElementById("demo-attempt-progress-status").textContent =
-            completion ? "Offer Accepted is the current step."
+            acceptedSelected ? "Offer Accepted is the current step."
               : caseClosed ? "All attempts are read-only. This case is closed."
               : `${caseAttemptLabel(currentOrdinal)} is current.`;
         }
@@ -5644,12 +5649,17 @@
             if (demoCurrentCaseId) link.href = demoAssetOverviewUrl();
           });
           const caseId = demoCurrentCaseId || demoCaseData?.id;
-          if (demoMediationLink && caseId) {
-            demoMediationLink.href = demoAssetOverviewUrl(caseId);
-          }
           if (demoFileManagementLink && caseId) {
-            demoFileManagementLink.href =
-              `/demo/files?source=${demoSource}&demo_case_id=${encodeURIComponent(caseId)}`;
+            const target = new URL("/demo/files", window.location.origin);
+            target.searchParams.set("source", demoSource);
+            target.searchParams.set("demo_case_id", caseId);
+            if ((demoSettlementCompletionMode || demoQuery.get("step") === "accepted")
+              && demoCaseData?.current_draft?.sent && demoCaseData.current_draft.outcome === "accepted") {
+              target.searchParams.set("step", "accepted");
+            } else if (demoQuery.has("attempt")) {
+              target.searchParams.set("attempt", demoQuery.get("attempt"));
+            }
+            demoFileManagementLink.href = `${target.pathname}${target.search}`;
           }
           if (demoCurrentCaseTitle && demoCaseData?.id === caseId) {
             demoCurrentCaseTitle.textContent = demoCaseData.title;
@@ -8497,7 +8507,7 @@
           refreshAssetMilestones();
         }
 
-        function appendAcceptedOfferStep(list, target, selected = false) {
+        function appendAcceptedOfferStep(list, target, selected = false, disableSelected = selected) {
           const item = document.createElement("li");
           const button = document.createElement("button");
           button.type = "button";
@@ -8505,7 +8515,7 @@
           button.setAttribute("aria-label", "Offer Accepted");
           if (selected) {
             button.setAttribute("aria-current", "step");
-            button.disabled = true;
+            button.disabled = disableSelected;
           }
           const circle = document.createElement("span");
           circle.className = "demo-attempt-circle";
@@ -8524,8 +8534,16 @@
           const list = document.getElementById("demo-attempt-progress-list");
           const status = document.getElementById("demo-attempt-progress-status");
           list.replaceChildren();
+          if (demoMode) {
+            const target = new URL(demoFileManagementLink.href);
+            target.searchParams.delete("step");
+            target.searchParams.set("attempt", String(settlementDemoViewingOrdinal));
+            demoFileManagementLink.href = `${target.pathname}${target.search}`;
+          }
           const accepted = completion || (demoCaseData?.current_draft?.sent
             && demoCaseData.current_draft.outcome === "accepted");
+          const acceptedSelected = completion || (demoFileManagerMode
+            && demoQuery.get("step") === "accepted" && accepted);
           for (let ordinal = 1; ordinal <= (accepted ? settlementDemoAttemptOrdinal : demoAttemptLimit); ordinal += 1) {
             const past = ordinal < settlementDemoAttemptOrdinal;
             const snapshot = demoCaseData?.attempt_snapshots?.[ordinal];
@@ -8534,13 +8552,13 @@
             const circle = document.createElement("span");
             const label = document.createElement("span");
             button.type = "button";
-            button.dataset.state = past || completion ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
+            button.dataset.state = past || acceptedSelected ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
             button.disabled = ordinal > settlementDemoAttemptOrdinal || (past && !snapshot)
-              || (!completion && ordinal === settlementDemoAttemptOrdinal
+              || (demoMode && ordinal === settlementDemoAttemptOrdinal
                 && settlementDemoViewingOrdinal === settlementDemoAttemptOrdinal);
-            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${past && !snapshot ? ", snapshot unavailable" : past ? ", review read-only" : completion ? ", read-only" : ordinal === settlementDemoAttemptOrdinal ? ", current" : ", future"}`);
+            button.setAttribute("aria-label", `${caseAttemptLabel(ordinal)}${past && !snapshot ? ", snapshot unavailable" : past ? ", review read-only" : acceptedSelected ? ", read-only" : ordinal === settlementDemoAttemptOrdinal ? ", current" : ", future"}`);
             if (past && !snapshot) button.title = "No saved snapshot exists for this older attempt.";
-            if (!completion && ordinal === settlementDemoViewingOrdinal) button.setAttribute("aria-current", "step");
+            if (!acceptedSelected && ordinal === settlementDemoViewingOrdinal) button.setAttribute("aria-current", "step");
             circle.className = "demo-attempt-circle";
             circle.textContent = String(ordinal);
             label.className = "demo-attempt-progress-label";
@@ -8548,7 +8566,7 @@
             button.append(circle, label);
             button.addEventListener("click", () => {
               if (button.disabled) return;
-              if (completion) {
+              if (completion || demoFileManagerMode) {
                 const target = new URL(demoAssetOverviewUrl(), window.location.origin);
                 target.searchParams.set("attempt", String(ordinal));
                 window.location.assign(`${target.pathname}${target.search}`);
@@ -8564,9 +8582,9 @@
           }
           if (accepted) {
             appendAcceptedOfferStep(list,
-              `/demo/settlement-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`, completion);
+              `/demo/settlement-completion?source=${demoSource}&demo_case_id=${encodeURIComponent(demoCurrentCaseId)}`, acceptedSelected, completion);
           }
-          status.textContent = completion ? "Offer Accepted is the current step."
+          status.textContent = acceptedSelected ? "Offer Accepted is the current step."
             : settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal
             ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only. Select the current attempt to return.`
             : `${caseAttemptLabel(settlementDemoAttemptOrdinal)} is current.`;
@@ -13764,7 +13782,6 @@
         } else if (demoMode) {
           document.body.dataset.demoPage = "settlement";
           demoCaseNavigation.hidden = false;
-          demoMediationLink.setAttribute("aria-current", "page");
           showDashboardShell();
           dashboardLoading.hidden = true;
           showPreparation("demo");
@@ -13791,6 +13808,13 @@
           demoCaseNavigation.hidden = false;
           demoFileManager.hidden = false;
           demoFileManagementLink.setAttribute("aria-current", "page");
+          const requestedAttempt = Number(demoQuery.get("attempt"));
+          settlementDemoViewingOrdinal = Number.isSafeInteger(requestedAttempt) && requestedAttempt > 0
+            && requestedAttempt <= settlementDemoAttemptOrdinal
+            && (requestedAttempt === settlementDemoAttemptOrdinal || demoCaseData?.attempt_snapshots?.[requestedAttempt])
+            ? requestedAttempt : settlementDemoAttemptOrdinal;
+          document.getElementById("demo-attempt-progress").hidden = false;
+          renderDemoAttemptProgress();
           void (async () => {
             try {
               await loadDemoCaseFiles();

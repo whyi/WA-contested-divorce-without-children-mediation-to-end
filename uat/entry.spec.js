@@ -1706,6 +1706,86 @@ test("View opens a closed case read-only without reopening or mutating it", asyn
 });
 
 for (const kind of ["asset", "selection"]) {
+  for (const closed of [false, true]) {
+    test(`file management preserves accepted progress and does not reload: ${kind}, ${closed ? "closed" : "open"}`, async ({ page }) => {
+      const selectionId = "00000000-0000-4000-8000-000000000076";
+      const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+      const fixture = await installFixtures(page, {
+        authenticated: true, hasCase: !closed,
+        extraReads: {
+          "/api/billing/account/entitlement": { status: "paid" },
+          "/api/v1/closed-cases": { cases: closed ? [{
+            id: caseId, title: "Synthetic closed case", closed_at: closedAt, closed_reason: "accepted",
+          }] : [] },
+          [`/cases/${caseId}/workspace`]: {
+            ...workspace, accepted_offer_url: completionUrl,
+            case: { ...workspace.case, status: closed ? "finalized" : "settlement",
+              closed_at: closed ? closedAt : null, closed_reason: closed ? "accepted" : null,
+              attempts_locked_at: closed ? closedAt : null },
+            attempts: [1, 2, 3].map(ordinal => ({
+              ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+            })),
+          },
+          [`/cases/${caseId}/asset-mediation/3`]: {
+            revision: 1, attempt_ordinal: 3, attempt_limit: 3, sent: true, outcome: "accepted",
+            notes: "", document_ids: [], sent_filenames: [], downloaded_formats: [],
+            stopped: false, completed: true, attempts_locked: closed,
+          },
+          [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
+            outcome: "accepted", sent_confirmed: true, sent_documents_complete: true, attempts_locked: closed,
+          },
+        },
+      });
+      await page.goto(`${origin}${completionUrl}${closed ? "&view=closed" : ""}`);
+      await expectAcceptedCompletionProgress(page);
+      await expect(page.getByRole("link", { name: "Asset Overview", exact: true })).toHaveCount(0);
+      await page.getByRole("link", { name: "Case file management", exact: true }).click();
+      await expect(page.locator("#case-file-layout")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Asset Overview", exact: true })).toHaveCount(0);
+      const accepted = page.getByRole("button", { name: "Offer Accepted", exact: true });
+      await expect(accepted).toHaveAttribute("aria-current", "step");
+      await expect(accepted).toHaveAttribute("data-state", "current");
+      await expect(accepted).toBeEnabled();
+      await expect(page.locator('#demo-attempt-progress-list button[data-ordinal="3"]')).toHaveAttribute("data-state", "past");
+      await expect(page.locator('#demo-attempt-progress-list [aria-current="step"]')).toHaveCount(1);
+      const fileUrl = page.url();
+      let navigations = 0;
+      page.on("framenavigated", frame => { if (frame === page.mainFrame()) navigations += 1; });
+      await page.evaluate(() => { window.filePageMarker = "unchanged"; });
+      await page.getByRole("link", { name: "Case file management", exact: true }).click();
+      await expect(page).toHaveURL(fileUrl);
+      expect(await page.evaluate(() => window.filePageMarker)).toBe("unchanged");
+      expect(navigations).toBe(0);
+      expect(await page.locator("#demo-file-management-link").evaluate(link => {
+        let prevented;
+        document.addEventListener("click", event => {
+          prevented = event.defaultPrevented;
+          event.preventDefault();
+        }, { once: true });
+        link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }));
+        return prevented;
+      })).toBe(false);
+      await page.reload();
+      await expect(accepted).toHaveAttribute("aria-current", "step");
+      await accepted.click();
+      await expect(page).toHaveURL(`${origin}${completionUrl}${closed ? "&view=closed" : ""}`);
+      await page.locator('#demo-attempt-progress-list button[data-ordinal="1"]').click();
+      await expect(page.locator("#case-assets-view")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Asset Overview", exact: true })).toHaveCount(0);
+      await page.getByRole("link", { name: "Case file management", exact: true }).click();
+      await expect(page.locator('#demo-attempt-progress-list button[data-ordinal="1"]')).toHaveAttribute("aria-current", "step");
+      await page.reload();
+      await expect(page.locator('#demo-attempt-progress-list button[data-ordinal="1"]')).toHaveAttribute("aria-current", "step");
+      await page.locator('#demo-attempt-progress-list button[data-ordinal="3"]').click();
+      await expect(page.locator("#case-assets-view")).toBeVisible();
+      await expect(page.locator('#demo-attempt-progress-list button[data-ordinal="3"]')).toHaveAttribute("aria-current", "step");
+      expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+      fixture.verify();
+    });
+  }
+}
+
+for (const kind of ["asset", "selection"]) {
   for (const width of [1280, 390, 320]) {
     test(`Account View opens closed accepted completion directly: ${kind} at ${width}px`, async ({ page }) => {
       const selectionId = "00000000-0000-4000-8000-000000000076";
@@ -2871,12 +2951,56 @@ for (const source of ["demo1", "demo2"]) {
     await expectAcceptedCompletionProgress(page);
     await page.reload();
     await expectAcceptedCompletionProgress(page);
+    await expect(page.getByRole("link", { name: "Asset Overview", exact: true })).toHaveCount(0);
+    await page.getByRole("link", { name: "Case file management", exact: true }).click();
+    await expect(page.locator("#demo-file-manager")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Asset Overview", exact: true })).toHaveCount(0);
+    await expect(accepted).toHaveAttribute("aria-current", "step");
+    await expect(accepted).toHaveAttribute("data-state", "current");
+    await expect(accepted).toBeEnabled();
+    await page.evaluate(() => { window.filePageMarker = "unchanged"; });
+    await page.getByRole("link", { name: "Case file management", exact: true }).click();
+    expect(await page.evaluate(() => window.filePageMarker)).toBe("unchanged");
+    await page.reload();
+    await expect(accepted).toHaveAttribute("aria-current", "step");
+    await accepted.click();
+    await expectAcceptedCompletionProgress(page);
     await page.getByRole("button", { name: "1st Attempt, read-only", exact: true }).click();
+    await expect(page).toHaveURL(`${origin}/demo${query}&attempt=1`);
+    await page.getByRole("link", { name: "Case file management", exact: true }).click();
+    const attempt = page.getByRole("button", { name: "1st Attempt, current", exact: true });
+    await expect(attempt).toHaveAttribute("aria-current", "step");
+    await page.reload();
+    await attempt.click();
     await expect(page).toHaveURL(`${origin}/demo${query}&attempt=1`);
     expect(fixture.requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
     fixture.verify();
   });
 }
+
+test("file navigation cannot invent an accepted offer", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true });
+  await page.goto(`${origin}/case/files?case_id=${caseId}&step=accepted`);
+  await expect(page.locator("#case-file-layout")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+  await expect(page.locator('#demo-attempt-progress-list button[data-ordinal="1"]')).toHaveAttribute("aria-current", "step");
+  fixture.verify();
+});
+
+test("demo file navigation requires a saved acceptance", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.goto(`${origin}/demo/start?source=demo1`);
+  await page.locator("#demo-case-documents-link").click();
+  const query = new URL(page.url()).search;
+  await page.goto(`${origin}/demo/files${query}&step=accepted`);
+  await expect(page.locator("#demo-file-manager")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+  const attempt = page.getByRole("button", { name: "1st Attempt, current", exact: true });
+  await expect(attempt).toHaveAttribute("aria-current", "step");
+  await attempt.click();
+  await expect(page).toHaveURL(`${origin}/demo${query}&attempt=1`);
+  fixture.verify();
+});
 
 for (const outcome of [null, "counteroffer", "rejected"]) {
   test(`nonaccepted ${outcome || "pending"} case has no accepted timeline step`, async ({ page }) => {
@@ -4594,7 +4718,7 @@ test("real case navigation uses saved assets and files, never fictional demo fig
   await expect(page.locator("#case-assets-view")).not.toContainText("$1,234.56");
   await expect(page.locator("#demo-attempt-progress-status")).toHaveText("1st Attempt is current.");
   await expect(page.locator("#asset-analysis-view")).toBeHidden();
-  await expect(page.getByRole("link", { name: "Asset Overview", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: "Asset Overview", exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.locator("#asset-table-rows-case")).toContainText("Unavailable");
   await page.getByRole("link", { name: "Case file management", exact: true }).click();
