@@ -12476,7 +12476,7 @@
               }
               if (preparationMode !== "assets") showPreparation(preparationMode);
               if (preparationMode !== "wizard") await loadCaseWorkspace();
-            } else if (homeMode) {
+            } else if (homeMode || pricingPageMode) {
               showSignedInHome();
             } else {
               await enterSignedInAccount(account);

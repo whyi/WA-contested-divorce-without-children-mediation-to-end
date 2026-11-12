@@ -326,6 +326,48 @@ test("signed-in account can navigate to and view the pricing page", async ({ pag
   fixture.verify();
 });
 
+test("pricing remains open after navigating from a signed-in case and refreshing", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true, mode: "upload", workspaceStarted: true, dashboardDelay: 200 });
+  await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+  await expect(page.locator("#pricing-entry")).toBeVisible();
+  await expect(page.locator("#logout-button")).toBeVisible();
+  await expect(page.locator("#case-assets-view")).toBeVisible();
+
+  const visited = [];
+  page.on("framenavigated", frame => {
+    if (frame === page.mainFrame()) visited.push(new URL(frame.url()).pathname);
+  });
+  const dashboardResponse = page.waitForResponse(response => response.url().endsWith("/api/v1/dashboard/status"));
+  await page.locator("#pricing-entry").click();
+  await dashboardResponse;
+  await page.waitForTimeout(500);
+  await expect(page.locator("body")).toHaveClass(/signed-in-home/);
+  await expect(page).toHaveURL(`${origin}/pricing`);
+  await expect(page.locator("#pricing-page")).toBeVisible();
+  const reloadResponse = page.waitForResponse(response => response.url().endsWith("/api/v1/dashboard/status"));
+  await page.reload();
+  await reloadResponse;
+  await page.waitForTimeout(500);
+  await expect(page.locator("body")).toHaveClass(/signed-in-home/);
+  await expect(page).toHaveURL(`${origin}/pricing`);
+  await expect(page.locator("#pricing-title")).toBeVisible();
+  expect(visited).toEqual(["/pricing", "/pricing"]);
+  await page.locator("#your-case-entry").click();
+  await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
+  await expect(page.locator("#case-assets-view")).toBeVisible();
+  fixture.verify();
+});
+
+test("direct signed-in pricing does not start case creation when there is no case", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true, hasCase: false });
+  await page.goto(`${origin}/pricing`);
+  await expect(page.locator("body")).toHaveClass(/signed-in-home/);
+  await expect(page.locator("#pricing-page")).toBeVisible();
+  await expect(page.locator("#case-create-page")).toHaveAttribute("hidden", "");
+  expect(fixture.requests).not.toContain("GET /api/v1/closed-cases");
+  fixture.verify();
+});
+
 test.describe("immediate session navigation", () => {
   const accountControls = ["account-tools-link", "your-case-entry", "logout-button"];
   const sessionHint = { name: "auth_csrf", value: "synthetic-navigation-hint", url: origin };
