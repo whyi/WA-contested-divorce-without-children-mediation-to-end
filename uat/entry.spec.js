@@ -274,6 +274,7 @@ test("dedicated pricing page shows one-time tiers and inert buy buttons", async 
   await expect(page).toHaveURL(`${origin}/pricing`);
   await expect(page).toHaveTitle("Pricing | Casework");
   await expect(page.locator("#pricing-page")).toBeVisible();
+  await expect(page.locator("#account-entry")).toBeVisible();
   await expect(page.locator("#hero-title")).toBeHidden();
   await expect(page.locator("#pricing-page")).toContainText("1 attempt");
   await expect(page.locator("#pricing-page")).toContainText("$5");
@@ -288,6 +289,121 @@ test("dedicated pricing page shows one-time tiers and inert buy buttons", async 
   await expect(page.locator("#pricing-page")).toBeVisible();
   await expect(page.locator("#essential-buy-now")).toBeVisible();
   fixture.verify();
+});
+
+test.describe("signed-out public header navigation stays stable", () => {
+  test("keeps the header geometry through Pricing and authentication navigation", async ({ page }) => {
+    const fixture = await installFixtures(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    let dashboardGate = null;
+    await page.route("**/api/v1/dashboard/status", async (route) => {
+      const currentGate = dashboardGate;
+      if (currentGate) await currentGate.promise;
+      await route.fallback();
+    });
+    const holdDashboard = () => {
+      let release;
+      const gate = { promise: new Promise((resolve) => { release = resolve; }), release: null };
+      gate.release = release;
+      dashboardGate = gate;
+      return () => {
+        if (dashboardGate === gate) dashboardGate = null;
+        gate.release();
+      };
+    };
+    const geometry = () => page.locator(
+      "#theme-select, #pricing-entry, #login-entry, #account-entry",
+    ).evaluateAll((controls) => controls.map((control) => {
+      const { x, y, width, height } = control.getBoundingClientRect();
+      return { id: control.id, x, y, width, height };
+    }));
+
+    let releaseDashboard = holdDashboard();
+    await page.goto(`${origin}/pricing`);
+    await expect(page.locator("#account-entry")).toBeHidden();
+    const pendingGeometry = await geometry();
+    releaseDashboard();
+    await expect(page.locator("#account-entry")).toBeVisible();
+    const stableGeometry = await geometry();
+    expect(stableGeometry).toEqual(pendingGeometry);
+
+    for (const [selector, destination] of [
+      ["#login-entry", "/?auth=login"],
+      ["#account-entry", "/?auth=signup"],
+      ["#brand-link", "/?view=home"],
+      ["#pricing-entry", "/pricing"],
+    ]) {
+      releaseDashboard = holdDashboard();
+      const dashboardResponse = page.waitForResponse((response) =>
+        response.url().endsWith("/api/v1/dashboard/status"));
+      await page.locator(selector).click();
+      await expect(page).toHaveURL(`${origin}${destination}`);
+      await expect(page.locator("#account-entry")).toBeVisible();
+      expect(await geometry()).toEqual(stableGeometry);
+      releaseDashboard();
+      await dashboardResponse;
+    }
+    fixture.verify();
+  });
+
+  test("public header positions match at desktop widths", async ({ page }) => {
+    const fixture = await installFixtures(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${origin}/?view=home`);
+    await expect(page.locator("#account-entry")).toBeVisible();
+    const homepageGeometry = await headerControlBoxes(page);
+    for (const path of ["/pricing", "/?auth=login", "/?auth=signup"]) {
+      await page.goto(`${origin}${path}`);
+      await expect(page.locator("#account-entry")).toBeVisible();
+      expect(await headerControlBoxes(page)).toEqual(homepageGeometry);
+    }
+    fixture.verify();
+  });
+
+  for (const [path, selector] of [
+    ["/?view=home", "#brand-link"],
+    ["/pricing", "#pricing-entry"],
+    ["/?auth=login", "#login-entry"],
+    ["/?auth=signup", "#account-entry"],
+  ]) {
+    test(`${path} does not reload when its current header link is clicked`, async ({ page }) => {
+      const fixture = await installFixtures(page);
+      await page.goto(`${origin}${path}`);
+      await expect(page.locator("#account-entry")).toBeVisible();
+      let mainFrameNavigations = 0;
+      page.on("framenavigated", (frame) => {
+        if (frame === page.mainFrame()) mainFrameNavigations++;
+      });
+      await page.locator(selector).click();
+      await expect(page).toHaveURL(`${origin}${path}`);
+      expect(mainFrameNavigations).toBe(0);
+      const modifiedClickPrevented = await page.locator(selector).evaluate((link) => {
+        const event = new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          ctrlKey: true,
+        });
+        link.dispatchEvent(event);
+        return event.defaultPrevented;
+      });
+      expect(modifiedClickPrevented).toBe(false);
+      await expect(page.locator("#account-entry")).toBeVisible();
+      fixture.verify();
+    });
+  }
+
+  test("a verified signed-in session overrides a cached signed-out header", async ({ page }) => {
+    const fixture = await installFixtures(page, { authenticated: true, hasCase: false });
+    await page.addInitScript(() => {
+      sessionStorage.setItem("casework-public-header-session", "signed-out");
+    });
+    await page.goto(`${origin}/pricing`);
+    await expect(page.locator("#logout-button")).toBeVisible();
+    await expect(page.locator("#account-entry")).toBeHidden();
+    expect(await page.evaluate(() => sessionStorage.getItem("casework-public-header-session"))).toBeNull();
+    fixture.verify();
+  });
 });
 
 test("signed-in account can navigate to and view the pricing page", async ({ page }) => {
@@ -536,7 +652,7 @@ test.describe("shared header control order", () => {
         const fixture = await installFixtures(page, { authenticated, hasCase: false });
         const expected = authenticated
           ? ["theme-select", "pricing-entry", "account-tools-link", "your-case-entry", "logout-button"]
-          : ["theme-select", "pricing-entry", "login-entry", ...(path === "/?view=home" ? ["account-entry"] : [])];
+          : ["theme-select", "pricing-entry", "login-entry", "account-entry"];
         for (const width of [1280, 800, 390, 320]) {
           await page.setViewportSize({ width, height: 900 });
           await page.goto(`${origin}${path}`);
@@ -563,13 +679,46 @@ test.describe("shared header control order", () => {
   }
 });
 
-test("Get started stays hidden until the public homepage session check confirms sign-out", async ({ page }) => {
+test("Get started stays hidden until a public-page session check confirms sign-out", async ({ page }) => {
   const fixture = await installFixtures(page, { dashboardDelay: 250 });
   await page.goto(origin);
   await expect(page.locator("#account-entry")).toBeHidden();
   await expect(page.locator("#account-entry")).toBeVisible();
-  await page.goto(`${origin}/?view=home`);
-  await expect(page.locator("#account-entry")).toBeVisible();
+  for (const path of ["/pricing", "/?auth=login", "/?auth=signup"]) {
+    await page.goto(`${origin}${path}`);
+    await expect(page.locator("#account-entry")).toBeVisible();
+  }
+  fixture.verify();
+});
+
+test("signed-out demo pages show Get started after session verification", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  for (const path of ["/demo/start?source=demo1", "/demo/start?source=demo2"]) {
+    await page.goto(`${origin}${path}`);
+    await expect(page.locator("#account-entry")).toBeVisible();
+    await expect(page.locator("#account-entry")).toHaveAttribute("href", "/?auth=signup");
+  }
+  fixture.verify();
+});
+
+test("signed-in demo pages keep Get started hidden", async ({ page }) => {
+  const fixture = await installFixtures(page, { authenticated: true });
+  await page.goto(`${origin}/demo/start?source=demo1`);
+  await expectGetStartedHidden(page);
+  fixture.verify();
+});
+
+test("demo pages keep Get started hidden when session verification fails", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.route("**/api/v1/dashboard/status", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Session verification unavailable." }),
+    });
+  });
+  await page.goto(`${origin}/demo/start?source=demo1`);
+  await expectGetStartedHidden(page);
   fixture.verify();
 });
 
@@ -584,14 +733,14 @@ async function expectGetStartedHidden(page) {
 
 test.describe("Get started visibility contract", () => {
   for (const width of [1280, 390, 320]) {
-    test(`legacy hash authentication is not the homepage at ${width}px`, async ({ page }) => {
+    test(`legacy hash authentication shows signup after sign-out at ${width}px`, async ({ page }) => {
       const fixture = await installFixtures(page);
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${origin}/#account`);
       await expect(page.locator("#email-entry-form")).toBeVisible();
       await expect.poll(() => fixture.requests).toContain("GET /api/v1/dashboard/status");
       await page.waitForLoadState("networkidle");
-      await expectGetStartedHidden(page);
+      await expect(page.locator("#account-entry")).toBeVisible();
       fixture.verify();
     });
   }
@@ -643,7 +792,7 @@ test.describe("Get started visibility contract", () => {
         await expect(page.locator("#account-entry")).toBeFocused();
         await page.locator("#account-entry").click();
         await expect(page).toHaveURL(`${origin}/?auth=signup`);
-        await expectGetStartedHidden(page);
+        await expect(page.locator("#account-entry")).toBeVisible();
       }
       fixture.verify();
     });
@@ -2520,7 +2669,7 @@ test("direct closed-case view rejects a case that is no longer listed as closed"
   fixture.verify();
 });
 
-test("public authentication pages keep the theme selector visible", async ({ page }) => {
+test("public authentication pages keep the theme selector and verified signup action visible", async ({ page }) => {
   const fixture = await installFixtures(page);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
@@ -2528,7 +2677,7 @@ test("public authentication pages keep the theme selector visible", async ({ pag
       await page.goto(`${origin}${path}`);
       await expect(page.locator("#theme-select"), `${path}: theme selector`).toBeVisible();
       await expect(page.locator("#theme-select"), `${path}: theme selector accessible name`).toHaveAccessibleName("Theme");
-      await expect(page.locator("#account-entry"), `${path}: Get started is homepage-only`).toBeHidden();
+      await expect(page.locator("#account-entry"), `${path}: verified signed-out signup action`).toBeVisible();
     }
   }
   fixture.verify();
@@ -2669,7 +2818,10 @@ for (const width of [1280, 901, 900, 851, 850, 601, 600, 421, 420, 390, 320]) {
             expectedPath = "/";
           }
           await expect(page).toHaveURL(`${origin}${expectedPath}`);
-          if (!signedIn && ["/", "/?view=home"].includes(expectedPath)) {
+          if (!signedIn && (
+            expectedPath === "/" || expectedPath === "/?view=home"
+            || expectedPath.startsWith("/?auth=") || expectedPath.startsWith("/demo")
+          )) {
             await expect(page.locator("#account-entry")).toBeVisible();
           } else {
             await expectGetStartedHidden(page);
@@ -3199,7 +3351,7 @@ test("top navigation logout revokes session with CSRF and returns to signed-out 
   await expect(page).toHaveURL(`${origin}/`);
   expect((await page.context().cookies(origin)).some(cookie => cookie.name === "auth_csrf")).toBe(false);
   await expect(page.locator("#login-entry")).toBeVisible();
-  await expectGetStartedHidden(page);
+  await expect(page.locator("#account-entry")).toBeVisible();
   release();
   await expect(page.locator("#account-entry")).toBeVisible();
   await expect(page.locator("#logout-button")).toBeHidden();

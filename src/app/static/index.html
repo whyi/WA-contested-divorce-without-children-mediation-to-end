@@ -10,6 +10,29 @@
       (() => {
         const path = window.location.pathname.replace(/\/+$/, "");
         const view = new URLSearchParams(window.location.search).get("view");
+        const isPublicHeaderPage = path === "" || path === "/pricing" || path.startsWith("/demo/");
+        const canReuseSignedOutHeader = path === "" || path === "/pricing";
+        const headerSessionStorageKey = "casework-public-header-session";
+        const hasVerifiedSession = document.documentElement.dataset.headerSession === "verified";
+        let hasCachedSignedOutSession = false;
+        if (hasVerifiedSession) {
+          try {
+            window.sessionStorage.removeItem(headerSessionStorageKey);
+          } catch (error) {
+            console.warn("Could not clear the public header session hint.", error);
+          }
+        } else if (canReuseSignedOutHeader) {
+          try {
+            hasCachedSignedOutSession = window.sessionStorage.getItem(headerSessionStorageKey) === "signed-out";
+          } catch (error) {
+            console.warn("Could not read the public header session hint.", error);
+          }
+        }
+        if (hasCachedSignedOutSession) {
+          document.documentElement.dataset.headerSignedOut = "true";
+        } else if (isPublicHeaderPage && !hasVerifiedSession) {
+          document.documentElement.dataset.headerSessionPending = "true";
+        }
         const protectedEntry = path === "" && (view === "account" || view === "case");
         if (protectedEntry || ["/settlement-completion", "/rejection-completion", "/case", "/onboarding"].includes(path)
           || path.startsWith("/case/") || path.startsWith("/onboarding/")) {
@@ -1294,8 +1317,13 @@
       body.signed-in-home .nav #your-case-entry:not([hidden]) { display: inline-flex !important; }
       body.signed-in-home #account-entry,
       body.authenticated-view #account-entry,
-      body[data-auth-view="true"] #account-entry,
       #account-entry[hidden] { display: none !important; }
+      html[data-header-session-pending="true"] #account-entry[hidden] {
+        display: inline-flex !important;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      body[data-demo-signed-out="true"] #account-entry:not([hidden]) { display: inline-flex !important; }
       .authenticated-view main > section:not(#account-dashboard):not(#case-documents-layout):not(#preparation-view):not(#settlement-planner):not(#pricing-page) { display: none; }
 
       @media (max-width: 850px) {
@@ -1729,6 +1757,51 @@
         body[data-public-landing="true"]:not(.authenticated-view) .hero-copy { display: none; }
         body[data-public-landing="true"]:not(.authenticated-view) .hero h1 { font-size: clamp(36px, 14vw, 46px); }
       }
+      body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .topbar {
+        min-height: 84px;
+      }
+      body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .nav .auth-entry {
+        display: inline-flex;
+      }
+      @media (max-width: 850px) {
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .topbar {
+          min-height: 68px;
+          padding: 8px 0;
+        }
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .nav {
+          gap: 8px;
+        }
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .nav-cta {
+          padding: 9px 12px;
+        }
+      }
+      @media (max-width: 420px) {
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .topbar {
+          height: auto;
+          min-height: 0;
+          flex-wrap: wrap;
+          padding: 8px 0;
+        }
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .nav {
+          width: 100%;
+        }
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .brand-name {
+          font-size: 20px;
+        }
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .brand-mark {
+          width: 30px;
+          height: 30px;
+        }
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .nav-cta {
+          padding: 8px 9px;
+          font-size: 11px;
+        }
+      }
+      @media (max-width: 360px) {
+        body:is([data-public-landing="true"], [data-pricing-page="true"]):not(.authenticated-view):not(.signed-in-home) .topbar {
+          padding: 8px 0;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1795,6 +1868,34 @@
       </header>
       <script>
         (() => {
+          const currentRoute = (url) => {
+            if (url.pathname === "/pricing") return "pricing";
+            if (url.pathname !== "/") return null;
+            const authView = url.searchParams.get("auth");
+            if (["login", "signup", "verify", "reset"].includes(authView)) return `auth:${authView}`;
+            if (authView) return null;
+            const view = url.searchParams.get("view");
+            return view === null || view === "home" ? "home" : null;
+          };
+          const currentPage = currentRoute(new URL(window.location.href));
+          const headerLinks = [
+            ["brand-link", "home"],
+            ["pricing-entry", "pricing"],
+            ["login-entry", "auth:login"],
+            ["account-entry", "auth:signup"],
+          ];
+          for (const [id, destination] of headerLinks) {
+            const link = document.getElementById(id);
+            link.addEventListener("click", (event) => {
+              if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey
+                || currentPage !== destination) return;
+              event.preventDefault();
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            });
+          }
+          if (document.documentElement.dataset.headerSignedOut === "true") {
+            document.getElementById("account-entry").hidden = false;
+          }
           if (window.location.pathname.startsWith("/demo")
             || document.documentElement.dataset.headerSession !== "verified") return;
           // Only the server-verified session may enable initial account navigation.
@@ -5405,21 +5506,36 @@
           }
         });
 
+        function rememberVerifiedPublicSignOut() {
+          delete document.documentElement.dataset.headerSessionPending;
+          document.documentElement.dataset.headerSignedOut = "true";
+          try {
+            window.sessionStorage.setItem("casework-public-header-session", "signed-out");
+          } catch (error) {
+            console.warn("Could not save the public header session hint.", error);
+          }
+        }
+
+        function clearPublicHeaderSignOutHint() {
+          delete document.documentElement.dataset.headerSessionPending;
+          delete document.documentElement.dataset.headerSignedOut;
+          try {
+            window.sessionStorage.removeItem("casework-public-header-session");
+          } catch (error) {
+            console.warn("Could not clear the public header session hint.", error);
+          }
+        }
+
         function showPublicPage({ signedOut = false } = {}) {
+          if (signedOut) rememberVerifiedPublicSignOut();
           delete document.documentElement.dataset.sessionChecking;
           if (signedOut || document.body.dataset.navigationPending === "true") showSignedOutNavigation();
           dashboard.hidden = true;
           preparationView.hidden = true;
           if (caseDocumentsLayout) caseDocumentsLayout.hidden = true;
           document.body.classList.remove("authenticated-view");
-          const currentUrl = new URL(window.location.href);
-          const requestedView = currentUrl.searchParams.get("view");
-          document.getElementById("account-entry").hidden = !signedOut
-            || currentUrl.pathname !== "/"
-            || currentUrl.searchParams.has("auth")
-            || (requestedView !== null && requestedView !== "home")
-            || document.body.dataset.authView === "true"
-            || document.body.classList.contains("signed-in-home");
+          document.getElementById("account-entry").hidden =
+            !signedOut && document.documentElement.dataset.headerSignedOut !== "true";
         }
 
         function showDashboardShell() {
@@ -12374,6 +12490,7 @@
           try {
             const response = await fetch("/api/v1/dashboard/status", { credentials:"same-origin", cache:"no-store", headers:{ Accept:"application/json" } });
             if (response.status === 401) {
+              rememberVerifiedPublicSignOut();
               showSignedOutNavigation();
               window.location.replace("/");
               return false;
@@ -12427,6 +12544,7 @@
             });
             const result = await response.json();
             if (response.status === 401) {
+              rememberVerifiedPublicSignOut();
               showSignedOutNavigation();
               if (isWorkingPage()) window.location.replace("/");
               else if (!isStartup) showSignIn("Your session has expired. Please sign in again.");
@@ -13395,6 +13513,7 @@
         });
 
         function showSignedInNavigation() {
+          clearPublicHeaderSignOutHint();
           delete document.body.dataset.navigationPending;
           accountToolsLink.hidden = false;
           document.getElementById("your-case-entry").hidden = false;
@@ -13409,6 +13528,34 @@
           logoutButton.hidden = true;
           document.getElementById("login-entry").hidden = false;
         }
+
+        async function showDemoSignupForVerifiedSignOut() {
+          const accountEntry = document.getElementById("account-entry");
+          try {
+            const response = await fetch("/api/v1/dashboard/status", {
+              credentials: "same-origin",
+              cache: "no-store",
+              headers: { Accept: "application/json" },
+            });
+            if (response.status === 401) {
+              rememberVerifiedPublicSignOut();
+              document.body.dataset.demoSignedOut = "true";
+              accountEntry.hidden = false;
+              return;
+            }
+            if (!response.ok) throw new Error("Could not verify the session for signup navigation.");
+            clearPublicHeaderSignOutHint();
+            accountEntry.hidden = true;
+          } catch (error) {
+            delete document.body.dataset.demoSignedOut;
+            accountEntry.hidden = true;
+            console.error(
+              error instanceof Error ? error.message : "Could not verify the session for signup navigation.",
+              error,
+            );
+          }
+        }
+
         logoutButton.addEventListener("click", async () => {
           logoutButton.disabled = true;
           try {
@@ -13419,6 +13566,7 @@
             });
             if (!response.ok && response.status !== 401) throw new Error("Log out failed. Please retry.");
             showSignedOutNavigation();
+            rememberVerifiedPublicSignOut();
             window.location.replace("/");
           } catch (error) {
             await showAppNotice(
@@ -13555,6 +13703,9 @@
         const demoPageHasCase = Boolean(
           demoCaseData?.id && demoCaseData.id === demoCurrentCaseId,
         );
+        if (window.location.pathname.startsWith("/demo")) {
+          void showDemoSignupForVerifiedSignOut();
+        }
         if (demoPageRequiresCase && !demoPageHasCase) {
           if (demoCaseData?.id) {
             window.location.replace(demoAssetOverviewUrl(demoCaseData.id));
