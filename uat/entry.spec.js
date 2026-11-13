@@ -3589,6 +3589,34 @@ for (const backend of ["asset", "selection"]) {
         expect(await measure(true), `matching workspace at ${width}px`).toEqual(attemptLayout);
         await expect(page.locator("#settlement-completion-page .settlement-completion-card")).toHaveCount(0);
         await expect(page.locator("#settlement-completion-workspace > #settlement-completion-content")).toBeVisible();
+        const guidanceLayout = await page.locator("#settlement-completion-demo-content").evaluate(element => {
+          const root = element.parentElement;
+          const typography = target => {
+            const style = getComputedStyle(target);
+            return ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "color"]
+              .map(key => style[key]);
+          };
+          const style = getComputedStyle(element);
+          return {
+            borders: ["Top", "Right", "Bottom", "Left"].map(side => style[`border${side}Width`]),
+            padding: ["Top", "Right", "Bottom", "Left"].map(side => style[`padding${side}`]),
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            x: element.getBoundingClientRect().x,
+            headerX: root.querySelector(".asset-analysis-header").getBoundingClientRect().x,
+            headings: [...element.querySelectorAll("h2")].map(typography),
+            outerHeading: typography(root.querySelector("h1")),
+            body: [...element.querySelectorAll("p, li, a")].map(typography),
+            outerBody: typography(root.querySelector(".asset-analysis-intro")),
+          };
+        });
+        expect(guidanceLayout.borders).toEqual(["0px", "0px", "0px", "0px"]);
+        expect(guidanceLayout.padding).toEqual(["0px", "0px", "0px", "0px"]);
+        expect(guidanceLayout.background).toBe("rgba(0, 0, 0, 0)");
+        expect(guidanceLayout.shadow).toBe("none");
+        expect(guidanceLayout.x).toBe(guidanceLayout.headerX);
+        for (const heading of guidanceLayout.headings) expect(heading).toEqual(guidanceLayout.outerHeading);
+        for (const body of guidanceLayout.body) expect(body).toEqual(guidanceLayout.outerBody);
         await expect(page.locator("#settlement-completion-workspace #settlement-completion-demo-content a")).toHaveCount(4);
         await expect(page.locator("#settlement-completion-workspace")).toContainText("Check any judgment and deadlines");
         await expect(page.locator("#settlement-completion-workspace")).toContainText("does not provide legal advice");

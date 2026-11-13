@@ -1163,8 +1163,10 @@
         body:is([data-demo-page="settlement"], [data-case-workspace], [data-settlement-completion-page="true"]) .demo-case-navigation { grid-template-columns: 1fr auto; }
         body:is([data-demo-page="settlement"], [data-case-workspace]) .demo-case-nav-links { grid-column:1 / -1; }
       }
-      .asset-analysis-header :is(h1, h2) { margin-bottom: 8px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(26px, 4vw, 36px); font-weight: 500; line-height:1.06; letter-spacing: -.035em; }
-      .asset-analysis-intro { max-width: 720px; color:var(--muted); line-height: 1.6; }
+      .asset-analysis-header :is(h1, h2), .settlement-completion-guidance h2 { margin-bottom: 8px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(26px, 4vw, 36px); font-weight: 500; line-height:1.06; letter-spacing: -.035em; }
+      .asset-analysis-intro, .settlement-completion-guidance :is(p, li) { max-width: 720px; color:var(--muted); line-height: 1.6; }
+      .settlement-completion-guidance { margin-top: 24px; }
+      .settlement-completion-guidance h2:not(:first-child) { margin-top: 24px; }
       .sample-analysis-notice { margin: 16px 0 24px; padding: 14px 16px; border-left:4px solid var(--theme-border-a87a31); border-radius: 5px; color:var(--theme-text-59451f); background:var(--theme-background-fbf5e8); font-size: 13px; line-height: 1.6; }
       .asset-analysis-panel { margin-top: 20px; padding: clamp(16px, 3vw, 24px); border:1px solid var(--line); border-radius: 11px; background:var(--paper); box-shadow: 0 8px 24px rgba(34, 55, 43, .035); }
       .asset-analysis-panel h3 { margin-bottom: 7px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; letter-spacing: -.025em; }
@@ -2954,7 +2956,7 @@
               </header>
               <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. An accepted offer in the workspace does not itself establish legal resolution. Any proposal remains for you to review; downloading it does not deliver it to your mediator. The product does not deliver proposals; provide reviewed files to your mediator yourself.</p>
               <p id="settlement-completion-status" class="settlement-completion-status" role="status" aria-live="polite"></p>
-              <div id="settlement-completion-demo-content" class="asset-analysis-panel" hidden>
+              <div id="settlement-completion-demo-content" class="settlement-completion-guidance" hidden>
                 <h2>Complete and review the remaining documents</h2>
                 <p>Complete Findings and Conclusions About a Marriage (FL Divorce 231) and review the document reflecting the accepted offer.</p>
                 <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading does not deliver it to your mediator, and the product does not automatically deliver proposals.</p>
