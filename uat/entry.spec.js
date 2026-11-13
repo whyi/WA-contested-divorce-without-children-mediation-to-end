@@ -916,6 +916,13 @@ test.describe("Get started visibility contract", () => {
     fixture.verify();
   });
 });
+async function expectCaseStatusOnly(page, closed = false) {
+  const navigation = page.locator("#demo-case-navigation");
+  await expect(navigation.locator(".demo-case-nav-context")).toHaveText(closed ? "Closed case" : "Active case");
+  await expect(navigation.locator("#demo-current-case-status")).toBeVisible();
+  await expect(navigation.locator("#demo-current-case-title, .demo-case-nav-mark")).toHaveCount(0);
+}
+
 async function expectViewedAttemptHighlight(page, ordinal) {
   const selected = page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`);
   await expect(selected).toHaveAttribute("aria-current", "step");
@@ -3583,9 +3590,11 @@ for (const backend of ["asset", "selection"]) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${origin}/case/assets?case_id=${caseId}${closed ? "&view=closed" : ""}`);
         await expect(page.locator("#case-asset-layout")).toBeVisible();
+        await expectCaseStatusOnly(page, closed);
         const attemptLayout = await measure(false);
         await page.goto(`${origin}${completionUrl}${closed ? "&view=closed" : ""}`);
         await expectAcceptedCompletionProgress(page);
+        await expectCaseStatusOnly(page, closed);
         expect(await measure(true), `matching workspace at ${width}px`).toEqual(attemptLayout);
         await expect(page.locator("#settlement-completion-page .settlement-completion-card")).toHaveCount(0);
         await expect(page.locator("#settlement-completion-workspace > #settlement-completion-content")).toBeVisible();
@@ -3624,6 +3633,8 @@ for (const backend of ["asset", "selection"]) {
         else await expect(page.locator("#settlement-completion-workspace .settlement-completion-actions > :visible"))
           .toHaveText(["Back to attempt #3", "Close your case"]);
       }
+      await page.goto(`${origin}/case/files?case_id=${caseId}${closed ? "&view=closed" : ""}`);
+      await expectCaseStatusOnly(page, closed);
       expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
       fixture.verify();
     });
@@ -6767,6 +6778,7 @@ test("accepted real page matches demo guidance and timeline review stays read-on
   await page.goto(`${origin}/demo/settlement-completion${demoQuery}`);
   await expect(page.locator("#theme-select")).toBeVisible();
   await expect(page.locator("#settlement-completion-demo-content")).toBeVisible();
+  await expectCaseStatusOnly(page);
   const demoGuidance = await guidance();
   await page.goto(`${origin}/settlement-completion?case_id=${caseId}&asset_attempt=1`);
   await expect(page.locator("#theme-select")).toBeVisible();
@@ -6889,6 +6901,7 @@ for (const source of ["demo1", "demo2"]) {
     for (const width of [1280, 880, 800, 600, 480, 350]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${origin}/demo${query}`);
+      await expectCaseStatusOnly(page);
       const demoCurrent = page.getByRole("button", { name: "1st Attempt, current", exact: true });
       await expect(demoCurrent).toBeDisabled();
       expect(await demoCurrent.evaluate(element => getComputedStyle(element).cursor)).toBe("default");
@@ -6897,6 +6910,7 @@ for (const source of ["demo1", "demo2"]) {
       await expect(page.locator("#settlement-demo-attempt-status")).toHaveCount(0);
       const demoStyles = await styles();
       await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+      await expectCaseStatusOnly(page);
       await expect(page.locator("#case-attempt-banner")).toHaveCount(0);
       const actual = await styles();
       // Track widths depend on the number of attempts; compare the shared placement, not content width.
