@@ -3602,6 +3602,56 @@ for (const backend of ["asset", "selection"]) {
   }
 }
 
+for (const width of [1280, 320]) {
+  test(`offer preparation introduces scenarios below the asset trend at ${width}px`, async ({ page }) => {
+    const fixture = await installFixtures(page, { authenticated: true });
+    await page.setViewportSize({ width, height: 900 });
+    for (const mode of ["case", "demo1", "demo2"]) {
+      if (mode === "case") {
+        await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+      } else {
+        await page.goto(`${origin}/demo/start?source=${mode}`);
+        await page.locator("#demo-case-documents-link").click();
+        await page.goto(`${origin}/demo${new URL(page.url()).search}`);
+      }
+      const layout = page.locator(mode === "case" ? "#case-asset-layout" : "#asset-analysis-view");
+      const header = layout.locator(".offer-preparation-header");
+      await expect(header).toBeVisible();
+      await expect(header.locator(".eyebrow")).toHaveText("Offer preparation");
+      await expect(header.getByRole("heading", { level: 2 })).toHaveText("Choose a scenario for your offer");
+      await expect(header.locator(".asset-analysis-intro")).toHaveText(
+        "These scenarios are based on the asset information above. Select a scenario, download the drafts, and modify them if needed.",
+      );
+      const geometry = await header.evaluate(element => {
+        const previous = element.previousElementSibling;
+        const next = element.nextElementSibling;
+        const heading = getComputedStyle(element.querySelector("h2"));
+        const overview = getComputedStyle(element.parentElement.querySelector(".asset-analysis-header h2"));
+        return {
+          previousIsTrend: Boolean(previous.querySelector('[id^="asset-chart-heading"]')),
+          nextIsScenarios: next.id.startsWith("settlement-scenarios-preview"),
+          previousBottom: previous.getBoundingClientRect().bottom,
+          top: element.getBoundingClientRect().top,
+          bottom: element.getBoundingClientRect().bottom,
+          nextTop: next.getBoundingClientRect().top,
+          headingStyle: [heading.fontFamily, heading.fontSize, heading.fontWeight],
+          overviewStyle: [overview.fontFamily, overview.fontSize, overview.fontWeight],
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: document.documentElement.clientWidth,
+        };
+      });
+      expect(geometry.previousIsTrend).toBe(true);
+      expect(geometry.nextIsScenarios).toBe(true);
+      expect(geometry.top - geometry.previousBottom).toBeGreaterThanOrEqual(24);
+      expect(geometry.nextTop).toBeGreaterThan(geometry.bottom);
+      expect(geometry.headingStyle).toEqual(geometry.overviewStyle);
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    }
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
+}
+
 test("accepted offer page uses the attempt page's workspace shell at every breakpoint", async ({ page }) => {
   const measureTopGap = async (width, mode) => {
     await page.setViewportSize({ width, height: 900 });
