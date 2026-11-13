@@ -2079,6 +2079,8 @@ for (const kind of ["asset", "selection"]) {
             await expect(page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`))
               .toHaveAttribute("aria-current", "step");
             await expectViewedAttemptHighlight(page, ordinal);
+            if (ordinal < 3) await expect(page.locator("#demo-attempt-progress-status"))
+              .toHaveText(`Viewing ${ordinal === 1 ? "1st" : "2nd"} Attempt read-only.`);
             expect(await accepted.locator(".demo-attempt-circle").evaluate(circle => {
               const style = getComputedStyle(circle);
               const sample = document.createElement("span");
@@ -2093,6 +2095,8 @@ for (const kind of ["asset", "selection"]) {
           await expectViewedAttemptHighlight(page, ordinal);
           await page.reload();
           await expectViewedAttemptHighlight(page, ordinal);
+          if (ordinal < 3) await expect(page.locator("#demo-attempt-progress-status"))
+            .toHaveText(`Viewing ${ordinal === 1 ? "1st" : "2nd"} Attempt read-only.`);
           await accepted.click();
           await expect(page).toHaveURL(`${origin}${completionUrl}`);
           await expectAcceptedCompletionProgress(page);

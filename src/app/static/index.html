@@ -5231,7 +5231,7 @@
           document.getElementById("demo-attempt-progress-status").textContent =
             acceptedSelected ? "Offer Accepted is the current step."
               : caseClosed ? "All attempts are read-only. This case is closed."
-              : viewingOrdinal !== currentOrdinal ? `Viewing ${caseAttemptLabel(viewingOrdinal)} read-only. Select the current attempt to return.`
+              : viewingOrdinal !== currentOrdinal ? `Viewing ${caseAttemptLabel(viewingOrdinal)} read-only.`
               : `${caseAttemptLabel(currentOrdinal)} is current.`;
         }
 
@@ -8595,7 +8595,7 @@
           }
           status.textContent = acceptedSelected ? "Offer Accepted is the current step."
             : settlementDemoViewingOrdinal < settlementDemoAttemptOrdinal
-            ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only. Select the current attempt to return.`
+            ? `Viewing ${caseAttemptLabel(settlementDemoViewingOrdinal)} read-only.`
             : `${caseAttemptLabel(settlementDemoAttemptOrdinal)} is current.`;
           if (Array.from({ length: settlementDemoAttemptOrdinal - 1 }, (_, index) => index + 1)
             .some((ordinal) => !demoCaseData?.attempt_snapshots?.[ordinal])) {
