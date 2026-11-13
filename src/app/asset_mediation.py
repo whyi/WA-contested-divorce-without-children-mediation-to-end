@@ -62,7 +62,7 @@ class MediationUpdate(BaseModel):
 
     expected_revision: int = Field(ge=0, strict=True)
     attempt_ordinal: int = Field(ge=1, strict=True)
-    action: Literal["sent", "response", "response_outcome", "counteroffer_details", "continue", "stop", "complete"]
+    action: Literal["sent", "response", "response_outcome", "reset_response", "counteroffer_details", "continue", "stop", "complete"]
     selection: OverviewScenarioExport | None = None
     outcome: Literal["counteroffer", "rejected", "accepted"] | None = None
     notes: str = Field(default="", max_length=20000)
@@ -245,7 +245,7 @@ def update_mediation_state(
             user,
             case_id,
             write=True,
-            allow_locked_attempts=payload.action in {"complete", "response_outcome", "counteroffer_details", "stop"},
+            allow_locked_attempts=payload.action in {"complete", "response_outcome", "reset_response", "counteroffer_details", "stop"},
         )
         response.headers["Cache-Control"] = "no-store"
         state = read_state(db, case, payload.attempt_ordinal)
@@ -263,6 +263,24 @@ def update_mediation_state(
             return read_state(db, case, ordinal)
         if payload.attempt_ordinal != ordinal:
             raise HTTPException(status_code=409, detail="Only the current attempt can receive a response.")
+        if payload.action == "reset_response":
+            if payload.model_fields_set - {"action", "expected_revision", "attempt_ordinal"}:
+                raise HTTPException(status_code=422, detail="Only the accepted response may be cleared.")
+            if state.attempts_locked and not _reopened_response_editable(case, state, latest):
+                raise HTTPException(status_code=409, detail="This attempt's response is read-only.")
+            if not state.sent or state.stopped:
+                raise HTTPException(status_code=409, detail="Only an accepted, confirmed response can be cleared.")
+            if state.outcome is None and state.revision == payload.expected_revision + 1:
+                return state
+            if payload.expected_revision != state.revision:
+                raise HTTPException(status_code=409, detail="Mediation response changed. Reload and retry.")
+            if state.outcome != "accepted":
+                raise HTTPException(status_code=409, detail="Only an accepted, confirmed response can be cleared.")
+            state.outcome = None
+            state.revision += 1
+            _save(case, state)
+            db.commit()
+            return state
         if payload.expected_revision != state.revision:
             raise HTTPException(status_code=409, detail="Mediation response changed. Reload and retry.")
         if payload.action == "counteroffer_details":

@@ -2,6 +2,7 @@ import unittest
 import asyncio
 from io import BytesIO
 from copy import deepcopy
+from types import SimpleNamespace
 from uuid import uuid4
 from unittest.mock import patch
 
@@ -141,6 +142,132 @@ class AssetMediationTests(unittest.TestCase):
         self.assertEqual(self.case.closed_reason, "accepted")
         self.assertIsNotNone(self.case.attempts_locked_at)
         self.assertIn("asset_overview", self.case.metadata_json)
+
+    def test_return_to_attempt_clears_acceptance_without_changing_sent_proposal_or_files(self):
+        self.send()
+        self.update("response", outcome="accepted", notes="Retained response notes")
+        self.upload(uuid4(), "agreement.pdf", quota_fixtures.PDF)
+        before = self.state()
+        attempt = self.db.scalar(select(SettlementNegotiationAttempt))
+        snapshot = deepcopy(attempt.frozen_snapshot_json)
+        payload = MediationUpdate(
+            action="reset_response", attempt_ordinal=1, expected_revision=before.revision,
+        )
+        for _ in range(2):
+            cleared = update_mediation_state(self.case.id, payload, Response(), self.user, self.db)
+            self.assertIsNone(cleared.outcome)
+            self.assertTrue(cleared.sent)
+            self.assertEqual(cleared.notes, before.notes)
+            self.assertEqual(cleared.accepted_document_ids, before.accepted_document_ids)
+            self.assertEqual(cleared.selection, before.selection)
+            self.assertEqual(cleared.downloaded_formats, before.downloaded_formats)
+        self.assertEqual(attempt.frozen_snapshot_json, snapshot)
+        self.assertIsNotNone(attempt.sent_confirmed_at)
+        self.assertEqual(len(self.db.scalars(select(SettlementNegotiationAttempt)).all()), 1)
+        self.assertIsNone(self.case.attempts_locked_at)
+
+    def test_reopened_return_to_attempt_retains_locks_and_response_only_editing(self):
+        from app.case_lifecycle import reopen_case
+
+        self.send()
+        self.update("response", outcome="accepted")
+        self.update("complete", confirm=True)
+        with self.assertRaises(HTTPException) as error:
+            self.update("reset_response")
+        self.assertEqual(error.exception.status_code, 409)
+        reopen_case(self.case.id, self.user, self.db)
+        locked_at = self.case.attempts_locked_at
+        attempt = self.db.scalar(select(SettlementNegotiationAttempt))
+        snapshot = deepcopy(attempt.frozen_snapshot_json)
+        cleared = self.update("reset_response")
+        self.assertIsNone(cleared.outcome)
+        self.assertTrue(cleared.completed)
+        self.assertTrue(cleared.attempts_locked)
+        self.assertEqual(self.update("response_outcome", outcome="rejected").outcome, "rejected")
+        self.assertEqual(self.case.attempts_locked_at, locked_at)
+        self.assertEqual(attempt.frozen_snapshot_json, snapshot)
+        for action in ("response", "continue", "sent"):
+            with self.assertRaises(HTTPException) as error:
+                self.update(action, outcome="accepted", confirm=True)
+            self.assertEqual(error.exception.status_code, 409)
+
+    def test_acceptance_reset_rejects_nonaccepted_stale_historical_and_proposal_changes(self):
+        self.send()
+        with self.assertRaises(HTTPException):
+            self.update("reset_response")
+        self.update("response", outcome="accepted")
+        revision = self.state().revision
+        with self.assertRaises(HTTPException) as error:
+            update_mediation_state(
+                self.case.id, MediationUpdate(
+                    action="reset_response", attempt_ordinal=1, expected_revision=revision - 1,
+                ), Response(), self.user, self.db,
+            )
+        self.assertEqual(error.exception.status_code, 409)
+        with self.assertRaises(HTTPException) as error:
+            self.update("reset_response", notes="Do not overwrite")
+        self.assertEqual(error.exception.status_code, 422)
+        with patch("app.asset_mediation.latest_attempt", return_value=SimpleNamespace(attempt_ordinal=2)):
+            with self.assertRaises(HTTPException) as error:
+                self.update("reset_response")
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(self.state().outcome, "accepted")
+
+    def test_acceptance_reset_failure_keeps_the_saved_response(self):
+        self.send()
+        self.update("response", outcome="accepted")
+        with patch.object(self.db, "commit", side_effect=SQLAlchemyError("Synthetic")):
+            with self.assertRaises(HTTPException) as error:
+                self.update("reset_response")
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertEqual(self.state().outcome, "accepted")
+
+    def test_selection_acceptance_reset_updates_workspace_and_reopened_response_controls(self):
+        from app.case_lifecycle import close_case_record, reopen_case
+        from app.main import read_case_workspace
+        from app.models import SettlementOfferResponse
+        from app.offer_response import OfferSentConfirmation, reset_accepted_response
+
+        self.send()
+        attempt = self.db.scalar(select(SettlementNegotiationAttempt))
+        record = SettlementOfferResponse(
+            case_id=self.case.id, selection_id=attempt.selection_id,
+            user_id=self.user.id, user_id_snapshot=self.user.id, outcome="accepted",
+        )
+        self.db.add(record)
+        close_case_record(self.db, self.case, self.user.id, "accepted")
+        self.case.status = "finalized"
+        self.db.commit()
+        reopen_case(self.case.id, self.user, self.db)
+        locked_at = self.case.attempts_locked_at
+        snapshot = deepcopy(attempt.frozen_snapshot_json)
+        payload = OfferSentConfirmation(expected_attempt_revision=attempt.revision)
+        with patch("app.offer_response._read_response", side_effect=lambda *args: SimpleNamespace(
+            sent_confirmed=True, outcome=record.outcome, attachments=[],
+        )):
+            for _ in range(2):
+                result = reset_accepted_response(
+                    self.case.id, attempt.selection_id, payload, Response(), self.user, self.db,
+                )
+                self.assertIsNone(result.outcome)
+        with patch("app.main._require_case", return_value=self.case):
+            saved = read_case_workspace(self.case.id, Response(), self.db)
+        self.assertIsNone(saved.accepted_offer_url)
+        self.assertTrue(self.state().sent)
+        self.assertTrue(self.state().completed)
+        self.assertIsNone(self.state().outcome)
+        self.assertEqual(self.update("response_outcome", outcome="accepted").outcome, "accepted")
+        self.assertEqual(self.case.attempts_locked_at, locked_at)
+        self.assertEqual(attempt.frozen_snapshot_json, snapshot)
+        with patch("app.offer_response._read_response", return_value=SimpleNamespace(
+            sent_confirmed=True, outcome=None, attachments=[],
+        )):
+            with self.assertRaises(HTTPException) as error:
+                reset_accepted_response(
+                    self.case.id, attempt.selection_id, payload, Response(), self.user, self.db,
+                )
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(self.state().outcome, "accepted")
 
     def test_rejection_stop_uses_existing_reversible_closure(self):
         self.send()

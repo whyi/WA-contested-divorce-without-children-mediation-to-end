@@ -916,6 +916,23 @@ test.describe("Get started visibility contract", () => {
     fixture.verify();
   });
 });
+async function expectViewedAttemptHighlight(page, ordinal) {
+  const selected = page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`);
+  await expect(selected).toHaveAttribute("aria-current", "step");
+  await expect(selected).toHaveAttribute("data-state", "current");
+  const greenOrdinals = await page.locator("#demo-attempt-progress-list button[data-ordinal]").evaluateAll(buttons => {
+    const sample = document.createElement("span");
+    sample.style.backgroundColor = "var(--green)";
+    buttons[0].append(sample);
+    const green = getComputedStyle(sample).backgroundColor;
+    sample.remove();
+    return buttons.filter(button =>
+      getComputedStyle(button.querySelector(".demo-attempt-circle")).backgroundColor === green,
+    ).map(button => Number(button.dataset.ordinal));
+  });
+  expect(greenOrdinals).toEqual([ordinal]);
+}
+
 async function expectAcceptedCompletionProgress(page) {
   const progress = page.locator("#settlement-completion-page #demo-attempt-progress");
   await expect(progress).toBeVisible();
@@ -1018,7 +1035,7 @@ for (const kind of ["asset", "selection", "locked-asset", "locked-selection"]) {
         await expectAcceptedCompletionProgress(page);
         await page.reload();
         await expectAcceptedCompletionProgress(page);
-        await page.getByRole("link", { name: `Back to attempt #${ordinal}`, exact: true }).click();
+        await page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`).click();
         await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=${ordinal}`);
         await expect(page.locator("#case-assets-view")).toBeVisible();
         await page.locator("#your-case-entry").click();
@@ -2054,6 +2071,7 @@ for (const kind of ["asset", "selection"]) {
             await expect(accepted).not.toHaveAttribute("aria-current");
             await expect(page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`))
               .toHaveAttribute("aria-current", "step");
+            await expectViewedAttemptHighlight(page, ordinal);
             expect(await accepted.locator(".demo-attempt-circle").evaluate(circle => {
               const style = getComputedStyle(circle);
               const sample = document.createElement("span");
@@ -2064,6 +2082,10 @@ for (const kind of ["asset", "selection"]) {
               return style.backgroundColor === expected;
             })).toBe(true);
           }
+          await page.locator("#demo-file-management-link").click();
+          await expectViewedAttemptHighlight(page, ordinal);
+          await page.reload();
+          await expectViewedAttemptHighlight(page, ordinal);
           await accepted.click();
           await expect(page).toHaveURL(`${origin}${completionUrl}`);
           await expectAcceptedCompletionProgress(page);
@@ -2075,30 +2097,85 @@ for (const kind of ["asset", "selection"]) {
   }
 }
 
+test("demo accepted timeline moves the green attempt highlight to each viewed snapshot", async ({ page }) => {
+  const fixture = await installFixtures(page);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${origin}/demo/start?source=demo2`);
+  await page.locator("#demo-case-documents-link").click();
+  const query = new URL(page.url()).search;
+  await page.goto(`${origin}/demo${query}`);
+  for (const ordinal of [1, 2]) {
+    await page.locator("#settlement-demo-mark-sent").click();
+    await page.locator('#settlement-demo-response-files input[value="rejected"]').check();
+    await page.locator("#settlement-demo-next-attempt").click();
+    await expectViewedAttemptHighlight(page, ordinal + 1);
+  }
+  await page.locator("#settlement-demo-mark-sent").click();
+  await page.locator('#settlement-demo-response-files input[value="accepted"]').check();
+  const accepted = page.getByRole("button", { name: "Offer Accepted", exact: true });
+  await accepted.click();
+  await expectAcceptedCompletionProgress(page);
+  for (const ordinal of [2, 1, 3]) {
+    await page.locator(`#demo-attempt-progress-list button[data-ordinal="${ordinal}"]`).click();
+    await expect(page).toHaveURL(`${origin}/demo${query}&attempt=${ordinal}`);
+    await expectViewedAttemptHighlight(page, ordinal);
+    await page.reload();
+    await expectViewedAttemptHighlight(page, ordinal);
+    await accepted.click();
+    await expectAcceptedCompletionProgress(page);
+  }
+  expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+  fixture.verify();
+});
+
 for (const kind of ["asset", "selection"]) {
   for (const lifecycle of ["open", "reopened"]) {
     for (const width of [1280, 390, 320]) {
       test(`accepted completion progress: ${kind}, ${lifecycle}, third attempt at ${width}px`, async ({ page }) => {
         const selectionId = "00000000-0000-4000-8000-000000000076";
         const completionUrl = `/settlement-completion?case_id=${caseId}&${kind === "asset" ? "asset_attempt=3" : `selection_id=${selectionId}`}`;
+        const saved = {
+          ...workspace, accepted_offer_url: completionUrl,
+          case: { ...workspace.case, attempts_locked_at: lifecycle === "reopened" ? closedAt : null },
+          attempts: [1, 2, 3].map(ordinal => ({
+            ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
+          })),
+        };
+        const mediation = {
+          revision: 1, attempt_ordinal: 3, attempt_limit: 3,
+          sent: true, outcome: "accepted", attempts_locked: lifecycle === "reopened",
+          notes: "Retained response notes", document_ids: [], sent_filenames: ["sent.docx", "sent.xlsx"],
+          downloaded_formats: ["docx", "xlsx"], completed: lifecycle === "reopened", stopped: false,
+        };
+        const offer = {
+          attempt_revision: 4, attempt_ordinal: 3, outcome: "accepted",
+          sent_confirmed: true, sent_documents_complete: true, attempts_locked: lifecycle === "reopened",
+        };
+        let release;
+        const pending = new Promise(resolve => { release = resolve; });
+        const resetPath = kind === "asset"
+          ? `/cases/${caseId}/asset-mediation`
+          : `/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response/reset`;
         const fixture = await installFixtures(page, {
           authenticated: true,
           extraReads: {
-            [`/cases/${caseId}/workspace`]: {
-              ...workspace, accepted_offer_url: completionUrl,
-              case: { ...workspace.case, attempts_locked_at: lifecycle === "reopened" ? closedAt : null },
-              attempts: [1, 2, 3].map(ordinal => ({
-                ordinal, frozen: true, profile: { ...workspace.case, metadata: {} },
-              })),
-            },
-            [`/cases/${caseId}/asset-mediation/3`]: {
-              revision: 1, attempt_ordinal: 3, attempt_limit: 3,
-              sent: true, outcome: "accepted", attempts_locked: lifecycle === "reopened",
-            },
-            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: {
-              outcome: "accepted", sent_confirmed: true, sent_documents_complete: true,
-              attempts_locked: lifecycle === "reopened",
-            },
+            [`/cases/${caseId}/workspace`]: saved,
+            [`/cases/${caseId}/asset-mediation/3`]: mediation,
+            [`/cases/${caseId}/settlement-planning/selections/${selectionId}/offer-response`]: offer,
+          },
+          mutationHandler: async request => {
+            expect(new URL(request.url()).pathname).toBe(resetPath);
+            expect(request.method()).toBe("POST");
+            expect(request.postDataJSON()).toEqual(kind === "asset"
+              ? { action: "reset_response", attempt_ordinal: 3, expected_revision: 1 }
+              : { expected_attempt_revision: 4 });
+            await pending;
+            mediation.outcome = null;
+            mediation.revision += 1;
+            offer.outcome = null;
+            offer.attempt_revision += 1;
+            saved.accepted_offer_url = null;
+            return { body: kind === "asset" ? mediation : offer };
           },
         });
         await page.setViewportSize({ width, height: 900 });
@@ -2109,13 +2186,71 @@ for (const kind of ["asset", "selection"]) {
         await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible"))
           .toHaveText(["Back to attempt #3", "Close your case"]);
         await expect(page.locator("#closed-case-view-banner")).toBeHidden();
-        await page.getByRole("link", { name: "Back to attempt #3", exact: true }).click();
+        const back = page.getByRole("link", { name: "Back to attempt #3", exact: true });
+        await back.click();
+        await expect(back).toHaveAttribute("aria-disabled", "true");
+        await expect(page.locator("#settlement-completion-close-case")).toBeDisabled();
+        await back.dispatchEvent("click");
+        await expect(page).toHaveURL(`${origin}${completionUrl}`);
+        release();
         await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=3`);
-        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+        for (const reload of [false, true]) {
+          if (reload) await page.reload();
+          await expectViewedAttemptHighlight(page, 3);
+          await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
+          const outcomes = page.locator('#settlement-demo-response-files-case input[type="radio"]');
+          await expect(outcomes).toHaveCount(3);
+          for (const radio of await outcomes.all()) {
+            await expect(radio).not.toBeChecked();
+            await expect(radio).toBeEnabled();
+          }
+          await expect(page.locator("#asset-edit-start-case")).toBeDisabled();
+          expect(saved.case.attempts_locked_at).toBe(lifecycle === "reopened" ? closedAt : null);
+        }
+        expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([`POST ${resetPath}`]);
         fixture.verify();
       });
     }
   }
+}
+
+for (const failure of ["save-error", "stale", "invalid-confirmation"]) {
+  test(`Back to attempt preserves accepted completion on ${failure}`, async ({ page }) => {
+    const completionUrl = `/settlement-completion?case_id=${caseId}&asset_attempt=1`;
+    const fixture = await installFixtures(page, {
+      authenticated: true,
+      extraReads: {
+        [`/cases/${caseId}/workspace`]: { ...workspace, accepted_offer_url: completionUrl },
+        [`/cases/${caseId}/asset-mediation/1`]: {
+          revision: 2, attempt_ordinal: 1, sent: true, outcome: "accepted",
+        },
+      },
+      mutationHandler: async request => {
+        expect(request.postDataJSON()).toEqual({
+          action: "reset_response", attempt_ordinal: 1, expected_revision: 2,
+        });
+        return failure === "invalid-confirmation"
+          ? { body: { outcome: "accepted", attempt_ordinal: 1 } }
+          : { status: failure === "stale" ? 409 : 503, body: { detail: "Response was not cleared. Reload and retry." } };
+      },
+    });
+    await page.goto(`${origin}${completionUrl}`);
+    const back = page.getByRole("link", { name: "Back to attempt #1", exact: true });
+    await back.click();
+    await expect(page.locator("#settlement-completion-status")).toHaveAttribute("data-kind", "error");
+    await expect(page.locator("#settlement-completion-status")).toContainText(
+      failure === "invalid-confirmation" ? "cancellation could not be verified" : "Response was not cleared",
+    );
+    await expect(page).toHaveURL(`${origin}${completionUrl}`);
+    await expect(back).not.toHaveAttribute("aria-disabled");
+    await expect(page.locator("#settlement-completion-close-case")).toBeEnabled();
+    const accepted = page.getByRole("button", { name: "Offer Accepted", exact: true });
+    await expect(accepted).toHaveAttribute("aria-current", "step");
+    await expect(accepted).toHaveAttribute("data-state", "current");
+    expect(fixture.requests.filter(request => !request.startsWith("GET ")))
+      .toEqual([`POST /cases/${caseId}/asset-mediation`]);
+    fixture.verify();
+  });
 }
 
 for (const kind of ["asset", "selection"]) {
@@ -3454,6 +3589,34 @@ for (const backend of ["asset", "selection"]) {
         expect(await measure(true), `matching workspace at ${width}px`).toEqual(attemptLayout);
         await expect(page.locator("#settlement-completion-page .settlement-completion-card")).toHaveCount(0);
         await expect(page.locator("#settlement-completion-workspace > #settlement-completion-content")).toBeVisible();
+        const guidanceLayout = await page.locator("#settlement-completion-demo-content").evaluate(element => {
+          const root = element.parentElement;
+          const typography = target => {
+            const style = getComputedStyle(target);
+            return ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "color"]
+              .map(key => style[key]);
+          };
+          const style = getComputedStyle(element);
+          return {
+            borders: ["Top", "Right", "Bottom", "Left"].map(side => style[`border${side}Width`]),
+            padding: ["Top", "Right", "Bottom", "Left"].map(side => style[`padding${side}`]),
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            x: element.getBoundingClientRect().x,
+            headerX: root.querySelector(".asset-analysis-header").getBoundingClientRect().x,
+            headings: [...element.querySelectorAll("h2")].map(typography),
+            outerHeading: typography(root.querySelector("h1")),
+            body: [...element.querySelectorAll("p, li, a")].map(typography),
+            outerBody: typography(root.querySelector(".asset-analysis-intro")),
+          };
+        });
+        expect(guidanceLayout.borders).toEqual(["0px", "0px", "0px", "0px"]);
+        expect(guidanceLayout.padding).toEqual(["0px", "0px", "0px", "0px"]);
+        expect(guidanceLayout.background).toBe("rgba(0, 0, 0, 0)");
+        expect(guidanceLayout.shadow).toBe("none");
+        expect(guidanceLayout.x).toBe(guidanceLayout.headerX);
+        for (const heading of guidanceLayout.headings) expect(heading).toEqual(guidanceLayout.outerHeading);
+        for (const body of guidanceLayout.body) expect(body).toEqual(guidanceLayout.outerBody);
         await expect(page.locator("#settlement-completion-workspace #settlement-completion-demo-content a")).toHaveCount(4);
         await expect(page.locator("#settlement-completion-workspace")).toContainText("Check any judgment and deadlines");
         await expect(page.locator("#settlement-completion-workspace")).toContainText("does not provide legal advice");
@@ -3465,6 +3628,56 @@ for (const backend of ["asset", "selection"]) {
       fixture.verify();
     });
   }
+}
+
+for (const width of [1280, 320]) {
+  test(`offer preparation introduces scenarios below the asset trend at ${width}px`, async ({ page }) => {
+    const fixture = await installFixtures(page, { authenticated: true });
+    await page.setViewportSize({ width, height: 900 });
+    for (const mode of ["case", "demo1", "demo2"]) {
+      if (mode === "case") {
+        await page.goto(`${origin}/case/assets?case_id=${caseId}`);
+      } else {
+        await page.goto(`${origin}/demo/start?source=${mode}`);
+        await page.locator("#demo-case-documents-link").click();
+        await page.goto(`${origin}/demo${new URL(page.url()).search}`);
+      }
+      const layout = page.locator(mode === "case" ? "#case-asset-layout" : "#asset-analysis-view");
+      const header = layout.locator(".offer-preparation-header");
+      await expect(header).toBeVisible();
+      await expect(header.locator(".eyebrow")).toHaveText("Offer preparation");
+      await expect(header.getByRole("heading", { level: 2 })).toHaveText("Choose a scenario for your offer");
+      await expect(header.locator(".asset-analysis-intro")).toHaveText(
+        "These scenarios are based on the asset information above. Select a scenario, download the drafts, and modify them if needed.",
+      );
+      const geometry = await header.evaluate(element => {
+        const previous = element.previousElementSibling;
+        const next = element.nextElementSibling;
+        const heading = getComputedStyle(element.querySelector("h2"));
+        const overview = getComputedStyle(element.parentElement.querySelector(".asset-analysis-header h2"));
+        return {
+          previousIsTrend: Boolean(previous.querySelector('[id^="asset-chart-heading"]')),
+          nextIsScenarios: next.id.startsWith("settlement-scenarios-preview"),
+          previousBottom: previous.getBoundingClientRect().bottom,
+          top: element.getBoundingClientRect().top,
+          bottom: element.getBoundingClientRect().bottom,
+          nextTop: next.getBoundingClientRect().top,
+          headingStyle: [heading.fontFamily, heading.fontSize, heading.fontWeight],
+          overviewStyle: [overview.fontFamily, overview.fontSize, overview.fontWeight],
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: document.documentElement.clientWidth,
+        };
+      });
+      expect(geometry.previousIsTrend).toBe(true);
+      expect(geometry.nextIsScenarios).toBe(true);
+      expect(geometry.top - geometry.previousBottom).toBeGreaterThanOrEqual(24);
+      expect(geometry.nextTop).toBeGreaterThan(geometry.bottom);
+      expect(geometry.headingStyle).toEqual(geometry.overviewStyle);
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    }
+    expect(fixture.requests.filter(request => !request.startsWith("GET "))).toEqual([]);
+    fixture.verify();
+  });
 }
 
 test("accepted offer page uses the attempt page's workspace shell at every breakpoint", async ({ page }) => {
@@ -5550,6 +5763,9 @@ for (const outcome of ["accepted", "rejected"]) {
         } else if (payload.action === "complete") {
           expect(state.outcome).toBe("accepted");
           state.completed = true;
+        } else if (payload.action === "reset_response") {
+          expect(state.outcome).toBe("accepted");
+          state.outcome = null;
         }
         state.revision++;
         return { body:state };
@@ -5624,6 +5840,9 @@ for (const outcome of ["accepted", "rejected"]) {
       await page.getByRole("link", { name:"Back to attempt #1", exact:true }).click();
       await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
       expect(state.completed).toBe(false);
+      expect(state.outcome).toBeNull();
+      expect(state.notes).toBe(eligibleCounterofferNotes);
+      await expect(page.getByRole("button", { name: "Offer Accepted", exact: true })).toHaveCount(0);
     } else {
       await expect(page.locator("#settlement-demo-next-attempt-case")).toHaveAttribute("aria-disabled", "false");
       await page.locator("#settlement-demo-stop-case").click();
@@ -6529,7 +6748,7 @@ for (const accepted of [true, false]) {
   });
 }
 
-test("accepted real page uses the exact demo guidance and only returns to its case without mutation", async ({ page }) => {
+test("accepted real page matches demo guidance and timeline review stays read-only", async ({ page }) => {
   const fixture = await installFixtures(page, {
     authenticated:true,
     extraReads:{ [`/cases/${caseId}/asset-mediation/1`]:{
@@ -6558,7 +6777,7 @@ test("accepted real page uses the exact demo guidance and only returns to its ca
   await expect(page.getByRole("link", { name:"Back to mediation", exact:true })).toHaveCount(0);
   await expect(page.locator("#settlement-completion-page .settlement-completion-actions > :visible")).toHaveCount(2);
   await expect(page.getByRole("button", { name:"Close your case", exact:true })).toBeVisible();
-  await page.getByRole("link", { name:"Back to attempt #1", exact:true }).click();
+  await page.locator('#demo-attempt-progress-list button[data-ordinal="1"]').click();
   await expect(page).toHaveURL(`${origin}/case/assets?case_id=${caseId}&attempt=1`);
   expect(fixture.requests.filter(request => request.startsWith("POST "))).toEqual([]);
   fixture.verify();

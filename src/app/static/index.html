@@ -1142,6 +1142,7 @@
       #settlement-demo-rejection-choices-case > button { padding:8px; }
       .asset-analysis { margin-top: 24px; }
       .asset-analysis-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; }
+      .offer-preparation-header { margin-top: 32px; }
       .demo-attempt-progress[hidden] { display:none; }
       .demo-attempt-progress { max-width:100%; overflow-x:auto; box-sizing:border-box; padding:6px; }
       .demo-attempt-progress ol { display:flex; align-items:flex-start; margin:0; padding:0; list-style:none; }
@@ -1162,8 +1163,10 @@
         body:is([data-demo-page="settlement"], [data-case-workspace], [data-settlement-completion-page="true"]) .demo-case-navigation { grid-template-columns: 1fr auto; }
         body:is([data-demo-page="settlement"], [data-case-workspace]) .demo-case-nav-links { grid-column:1 / -1; }
       }
-      .asset-analysis-header :is(h1, h2) { margin-bottom: 8px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(26px, 4vw, 36px); font-weight: 500; line-height:1.06; letter-spacing: -.035em; }
-      .asset-analysis-intro { max-width: 720px; color:var(--muted); line-height: 1.6; }
+      .asset-analysis-header :is(h1, h2), .settlement-completion-guidance h2 { margin-bottom: 8px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(26px, 4vw, 36px); font-weight: 500; line-height:1.06; letter-spacing: -.035em; }
+      .asset-analysis-intro, .settlement-completion-guidance :is(p, li) { max-width: 720px; color:var(--muted); line-height: 1.6; }
+      .settlement-completion-guidance { margin-top: 24px; }
+      .settlement-completion-guidance h2:not(:first-child) { margin-top: 24px; }
       .sample-analysis-notice { margin: 16px 0 24px; padding: 14px 16px; border-left:4px solid var(--theme-border-a87a31); border-radius: 5px; color:var(--theme-text-59451f); background:var(--theme-background-fbf5e8); font-size: 13px; line-height: 1.6; }
       .asset-analysis-panel { margin-top: 20px; padding: clamp(16px, 3vw, 24px); border:1px solid var(--line); border-radius: 11px; background:var(--paper); box-shadow: 0 8px 24px rgba(34, 55, 43, .035); }
       .asset-analysis-panel h3 { margin-bottom: 7px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; letter-spacing: -.025em; }
@@ -2866,6 +2869,14 @@
                   </figure>
                 </section>
 
+                <header class="asset-analysis-header offer-preparation-header">
+                  <div>
+                    <p class="eyebrow">Offer preparation</p>
+                    <h2>Choose a scenario for your offer</h2>
+                    <p class="asset-analysis-intro">These scenarios are based on the asset information above. Select a scenario, download the drafts, and modify them if needed.</p>
+                  </div>
+                </header>
+
                 <section class="asset-analysis-panel" id="settlement-scenarios-preview" aria-labelledby="settlement-scenarios-preview-title">
                   <h3 id="settlement-scenarios-preview-title">Scenario ideas for the selected dates</h3>
                   <p>Compare three settlement scenarios based on the selected dates. Each keeps the parties' net balances at the Start Date as a baseline, then applies the displayed proposed share to the change in combined net assets through the End Date (Division Date). These are not legal characterizations, advice, or AI-ranked recommendations.</p>
@@ -2945,7 +2956,7 @@
               </header>
               <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. An accepted offer in the workspace does not itself establish legal resolution. Any proposal remains for you to review; downloading it does not deliver it to your mediator. The product does not deliver proposals; provide reviewed files to your mediator yourself.</p>
               <p id="settlement-completion-status" class="settlement-completion-status" role="status" aria-live="polite"></p>
-              <div id="settlement-completion-demo-content" class="asset-analysis-panel" hidden>
+              <div id="settlement-completion-demo-content" class="settlement-completion-guidance" hidden>
                 <h2>Complete and review the remaining documents</h2>
                 <p>Complete Findings and Conclusions About a Marriage (FL Divorce 231) and review the document reflecting the accepted offer.</p>
                 <p class="product-boundary-disclosure" role="note">Proposed disclosure — pending qualified counsel review: This workflow does not provide legal advice and does not guarantee any outcome. Review any proposal yourself. Downloading does not deliver it to your mediator, and the product does not automatically deliver proposals.</p>
@@ -5198,7 +5209,7 @@
             const button = document.createElement("button");
             button.type = "button";
             button.dataset.ordinal = String(ordinal);
-            button.dataset.state = future ? "future" : current && !caseClosed && !acceptedSelected ? "current" : "past";
+            button.dataset.state = future ? "future" : ordinal === viewingOrdinal && !caseClosed && !acceptedSelected ? "current" : "past";
             const unavailable = !current && !attempt?.profile;
             button.disabled = future || unavailable
               || (preparationMode === "assets" && current && viewingOrdinal === currentOrdinal);
@@ -5228,6 +5239,7 @@
           document.getElementById("demo-attempt-progress-status").textContent =
             acceptedSelected ? "Offer Accepted is the current step."
               : caseClosed ? "All attempts are read-only. This case is closed."
+              : viewingOrdinal !== currentOrdinal ? `Viewing ${caseAttemptLabel(viewingOrdinal)} read-only. Select the current attempt to return.`
               : `${caseAttemptLabel(currentOrdinal)} is current.`;
         }
 
@@ -8555,7 +8567,9 @@
             const circle = document.createElement("span");
             const label = document.createElement("span");
             button.type = "button";
-            button.dataset.state = past || acceptedSelected ? "past" : ordinal === settlementDemoAttemptOrdinal ? "current" : "future";
+            button.dataset.ordinal = String(ordinal);
+            button.dataset.state = ordinal > settlementDemoAttemptOrdinal ? "future"
+              : ordinal === settlementDemoViewingOrdinal && !acceptedSelected ? "current" : "past";
             button.disabled = ordinal > settlementDemoAttemptOrdinal || (past && !snapshot)
               || (demoMode && ordinal === settlementDemoAttemptOrdinal
                 && settlementDemoViewingOrdinal === settlementDemoAttemptOrdinal);
@@ -10418,6 +10432,7 @@
 
         let settlementCompletionCaseClosed = false;
         let settlementCompletionLatestOrdinal = 1;
+        let settlementCompletionReturnBusy = false;
 
         function renderSettlementCompletionActions(workspace, documentsComplete = true) {
           const assetAttempt = new URLSearchParams(window.location.search).get("asset_attempt");
@@ -10614,8 +10629,59 @@
           }
         }
 
+        async function returnFromAcceptedOffer() {
+          if (settlementCompletionReturnBusy || settlementCompletionCaseClosed || closedCaseViewMode
+            || settlementCompletionBackToCases.hidden || !settlementCompletionState) return;
+          const query = new URLSearchParams(window.location.search);
+          const caseId = query.get("case_id");
+          const assetAttempt = query.get("asset_attempt");
+          const selectionId = query.get("selection_id");
+          const closeDisabled = settlementCompletionCloseCase.disabled;
+          settlementCompletionReturnBusy = true;
+          settlementCompletionBackToCases.setAttribute("aria-disabled", "true");
+          settlementCompletionCloseCase.disabled = true;
+          settlementCompletionStatus.dataset.kind = "";
+          settlementCompletionStatus.textContent = "Clearing the accepted response before returning to your attempt…";
+          try {
+            const cleared = assetAttempt
+              ? await settlementApi(`/cases/${encodeURIComponent(caseId)}/asset-mediation`, {
+                method: "POST",
+                body: JSON.stringify({
+                  action: "reset_response",
+                  attempt_ordinal: Number(assetAttempt),
+                  expected_revision: settlementCompletionState.revision,
+                }),
+              })
+              : await settlementApi(
+                `/cases/${encodeURIComponent(caseId)}/settlement-planning/selections/${encodeURIComponent(selectionId)}/offer-response/reset`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({ expected_attempt_revision: settlementCompletionState.attempt_revision }),
+                },
+              );
+            if (cleared.outcome !== null || cleared.attempt_ordinal !== settlementCompletionLatestOrdinal
+              || (settlementCompletionState.attempts_locked && cleared.attempts_locked !== true)) {
+              throw new Error("The accepted response cancellation could not be verified. Reload and retry.");
+            }
+            window.location.assign(settlementCompletionBackToCases.href);
+          } catch (error) {
+            settlementCompletionStatus.dataset.kind = "error";
+            settlementCompletionStatus.textContent = error instanceof Error
+              ? error.message : "The accepted response could not be cleared. Please retry.";
+            settlementCompletionReturnBusy = false;
+            settlementCompletionBackToCases.removeAttribute("aria-disabled");
+            settlementCompletionCloseCase.disabled = closeDisabled;
+          }
+        }
+
+        settlementCompletionBackToCases.addEventListener("click", event => {
+          if (demoSettlementCompletionMode) return;
+          event.preventDefault();
+          void returnFromAcceptedOffer();
+        });
+
         async function closeAcceptedCase() {
-          if (closedCaseViewMode || settlementCompletionCaseClosed) return;
+          if (closedCaseViewMode || settlementCompletionCaseClosed || settlementCompletionReturnBusy) return;
           const query = new URLSearchParams(window.location.search);
           const caseId = query.get("case_id");
           const selectionId = query.get("selection_id");
