@@ -1413,7 +1413,7 @@ class OfferResponseTransitionTests(unittest.TestCase):
         case_navigation = html.split('<nav class="demo-case-navigation"', 1)[1].split(
             '<section class="demo-file-manager"', 1
         )[0]
-        self.assertLess(case_navigation.index('id="demo-current-case-title"'), case_navigation.index('id="demo-attempt-progress"'))
+        self.assertLess(case_navigation.index('id="demo-current-case-status"'), case_navigation.index('id="demo-attempt-progress"'))
         self.assertLess(case_navigation.index('id="demo-attempt-progress"'), case_navigation.index('id="demo-file-management-link"'))
         self.assertNotIn('id="demo-mediation-link"', case_navigation)
         self.assertIn('viewDemoAttempt(ordinal, { navigate: true })', html)
